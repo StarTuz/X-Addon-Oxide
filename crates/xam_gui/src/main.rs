@@ -566,14 +566,37 @@ impl App {
                 Task::none()
             }
             Message::DeleteAddon(tab) => {
-                let has_selection = match tab {
-                    Tab::Scenery => self.selected_scenery.is_some(),
-                    Tab::Aircraft => self.selected_aircraft.is_some(),
-                    Tab::Plugins => self.selected_plugin.is_some(),
-                    Tab::CSLs => self.selected_csl.is_some(),
+                let name_opt = match tab {
+                    Tab::Scenery => self.selected_scenery.clone(),
+                    Tab::Aircraft => self
+                        .selected_aircraft
+                        .as_ref()
+                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
+                    Tab::Plugins => self
+                        .selected_plugin
+                        .as_ref()
+                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
+                    Tab::CSLs => self
+                        .selected_csl
+                        .as_ref()
+                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
                 };
-                if has_selection {
-                    self.show_delete_confirm = true;
+
+                if let Some(name) = name_opt {
+                    use native_dialog::{MessageDialog, MessageType};
+                    let confirmed = MessageDialog::new()
+                        .set_title("Confirm Deletion")
+                        .set_text(&format!(
+                            "Are you sure you want to permanently delete '{}'?",
+                            name
+                        ))
+                        .set_type(MessageType::Warning)
+                        .show_confirm()
+                        .unwrap_or(false);
+
+                    if confirmed {
+                        return Task::done(Message::ConfirmDelete(tab, true));
+                    }
                 }
                 Task::none()
             }
@@ -717,11 +740,28 @@ impl App {
             .padding([6, 12])
         };
 
+        let refresh_btn = button(
+            row![
+                svg(self.refresh_icon.clone())
+                    .width(14)
+                    .height(14)
+                    .style(|_, _| svg::Style {
+                        color: Some(Color::WHITE),
+                    }),
+                text("Refresh").size(12)
+            ]
+            .spacing(6)
+            .align_y(iced::Alignment::Center),
+        )
+        .on_press(Message::Refresh)
+        .style(style::button_success)
+        .padding([6, 12]);
+
         container(
             column![
                 // Top Bar
                 row![
-                    row![install_btn, delete_btn].spacing(10),
+                    row![install_btn, delete_btn, refresh_btn].spacing(10),
                     iced::widget::Space::with_width(Length::Fill),
                     // Right: Path & Set Button
                     row![
@@ -739,20 +779,12 @@ impl App {
                             },
                             ..Default::default()
                         }),
-                        button(svg(self.refresh_icon.clone()).width(16).height(16).style(
-                            |_, _| svg::Style {
-                                color: Some(style::palette::TEXT_PRIMARY),
-                            }
-                        ),)
-                        .on_press(Message::Refresh)
-                        .padding([4, 6])
-                        .style(style::button_ghost),
                         button(text("Set").size(10))
                             .on_press(Message::SelectFolder)
                             .padding([2, 6])
                             .style(style::button_secondary)
                     ]
-                    .spacing(12)
+                    .spacing(8)
                     .align_y(iced::Alignment::Center),
                 ]
                 .spacing(20)
