@@ -1,6 +1,6 @@
 use iced::advanced::{self, layout, renderer, widget, Layout, Widget};
 use iced::widget::{
-    button, checkbox, column, container, image, responsive, row, scrollable, text, Column,
+    button, checkbox, column, container, image, responsive, row, scrollable, svg, text, Column,
 };
 use iced::{mouse, Color, Element, Event, Length, Radians, Rectangle, Task, Theme};
 use std::path::PathBuf;
@@ -103,10 +103,10 @@ struct App {
     show_csl_tab: bool,
     // Assets
     tile_manager: TileManager,
-    icon_aircraft: image::Handle,
-    icon_scenery: image::Handle,
-    icon_plugins: image::Handle,
-    icon_csls: image::Handle,
+    icon_aircraft: svg::Handle,
+    icon_scenery: svg::Handle,
+    icon_plugins: svg::Handle,
+    icon_csls: svg::Handle,
     // Map state
     hovered_scenery: Option<String>,
     map_zoom: f64,
@@ -135,18 +135,10 @@ impl App {
             show_delete_confirm: false,
             show_csl_tab: false,
             tile_manager: TileManager::new(),
-            icon_aircraft: image::Handle::from_bytes(
-                include_bytes!("../assets/icons/aircraft.png").to_vec(),
-            ),
-            icon_scenery: image::Handle::from_bytes(
-                include_bytes!("../assets/icons/scenery.png").to_vec(),
-            ),
-            icon_plugins: image::Handle::from_bytes(
-                include_bytes!("../assets/icons/plugins.png").to_vec(),
-            ),
-            icon_csls: image::Handle::from_bytes(
-                include_bytes!("../assets/icons/csls.png").to_vec(),
-            ),
+            icon_aircraft: svg::Handle::from_memory(include_bytes!("../assets/icons/aircraft.svg").to_vec()),
+            icon_scenery: svg::Handle::from_memory(include_bytes!("../assets/icons/scenery.svg").to_vec()),
+            icon_plugins: svg::Handle::from_memory(include_bytes!("../assets/icons/plugins.svg").to_vec()),
+            icon_csls: svg::Handle::from_memory(include_bytes!("../assets/icons/csls.svg").to_vec()),
             hovered_scenery: None,
             map_zoom: 0.0,
             map_center: (0.0, 0.0),
@@ -795,21 +787,33 @@ impl App {
     fn sidebar_button(&self, label: &'static str, tab: Tab) -> Element<'_, Message> {
         let is_active = self.active_tab == tab;
 
-        let icon_handle = match tab {
-            Tab::Aircraft => &self.icon_aircraft,
-            Tab::Scenery => &self.icon_scenery,
-            Tab::Plugins => &self.icon_plugins,
-            Tab::CSLs => &self.icon_csls,
+        let (icon_handle, active_color) = match tab {
+            Tab::Aircraft => (&self.icon_aircraft, Color::WHITE),
+            Tab::Scenery => (&self.icon_scenery, Color::from_rgb(0.4, 0.8, 0.4)), // Green
+            Tab::Plugins => (&self.icon_plugins, Color::from_rgb(0.4, 0.6, 1.0)), // Blue
+            Tab::CSLs => (&self.icon_csls, Color::from_rgb(1.0, 0.6, 0.2)),       // Orange
         };
 
         let content = column![
-            iced::widget::image(icon_handle.clone())
+            svg(icon_handle.clone())
                 .width(Length::Fixed(48.0))
-                .height(Length::Fixed(48.0)),
+                .height(Length::Fixed(48.0))
+                .style(move |_theme, _status| svg::Style {
+                    color: Some(if is_active {
+                        active_color
+                    } else {
+                        style::palette::TEXT_SECONDARY
+                    }),
+                }),
             text(label)
                 .size(14)
                 .width(Length::Fill)
                 .align_x(iced::alignment::Horizontal::Center)
+                .color(if is_active {
+                    active_color
+                } else {
+                    style::palette::TEXT_SECONDARY
+                })
         ]
         .spacing(8)
         .align_x(iced::Alignment::Center);
@@ -833,8 +837,8 @@ impl App {
                     Length::Fixed(4.0),
                     Length::Fixed(48.0)
                 ))
-                .style(|_| container::Style {
-                    background: Some(iced::Background::Color(style::palette::ACCENT_BLUE)),
+                .style(move |_| container::Style {
+                    background: Some(iced::Background::Color(active_color)),
                     ..Default::default()
                 })
             ]
@@ -1014,7 +1018,7 @@ impl App {
                     let row_content: Element<'_, Message> = if is_csls || is_plugins {
                         let is_enabled = addon.is_enabled;
                         let path_for_toggle = path.clone();
-                        let toggle_msg = if is_plugins {
+                        let _toggle_msg = if is_plugins {
                             Message::TogglePlugin(path_for_toggle.clone(), !is_enabled)
                         } else {
                             Message::ToggleCSL(path_for_toggle.clone(), !is_enabled)

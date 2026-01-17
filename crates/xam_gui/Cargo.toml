@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.13", features = ["tokio", "canvas", "image", "advanced", "lazy"] }
+iced = { version = "0.13", features = ["tokio", "canvas", "image", "advanced", "lazy", "svg"] }
 native-dialog = "0.7"
 directories = "5"
 zip = "2"
