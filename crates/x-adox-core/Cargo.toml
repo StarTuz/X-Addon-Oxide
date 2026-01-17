@@ -1,6 +1,6 @@
 [package]
 name = "x-adox-core"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
 
 [dependencies]
@@ -9,6 +9,7 @@ thiserror = { workspace = true }
 walkdir = { workspace = true }
 nom = { workspace = true }
 anyhow = { workspace = true }
+x-adox-bitnet = { path = "../x-adox-bitnet" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
