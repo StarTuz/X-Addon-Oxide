@@ -72,7 +72,7 @@ sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus
 3. **Run the application:**
 
    ```bash
-   ./target/release/x-adox-gui
+   cargo run --release -p x-adox-gui
    ```
 
 ### Building as AppImage (Recommended for Linux)
