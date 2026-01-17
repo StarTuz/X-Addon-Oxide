@@ -739,20 +739,20 @@ impl App {
                             },
                             ..Default::default()
                         }),
-                        button(svg(self.refresh_icon.clone()).width(12).height(12).style(
+                        button(svg(self.refresh_icon.clone()).width(16).height(16).style(
                             |_, _| svg::Style {
-                                color: Some(style::palette::TEXT_SECONDARY),
+                                color: Some(style::palette::TEXT_PRIMARY),
                             }
                         ),)
                         .on_press(Message::Refresh)
-                        .padding([2, 4])
+                        .padding([4, 6])
                         .style(style::button_ghost),
                         button(text("Set").size(10))
                             .on_press(Message::SelectFolder)
                             .padding([2, 6])
                             .style(style::button_secondary)
                     ]
-                    .spacing(8)
+                    .spacing(12)
                     .align_y(iced::Alignment::Center),
                 ]
                 .spacing(20)
