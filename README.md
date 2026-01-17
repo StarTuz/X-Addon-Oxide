@@ -88,24 +88,18 @@ cargo install --path crates/xam_gui
 cargo install --path crates/xam_cli
 ```
 
-#### Manual Installation (Linux with Desktop Integration)
+#### Automated Installation (Linux with Desktop Integration)
 
 To install the binary with full desktop menu integration:
 
-1. **Build the release binary:**
+1. **Run the install script:**
 
    ```bash
-   cargo build --release -p x-adox-gui
+   chmod +x scripts/install.sh
+   ./scripts/install.sh
    ```
 
-2. **Copy the binary and assets:**
-
-   ```bash
-   sudo cp target/release/x-adox-gui /usr/local/bin/
-   sudo cp crates/xam_gui/assets/xam-addon-oxide.desktop /usr/share/applications/x-adox.desktop
-   sudo mkdir -p /usr/share/icons/hicolor/scalable/apps
-   sudo cp crates/xam_gui/assets/icons/aircraft.svg /usr/share/icons/hicolor/scalable/apps/x-adox-gui.svg
-   ```
+This will build the project and install the binaries, desktop entry, and icons to your system.
 
 ### Building as AppImage (Recommended for Linux)
 
