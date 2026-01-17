@@ -4,6 +4,7 @@ members = [
     "crates/x-adox-core",
     "crates/x-adox-cli",
     "crates/x-adox-gui",
+    "crates/x-adox-bitnet",
 ]
 
 [workspace.dependencies]
