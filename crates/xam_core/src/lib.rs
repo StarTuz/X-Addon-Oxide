@@ -46,24 +46,49 @@ impl XPlaneManager {
     }
 
     /// Attempts to find the X-Plane root directory automatically.
-    /// Checks standard Linux config file `~/.x-plane/x-plane_install_12.txt`.
+    /// Checks standard locations for `x-plane_install_12.txt` or `x-plane_install_11.txt`.
     pub fn try_find_root() -> Option<PathBuf> {
-        // Linux specific check
-        if cfg!(target_os = "linux") {
+        let filenames = ["x-plane_install_12.txt", "x-plane_install_11.txt"];
+        let mut candidate_dirs = Vec::new();
+
+        #[cfg(target_os = "linux")]
+        {
             if let Ok(home) = env::var("HOME") {
-                let config_path = PathBuf::from(home).join(".x-plane/x-plane_install_12.txt");
+                candidate_dirs.push(PathBuf::from(home).join(".x-plane"));
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(home) = env::var("HOME") {
+                candidate_dirs.push(PathBuf::from(&home).join("Library/Preferences"));
+                candidate_dirs.push(PathBuf::from(&home).join(".x-plane"));
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
+                candidate_dirs.push(PathBuf::from(local_appdata));
+            }
+        }
+
+        for dir in candidate_dirs {
+            for filename in &filenames {
+                let config_path = dir.join(filename);
                 if config_path.exists() {
                     if let Ok(content) = fs::read_to_string(config_path) {
-                        let path = PathBuf::from(content.trim());
-                        if path.exists() {
-                            return Some(path);
+                        for line in content.lines() {
+                            let path = PathBuf::from(line.trim());
+                            if path.exists() && path.join("Resources").exists() {
+                                return Some(path);
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Could add other OS checks here (Registry for Windows, etc.)
         None
     }
 }

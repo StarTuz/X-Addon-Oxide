@@ -1,7 +1,11 @@
 [package]
 name = "x-adox-gui"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
+description = "A modern addon manager for X-Plane"
+authors = ["StarTuz"]
+license = "MIT"
+repository = "https://github.com/StarTuz/X-Addon-Oxide"
 
 [dependencies]
 iced = { version = "0.13", features = ["tokio", "canvas", "image", "advanced", "lazy", "svg"] }
