@@ -39,7 +39,12 @@ pub fn container_card(_theme: &Theme) -> container::Style {
         border: Border {
             color: palette::BORDER,
             width: 1.0,
-            radius: 6.0.into(),
+            radius: 8.0.into(),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+            offset: iced::Vector::new(0.0, 4.0),
+            blur_radius: 12.0,
         },
         ..Default::default()
     }
@@ -58,19 +63,29 @@ pub fn button_primary(_theme: &Theme, status: button::Status) -> button::Style {
         button::Status::Active => button::Style {
             background: Some(Background::Color(palette::ACCENT_BLUE)),
             border: Border {
-                radius: 4.0.into(),
+                radius: 6.0.into(),
                 ..Default::default()
             },
             text_color: Color::WHITE,
+            shadow: Shadow {
+                color: Color::from_rgba(0.23, 0.51, 0.96, 0.4),
+                offset: iced::Vector::new(0.0, 2.0),
+                blur_radius: 8.0,
+            },
             ..base
         },
         button::Status::Hovered => button::Style {
             background: Some(Background::Color(Color::from_rgb(0.3, 0.6, 1.0))),
             border: Border {
-                radius: 4.0.into(),
+                radius: 6.0.into(),
                 ..Default::default()
             },
             text_color: Color::WHITE,
+            shadow: Shadow {
+                color: Color::from_rgba(0.23, 0.51, 0.96, 0.6),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 12.0,
+            },
             ..base
         },
         _ => base,
@@ -91,7 +106,7 @@ pub fn button_secondary(_theme: &Theme, status: button::Status) -> button::Style
             border: Border {
                 color: palette::BORDER,
                 width: 1.0,
-                radius: 4.0.into(),
+                radius: 6.0.into(),
             },
             text_color: palette::TEXT_PRIMARY,
             ..base
@@ -101,9 +116,14 @@ pub fn button_secondary(_theme: &Theme, status: button::Status) -> button::Style
             border: Border {
                 color: palette::BORDER,
                 width: 1.0,
-                radius: 4.0.into(),
+                radius: 6.0.into(),
             },
             text_color: Color::WHITE,
+            shadow: Shadow {
+                color: Color::from_rgba(0.0, 0.0, 0.0, 0.3),
+                offset: iced::Vector::new(0.0, 2.0),
+                blur_radius: 8.0,
+            },
             ..base
         },
         _ => button::Style {
@@ -111,33 +131,11 @@ pub fn button_secondary(_theme: &Theme, status: button::Status) -> button::Style
             border: Border {
                 color: palette::BORDER,
                 width: 1.0,
-                radius: 4.0.into(),
+                radius: 6.0.into(),
             },
             text_color: palette::TEXT_PRIMARY,
             ..base
         },
-    }
-}
-
-pub fn button_sidebar_active(_theme: &Theme, _status: button::Status) -> button::Style {
-    button::Style {
-        background: None,
-        text_color: palette::TEXT_PRIMARY,
-        border: Border::default(),
-        shadow: Shadow::default(),
-    }
-}
-
-pub fn button_sidebar_inactive(_theme: &Theme, _status: button::Status) -> button::Style {
-    button::Style {
-        background: None,
-        text_color: palette::TEXT_SECONDARY,
-        border: Border {
-            width: 0.0,
-            radius: 0.0.into(),
-            ..Default::default()
-        },
-        shadow: Shadow::default(),
     }
 }
 
@@ -154,7 +152,38 @@ pub fn button_ghost(_theme: &Theme, status: button::Status) -> button::Style {
             background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.1))),
             text_color: Color::WHITE,
             border: Border {
-                radius: 4.0.into(),
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_sidebar_active(_theme: &Theme, _status: button::Status) -> button::Style {
+    button::Style {
+        background: None,
+        text_color: palette::TEXT_PRIMARY,
+        border: Border::default(),
+        shadow: Shadow::default(),
+    }
+}
+
+pub fn button_sidebar_inactive(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: None,
+        text_color: palette::TEXT_SECONDARY,
+        border: Border::default(),
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.05))),
+            text_color: palette::TEXT_PRIMARY,
+            border: Border {
+                radius: 8.0.into(),
                 ..Default::default()
             },
             ..base
@@ -170,7 +199,7 @@ pub fn button_card(_theme: &Theme, status: button::Status) -> button::Style {
         border: Border {
             color: palette::BORDER,
             width: 1.0,
-            radius: 6.0.into(),
+            radius: 8.0.into(),
         },
         shadow: Shadow::default(),
     };
@@ -180,7 +209,12 @@ pub fn button_card(_theme: &Theme, status: button::Status) -> button::Style {
             border: Border {
                 color: palette::ACCENT_BLUE,
                 width: 1.0,
-                radius: 6.0.into(),
+                radius: 8.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.23, 0.51, 0.96, 0.2),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 12.0,
             },
             ..base
         },
@@ -188,7 +222,7 @@ pub fn button_card(_theme: &Theme, status: button::Status) -> button::Style {
             border: Border {
                 color: palette::ACCENT_BLUE,
                 width: 1.0,
-                radius: 6.0.into(),
+                radius: 8.0.into(),
             },
             ..base
         },

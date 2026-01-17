@@ -842,17 +842,32 @@ impl App {
             Tab::CSLs => (&self.icon_csls, Color::from_rgb(1.0, 0.6, 0.2)),       // Orange
         };
 
-        let content = column![
-            svg(icon_handle.clone())
-                .width(Length::Fixed(48.0))
-                .height(Length::Fixed(48.0))
-                .style(move |_theme, _status| svg::Style {
-                    color: Some(if is_active {
-                        active_color
-                    } else {
-                        style::palette::TEXT_SECONDARY
-                    }),
+        let icon = svg(icon_handle.clone())
+            .width(Length::Fixed(48.0))
+            .height(Length::Fixed(48.0))
+            .style(move |_theme, _status| svg::Style {
+                color: Some(if is_active {
+                    active_color
+                } else {
+                    style::palette::TEXT_SECONDARY
                 }),
+            });
+
+        let icon_container = if is_active {
+            container(icon).style(move |_| container::Style {
+                shadow: iced::Shadow {
+                    color: Color::from_rgba(active_color.r, active_color.g, active_color.b, 0.4),
+                    offset: iced::Vector::new(0.0, 0.0),
+                    blur_radius: 15.0,
+                },
+                ..Default::default()
+            })
+        } else {
+            container(icon)
+        };
+
+        let content = column![
+            icon_container,
             text(label)
                 .size(14)
                 .width(Length::Fill)
@@ -887,6 +902,20 @@ impl App {
                 ))
                 .style(move |_| container::Style {
                     background: Some(iced::Background::Color(active_color)),
+                    border: iced::Border {
+                        radius: 2.0.into(),
+                        ..Default::default()
+                    },
+                    shadow: iced::Shadow {
+                        color: Color::from_rgba(
+                            active_color.r,
+                            active_color.g,
+                            active_color.b,
+                            0.8
+                        ),
+                        offset: iced::Vector::new(0.0, 0.0),
+                        blur_radius: 12.0,
+                    },
                     ..Default::default()
                 })
             ]
