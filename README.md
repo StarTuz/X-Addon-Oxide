@@ -21,22 +21,66 @@ X-Addon-Oxide is a powerful, cross-platform tool designed for both flight sim en
 
 For more detailed instructions, see the [Full User Guide](USER_GUIDE.md).
 
-## Building from Source
+## Installation & Building
 
-X-Addon-Oxide is built using Rust and the Iced GUI library.
+### Prerequisites
 
-### Linux (AppImage)
+You will need the **Rust** toolchain installed. If you don't have it, you can get it from [rustup.rs](https://rustup.rs/):
 
-We provide a Docker-based build process for maximum compatibility:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### System Dependencies (Linux)
+
+Before building, ensure you have the necessary development libraries installed.
+
+**Ubuntu/Debian:**
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-dev libxkbcommon-dev libdbus-1-dev
+```
+
+**Fedora:**
+
+```bash
+sudo dnf install alsa-lib-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-devel
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus
+```
+
+### Building from Source
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/StarTuz/X-Addon-Oxide.git
+   cd X-Addon-Oxide
+   ```
+
+2. **Build the project:**
+
+   ```bash
+   cargo build --release
+   ```
+
+3. **Run the application:**
+
+   ```bash
+   ./target/release/x-adox-gui
+   ```
+
+### Building as AppImage (Recommended for Linux)
+
+We provide a Docker-based build process to ensure maximum compatibility across different Linux distributions:
 
 ```bash
 ./scripts/build_appimage.sh
-```
-
-### Regular Build
-
-```bash
-cargo build --release
 ```
 
 ## Contributing
