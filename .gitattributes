@@ -1,0 +1,7 @@
+# Mark legacy Xojo code as vendored so it doesn't clutter the language statistics
+legacy_xojo/** linguist-vendored
+
+# Mark documentation as such
+doc/** linguist-documentation
+USER_GUIDE.md linguist-documentation
+README.md linguist-documentation
