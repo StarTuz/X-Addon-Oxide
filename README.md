@@ -1,17 +1,44 @@
 # X-Addon-Oxide
 
-The [X-Plane Flight Simulator](http://www.x-plane.com) supports three main types of addons developed by users: Custom Scenery, Aircraft and Plugins. This application is designed for both regular X-Plane flight simmers to manage their Addons and for developers to easily enable and disable Addons while testing.
+The advanced addon manager for [X-Plane Flight Simulator](http://www.x-plane.com).
 
-The program displays all your Custom Scenery Packages, Plugins and Aircraft, as well as your CSLs for flying online.
+X-Addon-Oxide is a powerful, cross-platform tool designed for both flight sim enthusiasts and addon developers. It provides a modern, fast, and visually stunning interface to manage your Custom Scenery, Aircraft, Plugins, and CSLs.
 
-**Custom Scenery Packages** are plotted on a world map for quick reference, you can click on the map to find the closest installed scenery package to where you clicked. The program tells you whether each package contains a library, Earth scenery, Mars scenery and airports.
+## Key Features
 
-**Plugins** are simply listed, allowing easy enabling and disabling
+- **🚀 Mod Management**: Effortlessly enable or disable Plugins and CSLs with a single click.
+- **🗺️ World Map**: View all your installed scenery packages on an interactive global map.
+- **✈️ Aircraft Preview**: Instantly view aircraft icons and technical details before you fly.
+- **✨ Premium UI**: A sleek, dark-themed interface with neon glow effects and reactive hover feedback.
+- **📦 Multi-Platform**: Built with Rust for high performance on Linux, Windows, and macOS.
+- **🛠️ Developer Friendly**: Quickly toggle addons for testing without manual file renaming.
 
-**Aircraft** are listed and the program tells you whether each has a 3d cockpit, airfoils, sounds, weapons, plugins and whether the aircraft is Goodway enabled. If an aircraft has an icon, this is also displayed.
+## Getting Started
 
-**CSLs** are simply listed, allowing easy enabling and disabling
+1. **Set your X-Plane Path**: Point the app to your X-Plane installation directory.
+2. **Explore your Addons**: Use the sidebar to navigate between Aircraft, Scenery, and Plugins.
+3. **Manage Status**: Use checkboxes for Plugins/CSLs and toggle buttons for Scenery.
 
-The program allows very easy installation of all types of addon - just download the zip file containing the Scenery Package, Plugin, Aircraft or CSL, click 'Install ...' and choose the zip file. X-Addon-Oxide does the rest.
+For more detailed instructions, see the [Full User Guide](USER_GUIDE.md).
 
-Full documentation is available in the [User Guide](https://github.com/aussig/XAddonManager/wiki/XAddonManager-User-Guide)
+## Building from Source
+
+X-Addon-Oxide is built using Rust and the Iced GUI library.
+
+### Linux (AppImage)
+
+We provide a Docker-based build process for maximum compatibility:
+
+```bash
+./scripts/build_appimage.sh
+```
+
+### Regular Build
+
+```bash
+cargo build --release
+```
+
+## Contributing
+
+See [GitHub](https://github.com/StarTuz/X-Addon-Oxide) for the latest source and issues.
