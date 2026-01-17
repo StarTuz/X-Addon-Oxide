@@ -1,6 +1,6 @@
 use std::fs;
 use tempfile::TempDir;
-use xam_core::XPlaneManager;
+use x_adox_core::XPlaneManager;
 
 /// Helper to create a mock X-Plane directory structure
 struct MockXPlane {
@@ -51,7 +51,7 @@ fn test_get_scenery_packs_path() {
     );
 }
 
-use xam_core::discovery::{AddonType, DiscoveryManager};
+use x_adox_core::discovery::{AddonType, DiscoveryManager};
 
 #[test]
 fn test_discovery_aircraft() {

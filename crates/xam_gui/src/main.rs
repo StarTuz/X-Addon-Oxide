@@ -4,10 +4,10 @@ use iced::widget::{
 };
 use iced::{mouse, Color, Element, Event, Length, Radians, Rectangle, Task, Theme};
 use std::path::PathBuf;
-use xam_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
-use xam_core::management::ModManager;
-use xam_core::scenery::{SceneryManager, SceneryPack, SceneryPackType};
-use xam_core::XPlaneManager;
+use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
+use x_adox_core::management::ModManager;
+use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType};
+use x_adox_core::XPlaneManager;
 
 mod style;
 // use style::{Button as ButtonStyle, Container as ContainerStyle}; // Removed
@@ -981,16 +981,16 @@ impl App {
         // Type Tag
         // let cat_name = format!("{:?}", pack.category); // Simplified for now
         let tag_color = match pack.category {
-            xam_core::scenery::SceneryCategory::EarthAirports => style::palette::ACCENT_ORANGE,
-            xam_core::scenery::SceneryCategory::Library => style::palette::ACCENT_BLUE,
+            x_adox_core::scenery::SceneryCategory::EarthAirports => style::palette::ACCENT_ORANGE,
+            x_adox_core::scenery::SceneryCategory::Library => style::palette::ACCENT_BLUE,
             _ => style::palette::TEXT_SECONDARY,
         };
 
         // Shorten category for display
         let cat_display = match pack.category {
-            xam_core::scenery::SceneryCategory::EarthAirports => "AIRPORT",
-            xam_core::scenery::SceneryCategory::Library => "LIB",
-            xam_core::scenery::SceneryCategory::EarthScenery => "MESH",
+            x_adox_core::scenery::SceneryCategory::EarthAirports => "AIRPORT",
+            x_adox_core::scenery::SceneryCategory::Library => "LIB",
+            x_adox_core::scenery::SceneryCategory::EarthScenery => "MESH",
             _ => "SCENERY",
         };
 
@@ -1571,11 +1571,11 @@ fn install_addon(
         // Add the new pack at the top of the list
         sm.packs.insert(
             0,
-            xam_core::scenery::SceneryPack {
+            x_adox_core::scenery::SceneryPack {
                 name: top_folder.clone(),
                 path: PathBuf::from(format!("Custom Scenery/{}/", top_folder)),
-                status: xam_core::scenery::SceneryPackType::Active,
-                category: xam_core::scenery::SceneryCategory::default(),
+                status: x_adox_core::scenery::SceneryPackType::Active,
+                category: x_adox_core::scenery::SceneryCategory::default(),
                 airports: Vec::new(),
                 tiles: Vec::new(),
             },

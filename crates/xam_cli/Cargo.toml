@@ -1,9 +1,9 @@
 [package]
-name = "xam_cli"
+name = "x-adox-cli"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-xam_core = { workspace = true }
+x-adox-core = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }

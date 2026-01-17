@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use xam_core::scenery::{SceneryManager, SceneryPackType};
-use xam_core::XPlaneManager;
+use x_adox_core::scenery::{SceneryManager, SceneryPackType};
+use x_adox_core::XPlaneManager;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

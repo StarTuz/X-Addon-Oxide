@@ -1,9 +1,9 @@
 use std::fs::{self, File};
 use std::io::Write;
 use tempfile::TempDir;
-use xam_core::apt_dat::AptDatParser;
-use xam_core::scenery::{SceneryManager, SceneryPackType};
-use xam_core::XPlaneManager;
+use x_adox_core::apt_dat::AptDatParser;
+use x_adox_core::scenery::{SceneryManager, SceneryPackType};
+use x_adox_core::XPlaneManager;
 
 fn create_mock_xplane_root() -> TempDir {
     let temp_dir = TempDir::new().unwrap();
@@ -104,6 +104,6 @@ fn test_e2e_workflow() {
 
     // To match discovery logic, we need to invoke the discovery functions directly if exposed,
     // or checks modules if they are public.
-    // xam_core::discovery::scan_aircraft?
+    // x_adox_core::discovery::scan_aircraft?
     // Let's assume we can access it if `discovery` mod is pub
 }
