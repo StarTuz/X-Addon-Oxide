@@ -46,5 +46,18 @@ For Linux users, we recommend using the **AppImage** generated via Docker to ens
 ./scripts/build_appimage.sh
 ```
 
+## Screenshots v1:
+
+<img width="1030" height="799" alt="image" src="https://github.com/user-attachments/assets/0de14117-4513-4044-96c1-478d6d675ac6" />
+
+<img width="1030" height="799" alt="image" src="https://github.com/user-attachments/assets/080eb9a3-280f-4191-b5f6-7ee40aea4049" />
+
+<img width="1030" height="799" alt="image" src="https://github.com/user-attachments/assets/b0a2a56c-b10c-4e67-a695-182b0540ddf3" />
+
+<img width="1030" height="799" alt="image" src="https://github.com/user-attachments/assets/64b8b55b-5852-49d3-a3c6-907b5478593d" />
+
+
+
+
 ---
 *Developed with ❤️ for the X-Plane Community.*
