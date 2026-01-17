@@ -13,12 +13,12 @@ cp target/release/x-adox-gui AppDir/usr/bin/x-adox-gui
 
 # Copy icons
 mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
-cp crates/xam_gui/assets/icons/aircraft.svg AppDir/usr/share/icons/hicolor/scalable/apps/x-adox-gui.svg
+cp crates/x-adox-gui/assets/icons/aircraft.svg AppDir/usr/share/icons/hicolor/scalable/apps/x-adox-gui.svg
 
 # Run linuxdeploy
 linuxdeploy --appdir AppDir \
-    --desktop-file crates/xam_gui/assets/xam-addon-oxide.desktop \
-    --icon-file crates/xam_gui/assets/icons/aircraft.svg \
+    --desktop-file crates/x-adox-gui/assets/xam-addon-oxide.desktop \
+    --icon-file crates/x-adox-gui/assets/icons/aircraft.svg \
     --output appimage
 
 echo "AppImage build complete!"
