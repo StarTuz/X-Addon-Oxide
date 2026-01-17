@@ -4,3 +4,4 @@ XAddonManager-*.zip
 /target
 Cargo.lock
 **/*.rs.bk
+*.AppImage

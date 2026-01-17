@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=X-Addon-Oxide
-Exec=x-adox-gui
-Icon=x-adox-gui
-Type=Application
-Categories=Utility;Game;
-Comment=Advanced X-Plane Addon Manager
-Terminal=false

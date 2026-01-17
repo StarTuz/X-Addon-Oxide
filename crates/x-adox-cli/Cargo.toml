@@ -1,0 +1,9 @@
+[package]
+name = "x-adox-cli"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+x-adox-core = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }

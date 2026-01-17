@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/xam_core",
-    "crates/xam_cli",
-    "crates/xam_gui",
+    "crates/x-adox-core",
+    "crates/x-adox-cli",
+    "crates/x-adox-gui",
 ]
 
 [workspace.dependencies]
-x-adox-core = { path = "crates/xam_core" }
+x-adox-core = { path = "crates/x-adox-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_ini = "0.2" # Useful for simple INI, though we might need custom parsing for X-Plane's specific format

@@ -16,12 +16,12 @@ sudo cp target/release/x-adox-cli /usr/local/bin/
 
 # Step 3: Desktop Integration
 echo "Installing desktop entry..."
-sudo cp crates/xam_gui/assets/xam-addon-oxide.desktop /usr/share/applications/x-adox.desktop
+sudo cp crates/x-adox-gui/assets/xam-addon-oxide.desktop /usr/share/applications/x-adox.desktop
 
 # Step 4: Icons
 echo "Installing icons..."
 sudo mkdir -p /usr/share/icons/hicolor/scalable/apps
-sudo cp crates/xam_gui/assets/icons/aircraft.svg /usr/share/icons/hicolor/scalable/apps/x-adox-gui.svg
+sudo cp crates/x-adox-gui/assets/icons/aircraft.svg /usr/share/icons/hicolor/scalable/apps/x-adox-gui.svg
 
 echo "----------------------------------"
 echo "Installation Complete!"
