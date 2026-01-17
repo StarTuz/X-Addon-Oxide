@@ -1,0 +1,6 @@
+.XAddonManager.xojo_uistate
+Builds - XAddonManager.xojo_project
+XAddonManager-*.zip
+/target
+Cargo.lock
+**/*.rs.bk

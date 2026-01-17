@@ -1,0 +1,17 @@
+[package]
+name = "xam_gui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = { version = "0.13", features = ["tokio", "canvas", "image", "advanced", "lazy"] }
+native-dialog = "0.7"
+directories = "5"
+zip = "2"
+lru = "0.12"
+xam_core = { workspace = true }
+anyhow = { workspace = true }
+reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+url = "2"
+futures = "0.3"
