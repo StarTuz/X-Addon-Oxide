@@ -97,6 +97,7 @@ struct App {
     xplane_root: Option<PathBuf>,
     selected_scenery: Option<String>,
     selected_aircraft: Option<PathBuf>,
+    selected_aircraft_icon: Option<image::Handle>,
     selected_plugin: Option<PathBuf>,
     selected_csl: Option<PathBuf>,
     show_delete_confirm: bool,
@@ -130,15 +131,24 @@ impl App {
             xplane_root: root.clone(),
             selected_scenery: None,
             selected_aircraft: None,
+            selected_aircraft_icon: None,
             selected_plugin: None,
             selected_csl: None,
             show_delete_confirm: false,
             show_csl_tab: false,
             tile_manager: TileManager::new(),
-            icon_aircraft: svg::Handle::from_memory(include_bytes!("../assets/icons/aircraft.svg").to_vec()),
-            icon_scenery: svg::Handle::from_memory(include_bytes!("../assets/icons/scenery.svg").to_vec()),
-            icon_plugins: svg::Handle::from_memory(include_bytes!("../assets/icons/plugins.svg").to_vec()),
-            icon_csls: svg::Handle::from_memory(include_bytes!("../assets/icons/csls.svg").to_vec()),
+            icon_aircraft: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/aircraft.svg").to_vec(),
+            ),
+            icon_scenery: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/scenery.svg").to_vec(),
+            ),
+            icon_plugins: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/plugins.svg").to_vec(),
+            ),
+            icon_csls: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/csls.svg").to_vec(),
+            ),
             hovered_scenery: None,
             map_zoom: 0.0,
             map_center: (0.0, 0.0),
@@ -447,7 +457,45 @@ impl App {
                 Task::none()
             }
             Message::SelectAircraft(path) => {
-                self.selected_aircraft = Some(path);
+                self.selected_aircraft = Some(path.clone());
+
+                // Try to find icon11.png or icon.png
+                // Based on .acf filename
+                let mut icon_handle = None;
+                if let Ok(entries) = std::fs::read_dir(&path) {
+                    let acf_file = entries
+                        .flatten()
+                        .into_iter()
+                        .find(|e| e.path().extension().map_or(false, |ext| ext == "acf"));
+
+                    if let Some(acf) = acf_file {
+                        let acf_stem = acf
+                            .path()
+                            .file_stem()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
+                        let dir = acf.path().parent().unwrap().to_path_buf();
+
+                        // Look for {acf_stem}_icon11.png or {acf_stem}_icon.png
+                        let icon_paths = [
+                            dir.join(format!("{}_icon11.png", acf_stem)),
+                            dir.join(format!("{}_icon.png", acf_stem)),
+                            dir.join("icon11.png"), // fallback
+                            dir.join("icon.png"),
+                        ];
+
+                        for p in icon_paths {
+                            if p.exists() {
+                                if let Ok(bytes) = std::fs::read(&p) {
+                                    icon_handle = Some(image::Handle::from_bytes(bytes));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                self.selected_aircraft_icon = icon_handle;
                 Task::none()
             }
             Message::SelectPlugin(path) => {
@@ -1140,7 +1188,30 @@ impl App {
             None => text("Loading aircraft...").size(14).into(),
         };
 
-        let main_content = column![tree_content].spacing(10);
+        let preview: Element<'_, Message> = if let Some(icon) = &self.selected_aircraft_icon {
+            container(iced::widget::image(icon.clone()))
+                .width(Length::FillPortion(1))
+                .height(Length::Fill)
+                .padding(20)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .style(style::container_card)
+                .into()
+        } else {
+            container(text("No preview available").color(style::palette::TEXT_SECONDARY))
+                .width(Length::FillPortion(1))
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .style(style::container_card)
+                .into()
+        };
+
+        let main_content = row![
+            container(tree_content).width(Length::FillPortion(2)),
+            preview
+        ]
+        .spacing(20);
 
         if let Some(confirm_msg) = confirm_text {
             column![
