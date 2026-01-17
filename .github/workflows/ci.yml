@@ -55,14 +55,6 @@ jobs:
         cp target/release/x-adox-gui.exe dist/
         cd dist && zip ../x-adox-windows-x64.zip x-adox-gui.exe
 
-    - name: Package (Linux AppImage)
-      if: matrix.platform.name == 'Linux'
-      run: |
-        # Use our existing docker build script
-        chmod +x scripts/build_appimage.sh
-        ./scripts/build_appimage.sh
-        mv out/*.AppImage x-adox-linux-x86_64.AppImage
-
     - name: Package (macOS)
       if: matrix.platform.name == 'macOS'
       run: |
@@ -76,7 +68,6 @@ jobs:
         name: ${{ matrix.platform.name }}-binary
         path: |
           *.zip
-          *.AppImage
 
   release:
     name: Create Release
@@ -93,7 +84,6 @@ jobs:
       with:
         files: |
           *.zip
-          *.AppImage
         draft: false
         prerelease: false
       env:
