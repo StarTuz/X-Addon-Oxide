@@ -108,6 +108,7 @@ struct App {
     icon_scenery: svg::Handle,
     icon_plugins: svg::Handle,
     icon_csls: svg::Handle,
+    refresh_icon: svg::Handle,
     // Map state
     hovered_scenery: Option<String>,
     map_zoom: f64,
@@ -148,6 +149,9 @@ impl App {
             ),
             icon_csls: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/csls.svg").to_vec(),
+            ),
+            refresh_icon: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/refresh.svg").to_vec(),
             ),
             hovered_scenery: None,
             map_zoom: 0.0,
@@ -735,6 +739,14 @@ impl App {
                             },
                             ..Default::default()
                         }),
+                        button(svg(self.refresh_icon.clone()).width(12).height(12).style(
+                            |_, _| svg::Style {
+                                color: Some(style::palette::TEXT_SECONDARY),
+                            }
+                        ),)
+                        .on_press(Message::Refresh)
+                        .padding([2, 4])
+                        .style(style::button_ghost),
                         button(text("Set").size(10))
                             .on_press(Message::SelectFolder)
                             .padding([2, 6])
