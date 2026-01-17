@@ -49,11 +49,17 @@ jobs:
 
     - name: Package (Windows)
       if: matrix.platform.name == 'Windows'
-      shell: bash
       run: |
-        mkdir -p dist
+        mkdir dist
         cp target/release/x-adox-gui.exe dist/
-        cd dist && zip ../x-adox-windows-x64.zip x-adox-gui.exe
+        7z a x-adox-windows-x64.zip ./dist/*
+
+    - name: Package (Linux)
+      if: matrix.platform.name == 'Linux'
+      run: |
+        mkdir dist
+        cp target/release/x-adox-gui dist/
+        zip -j x-adox-linux-x64.zip dist/x-adox-gui
 
     - name: Package (macOS)
       if: matrix.platform.name == 'macOS'
@@ -66,8 +72,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.platform.name }}-binary
-        path: |
-          *.zip
+        path: "*.zip"
 
   release:
     name: Create Release
