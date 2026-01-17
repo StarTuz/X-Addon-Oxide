@@ -75,6 +75,38 @@ sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus
    cargo run --release -p x-adox-gui
    ```
 
+### Installing to System
+
+If you want to install X-ADOX to your system for permanent use:
+
+#### Using Cargo (Binary Only)
+
+This installs the `x-adox-gui` and `x-adox-cli` binaries to your `~/.cargo/bin` directory:
+
+```bash
+cargo install --path crates/xam_gui
+cargo install --path crates/xam_cli
+```
+
+#### Manual Installation (Linux with Desktop Integration)
+
+To install the binary with full desktop menu integration:
+
+1. **Build the release binary:**
+
+   ```bash
+   cargo build --release -p x-adox-gui
+   ```
+
+2. **Copy the binary and assets:**
+
+   ```bash
+   sudo cp target/release/x-adox-gui /usr/local/bin/
+   sudo cp crates/xam_gui/assets/xam-addon-oxide.desktop /usr/share/applications/x-adox.desktop
+   sudo mkdir -p /usr/share/icons/hicolor/scalable/apps
+   sudo cp crates/xam_gui/assets/icons/aircraft.svg /usr/share/icons/hicolor/scalable/apps/x-adox-gui.svg
+   ```
+
 ### Building as AppImage (Recommended for Linux)
 
 We provide a Docker-based build process to ensure maximum compatibility across different Linux distributions:
