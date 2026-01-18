@@ -1058,7 +1058,24 @@ impl App {
 
         row![
             map_container,
-            container(
+            container(if self.active_tab == Tab::Heuristics {
+                column![
+                    text("Score Reference").size(18),
+                    text("LOWER SCORE = HIGHER PRIORITY")
+                        .size(10)
+                        .color(style::palette::TEXT_SECONDARY),
+                    text("10 - Airports (High Priority)").size(12),
+                    text("20 - Global Airports").size(12),
+                    text("30 - Overlays / SimHeaven").size(12),
+                    text("40 - Landmarks / Default").size(12),
+                    text("42 - AutoOrtho Overlays").size(12),
+                    text("45 - Libraries").size(12),
+                    text("50 - Ortho (Photos)").size(12),
+                    text("60 - Meshes").size(12),
+                    text("95 - AutoOrtho Base").size(12),
+                ]
+                .spacing(10)
+            } else {
                 column![
                     text("Inspector Panel").size(18),
                     text("FOLDER:")
@@ -1093,7 +1110,7 @@ impl App {
                     .size(10),
                 ]
                 .spacing(10)
-            )
+            })
             .style(style::container_card)
             .padding(15)
             .width(Length::Fixed(300.0))
