@@ -24,6 +24,18 @@ impl Default for HeuristicsConfig {
         Self {
             rules: vec![
                 Rule {
+                    name: "AutoOrtho Overlays".to_string(),
+                    keywords: vec!["yautoortho".to_string(), "y_autoortho".to_string()],
+                    score: 42,
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "AutoOrtho Base".to_string(),
+                    keywords: vec!["z_autoortho".to_string(), "z_ao_".to_string()],
+                    score: 95,
+                    is_exclusion: false,
+                },
+                Rule {
                     name: "Exclusion Logic (Overlay/Mesh Tweaks)".to_string(),
                     keywords: vec![
                         "overlay".to_string(),
@@ -188,6 +200,15 @@ impl BitNetModel {
     /// Lower score = higher priority.
     pub fn predict(&self, name: &str, _path: &Path) -> u8 {
         let name_lower = name.to_lowercase();
+
+        // DEBUG: Print current rules count
+        if name.contains("autoortho") {
+            println!(
+                "[BitNet] Debug: {} rules loaded. First rule: {}",
+                self.config.rules.len(),
+                self.config.rules[0].name
+            );
+        }
 
         // Detection for common airport patterns (still somewhat hardcoded as a base logic)
         let has_airport_keyword = name_lower.contains("airport")
