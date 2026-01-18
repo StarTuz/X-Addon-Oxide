@@ -90,15 +90,15 @@ pub fn write_ini(file_path: &Path, packs: &[SceneryPack]) -> io::Result<()> {
         let score = model.predict(&pack.name, &pack.path);
         let current_section = match score {
             0..=10 => "# Payware & Custom Airports",
-            11..=20 => "# Global Airports",
-            21..=29 => "# Orbx Custom Landmarks",
-            30..=36 => "# simHeaven X-World",
-            37..=40 => "# Overlays & Landmarks",
-            41..=42 => "# Orbx TrueEarth Overlays",
-            43..=45 => "# Libraries",
-            46..=48 => "# Birds",
-            49..=50 => "# Orthos & Photoscenery",
-            _ => "# Meshes & Terrain",
+            11..=21 => "# Global Airports & Landmarks",
+            22..=24 => "# X-Plane Default Airports",
+            25..=29 => "# Orbx Custom Landmarks",
+            30..=31 => "# simHeaven X-World",
+            32..=34 => "# Birds & Fauna",
+            35..=36 => "# Orbx TrueEarth Overlays",
+            37..=44 => "# Overlays & Landmarks",
+            45..=47 => "# Libraries",
+            _ => "# Meshes & Orthos",
         };
 
         if current_section != last_section {
