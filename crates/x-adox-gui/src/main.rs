@@ -1259,6 +1259,7 @@ impl App {
 
         if is_active {
             row![
+                iced::widget::Space::new(Length::Fixed(4.0), Length::Fill), // Balancing spacer
                 btn,
                 container(iced::widget::Space::new(
                     Length::Fixed(4.0),
@@ -1286,12 +1287,7 @@ impl App {
             .align_y(iced::Alignment::Center)
             .into()
         } else {
-            row![
-                btn,
-                iced::widget::Space::new(Length::Fixed(4.0), Length::Fixed(48.0))
-            ]
-            .align_y(iced::Alignment::Center)
-            .into()
+            btn.into()
         }
     }
 
