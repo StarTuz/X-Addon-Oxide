@@ -10,6 +10,7 @@ walkdir = { workspace = true }
 nom = { workspace = true }
 anyhow = { workspace = true }
 x-adox-bitnet = { path = "../x-adox-bitnet" }
+regex = "1.12.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -155,6 +155,9 @@ impl SceneryManager {
             }
         }
 
+        // 3. Handle semantic duplicates (same content, different version/folder)
+        Self::handle_duplicates(&mut packs);
+
         self.packs = packs;
         Ok(())
     }
@@ -171,6 +174,12 @@ impl SceneryManager {
         }
     }
 
+    pub fn sorted_for_ui(&self) -> Vec<SceneryPack> {
+        let mut ui_packs = self.packs.clone();
+        sorter::sort_packs(&mut ui_packs);
+        ui_packs
+    }
+
     pub fn sort(&mut self) {
         sorter::sort_packs(&mut self.packs);
     }
@@ -179,6 +188,106 @@ impl SceneryManager {
         ini_handler::write_ini(&self.file_path, &self.packs)?;
         Ok(())
     }
+
+    /// Detects duplicates based on normalized names and handles them by disabling older versions.
+    fn handle_duplicates(packs: &mut Vec<SceneryPack>) {
+        use std::collections::HashMap;
+
+        // Group indices by clean name
+        let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, pack) in packs.iter().enumerate() {
+            let clean = clean_name(&pack.name);
+            // Ignore generic names to avoid false positives
+            if clean.len() < 3 || clean == "custom scenery" {
+                continue;
+            }
+            groups.entry(clean).or_default().push(i);
+        }
+
+        for (name, indices) in groups {
+            if indices.len() > 1 {
+                println!(
+                    "[SceneryManager] Found potential duplicates for '{}': {:?}",
+                    name, indices
+                );
+
+                // We need to pick a "winner" (keep active) and "losers" (disable)
+                // Strategy: Highest Version > Newest Date > First in list
+
+                let mut best_idx = indices[0];
+                let mut best_ver = extract_version(&packs[best_idx].name);
+                let mut best_time = get_modified_time(&packs[best_idx].path);
+
+                for &idx in &indices[1..] {
+                    let ver = extract_version(&packs[idx].name);
+                    let time = get_modified_time(&packs[idx].path);
+
+                    let mut replace = false;
+
+                    // 1. Version Comparison
+                    if let (Some(v1), Some(v2)) = (&ver, &best_ver) {
+                        // Very naive version compare (lexicographical usually works for 1.2 vs 1.3)
+                        // For strict semver, we'd need semver crate, but simple is ok here.
+                        if v1 > v2 {
+                            replace = true;
+                        }
+                    } else if ver.is_some() && best_ver.is_none() {
+                        replace = true;
+                    } else if ver.is_none() && best_ver.is_none() {
+                        // 2. Date Comparison (if versions missing/equal)
+                        if time > best_time {
+                            replace = true;
+                        }
+                    }
+
+                    if replace {
+                        best_idx = idx;
+                        best_ver = ver;
+                        best_time = time;
+                    }
+                }
+
+                // Disable all losers
+                for &idx in &indices {
+                    if idx != best_idx {
+                        println!(
+                            "[SceneryManager] Disabling duplicate '{}' (Win: '{}')",
+                            packs[idx].name, packs[best_idx].name
+                        );
+                        packs[idx].status = SceneryPackType::Disabled;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn get_modified_time(path: &Path) -> u64 {
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if let Ok(time) = metadata.modified() {
+            return time
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+        }
+    }
+    0
+}
+
+fn clean_name(name: &str) -> String {
+    let name_lower = name.to_lowercase();
+    // Remove common suffixes/prefixes
+    let re = regex::Regex::new(r"[-_ ]?v?\d+(\.\d+)*").unwrap();
+    let no_ver = re.replace_all(&name_lower, "").to_string();
+    let re_xp = regex::Regex::new(r"[-_ ]?xp\d*").unwrap();
+    let clean = re_xp.replace_all(&no_ver, "").to_string();
+    
+    clean.trim().replace(['_', ' '], "").to_string()
+}
+
+fn extract_version(name: &str) -> Option<String> {
+    let re = regex::Regex::new(r"(?i)v?(\d+\.\d+(\.\d+)?)").unwrap();
+    re.captures(name).map(|c| c[1].to_string())
 }
 
 /// Recursively find all directories within a pack that look like actual scenery roots
