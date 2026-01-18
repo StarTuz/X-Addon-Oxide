@@ -22,6 +22,9 @@ The sidebar on the left organizes your library into four categories:
 - **Toggling**: Use the **Enable/Disable** buttons on scenery cards. This modifies your `scenery_packs.ini` instantly.
 - **Inspector**: Hover over a card to see details in the Inspector Panel, including tile coordinates and airport counts.
 
+> [!NOTE]
+> **Expected Behavior**: When running "Smart Sort", X-ADOX adds helpful headers and spacing to your `scenery_packs.ini`. However, X-Plane 12 automatically "sanitizes" this file on load, removing all comments and blank lines. **This is normal**; your custom sorting order remains perfectly intact, even if the visual formatting is removed by the sim.
+
 ### 🧩 Plugins
 
 - **Enabling/Disabling**: Use the checkbox next to each plugin name.
