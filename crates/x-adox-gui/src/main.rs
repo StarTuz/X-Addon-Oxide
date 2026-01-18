@@ -1172,13 +1172,7 @@ impl App {
             Tab::Plugins => (&self.icon_plugins, Color::from_rgb(0.4, 0.6, 1.0)), // Blue
             Tab::CSLs => (&self.icon_csls, Color::from_rgb(1.0, 0.6, 0.2)),       // Orange
             Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
-            Tab::Issues => {
-                if self.log_issues.is_empty() {
-                    (&self.icon_warning, Color::from_rgb(0.6, 0.6, 0.6)) // Dim gray
-                } else {
-                    (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)) // Red alert
-                }
-            }
+            Tab::Issues => (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)), // Always red for Issues
         };
 
         let icon = svg(icon_handle.clone())
