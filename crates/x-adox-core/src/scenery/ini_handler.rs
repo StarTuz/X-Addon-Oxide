@@ -34,7 +34,11 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
             if parts.len() >= 2 {
                 let relative_path_str = parts[1..].join(" ");
                 // Remove trailing slash and extra whitespace
-                let clean_path = relative_path_str.trim().trim_end_matches('/').trim().to_string();
+                let clean_path = relative_path_str
+                    .trim()
+                    .trim_end_matches('/')
+                    .trim()
+                    .to_string();
                 let pack_path = PathBuf::from(&clean_path);
 
                 let name = pack_path
@@ -70,6 +74,8 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
 }
 
 pub fn write_ini(file_path: &Path, packs: &[SceneryPack]) -> io::Result<()> {
+    use x_adox_bitnet::BitNetModel;
+    let model = BitNetModel::new().unwrap_or_default();
     let mut file = File::create(file_path)?;
 
     writeln!(file, "I")?;
@@ -77,7 +83,30 @@ pub fn write_ini(file_path: &Path, packs: &[SceneryPack]) -> io::Result<()> {
     writeln!(file, "SCENERY")?;
     writeln!(file)?;
 
+    let mut last_section = "";
+
     for pack in packs {
+        // Determine section header based on BitNet score
+        let score = model.predict(&pack.name, &pack.path);
+        let current_section = match score {
+            0..=10 => "# Payware & Custom Airports",
+            11..=20 => "# Global Airports",
+            21..=29 => "# Orbx Custom Landmarks",
+            30..=36 => "# simHeaven X-World",
+            37..=40 => "# Overlays & Landmarks",
+            41..=42 => "# Orbx TrueEarth Overlays",
+            43..=45 => "# Libraries",
+            46..=48 => "# Birds",
+            49..=50 => "# Orthos & Photoscenery",
+            _ => "# Meshes & Terrain",
+        };
+
+        if current_section != last_section {
+            writeln!(file)?;
+            writeln!(file, "{}", current_section)?;
+            last_section = current_section;
+        }
+
         let prefix = match pack.status {
             SceneryPackType::Active => "SCENERY_PACK",
             SceneryPackType::Disabled => "SCENERY_PACK_DISABLED",
