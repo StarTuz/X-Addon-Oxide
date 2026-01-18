@@ -155,9 +155,6 @@ impl SceneryManager {
             }
         }
 
-        // 3. Handle semantic duplicates (same content, different version/folder)
-        Self::handle_duplicates(&mut packs);
-
         self.packs = packs;
         Ok(())
     }
@@ -281,7 +278,7 @@ fn clean_name(name: &str) -> String {
     let no_ver = re.replace_all(&name_lower, "").to_string();
     let re_xp = regex::Regex::new(r"[-_ ]?xp\d*").unwrap();
     let clean = re_xp.replace_all(&no_ver, "").to_string();
-    
+
     clean.trim().replace(['_', ' '], "").to_string()
 }
 
