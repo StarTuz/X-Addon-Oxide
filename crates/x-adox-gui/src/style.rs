@@ -348,9 +348,9 @@ pub fn button_premium_glow(_theme: &Theme, status: button::Status) -> button::St
             color: Color::from_rgba(1.0, 1.0, 1.0, 0.5),
         },
         shadow: Shadow {
-            color: Color::from_rgba(1.0, 0.2, 0.2, 0.6), // Vibrant Red Glow
+            color: Color::from_rgba(1.0, 1.0, 1.0, 0.6),
             offset: iced::Vector::new(0.0, 0.0),
-            blur_radius: 15.0,
+            blur_radius: 12.0,
         },
     };
 
@@ -358,9 +358,9 @@ pub fn button_premium_glow(_theme: &Theme, status: button::Status) -> button::St
         button::Status::Hovered => button::Style {
             background: Some(Background::Color(Color::from_rgb(0.9, 0.9, 0.9))),
             shadow: Shadow {
-                color: Color::from_rgba(1.0, 0.1, 0.1, 1.0), // Intense Red Glow
+                color: Color::from_rgba(1.0, 1.0, 1.0, 1.0),
                 offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 25.0,
+                blur_radius: 20.0,
             },
             ..base
         },
