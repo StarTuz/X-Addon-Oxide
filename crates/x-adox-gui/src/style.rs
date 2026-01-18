@@ -9,6 +9,7 @@ pub mod palette {
     pub const ACCENT_BLUE: Color = Color::from_rgb(0.23, 0.51, 0.96); // #3b82f6
     pub const ACCENT_ORANGE: Color = Color::from_rgb(0.98, 0.45, 0.09); // #f97316
     pub const ACCENT_GREEN: Color = Color::from_rgb(0.2, 0.7, 0.3); // #33b34d
+    pub const ACCENT_PURPLE: Color = Color::from_rgb(0.66, 0.33, 0.97); // #a855f7 (Electric Violet)
     pub const TEXT_PRIMARY: Color = Color::from_rgb(0.9, 0.9, 0.9);
     pub const TEXT_SECONDARY: Color = Color::from_rgb(0.6, 0.6, 0.6);
     pub const BORDER: Color = Color::from_rgb(0.25, 0.25, 0.25);
@@ -132,6 +133,55 @@ pub fn button_success(_theme: &Theme, status: button::Status) -> button::Style {
         },
         _ => button::Style {
             background: Some(Background::Color(palette::ACCENT_GREEN)),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            ..base
+        },
+    }
+}
+
+pub fn button_ai(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: None,
+        text_color: palette::TEXT_PRIMARY,
+        border: Border::default(),
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(palette::ACCENT_PURPLE)),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            shadow: Shadow {
+                color: Color::from_rgba(0.66, 0.33, 0.97, 0.5),
+                offset: iced::Vector::new(0.0, 2.0),
+                blur_radius: 10.0,
+            },
+            ..base
+        },
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.75, 0.45, 1.0))),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            shadow: Shadow {
+                color: Color::from_rgba(0.66, 0.33, 0.97, 0.7),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 15.0,
+            },
+            ..base
+        },
+        _ => button::Style {
+            background: Some(Background::Color(palette::ACCENT_PURPLE)),
             border: Border {
                 radius: 6.0.into(),
                 ..Default::default()

@@ -8,9 +8,9 @@ impl SceneryCategory {
         match self {
             SceneryCategory::EarthAirports | SceneryCategory::MarsAirports => 10,
             SceneryCategory::GlobalAirport => 20,
-            SceneryCategory::Library => 30,
-            SceneryCategory::Overlay | SceneryCategory::MarsScenery => 40,
-            SceneryCategory::EarthScenery => 45, // Generic Earth Scenery
+            SceneryCategory::Overlay | SceneryCategory::MarsScenery => 30,
+            SceneryCategory::EarthScenery => 40,
+            SceneryCategory::Library => 45,
             SceneryCategory::Ortho => 50,
             SceneryCategory::Mesh => 60,
             SceneryCategory::Group | SceneryCategory::Unknown => 100,

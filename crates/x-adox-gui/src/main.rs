@@ -88,6 +88,7 @@ enum Message {
         new_zoom: f64,
     },
     InstallProgress(f32),
+    SmartSort,
 }
 
 struct App {
@@ -675,6 +676,39 @@ impl App {
                 }
                 Task::none()
             }
+            Message::SmartSort => {
+                let root = self.xplane_root.clone();
+                return Task::perform(
+                    async move {
+                        let root = root.ok_or("X-Plane root not found")?;
+                        let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+                        let ini_path = xpm.get_scenery_packs_path();
+
+                        // --- Safety Backup Logic ---
+                        if ini_path.exists() {
+                            let bak1 = ini_path.with_extension("ini.bak1");
+                            let bak2 = ini_path.with_extension("ini.bak2");
+
+                            // Rotate bak1 to bak2 if bak1 exists
+                            if bak1.exists() {
+                                let _ = std::fs::rename(&bak1, &bak2);
+                            }
+                            // Copy current to bak1
+                            let _ = std::fs::copy(&ini_path, &bak1);
+                        }
+
+                        let mut sm = SceneryManager::new(ini_path);
+                        sm.load().map_err(|e| e.to_string())?;
+                        sm.sort();
+                        sm.save().map_err(|e| e.to_string())?;
+                        Ok::<(), String>(())
+                    },
+                    |res| match res {
+                        Ok(_) => Message::Refresh,
+                        Err(e) => Message::SceneryLoaded(Err(e)),
+                    },
+                );
+            }
         }
     }
 
@@ -799,40 +833,44 @@ impl App {
         .style(style::button_success)
         .padding([6, 12]);
 
+        let smart_sort_btn = if self.active_tab == Tab::Scenery {
+            Some(
+                button(
+                    row![text("✨").size(14), text("Smart Sort").size(12)]
+                        .spacing(6)
+                        .align_y(iced::Alignment::Center),
+                )
+                .on_press(Message::SmartSort)
+                .style(style::button_ai)
+                .padding([6, 12]),
+            )
+        } else {
+            None
+        };
+
+        let mut actions = row![install_btn, delete_btn, refresh_btn].spacing(10);
+        if let Some(btn) = smart_sort_btn {
+            actions = actions.push(btn);
+        }
+
         container(
             column![
                 // Top Bar
                 row![
-                    row![install_btn, delete_btn, refresh_btn].spacing(10),
-                    iced::widget::Space::with_width(Length::Fill),
-                    // Right: Path & Set Button
-                    row![
-                        container(
-                            text(path_text)
-                                .size(10)
-                                .color(style::palette::TEXT_SECONDARY)
-                        )
-                        .padding([2, 6])
-                        .style(|_| container::Style {
-                            background: Some(iced::Background::Color(style::palette::SURFACE)),
-                            border: iced::Border {
-                                radius: 4.0.into(),
-                                ..Default::default()
-                            },
-                            ..Default::default()
-                        }),
-                        button(text("Set").size(10))
-                            .on_press(Message::SelectFolder)
-                            .padding([2, 6])
-                            .style(style::button_secondary)
-                    ]
-                    .spacing(8)
-                    .align_y(iced::Alignment::Center),
+                    actions,
+                    iced::widget::horizontal_space(),
+                    text(path_text)
+                        .size(12)
+                        .color(style::palette::TEXT_SECONDARY),
+                    button(text("Set").size(12).color(Color::WHITE))
+                        .on_press(Message::SelectFolder)
+                        .style(style::button_secondary)
+                        .padding([4, 8]),
                 ]
                 .spacing(20)
                 .align_y(iced::Alignment::Center),
                 if let Some(p) = self.install_progress {
-                    let progress_col: Column<'_, Message, Theme> = column![
+                    let progress_col: Column<'_, Message, Theme, _> = column![
                         text(format!("Extracting... {:.0}%", p))
                             .size(10)
                             .color(style::palette::TEXT_SECONDARY),
