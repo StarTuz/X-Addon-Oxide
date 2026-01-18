@@ -27,6 +27,7 @@ enum Tab {
     Plugins,
     CSLs,
     Heuristics,
+    Issues,
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +99,10 @@ enum Message {
     ExportHeuristics,
     ResetHeuristics,
     HeuristicsImported(String),
+
+    // Issues
+    LogIssuesLoaded(Result<Vec<x_adox_core::LogIssue>, String>),
+    CheckLogIssues,
 }
 
 struct App {
@@ -134,6 +139,10 @@ struct App {
     heuristics_model: BitNetModel,
     heuristics_json: text_editor::Content,
     heuristics_error: Option<String>,
+
+    // Issues
+    log_issues: Vec<x_adox_core::LogIssue>,
+    icon_warning: svg::Handle,
 }
 
 impl App {
@@ -181,6 +190,10 @@ impl App {
             heuristics_model: BitNetModel::new().unwrap_or_default(),
             heuristics_json: text_editor::Content::new(),
             heuristics_error: None,
+            log_issues: Vec::new(),
+            icon_warning: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/warning.svg").to_vec(),
+            ),
         };
 
         let tasks = if let Some(r) = root {
@@ -188,6 +201,7 @@ impl App {
             let r2 = r.clone();
             let r3 = r.clone();
             let r4 = r.clone();
+            let r5 = r.clone();
             Task::batch(vec![
                 Task::perform(async move { load_packs(Some(r1)) }, Message::SceneryLoaded),
                 Task::perform(
@@ -199,6 +213,10 @@ impl App {
                     Message::PluginsLoaded,
                 ),
                 Task::perform(async move { load_csls(Some(r4)) }, Message::CSLsLoaded),
+                Task::perform(
+                    async move { load_log_issues(Some(r5)) },
+                    Message::LogIssuesLoaded,
+                ),
             ])
         } else {
             Task::none()
@@ -231,8 +249,29 @@ impl App {
                     Tab::Plugins => format!("{} plugins", self.plugins.len()),
                     Tab::CSLs => format!("{} CSL packages", self.csls.len()),
                     Tab::Heuristics => "Sorting Heuristics Editor".to_string(),
+                    Tab::Issues => "Known Issues & Log Analysis".to_string(),
                 };
                 Task::none()
+            }
+            Message::LogIssuesLoaded(result) => {
+                match result {
+                    Ok(issues) => {
+                        self.log_issues = issues;
+                        if !self.log_issues.is_empty() {
+                            self.status =
+                                format!("Found {} issues in Log.txt", self.log_issues.len());
+                        }
+                    }
+                    Err(e) => self.status = format!("Log analysis error: {}", e),
+                }
+                Task::none()
+            }
+            Message::CheckLogIssues => {
+                let root = self.xplane_root.clone();
+                Task::perform(
+                    async move { load_log_issues(root) },
+                    Message::LogIssuesLoaded,
+                )
             }
             Message::SceneryLoaded(result) => {
                 match result {
@@ -640,7 +679,7 @@ impl App {
                         .selected_csl
                         .as_ref()
                         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
-                    Tab::Heuristics => None,
+                    Tab::Heuristics | Tab::Issues => None,
                 };
 
                 if let Some(name) = name_opt {
@@ -678,7 +717,7 @@ impl App {
                         Tab::Aircraft => self.selected_aircraft.clone(),
                         Tab::Plugins => self.selected_plugin.clone(),
                         Tab::CSLs => self.selected_csl.clone(),
-                        Tab::Heuristics => None,
+                        Tab::Heuristics | Tab::Issues => None,
                     };
 
                     if let Some(p) = path {
@@ -859,6 +898,7 @@ impl App {
                 self.sidebar_button("Scenery", Tab::Scenery),
                 self.sidebar_button("Plugins", Tab::Plugins),
                 self.sidebar_button("CSLs", Tab::CSLs),
+                self.sidebar_button("Issues", Tab::Issues),
             ]
             .spacing(25)
             .padding([20, 0]),
@@ -876,6 +916,7 @@ impl App {
             Tab::Plugins => self.view_addon_list(&self.plugins, "Plugin"),
             Tab::CSLs => self.view_addon_list(&self.csls, "CSL Package"),
             Tab::Heuristics => self.view_heuristics_editor(),
+            Tab::Issues => self.view_issues(),
         };
 
         // Path text for display
@@ -907,6 +948,7 @@ impl App {
                 self.selected_csl.is_some(),
             ),
             Tab::Heuristics => (Message::SaveHeuristics, Message::ResetHeuristics, true),
+            Tab::Issues => (Message::CheckLogIssues, Message::Refresh, false),
         };
 
         let install_btn = button(
@@ -1130,6 +1172,13 @@ impl App {
             Tab::Plugins => (&self.icon_plugins, Color::from_rgb(0.4, 0.6, 1.0)), // Blue
             Tab::CSLs => (&self.icon_csls, Color::from_rgb(1.0, 0.6, 0.2)),       // Orange
             Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
+            Tab::Issues => {
+                if self.log_issues.is_empty() {
+                    (&self.icon_warning, Color::from_rgb(0.6, 0.6, 0.6)) // Dim gray
+                } else {
+                    (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)) // Red alert
+                }
+            }
         };
 
         let icon = svg(icon_handle.clone())
@@ -1314,6 +1363,89 @@ impl App {
             .spacing(15)
             .padding(20),
         )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(style::container_main_content)
+        .into()
+    }
+
+    fn view_issues(&self) -> Element<'_, Message> {
+        let title = text("Detected Log Issues")
+            .size(32)
+            .color(style::palette::ACCENT_ORANGE);
+
+        if self.log_issues.is_empty() {
+            return container(
+                column![
+                    title,
+                    text("No issues detected in Log.txt").size(20),
+                    text("X-Plane seems to be finding all resources correctly.").size(16),
+                    button("Re-scan Log")
+                        .padding([10, 20])
+                        .style(style::button_primary)
+                        .on_press(Message::CheckLogIssues),
+                ]
+                .spacing(20),
+            )
+            .padding(40)
+            .center_x(Length::Fill)
+            .into();
+        }
+
+        let issues_list = column(self.log_issues.iter().map(|issue| {
+            container(
+                column![
+                    row![
+                        text("Missing Resource: ").color(style::palette::TEXT_SECONDARY),
+                        text(&issue.resource_path).color(style::palette::TEXT_PRIMARY),
+                    ]
+                    .spacing(5),
+                    row![
+                        text("Referenced from: ").color(style::palette::TEXT_SECONDARY),
+                        text(&issue.package_path).color(style::palette::TEXT_PRIMARY),
+                    ]
+                    .spacing(5),
+                    if let Some(lib) = &issue.potential_library {
+                        row![
+                            text("Potential Library: ").color(style::palette::TEXT_SECONDARY),
+                            text(lib).color(style::palette::ACCENT_BLUE),
+                        ]
+                        .spacing(5)
+                    } else {
+                        row![]
+                    },
+                ]
+                .spacing(8),
+            )
+            .padding(15)
+            .style(style::container_card)
+            .width(Length::Fill)
+            .into()
+        }))
+        .spacing(15);
+
+        container(
+            column![
+                row![
+                    title,
+                    iced::widget::horizontal_space(),
+                    button("Re-scan Log")
+                        .padding([8, 16])
+                        .style(style::button_primary)
+                        .on_press(Message::CheckLogIssues),
+                ]
+                .align_y(iced::Alignment::Center),
+                text(format!(
+                    "Found {} missing resources in your last X-Plane session.",
+                    self.log_issues.len()
+                ))
+                .size(16)
+                .color(style::palette::TEXT_SECONDARY),
+                scrollable(issues_list).height(Length::Fill),
+            ]
+            .spacing(20),
+        )
+        .padding(30)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(style::container_main_content)
@@ -1886,7 +2018,9 @@ async fn install_addon(
                     custom
                 }
             }
-            Tab::Heuristics => return Err("Cannot install to Heuristics tab".to_string()),
+            Tab::Heuristics | Tab::Issues => {
+                return Err("Cannot install to Heuristics or Issues tab".to_string())
+            }
         }
     };
 
@@ -1999,7 +2133,7 @@ fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), St
             Tab::Scenery => root.join("Custom Scenery"),
             Tab::Aircraft => root.join("Aircraft"),
             Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::CSLs | Tab::Heuristics => unreachable!(), // Handled above or not applicable
+            Tab::CSLs | Tab::Heuristics | Tab::Issues => unreachable!(), // Handled above or not applicable
         };
 
         if !full_path.starts_with(&allowed_dir) {
@@ -2054,4 +2188,10 @@ async fn pick_folder(title: &str, start_dir: Option<PathBuf>) -> Option<PathBuf>
     }
     .ok()
     .flatten()
+}
+
+fn load_log_issues(root: Option<PathBuf>) -> Result<Vec<x_adox_core::LogIssue>, String> {
+    let root = root.ok_or("X-Plane root not found")?;
+    let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+    xpm.check_log().map_err(|e| e.to_string())
 }
