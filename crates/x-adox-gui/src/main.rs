@@ -1,7 +1,7 @@
 use iced::advanced::{self, layout, renderer, widget, Layout, Widget};
 use iced::widget::{
-    button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, svg,
-    text, Column,
+    button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, stack,
+    svg, text, Column,
 };
 use iced::{
     mouse, Background, Border, Color, Element, Event, Length, Radians, Rectangle, Task, Theme,
@@ -1011,16 +1011,36 @@ impl App {
             });
 
         let icon_container = if is_active {
-            container(icon).style(move |_| container::Style {
-                shadow: iced::Shadow {
-                    color: Color::from_rgba(active_color.r, active_color.g, active_color.b, 0.4),
-                    offset: iced::Vector::new(0.0, 0.0),
-                    blur_radius: 15.0,
-                },
-                ..Default::default()
-            })
+            let glow_icon = svg(icon_handle.clone())
+                .width(Length::Fixed(54.0)) // Slightly larger for "bloom"
+                .height(Length::Fixed(54.0))
+                .style(move |_theme, _status| svg::Style {
+                    color: Some(Color::from_rgba(
+                        active_color.r,
+                        active_color.g,
+                        active_color.b,
+                        0.2,
+                    )),
+                });
+
+            container(stack![
+                container(glow_icon)
+                    .width(Length::Fixed(48.0))
+                    .height(Length::Fixed(48.0))
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill),
+                container(icon)
+                    .width(Length::Fixed(48.0))
+                    .height(Length::Fixed(48.0))
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill),
+            ])
         } else {
             container(icon)
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0))
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
         };
 
         let content = column![
