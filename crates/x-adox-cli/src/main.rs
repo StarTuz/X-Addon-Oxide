@@ -23,6 +23,8 @@ enum Commands {
     Enable { name: String },
     /// Disable a scenery pack by name (partial match)
     Disable { name: String },
+    /// Run Smart Sort with duplicate detection
+    SmartSort,
 }
 
 fn main() -> Result<()> {
@@ -46,6 +48,7 @@ fn main() -> Result<()> {
                 let status = match pack.status {
                     SceneryPackType::Active => "[x]",
                     SceneryPackType::Disabled => "[ ]",
+                    SceneryPackType::DuplicateHidden => "[D]",
                 };
                 println!("{} {}", status, pack.name);
             }
@@ -79,6 +82,12 @@ fn main() -> Result<()> {
             } else {
                 println!("No package found matching '{}'", name);
             }
+        }
+        Commands::SmartSort => {
+            println!("Running Smart Sort on {:?}", root);
+            scenery.sort();
+            scenery.save()?;
+            println!("Smart Sort complete. Duplicates disabled and file reordered.");
         }
     }
 

@@ -107,16 +107,26 @@ pub fn write_ini(file_path: &Path, packs: &[SceneryPack]) -> io::Result<()> {
             last_section = current_section;
         }
 
-        let prefix = match pack.status {
-            SceneryPackType::Active => "SCENERY_PACK",
-            SceneryPackType::Disabled => "SCENERY_PACK_DISABLED",
+        let pack_path_str = if pack.name.starts_with('*') {
+            pack.name.clone()
+        } else {
+            format!("Custom Scenery/{}/", pack.name)
         };
 
-        if pack.name.starts_with('*') {
-            writeln!(file, "{} {}", prefix, pack.name)?;
-        } else {
-            // Write standard relative path format
-            writeln!(file, "{} Custom Scenery/{}/", prefix, pack.name)?;
+        match pack.status {
+            SceneryPackType::Active => {
+                writeln!(file, "SCENERY_PACK {}", pack_path_str)?;
+            }
+            SceneryPackType::Disabled => {
+                writeln!(file, "SCENERY_PACK_DISABLED {}", pack_path_str)?;
+            }
+            SceneryPackType::DuplicateHidden => {
+                writeln!(
+                    file,
+                    "# Disabled duplicate - original is above: SCENERY_PACK_DISABLED {}",
+                    pack_path_str
+                )?;
+            }
         }
     }
 

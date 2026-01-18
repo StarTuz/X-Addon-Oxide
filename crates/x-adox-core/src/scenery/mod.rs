@@ -12,6 +12,7 @@ use thiserror::Error;
 pub enum SceneryPackType {
     Active,
     Disabled,
+    DuplicateHidden, // To be written as a comment with a special note
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -178,6 +179,7 @@ impl SceneryManager {
     }
 
     pub fn sort(&mut self) {
+        Self::handle_duplicates(&mut self.packs);
         sorter::sort_packs(&mut self.packs);
     }
 
@@ -194,22 +196,21 @@ impl SceneryManager {
         let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
         for (i, pack) in packs.iter().enumerate() {
             let clean = clean_name(&pack.name);
-            // Ignore generic names to avoid false positives
-            if clean.len() < 3 || clean == "custom scenery" {
+            if clean.len() < 3 || clean == "customscenery" {
                 continue;
             }
             groups.entry(clean).or_default().push(i);
         }
 
+        let mut to_disable = Vec::new();
+        let mut win_to_losers: HashMap<usize, Vec<usize>> = HashMap::new();
+
         for (name, indices) in groups {
             if indices.len() > 1 {
                 println!(
-                    "[SceneryManager] Found potential duplicates for '{}': {:?}",
+                    "[SceneryManager] Found duplicates for '{}': {:?}",
                     name, indices
                 );
-
-                // We need to pick a "winner" (keep active) and "losers" (disable)
-                // Strategy: Highest Version > Newest Date > First in list
 
                 let mut best_idx = indices[0];
                 let mut best_ver = extract_version(&packs[best_idx].name);
@@ -220,21 +221,14 @@ impl SceneryManager {
                     let time = get_modified_time(&packs[idx].path);
 
                     let mut replace = false;
-
-                    // 1. Version Comparison
                     if let (Some(v1), Some(v2)) = (&ver, &best_ver) {
-                        // Very naive version compare (lexicographical usually works for 1.2 vs 1.3)
-                        // For strict semver, we'd need semver crate, but simple is ok here.
                         if v1 > v2 {
                             replace = true;
                         }
                     } else if ver.is_some() && best_ver.is_none() {
                         replace = true;
-                    } else if ver.is_none() && best_ver.is_none() {
-                        // 2. Date Comparison (if versions missing/equal)
-                        if time > best_time {
-                            replace = true;
-                        }
+                    } else if ver.is_none() && best_ver.is_none() && time > best_time {
+                        replace = true;
                     }
 
                     if replace {
@@ -244,18 +238,61 @@ impl SceneryManager {
                     }
                 }
 
-                // Disable all losers
+                // Register losers
+                let mut losers = Vec::new();
                 for &idx in &indices {
                     if idx != best_idx {
-                        println!(
-                            "[SceneryManager] Disabling duplicate '{}' (Win: '{}')",
-                            packs[idx].name, packs[best_idx].name
-                        );
-                        packs[idx].status = SceneryPackType::Disabled;
+                        packs[idx].status = SceneryPackType::DuplicateHidden;
+                        to_disable.push(idx);
+                        losers.push(idx);
                     }
+                }
+                if !losers.is_empty() {
+                    win_to_losers.insert(best_idx, losers);
                 }
             }
         }
+
+        if to_disable.is_empty() {
+            return;
+        }
+
+        // Reordering: LOSERS must be placed immediately after their WINNER.
+        // We do this by creating a new vector.
+        let mut new_packs = Vec::with_capacity(packs.len());
+        let mut handled = std::collections::HashSet::new();
+
+        for i in 0..packs.len() {
+            if handled.contains(&i) {
+                continue;
+            }
+
+            // If this is a winner, add it and its losers
+            if let Some(losers) = win_to_losers.get(&i) {
+                new_packs.push(packs[i].clone());
+                handled.insert(i);
+                for &l_idx in losers {
+                    if !handled.contains(&l_idx) {
+                        new_packs.push(packs[l_idx].clone());
+                        handled.insert(l_idx);
+                    }
+                }
+            } else if !to_disable.contains(&i) {
+                // Regular pack
+                new_packs.push(packs[i].clone());
+                handled.insert(i);
+            }
+        }
+
+        // Catch any remaining to_disable that were skipped because their winner was a loser of another group (cascading)
+        // or other edge cases.
+        for i in 0..packs.len() {
+            if !handled.contains(&i) {
+                new_packs.push(packs[i].clone());
+            }
+        }
+
+        *packs = new_packs;
     }
 }
 
@@ -272,19 +309,48 @@ fn get_modified_time(path: &Path) -> u64 {
 }
 
 fn clean_name(name: &str) -> String {
+    // Strict Name Cleaning:
+    // - Strips: _v1.2, _XP12, _XP11, (space)v2
+    // - Preserves: 100m, 300ft, 4K, UHD, standalone numbers
     let name_lower = name.to_lowercase();
-    // Remove common suffixes/prefixes
-    let re = regex::Regex::new(r"[-_ ]?v?\d+(\.\d+)*").unwrap();
-    let no_ver = re.replace_all(&name_lower, "").to_string();
-    let re_xp = regex::Regex::new(r"[-_ ]?xp\d*").unwrap();
-    let clean = re_xp.replace_all(&no_ver, "").to_string();
 
-    clean.trim().replace(['_', ' '], "").to_string()
+    // Remove XP suffixes first
+    let re_xp = regex::Regex::new(r"(?i)[-_ ]?xp\d*").unwrap();
+    let no_xp = re_xp.replace_all(&name_lower, "");
+
+    // Remove strict version patterns:
+    // Matches: v1.2, v2, _v1, -v2.5.0
+    // Does NOT match: 100m, 300ft, 400
+    let re_ver = regex::Regex::new(r"(?i)[-_ ]?v\d+(\.\d+)*").unwrap();
+    let no_ver = re_ver.replace_all(&no_xp, "");
+
+    // Remove OS copy suffixes: (1), (2), etc.
+    let re_copy = regex::Regex::new(r"\s+\(\d+\)$").unwrap();
+    let no_copy = re_copy.replace_all(&no_ver, "");
+
+    // Final trim
+    no_copy.trim().replace(['_', ' '], "").to_string()
 }
 
 fn extract_version(name: &str) -> Option<String> {
-    let re = regex::Regex::new(r"(?i)v?(\d+\.\d+(\.\d+)?)").unwrap();
-    re.captures(name).map(|c| c[1].to_string())
+    // Robust Version Parsing:
+    // - Requires 'v' prefix OR invalid chars around it to be a version
+    // - Matches: v1.2, 1.0.5, 2.0
+    // - Does NOT match: 100 (meters), 4000 (pixels)
+
+    // 1. Explicit 'v' prefix (strongest signal)
+    let re_v = regex::Regex::new(r"(?i)v(\d+(\.\d+)*)").unwrap();
+    if let Some(cap) = re_v.captures(name) {
+        return Some(cap[1].to_string());
+    }
+
+    // 2. SemVer pattern (x.y.z) - requires at least one dot
+    let re_dot = regex::Regex::new(r"(\d+\.\d+(\.\d+)*)").unwrap();
+    if let Some(cap) = re_dot.captures(name) {
+        return Some(cap[1].to_string());
+    }
+
+    None
 }
 
 /// Recursively find all directories within a pack that look like actual scenery roots
@@ -507,7 +573,7 @@ fn discover_airports_in_pack(pack_path: &Path) -> Vec<Airport> {
 mod tests {
     use super::*;
     use std::io::Write;
-    use tempfile::{tempdir, NamedTempFile};
+    use tempfile::tempdir;
 
     #[test]
     fn test_discover_tiles_dsf() {
@@ -530,7 +596,11 @@ mod tests {
 
     #[test]
     fn test_parse_scenery_ini() {
-        let mut file = NamedTempFile::new().unwrap();
+        // Create an isolated directory for the test
+        let dir = tempdir().unwrap();
+        let ini_path = dir.path().join("scenery_packs.ini");
+
+        let mut file = std::fs::File::create(&ini_path).unwrap();
         writeln!(file, "I").unwrap();
         writeln!(file, "1000 Version").unwrap();
         writeln!(file, "SCENERY").unwrap();
@@ -538,7 +608,8 @@ mod tests {
         writeln!(file, "SCENERY_PACK Custom Scenery/simHeaven_X-Europe/").unwrap();
         writeln!(file, "SCENERY_PACK_DISABLED Custom Scenery/Orbx_NorCal/").unwrap();
 
-        let mut manager = SceneryManager::new(file.path().to_path_buf());
+        let mut manager = SceneryManager::new(ini_path);
+        // Ensure no other folders exist in this temp dir to confuse discovery
         manager.load().expect("Failed to load ini");
 
         assert_eq!(manager.packs.len(), 2);
@@ -548,8 +619,11 @@ mod tests {
 
     #[test]
     fn test_save_scenery_ini() {
-        let file = NamedTempFile::new().unwrap();
-        let mut manager = SceneryManager::new(file.path().to_path_buf());
+        let dir = tempdir().unwrap();
+        let ini_path = dir.path().join("scenery_packs.ini");
+
+        // Ensure parent dir exists (it does from tempdir)
+        let mut manager = SceneryManager::new(ini_path);
 
         manager.packs.push(SceneryPack {
             name: "TestPack".to_string(),
@@ -562,10 +636,89 @@ mod tests {
 
         manager.save().expect("Failed to save");
 
-        let mut verify_manager = SceneryManager::new(file.path().to_path_buf());
+        let mut verify_manager = SceneryManager::new(manager.file_path.clone());
         verify_manager.load().expect("Failed to reload");
 
         assert_eq!(verify_manager.packs.len(), 1);
         assert_eq!(verify_manager.packs[0].name, "TestPack");
+    }
+    #[test]
+    fn test_strict_duplicate_detection_logic() {
+        // Case 1: Same name, different versions (Should match)
+        let n1 = clean_name("Airport_v1.0");
+        let n2 = clean_name("Airport v2");
+        assert_eq!(n1, "airport");
+        assert_eq!(n2, "airport"); // Match!
+
+        // Case 2: Content Attributes (Should NOT match)
+        let n3 = clean_name("Goose100m");
+        let n4 = clean_name("Goose300m");
+        assert_eq!(n3, "goose100m");
+        assert_eq!(n4, "goose300m"); // Different!
+
+        // Case 3: XP Platform suffixes (Should match)
+        let n5 = clean_name("Orbx_NorCal_XP11");
+        let n6 = clean_name("Orbx_NorCal_XP12");
+        assert_eq!(n5, "orbxnorcal");
+        assert_eq!(n6, "orbxnorcal"); // Match!
+
+        // Case 4: OS Copy Suffix (e.g. " (1)")
+        let n7 = clean_name("Fly2High - KTUL (Tulsa International Airport) XP12");
+        let n8 = clean_name("Fly2High - KTUL (Tulsa International Airport) XP12 (1)");
+        assert_eq!(n7, n8); // Should match
+    }
+
+    #[test]
+    fn test_duplicate_placement_logic() {
+        let mut packs = vec![
+            SceneryPack {
+                name: "Alpha_Airport".to_string(),
+                path: PathBuf::from("A"),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::default(),
+                airports: Vec::new(),
+                tiles: Vec::new(),
+            },
+            SceneryPack {
+                name: "Bravo_Airport".to_string(),
+                path: PathBuf::from("B"),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::default(),
+                airports: Vec::new(),
+                tiles: Vec::new(),
+            },
+            SceneryPack {
+                name: "Alpha_Airport (1)".to_string(),
+                path: PathBuf::from("A1"),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::default(),
+                airports: Vec::new(),
+                tiles: Vec::new(),
+            },
+        ];
+
+        SceneryManager::handle_duplicates(&mut packs);
+
+        assert_eq!(packs.len(), 3);
+        assert_eq!(packs[0].name, "Alpha_Airport");
+        assert_eq!(packs[0].status, SceneryPackType::Active);
+
+        // LOSER should be at index 1 now (immediately after winner A)
+        assert_eq!(packs[1].name, "Alpha_Airport (1)");
+        assert_eq!(packs[1].status, SceneryPackType::DuplicateHidden);
+
+        // B should be pushed to index 2
+        assert_eq!(packs[2].name, "Bravo_Airport");
+    }
+
+    #[test]
+    fn test_version_extraction() {
+        assert_eq!(extract_version("Test_v1.2"), Some("1.2".to_string()));
+        assert_eq!(extract_version("Test v2.0"), Some("2.0".to_string()));
+        assert_eq!(extract_version("Test 1.0.5"), Some("1.0.5".to_string()));
+
+        // Negative cases (Plain numbers are NOT versions)
+        assert_eq!(extract_version("Test 100m"), None);
+        assert_eq!(extract_version("Test 4000"), None);
     }
 }
