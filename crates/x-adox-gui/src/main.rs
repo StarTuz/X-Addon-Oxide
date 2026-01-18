@@ -1,8 +1,8 @@
 use iced::widget::{
-    button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, stack,
-    svg, text, text_editor, Column,
+    button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, svg,
+    text, text_editor, Column,
 };
-use iced::{Background, Border, Color, Element, Length, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Shadow, Task, Theme};
 use std::path::PathBuf;
 use x_adox_bitnet::BitNetModel;
 use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
@@ -1192,38 +1192,49 @@ impl App {
                 }),
             });
 
-        let icon_container = if is_active {
-            let glow_icon = svg(icon_handle.clone())
-                .width(Length::Fixed(54.0)) // Slightly larger for "bloom"
-                .height(Length::Fixed(54.0))
-                .style(move |_theme, _status| svg::Style {
-                    color: Some(Color::from_rgba(
-                        active_color.r,
-                        active_color.g,
-                        active_color.b,
-                        0.2,
-                    )),
-                });
+        let has_issues = tab == Tab::Issues && !self.log_issues.is_empty();
 
-            container(stack![
-                container(glow_icon)
-                    .width(Length::Fixed(48.0))
-                    .height(Length::Fixed(48.0))
-                    .center_x(Length::Fill)
-                    .center_y(Length::Fill),
-                container(icon)
-                    .width(Length::Fixed(48.0))
-                    .height(Length::Fixed(48.0))
-                    .center_x(Length::Fill)
-                    .center_y(Length::Fill),
-            ])
-        } else {
-            container(icon)
-                .width(Length::Fixed(48.0))
-                .height(Length::Fixed(48.0))
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-        };
+        let icon_container = container(icon)
+            .padding(5)
+            .width(Length::Fixed(48.0))
+            .height(Length::Fixed(48.0))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(move |_theme| {
+                let mut shadow = Shadow::default();
+                let mut background = None;
+
+                if is_active {
+                    background = Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.1)));
+                    shadow = Shadow {
+                        color: Color::from_rgba(
+                            active_color.r,
+                            active_color.g,
+                            active_color.b,
+                            0.4,
+                        ),
+                        offset: iced::Vector::new(0.0, 0.0),
+                        blur_radius: 12.0,
+                    };
+                } else if has_issues {
+                    background = Some(Background::Color(Color::from_rgba(1.0, 0.0, 0.0, 0.05)));
+                    shadow = Shadow {
+                        color: Color::from_rgba(1.0, 0.0, 0.0, 0.4),
+                        offset: iced::Vector::new(0.0, 0.0),
+                        blur_radius: 10.0,
+                    };
+                }
+
+                container::Style {
+                    background,
+                    border: Border {
+                        radius: 12.0.into(),
+                        ..Default::default()
+                    },
+                    shadow,
+                    ..Default::default()
+                }
+            });
 
         let content = column![
             icon_container,
