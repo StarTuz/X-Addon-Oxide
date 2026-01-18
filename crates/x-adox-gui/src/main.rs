@@ -684,17 +684,31 @@ impl App {
                         let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
                         let ini_path = xpm.get_scenery_packs_path();
 
-                        // --- Safety Backup Logic ---
+                        // --- Safety Backup Logic (Timestamped) ---
                         if ini_path.exists() {
-                            let bak1 = ini_path.with_extension("ini.bak1");
-                            let bak2 = ini_path.with_extension("ini.bak2");
-
-                            // Rotate bak1 to bak2 if bak1 exists
-                            if bak1.exists() {
-                                let _ = std::fs::rename(&bak1, &bak2);
+                            let parent = ini_path.parent().unwrap_or(&ini_path);
+                            // 1. Rotate existing bak1_TIMESTAMP -> bak2_TIMESTAMP
+                            if let Ok(entries) = std::fs::read_dir(parent) {
+                                for entry in entries.flatten() {
+                                    let path = entry.path();
+                                    let filename = path.file_name().unwrap().to_string_lossy();
+                                    if filename.starts_with("scenery_packs.ini.bak1_") {
+                                        // Found a bak1, rotate it to bak2 preserving timestamp
+                                        let new_name = filename.replace(".bak1_", ".bak2_");
+                                        let new_path = parent.join(new_name);
+                                        let _ = std::fs::rename(&path, &new_path);
+                                    }
+                                }
                             }
-                            // Copy current to bak1
-                            let _ = std::fs::copy(&ini_path, &bak1);
+
+                            // 2. Create new bak1_CURRENT_TIMESTAMP
+                            let timestamp = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            let bak1_name = format!("scenery_packs.ini.bak1_{}", timestamp);
+                            let bak1_path = parent.join(bak1_name);
+                            let _ = std::fs::copy(&ini_path, &bak1_path);
                         }
 
                         let mut sm = SceneryManager::new(ini_path);
@@ -2094,7 +2108,9 @@ where
                 let is_hovered = self.hovered_scenery == Some(&pack.name);
                 let base_color = match pack.status {
                     SceneryPackType::Active => Color::from_rgb(0.0, 1.0, 0.0),
-                    SceneryPackType::Disabled => Color::from_rgb(1.0, 0.0, 0.0),
+                    SceneryPackType::Disabled | SceneryPackType::DuplicateHidden => {
+                        Color::from_rgb(1.0, 0.0, 0.0)
+                    }
                 };
                 let fill_color = if is_selected || is_hovered {
                     Color::from_rgb(1.0, 1.0, 0.0)
