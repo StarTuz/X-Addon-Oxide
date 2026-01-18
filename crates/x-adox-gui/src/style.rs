@@ -90,7 +90,15 @@ pub fn button_primary(_theme: &Theme, status: button::Status) -> button::Style {
             },
             ..base
         },
-        _ => base,
+        _ => button::Style {
+            background: Some(Background::Color(palette::ACCENT_BLUE)),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            ..base
+        },
     }
 }
 
@@ -324,6 +332,40 @@ pub fn button_card(_theme: &Theme, status: button::Status) -> button::Style {
                 width: 1.0,
                 radius: 8.0.into(),
             },
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_premium_glow(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(Color::WHITE)),
+        text_color: Color::BLACK,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: Color::from_rgba(1.0, 1.0, 1.0, 0.5),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(1.0, 1.0, 1.0, 0.6),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 12.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.9, 0.9, 0.9))),
+            shadow: Shadow {
+                color: Color::from_rgba(1.0, 1.0, 1.0, 1.0),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.8, 0.8, 0.8))),
             ..base
         },
         _ => base,

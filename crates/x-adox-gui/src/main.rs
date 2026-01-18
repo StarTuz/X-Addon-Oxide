@@ -1,19 +1,18 @@
-use iced::advanced::{self, layout, renderer, widget, Layout, Widget};
 use iced::widget::{
     button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, stack,
-    svg, text, Column,
+    svg, text, text_editor, Column,
 };
-use iced::{
-    mouse, Background, Border, Color, Element, Event, Length, Radians, Rectangle, Task, Theme,
-};
+use iced::{Background, Border, Color, Element, Length, Task, Theme};
 use std::path::PathBuf;
+use x_adox_bitnet::BitNetModel;
 use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
 use x_adox_core::management::ModManager;
 use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType};
 use x_adox_core::XPlaneManager;
 
+mod map;
 mod style;
-// use style::{Button as ButtonStyle, Container as ContainerStyle}; // Removed
+use map::{MapView, TileManager};
 
 fn main() -> iced::Result {
     iced::application("X-Addon-Oxide", App::update, App::view)
@@ -27,6 +26,7 @@ enum Tab {
     Aircraft,
     Plugins,
     CSLs,
+    Heuristics,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +89,15 @@ enum Message {
     },
     InstallProgress(f32),
     SmartSort,
+
+    // Heuristics
+    OpenHeuristicsEditor,
+    HeuristicsAction(text_editor::Action),
+    SaveHeuristics,
+    ImportHeuristics,
+    ExportHeuristics,
+    ResetHeuristics,
+    HeuristicsImported(String),
 }
 
 struct App {
@@ -121,6 +130,10 @@ struct App {
     map_initialized: bool,
     scenery_scroll_id: scrollable::Id,
     install_progress: Option<f32>,
+    // Heuristics
+    heuristics_model: BitNetModel,
+    heuristics_json: text_editor::Content,
+    heuristics_error: Option<String>,
 }
 
 impl App {
@@ -165,6 +178,9 @@ impl App {
             map_initialized: false,
             scenery_scroll_id: scrollable::Id::unique(),
             install_progress: None,
+            heuristics_model: BitNetModel::new().unwrap_or_default(),
+            heuristics_json: text_editor::Content::new(),
+            heuristics_error: None,
         };
 
         let tasks = if let Some(r) = root {
@@ -214,6 +230,7 @@ impl App {
                     Tab::Aircraft => format!("{} aircraft", self.aircraft.len()),
                     Tab::Plugins => format!("{} plugins", self.plugins.len()),
                     Tab::CSLs => format!("{} CSL packages", self.csls.len()),
+                    Tab::Heuristics => "Sorting Heuristics Editor".to_string(),
                 };
                 Task::none()
             }
@@ -623,6 +640,7 @@ impl App {
                         .selected_csl
                         .as_ref()
                         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
+                    Tab::Heuristics => None,
                 };
 
                 if let Some(name) = name_opt {
@@ -660,6 +678,7 @@ impl App {
                         Tab::Aircraft => self.selected_aircraft.clone(),
                         Tab::Plugins => self.selected_plugin.clone(),
                         Tab::CSLs => self.selected_csl.clone(),
+                        Tab::Heuristics => None,
                     };
 
                     if let Some(p) = path {
@@ -675,6 +694,94 @@ impl App {
                     }
                 }
                 Task::none()
+            }
+            Message::OpenHeuristicsEditor => {
+                let json =
+                    serde_json::to_string_pretty(&self.heuristics_model.config).unwrap_or_default();
+                self.heuristics_json = text_editor::Content::with_text(&json);
+                self.heuristics_error = None;
+                self.active_tab = Tab::Heuristics;
+                self.status = "Sorting Heuristics Editor".to_string();
+                Task::none()
+            }
+            Message::HeuristicsAction(action) => {
+                self.heuristics_json.perform(action);
+                Task::none()
+            }
+            Message::SaveHeuristics => {
+                let text = self.heuristics_json.text();
+                match serde_json::from_str::<x_adox_bitnet::HeuristicsConfig>(&text) {
+                    Ok(config) => {
+                        self.heuristics_model.config = config;
+                        if let Err(e) = self.heuristics_model.save() {
+                            self.heuristics_error = Some(format!("Save failed: {}", e));
+                        } else {
+                            self.heuristics_error = None;
+                            self.status = "Heuristics saved!".to_string();
+                        }
+                    }
+                    Err(e) => {
+                        self.heuristics_error = Some(format!("JSON Error: {}", e));
+                    }
+                }
+                Task::none()
+            }
+            Message::ResetHeuristics => {
+                if let Err(e) = self.heuristics_model.reset_defaults() {
+                    self.heuristics_error = Some(format!("Reset failed: {}", e));
+                } else {
+                    let json = serde_json::to_string_pretty(&self.heuristics_model.config)
+                        .unwrap_or_default();
+                    self.heuristics_json = text_editor::Content::with_text(&json);
+                    self.heuristics_error = None;
+                    self.status = "Heuristics reset to defaults".to_string();
+                }
+                Task::none()
+            }
+            Message::ImportHeuristics => Task::perform(
+                async {
+                    use native_dialog::FileDialog;
+                    FileDialog::new()
+                        .set_title("Import Heuristics JSON")
+                        .add_filter("JSON", &["json"])
+                        .show_open_single_file()
+                        .ok()
+                        .flatten()
+                },
+                |path_opt| {
+                    if let Some(path) = path_opt {
+                        if let Ok(text) = std::fs::read_to_string(path) {
+                            return Message::HeuristicsImported(text);
+                        }
+                    }
+                    Message::Refresh // No-op refresh
+                },
+            ),
+            Message::HeuristicsImported(text) => {
+                self.heuristics_json = text_editor::Content::with_text(&text);
+                self.heuristics_error = None;
+                self.status = "JSON imported. Click Save to apply.".to_string();
+                Task::none()
+            }
+            Message::ExportHeuristics => {
+                let text = self.heuristics_json.text();
+                Task::perform(
+                    async move {
+                        use native_dialog::FileDialog;
+                        FileDialog::new()
+                            .set_title("Export Heuristics JSON")
+                            .add_filter("JSON", &["json"])
+                            .show_save_single_file()
+                            .ok()
+                            .flatten()
+                    },
+                    move |path_opt| {
+                        if let Some(path) = path_opt {
+                            let _ = std::fs::write(path, &text);
+                        }
+                        Message::Refresh
+                    },
+                )
             }
             Message::SmartSort => {
                 let root = self.xplane_root.clone();
@@ -770,6 +877,7 @@ impl App {
             Tab::Aircraft => self.view_aircraft_tree(),
             Tab::Plugins => self.view_addon_list(&self.plugins, "Plugin"),
             Tab::CSLs => self.view_addon_list(&self.csls, "CSL Package"),
+            Tab::Heuristics => self.view_heuristics_editor(),
         };
 
         // Path text for display
@@ -800,6 +908,7 @@ impl App {
                 Message::DeleteAddon(Tab::CSLs),
                 self.selected_csl.is_some(),
             ),
+            Tab::Heuristics => (Message::SaveHeuristics, Message::ResetHeuristics, true),
         };
 
         let install_btn = button(
@@ -847,20 +956,28 @@ impl App {
         .style(style::button_success)
         .padding([6, 12]);
 
-        let smart_sort_btn = if self.active_tab == Tab::Scenery {
-            Some(
-                button(text("Smart Sort").size(12))
-                    .on_press(Message::SmartSort)
-                    .style(style::button_ai)
-                    .padding([6, 12]),
-            )
-        } else {
-            None
-        };
+        let smart_sort_btn =
+            if self.active_tab == Tab::Scenery || self.active_tab == Tab::Heuristics {
+                Some(
+                    button(text("Smart Sort").size(12))
+                        .on_press(Message::SmartSort)
+                        .style(style::button_ai)
+                        .padding([6, 12]),
+                )
+            } else {
+                None
+            };
 
         let mut actions = row![install_btn, delete_btn, refresh_btn].spacing(10);
         if let Some(btn) = smart_sort_btn {
             actions = actions.push(btn);
+
+            // Add Edit Sort button next to Smart Sort
+            let edit_sort_btn = button(text("Edit Sort").size(12))
+                .on_press(Message::OpenHeuristicsEditor)
+                .style(style::button_premium_glow)
+                .padding([6, 12]);
+            actions = actions.push(edit_sort_btn);
         }
 
         container(
@@ -997,6 +1114,7 @@ impl App {
             Tab::Scenery => (&self.icon_scenery, Color::from_rgb(0.4, 0.8, 0.4)), // Green
             Tab::Plugins => (&self.icon_plugins, Color::from_rgb(0.4, 0.6, 1.0)), // Blue
             Tab::CSLs => (&self.icon_csls, Color::from_rgb(1.0, 0.6, 0.2)),       // Orange
+            Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
         };
 
         let icon = svg(icon_handle.clone())
@@ -1117,10 +1235,74 @@ impl App {
         )
         .spacing(10);
 
-        // Overlay confirm if needed (though new design might do it differently, let's keep it simple for now)
-        // Ignoring confirm overlay for the card view for this step to keep code clean.
+        let list_container = scrollable(list).id(self.scenery_scroll_id.clone());
 
-        scrollable(list).id(self.scenery_scroll_id.clone()).into()
+        column![
+            row![text("Scenery Library").size(24).width(Length::Fill)]
+                .align_y(iced::Alignment::Center)
+                .padding(10),
+            list_container
+        ]
+        .spacing(10)
+        .into()
+    }
+
+    fn view_heuristics_editor(&self) -> Element<'_, Message> {
+        let editor = text_editor(&self.heuristics_json)
+            .on_action(Message::HeuristicsAction)
+            .font(iced::Font::MONOSPACE);
+
+        let error_banner = if let Some(err) = &self.heuristics_error {
+            container(text(err).color(Color::from_rgb(1.0, 0.3, 0.3)))
+                .padding(10)
+                .style(style::container_card)
+        } else {
+            container(column![])
+        };
+
+        let toolbar = row![
+            button(text("Save Rules").size(14))
+                .on_press(Message::SaveHeuristics)
+                .style(style::button_primary)
+                .padding([10, 20]),
+            button(text("Import").size(14))
+                .on_press(Message::ImportHeuristics)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+            button(text("Export").size(14))
+                .on_press(Message::ExportHeuristics)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+            button(text("Reset to Defaults").size(14))
+                .on_press(Message::ResetHeuristics)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+        ]
+        .spacing(15);
+
+        container(
+            column![
+                text("Scenery Sorting Heuristics (JSON Editor)")
+                    .size(20)
+                    .width(Length::Fill),
+                text("Customize the weights and keywords used by the BitNet AI for sorting.")
+                    .size(14)
+                    .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                error_banner,
+                container(editor)
+                    .height(Length::Fill)
+                    .width(Length::Fill)
+                    .style(style::container_card)
+                    .padding(5),
+                toolbar,
+            ]
+            .spacing(15)
+            .padding(20),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(style::container_main_content)
+        .into()
     }
 
     fn view_scenery_card<'a>(&self, pack: &'a SceneryPack) -> Element<'a, Message> {
@@ -1689,6 +1871,7 @@ async fn install_addon(
                     custom
                 }
             }
+            Tab::Heuristics => return Err("Cannot install to Heuristics tab".to_string()),
         }
     };
 
@@ -1801,7 +1984,7 @@ fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), St
             Tab::Scenery => root.join("Custom Scenery"),
             Tab::Aircraft => root.join("Aircraft"),
             Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::CSLs => unreachable!(), // Handled above
+            Tab::CSLs | Tab::Heuristics => unreachable!(), // Handled above or not applicable
         };
 
         if !full_path.starts_with(&allowed_dir) {
@@ -1856,585 +2039,4 @@ async fn pick_folder(title: &str, start_dir: Option<PathBuf>) -> Option<PathBuf>
     }
     .ok()
     .flatten()
-}
-
-// --- Slippy Map / Mercator Math ---
-// --- Slippy Map / Mercator Math ---
-const TILE_SIZE: f64 = 256.0;
-
-fn lon_to_x(lon: f64, zoom: f64) -> f64 {
-    ((lon + 180.0) / 360.0) * 2.0f64.powf(zoom) * TILE_SIZE
-}
-
-fn lat_to_y(lat: f64, zoom: f64) -> f64 {
-    let lat_rad = lat.to_radians();
-    (1.0 - (lat_rad.tan() + 1.0 / lat_rad.cos()).ln() / std::f64::consts::PI) / 2.0
-        * 2.0f64.powf(zoom)
-        * TILE_SIZE
-}
-
-fn x_to_lon(x: f64, zoom: f64) -> f64 {
-    (x / (TILE_SIZE * 2.0f64.powf(zoom))) * 360.0 - 180.0
-}
-
-fn y_to_lat(y: f64, zoom: f64) -> f64 {
-    let n = std::f64::consts::PI - 2.0 * std::f64::consts::PI * y / (TILE_SIZE * 2.0f64.powf(zoom));
-    (0.5 * (n.exp() - (-n).exp())).atan().to_degrees()
-}
-
-// --- Tile Management ---
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct TileCoords {
-    x: u32,
-    y: u32,
-    z: u32,
-}
-
-impl TileCoords {
-    fn url(&self) -> String {
-        format!(
-            "https://tile.openstreetmap.org/{}/{}/{}.png",
-            self.z, self.x, self.y
-        )
-    }
-}
-
-use lru::LruCache;
-use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
-
-struct TileManager {
-    tiles: Arc<Mutex<LruCache<TileCoords, image::Handle>>>,
-    pending: Arc<Mutex<std::collections::HashSet<TileCoords>>>,
-}
-
-impl TileManager {
-    fn new() -> Self {
-        Self {
-            tiles: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(300).unwrap()))),
-            pending: Arc::new(Mutex::new(std::collections::HashSet::new())),
-        }
-    }
-
-    fn get_tile(&self, coords: TileCoords) -> Option<image::Handle> {
-        let mut tiles = self.tiles.lock().unwrap();
-        tiles.get(&coords).cloned()
-    }
-
-    fn request_tile(&self, coords: TileCoords) {
-        {
-            let mut pending = self.pending.lock().unwrap();
-            if pending.contains(&coords) {
-                return;
-            }
-            let tiles = self.tiles.lock().unwrap();
-            if tiles.contains(&coords) {
-                return;
-            }
-            pending.insert(coords);
-        }
-
-        let tiles_arc = Arc::clone(&self.tiles);
-        let pending_arc = Arc::clone(&self.pending);
-
-        // Simple background fetcher using std::thread to avoid tokio runtime dependency
-        std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::builder()
-                .user_agent("X-Addon-Oxide/0.1.0")
-                .timeout(std::time::Duration::from_secs(10))
-                .build()
-                .unwrap();
-
-            match client.get(coords.url()).send() {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if !status.is_success() {
-                        eprintln!("Tile fetch failed for {:?}: Status {}", coords, status);
-                    } else if let Ok(bytes) = resp.bytes() {
-                        let handle = image::Handle::from_bytes(bytes.to_vec());
-                        let mut tiles = tiles_arc.lock().unwrap();
-                        tiles.put(coords, handle);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Failed to fetch tile {:?}: {}", coords, e);
-                }
-            }
-            let mut pending = pending_arc.lock().unwrap();
-            pending.remove(&coords);
-        });
-    }
-}
-
-struct MapView<'a> {
-    packs: &'a [SceneryPack],
-    selected_scenery: Option<&'a String>,
-    hovered_scenery: Option<&'a String>,
-    tile_manager: &'a TileManager,
-    zoom: f64,          // Fractional zoom (e.g., 2.5)
-    center: (f64, f64), // (Lat, Lon)
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct MapState {
-    is_dragging: bool,
-    last_cursor: Option<iced::Point>,
-}
-
-impl<'a, Theme, Renderer> Widget<Message, Theme, Renderer> for MapView<'a>
-where
-    Renderer: renderer::Renderer + advanced::image::Renderer<Handle = image::Handle>,
-{
-    fn size(&self) -> iced::Size<Length> {
-        iced::Size {
-            width: Length::Fill,
-            height: Length::Fill,
-        }
-    }
-
-    fn tag(&self) -> widget::tree::Tag {
-        widget::tree::Tag::of::<MapState>()
-    }
-
-    fn state(&self) -> widget::tree::State {
-        widget::tree::State::new(MapState::default())
-    }
-
-    fn layout(
-        &self,
-        _tree: &mut widget::Tree,
-        _renderer: &Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        layout::Node::new(limits.max())
-    }
-
-    fn draw(
-        &self,
-        _tree: &widget::Tree,
-        renderer: &mut Renderer,
-        _theme: &Theme,
-        _style: &renderer::Style,
-        layout: Layout<'_>,
-        _cursor: mouse::Cursor,
-        _viewport: &Rectangle,
-    ) {
-        let bounds = layout.bounds();
-        let zoom = self.zoom;
-        let (center_lat, center_lon) = self.center;
-        let zoom_scale = 2.0f64.powf(zoom);
-
-        let camera_center_x = lon_to_x(center_lon, 0.0);
-        let camera_center_y = lat_to_y(center_lat, 0.0);
-
-        renderer.with_layer(bounds, |renderer| {
-            // Background fill
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds,
-                    border: iced::Border::default(),
-                    ..Default::default()
-                },
-                Color::from_rgb(0.05, 0.05, 0.05),
-            );
-
-            // --- Tile Layer ---
-            let z = zoom.floor().clamp(0.0, 19.0) as u32;
-            let num_tiles = 2u32.pow(z);
-            let tile_size_z0 = TILE_SIZE / 2.0f64.powf(z as f64);
-
-            let half_w = (bounds.width as f64 / 2.0) / zoom_scale;
-            let half_h = (bounds.height as f64 / 2.0) / zoom_scale;
-
-            let view_left = camera_center_x - half_w;
-            let view_right = camera_center_x + half_w;
-            let view_top = camera_center_y - half_h;
-            let view_bottom = camera_center_y + half_h;
-
-            let min_tx = (view_left / tile_size_z0).floor() as i32;
-            let max_tx = (view_right / tile_size_z0).ceil() as i32;
-            let min_ty = (view_top / tile_size_z0).floor() as i32;
-            let max_ty = (view_bottom / tile_size_z0).ceil() as i32;
-
-            for tx in min_tx..=max_tx {
-                if tx < 0 || tx >= num_tiles as i32 {
-                    continue;
-                }
-                for ty in min_ty..=max_ty {
-                    if ty < 0 || ty >= num_tiles as i32 {
-                        continue;
-                    }
-
-                    let coords = TileCoords {
-                        x: tx as u32,
-                        y: ty as u32,
-                        z,
-                    };
-                    let tile_world_x = tx as f64 * tile_size_z0;
-                    let tile_world_y = ty as f64 * tile_size_z0;
-
-                    let screen_x = bounds.x
-                        + (bounds.width / 2.0)
-                        + ((tile_world_x - camera_center_x) * zoom_scale) as f32;
-                    let screen_y = bounds.y
-                        + (bounds.height / 2.0)
-                        + ((tile_world_y - camera_center_y) * zoom_scale) as f32;
-                    let current_tile_size = (tile_size_z0 * zoom_scale) as f32;
-
-                    let tile_rect = Rectangle {
-                        x: screen_x,
-                        y: screen_y,
-                        width: current_tile_size,
-                        height: current_tile_size,
-                    };
-
-                    if let Some(handle) = self.tile_manager.get_tile(coords) {
-                        renderer.draw_image(
-                            advanced::image::Image {
-                                handle,
-                                filter_method: image::FilterMethod::Linear,
-                                rotation: Radians(0.0),
-                                opacity: 1.0,
-                                snap: false,
-                            },
-                            tile_rect,
-                        );
-                    } else {
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: tile_rect,
-                                ..Default::default()
-                            },
-                            Color::from_rgb(0.1, 0.1, 0.1),
-                        );
-                        self.tile_manager.request_tile(coords);
-                    }
-                }
-            }
-        });
-
-        // --- Marker Layer ---
-        // Draw markers in a separate layer on top to ensure visibility
-        renderer.with_layer(bounds, |renderer| {
-            let square_size = 4.0;
-            let selected_size = 8.0;
-
-            for pack in self.packs {
-                let is_selected = self.selected_scenery == Some(&pack.name);
-                let is_hovered = self.hovered_scenery == Some(&pack.name);
-                let base_color = match pack.status {
-                    SceneryPackType::Active => Color::from_rgb(0.0, 1.0, 0.0),
-                    SceneryPackType::Disabled | SceneryPackType::DuplicateHidden => {
-                        Color::from_rgb(1.0, 0.0, 0.0)
-                    }
-                };
-                let fill_color = if is_selected || is_hovered {
-                    Color::from_rgb(1.0, 1.0, 0.0)
-                } else {
-                    base_color
-                };
-                let size = if is_selected || is_hovered {
-                    selected_size
-                } else {
-                    square_size
-                };
-                let half_size = size / 2.0;
-
-                if pack.airports.is_empty() {
-                    for &(lat, lon) in &pack.tiles {
-                        let wx = lon_to_x(lon as f64 + 0.5, 0.0);
-                        let wy = lat_to_y(lat as f64 + 0.5, 0.0);
-
-                        let sx = bounds.x
-                            + (bounds.width / 2.0)
-                            + ((wx - camera_center_x) * zoom_scale) as f32;
-                        let sy = bounds.y
-                            + (bounds.height / 2.0)
-                            + ((wy - camera_center_y) * zoom_scale) as f32;
-
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: Rectangle {
-                                    x: sx - half_size,
-                                    y: sy - half_size,
-                                    width: size,
-                                    height: size,
-                                },
-                                border: iced::Border {
-                                    color: Color::BLACK,
-                                    width: 1.0,
-                                    radius: (size / 4.0).into(),
-                                },
-                                ..Default::default()
-                            },
-                            fill_color,
-                        );
-                    }
-                }
-                for airport in &pack.airports {
-                    if let (Some(lat), Some(lon)) = (airport.lat, airport.lon) {
-                        let wx = lon_to_x(lon as f64, 0.0);
-                        let wy = lat_to_y(lat as f64, 0.0);
-
-                        let sx = bounds.x
-                            + (bounds.width / 2.0)
-                            + ((wx - camera_center_x) * zoom_scale) as f32;
-                        let sy = bounds.y
-                            + (bounds.height / 2.0)
-                            + ((wy - camera_center_y) * zoom_scale) as f32;
-
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: Rectangle {
-                                    x: sx - half_size,
-                                    y: sy - half_size,
-                                    width: size,
-                                    height: size,
-                                },
-                                border: iced::Border {
-                                    color: Color::BLACK,
-                                    width: 1.0,
-                                    radius: (size / 4.0).into(),
-                                },
-                                ..Default::default()
-                            },
-                            fill_color,
-                        );
-                    }
-                }
-            }
-        });
-    }
-
-    fn on_event(
-        &mut self,
-        tree: &mut widget::Tree,
-        event: Event,
-        layout: iced::advanced::Layout<'_>,
-        cursor: mouse::Cursor,
-        _renderer: &Renderer,
-        _clipboard: &mut dyn advanced::Clipboard,
-        shell: &mut advanced::Shell<'_, Message>,
-        _viewport: &Rectangle,
-    ) -> advanced::graphics::core::event::Status {
-        let state = tree.state.downcast_mut::<MapState>();
-        let bounds = layout.bounds();
-        let zoom = self.zoom;
-        let (center_lat, center_lon) = self.center;
-
-        let camera_x = lon_to_x(center_lon, 0.0);
-        let camera_y = lat_to_y(center_lat, 0.0);
-        let scale = 2.0f64.powf(zoom);
-
-        let cursor_point = cursor.position_in(bounds);
-        let mouse_z0 = cursor_point.map(|p| {
-            let rx = (p.x as f64) - (bounds.width as f64 / 2.0);
-            let ry = (p.y as f64) - (bounds.height as f64 / 2.0);
-            (camera_x + rx / scale, camera_y + ry / scale)
-        });
-
-        let coords = mouse_z0.and_then(|(wx, wy)| {
-            let lon = x_to_lon(wx, 0.0);
-            let lat = y_to_lat(wy, 0.0);
-
-            if lon >= -180.0 && lon <= 180.0 && lat >= -85.0511 && lat <= 85.0511 {
-                Some((lat, lon))
-            } else {
-                None
-            }
-        });
-
-        match event {
-            Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) => {
-                if let Some(p) = cursor_point {
-                    let d = match delta {
-                        iced::mouse::ScrollDelta::Lines { y, .. } => y as f64,
-                        iced::mouse::ScrollDelta::Pixels { y, .. } => (y as f64) / 100.0,
-                    };
-                    let min_zoom = (bounds.width as f64 / TILE_SIZE).log2();
-                    let new_zoom = (zoom + d * 0.2).clamp(min_zoom, 19.0);
-
-                    if (new_zoom - zoom).abs() > 0.001 {
-                        let new_scale = 2.0f64.powf(new_zoom);
-
-                        let mx = (p.x as f64) - (bounds.width as f64 / 2.0);
-                        let my = (p.y as f64) - (bounds.height as f64 / 2.0);
-
-                        let new_camera_x = camera_x + mx / scale - mx / new_scale;
-                        let new_camera_y = camera_y + my / scale - my / new_scale;
-
-                        let new_half_w = (bounds.width as f64 / 2.0) / new_scale;
-                        let new_camera_x_clamped =
-                            new_camera_x.clamp(new_half_w, TILE_SIZE - new_half_w);
-                        let new_camera_y_clamped = new_camera_y.clamp(0.0, TILE_SIZE);
-
-                        shell.publish(Message::MapZoom {
-                            new_center: (
-                                y_to_lat(new_camera_y_clamped, 0.0),
-                                x_to_lon(new_camera_x_clamped, 0.0),
-                            ),
-                            new_zoom,
-                        });
-                        return advanced::graphics::core::event::Status::Captured;
-                    }
-                }
-            }
-            Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)) => {
-                if let Some(coords) = coords {
-                    for pack in self.packs {
-                        if pack.airports.is_empty() {
-                            for &(lat, lon) in &pack.tiles {
-                                if (lat as f64 + 0.5 - coords.0).abs() < 0.5
-                                    && (lon as f64 + 0.5 - coords.1).abs() < 0.5
-                                {
-                                    shell.publish(Message::SelectScenery(pack.name.clone()));
-                                    return advanced::graphics::core::event::Status::Captured;
-                                }
-                            }
-                        }
-                        for airport in &pack.airports {
-                            if let (Some(lat), Some(lon), (wx, wy)) =
-                                (airport.lat, airport.lon, mouse_z0.unwrap())
-                            {
-                                let tx = lon_to_x(lon as f64, 0.0);
-                                let ty = lat_to_y(lat as f64, 0.0);
-                                let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
-
-                                // Use a 10px hit radius in screen pixels
-                                if dist_sq < (10.0 / scale).powi(2) {
-                                    shell.publish(Message::SelectScenery(pack.name.clone()));
-                                    return advanced::graphics::core::event::Status::Captured;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Start dragging if no selection was made
-                // Use cursor.position() (global coords) to match CursorMoved event
-                if cursor.is_over(bounds) {
-                    if let Some(position) = cursor.position() {
-                        state.is_dragging = true;
-                        state.last_cursor = Some(position);
-                        return advanced::graphics::core::event::Status::Captured;
-                    }
-                }
-            }
-            Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
-                if state.is_dragging {
-                    state.is_dragging = false;
-                    state.last_cursor = None;
-                    return advanced::graphics::core::event::Status::Captured;
-                }
-            }
-            Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                if state.is_dragging {
-                    if let Some(last_pos) = state.last_cursor {
-                        let delta = position - last_pos;
-                        state.last_cursor = Some(position);
-
-                        let dx = delta.x as f64 / scale;
-                        let dy = delta.y as f64 / scale;
-
-                        // Calculate new center in world pixels (zoom 0)
-                        let new_wx = camera_x - dx;
-                        let new_wy = camera_y - dy;
-
-                        // Calculate constraints (same logic as MapZoom clamping)
-                        let half_vw = (bounds.width as f64 / 2.0) / scale;
-                        let half_vh = (bounds.height as f64 / 2.0) / scale;
-
-                        // Clamp X
-                        let clamped_wx = if half_vw * 2.0 >= TILE_SIZE {
-                            TILE_SIZE / 2.0 // Center if viewport >= world
-                        } else {
-                            new_wx.clamp(half_vw, TILE_SIZE - half_vw)
-                        };
-
-                        // Clamp Y
-                        let clamped_wy = if half_vh * 2.0 >= TILE_SIZE {
-                            TILE_SIZE / 2.0 // Center if viewport >= world
-                        } else {
-                            new_wy.clamp(half_vh, TILE_SIZE - half_vh)
-                        };
-
-                        shell.publish(Message::MapZoom {
-                            new_center: (y_to_lat(clamped_wy, 0.0), x_to_lon(clamped_wx, 0.0)),
-                            new_zoom: zoom,
-                        });
-                        return advanced::graphics::core::event::Status::Captured;
-                    }
-                }
-
-                if let Some(coords) = coords {
-                    for pack in self.packs {
-                        if pack.airports.is_empty() {
-                            for &(lat, lon) in &pack.tiles {
-                                if (lat as f64 + 0.5 - coords.0).abs() < 0.5
-                                    && (lon as f64 + 0.5 - coords.1).abs() < 0.5
-                                {
-                                    if self.hovered_scenery != Some(&pack.name) {
-                                        shell.publish(Message::HoverScenery(Some(
-                                            pack.name.clone(),
-                                        )));
-                                    }
-                                    return advanced::graphics::core::event::Status::Captured;
-                                }
-                            }
-                        }
-                        for airport in &pack.airports {
-                            if let (Some(lat), Some(lon), (wx, wy)) =
-                                (airport.lat, airport.lon, mouse_z0.unwrap())
-                            {
-                                let tx = lon_to_x(lon as f64, 0.0);
-                                let ty = lat_to_y(lat as f64, 0.0);
-                                let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
-
-                                // Use a 10px hit radius in screen pixels
-                                if dist_sq < (10.0 / scale).powi(2) {
-                                    if self.hovered_scenery != Some(&pack.name) {
-                                        shell.publish(Message::HoverScenery(Some(
-                                            pack.name.clone(),
-                                        )));
-                                    }
-                                    return advanced::graphics::core::event::Status::Captured;
-                                }
-                            }
-                        }
-                    }
-                    if self.hovered_scenery.is_some() {
-                        shell.publish(Message::HoverScenery(None));
-                        return advanced::graphics::core::event::Status::Captured;
-                    }
-                }
-            }
-            _ => {}
-        }
-        advanced::graphics::core::event::Status::Ignored
-    }
-
-    fn mouse_interaction(
-        &self,
-        _tree: &widget::Tree,
-        layout: iced::advanced::Layout<'_>,
-        cursor: mouse::Cursor,
-        _viewport: &Rectangle,
-        _renderer: &Renderer,
-    ) -> mouse::Interaction {
-        if cursor.is_over(layout.bounds()) {
-            mouse::Interaction::Pointer
-        } else {
-            mouse::Interaction::default()
-        }
-    }
-}
-
-impl<'a, Theme, Renderer> From<MapView<'a>> for Element<'a, Message, Theme, Renderer>
-where
-    Theme: 'a,
-    Renderer: 'a + renderer::Renderer + advanced::image::Renderer<Handle = image::Handle>,
-{
-    fn from(map_view: MapView<'a>) -> Self {
-        Self::new(map_view)
-    }
 }
