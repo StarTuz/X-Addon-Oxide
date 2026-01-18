@@ -849,14 +849,10 @@ impl App {
 
         let smart_sort_btn = if self.active_tab == Tab::Scenery {
             Some(
-                button(
-                    row![text("✨").size(14), text("Smart Sort").size(12)]
-                        .spacing(6)
-                        .align_y(iced::Alignment::Center),
-                )
-                .on_press(Message::SmartSort)
-                .style(style::button_ai)
-                .padding([6, 12]),
+                button(text("Smart Sort").size(12))
+                    .on_press(Message::SmartSort)
+                    .style(style::button_ai)
+                    .padding([6, 12]),
             )
         } else {
             None
