@@ -809,10 +809,8 @@ impl App {
                             }
 
                             // 2. Create new bak1_CURRENT_TIMESTAMP
-                            let timestamp = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs();
+                            let timestamp =
+                                chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
                             let bak1_name = format!("scenery_packs.ini.bak1_{}", timestamp);
                             let bak1_path = parent.join(bak1_name);
                             let _ = std::fs::copy(&ini_path, &bak1_path);
