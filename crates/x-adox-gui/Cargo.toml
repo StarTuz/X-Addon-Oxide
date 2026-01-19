@@ -37,8 +37,12 @@ icons = [
 out_dir = "../../dist"
 formats = ["nsis", "dmg", "app", "appimage"]
 
+[package.metadata.packager.nsis]
+compression = "lzma"
+languages = ["English"]
+appdata-paths = ["$APPDATA/x-adox/X-Addon-Oxide"]
+
 [package.metadata.packager.windows]
-nsis = { compression = "lzma", languages = ["English"], appdata_paths = ["$APPDATA/x-adox/X-Addon-Oxide"] }
 
 [package.metadata.packager.macos]
 minimum_system_version = "10.15"
