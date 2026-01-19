@@ -34,7 +34,7 @@ icons = [
     "../../assets/packaging/icon.icns",
     "../../assets/packaging/icon_512.png"
 ]
-formats = ["nsis", "dmg", "app"]
+formats = ["nsis", "dmg", "app", "appimage"]
 
 [package.metadata.packager.nsis]
 compression = "lzma"
