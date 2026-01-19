@@ -1,6 +1,6 @@
 [product]
 name = "X-Addon-Oxide"
-version = "2.0.3"
+version = "2.1.0"
 description = "A modern addon manager for X-Plane"
 authors = ["StarTuz"]
 publisher = "StarTuz"

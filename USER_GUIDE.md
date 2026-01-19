@@ -13,8 +13,12 @@ The sidebar on the left organizes your library into four categories:
 ### ✈️ Aircraft
 
 - **Viewing**: Browse your aircraft in a hierarchical tree.
-- **Preview**: Selecting an aircraft will show its icon (if available) in the preview panel to the right.
-- **Folders**: Expand folders to see different variants or liveries.
+- **AI Smart View**: Toggle the "Smart View" switch to automatically group aircraft by their role (Airliners, General Aviation, Military, etc.) using our BitNet heuristic engine.
+- **Manual Overrides**: If the AI misidentifies an aircraft, you can manually set its category.
+  - Select the aircraft in the tree.
+  - In the preview pane, use the **Set AI Category Manually** dropdown.
+  - The change is saved instantly and persists across restarts.
+- **Preview**: Selecting an aircraft shows its icon (if available) and technical tags.
 
 ### 🏔️ Scenery
 
@@ -28,9 +32,6 @@ The sidebar on the left organizes your library into four categories:
 > [!IMPORTANT]
 > **Applying Changes**: Manual reorders and pins update the AI's internal logic immediately. However, to write the new order to your actual X-Plane `scenery_packs.ini` file, you must click the **Smart Sort** button and then **Apply Changes** in the Simulation Report.
 
-> [!NOTE]
-> **Expected Behavior**: When running "Smart Sort", X-ADOX adds helpful headers and spacing to your `scenery_packs.ini`. However, X-Plane 12 automatically "sanitizes" this file on load, removing all comments and blank lines. **This is normal**; your custom sorting order remains perfectly intact, even if the visual formatting is removed by the sim.
-
 ### 🧩 Plugins
 
 - **Enabling/Disabling**: Use the checkbox next to each plugin name.
@@ -42,18 +43,13 @@ The sidebar on the left organizes your library into four categories:
 
 ## UI Features
 
-- **Neon Indicators**: When a category is active, the icon and side bar glow in its specific color.
+- **Neon Indicators**: When a category is active, the icon and sidebar glow in its specific color.
+- **Window Icon**: The application now features a custom high-resolution window icon for better visibility in your taskbar.
 - **Hover Effects**: Panels will subtly glow when you hover over them, indicating they are interactive.
-- **Scroll Bars**: Large lists of addons are easily navigable with smooth scrolling.
 
-## Building & Installation
+## Installation
 
-For Linux users, we recommend using the **AppImage** generated via Docker to ensure it runs on any distribution.
-
-```bash
-# To build your own AppImage:
-./scripts/build_appimage.sh
-```
+We recommend using the official installers (NSIS for Windows, DMG for macOS) for the best experience.
 
 ## Screenshots v1:
 

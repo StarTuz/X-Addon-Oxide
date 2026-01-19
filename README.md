@@ -8,107 +8,63 @@ X-Addon-Oxide is a powerful, cross-platform tool designed for both flight sim en
 
 - **🚀 Mod Management**: Effortlessly enable or disable Plugins and CSLs with a single click.
 - **🗺️ World Map**: View all your installed scenery packages on an interactive global map.
-- **✈️ Aircraft Preview**: Instantly view aircraft icons and technical details before you fly.
+- **✈️ AI Smart View**: Automatically categorizes aircraft using a built-in BitNet heuristic model (Airliners, Military, GA, etc.).
+- **🔧 User Overrides**: Manually override AI aircraft categories to perfectly organize your hangar.
 - **✨ Premium UI**: A sleek, dark-themed interface with neon glow effects and reactive hover feedback.
-- **📦 Multi-Platform**: Built with Rust for high performance on Linux, Windows, and macOS.
+- **📦 Multi-Platform**: Native installers for Windows (NSIS), macOS (DMG), and Linux (AppImage).
 - **🛠️ Developer Friendly**: Quickly toggle addons for testing without manual file renaming.
 
 ## Getting Started
 
 1. **Set your X-Plane Path**: Point the app to your X-Plane installation directory.
 2. **Explore your Addons**: Use the sidebar to navigate between Aircraft, Scenery, and Plugins.
-3. **Manage Status**: Use checkboxes for Plugins/CSLs and toggle buttons for Scenery.
+3. **Smart Sorting**: Use "AI Smart View" in the Aircraft tab to see your fleet organized by role.
+4. **Manual Control**: Right-click or use the dropdown in the Aircraft preview to set a manual category override.
 
 For more detailed instructions, see the [Full User Guide](USER_GUIDE.md).
 
-## Installation & Building
+## Installation
 
-### Prerequisites
+### Download Installers (Recommended)
 
-You will need the **Rust** toolchain installed. If you don't have it, you can get it from [rustup.rs](https://rustup.rs/):
+Grab the latest professional installers from the [Releases](https://github.com/StarTuz/X-Addon-Oxide/releases) page:
 
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+- **Windows**: `.exe` (NSIS Installer)
+- **macOS**: `.dmg` (Disk Image) or `.app` bundle.
+- **Linux**: `.AppImage` or `.deb` package.
 
-### System Dependencies (Linux)
+### Building from Source
 
-Before building, ensure you have the necessary development libraries installed.
+#### Prerequisites
 
-**Ubuntu/Debian:**
+You will need the **Rust** toolchain installed ([rustup.rs](https://rustup.rs/)).
+
+#### System Dependencies (Linux)
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-dev libxkbcommon-dev libdbus-1-dev
 ```
 
-**Fedora:**
+#### Steps
 
-```bash
-sudo dnf install alsa-lib-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-devel
-```
-
-**Arch Linux:**
-
-```bash
-sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus
-```
-
-### Building from Source
-
-1. **Clone the repository:**
+1. **Clone & Build:**
 
    ```bash
    git clone https://github.com/StarTuz/X-Addon-Oxide.git
    cd X-Addon-Oxide
-   ```
-
-2. **Build the project:**
-
-   ```bash
    cargo build --release
    ```
 
-3. **Run the application:**
+2. **Run:**
 
    ```bash
    cargo run --release -p x-adox-gui
    ```
 
-### Installing to System
-
-If you want to install X-ADOX to your system for permanent use:
-
-#### Using Cargo (Binary Only)
-
-This installs the `x-adox-gui` and `x-adox-cli` binaries to your `~/.cargo/bin` directory:
-
-```bash
-cargo install --path crates/xam_gui
-cargo install --path crates/xam_cli
-```
-
-#### Automated Installation (Linux with Desktop Integration)
-
-To install the binary with full desktop menu integration:
-
-1. **Run the install script:**
-
-   ```bash
-   chmod +x scripts/install.sh
-   ./scripts/install.sh
-   ```
-
-This will build the project and install the binaries, desktop entry, and icons to your system.
-
-### Building as AppImage (Recommended for Linux)
-
-We provide a Docker-based build process to ensure maximum compatibility across different Linux distributions:
-
-```bash
-./scripts/build_appimage.sh
-```
-
 ## Contributing
 
 See [GitHub](https://github.com/StarTuz/X-Addon-Oxide) for the latest source and issues.
+
+---
+*Developed with ❤️ for the X-Plane Community.*
