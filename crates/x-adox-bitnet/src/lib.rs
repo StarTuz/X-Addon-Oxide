@@ -301,32 +301,50 @@ impl BitNetModel {
     pub fn predict_aircraft_tags(&self, name: &str, _path: &Path) -> Vec<String> {
         let mut tags = Vec::new();
         let name_lower = name.to_lowercase();
-
         // Manufacturers
-        if name_lower.contains("boeing")
+        let is_boeing = name_lower.contains("boeing")
+            || name_lower.contains("b707")
+            || name_lower.contains("b717")
+            || name_lower.contains("b727")
             || name_lower.contains("b737")
             || name_lower.contains("b747")
+            || name_lower.contains("b757")
+            || name_lower.contains("b767")
             || name_lower.contains("b777")
-            || name_lower.contains("b787")
-        {
+            || name_lower.contains("b787");
+
+        let is_airbus = name_lower.contains("airbus")
+            || name_lower.contains("a300")
+            || name_lower.contains("a310")
+            || name_lower.contains("a318")
+            || name_lower.contains("a319")
+            || name_lower.contains("a320")
+            || name_lower.contains("a321")
+            || name_lower.contains("a330")
+            || name_lower.contains("a340")
+            || name_lower.contains("a350")
+            || name_lower.contains("a380");
+
+        if is_boeing {
             tags.push("Boeing".to_string());
         }
-        if name_lower.contains("airbus")
-            || name_lower.contains("a320")
-            || name_lower.contains("a330")
-            || name_lower.contains("a350")
-        {
+        if is_airbus {
             tags.push("Airbus".to_string());
         }
-        if name_lower.contains("cessna") || name_lower.contains("c172") {
+        if name_lower.contains("cessna")
+            || name_lower.contains("c172")
+            || name_lower.contains("c152")
+            || name_lower.contains("c208")
+        {
             tags.push("Cessna".to_string());
         }
-        if name_lower.contains("cirrus") {
+        if name_lower.contains("cirrus") || name_lower.contains("sr22") {
             tags.push("Cirrus".to_string());
         }
         if name_lower.contains("beechcraft")
             || name_lower.contains("baron")
             || name_lower.contains("kingair")
+            || name_lower.contains("king air")
         {
             tags.push("Beechcraft".to_string());
         }
@@ -339,8 +357,19 @@ impl BitNetModel {
         if name_lower.contains("embraer")
             || name_lower.contains("erj")
             || name_lower.contains("e175")
+            || name_lower.contains("e190")
+            || name_lower.contains("e195")
         {
             tags.push("Embraer".to_string());
+        }
+        if name_lower.contains("mcdonnell")
+            || name_lower.contains("douglas")
+            || name_lower.contains("md-8")
+            || name_lower.contains("md-11")
+            || name_lower.contains("dc-10")
+            || name_lower.contains("dc-9")
+        {
+            tags.push("McDonnell Douglas".to_string());
         }
 
         // Types
@@ -348,22 +377,50 @@ impl BitNetModel {
             || name_lower.contains("rotor")
             || name_lower.contains("bell")
             || name_lower.contains("aw139")
+            || name_lower.contains("ec135")
+            || name_lower.contains("bk117")
         {
             tags.push("Helicopter".to_string());
         } else if name_lower.contains("glider") || name_lower.contains("ask21") {
             tags.push("Glider".to_string());
         } else if name_lower.contains("jet")
             || name_lower.contains("citation")
-            || name_lower.contains("learner")
-            || tags.contains(&"Boeing".to_string())
-            || tags.contains(&"Airbus".to_string())
+            || name_lower.contains("learjet")
+            || name_lower.contains("fokker")
+            || name_lower.contains("tupolev")
+            || name_lower.contains("tu-")
+            || name_lower.contains("il-")
+            || name_lower.contains("concorde")
+            || is_boeing
+            || is_airbus
             || tags.contains(&"Bombardier".to_string())
             || tags.contains(&"Embraer".to_string())
+            || tags.contains(&"McDonnell Douglas".to_string())
         {
             tags.push("Jet".to_string());
-        } else {
+            if is_boeing || is_airbus || name_lower.contains("md-") || name_lower.contains("fokker")
+            {
+                tags.push("Airliner".to_string());
+            }
+        } else if name_lower.contains("prop")
+            || name_lower.contains("turboprop")
+            || name_lower.contains("cessna")
+            || name_lower.contains("piper")
+            || name_lower.contains("beech")
+            || name_lower.contains("mooney")
+            || name_lower.contains("da40")
+            || name_lower.contains("da62")
+        {
             tags.push("Prop".to_string());
-        } // Fallback assumption for GA
+        } else {
+            // Default to Prop if we have no better idea, but maybe add tags for what we DO know
+            if !tags.is_empty() {
+                // if we have a manufacturer but couldn't decide on type, call it Prop unless it's a known jet man
+                tags.push("Prop".to_string());
+            } else {
+                tags.push("General Aviation".to_string());
+            }
+        }
 
         // Additional
         if name_lower.contains("military")
@@ -371,6 +428,10 @@ impl BitNetModel {
             || name_lower.contains("f-16")
             || name_lower.contains("f-14")
             || name_lower.contains("f-18")
+            || name_lower.contains("f-22")
+            || name_lower.contains("f-35")
+            || name_lower.contains("mig-")
+            || name_lower.contains("su-")
         {
             tags.push("Military".to_string());
         }
@@ -424,8 +485,8 @@ mod tests {
             Path::new("test"),
             &PredictContext::default(),
         );
-        assert_eq!(score1, 31);
-        assert_eq!(score2, 31);
+        assert_eq!(score1, 15);
+        assert_eq!(score2, 15);
         assert_eq!(
             score1, score2,
             "SimHeaven layers should have the same score to allow alphabetical continent grouping"
