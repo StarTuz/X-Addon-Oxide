@@ -3,6 +3,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+pub mod parser;
 
 #[derive(Debug, Clone, Default)]
 pub struct PredictContext {
@@ -315,6 +316,27 @@ impl BitNetModel {
 
         let name_lower = text_to_check;
 
+        // --- Step 0: Try Native Parsing ---
+        // Attempt to parse the .acf file to get definitive data
+        let parsed_data = parser::parse_acf_in_dir(path).ok();
+
+        if parsed_data.is_some() {
+            println!("[BitNet] Successfully parsed ACF for path: {:?}", path);
+        }
+
+        let mut definitive_prop_type = None;
+        if let Some(data) = &parsed_data {
+            // Use description/author for keywords if available
+            if !data.description.is_empty() {
+                // Append description to text check for better context
+                // (e.g. if desc says "USAF Bomber", we catch it)
+            }
+
+            if let Some(pt) = &data.prop_type {
+                definitive_prop_type = Some(pt.clone());
+            }
+        }
+
         // --- Step 1: Detect Manufacturers & Core Brands ---
         let is_boeing = name_lower.contains("boeing") || name_lower.contains("b7");
         let is_airbus = name_lower.contains("airbus") || name_lower.contains("a3");
@@ -355,6 +377,18 @@ impl BitNetModel {
             || name_lower.contains("g-")
             || name_lower.contains("g550")
             || name_lower.contains("g650");
+
+        let is_socata = name_lower.contains("socata") || name_lower.contains("tbm");
+        let is_robin = name_lower.contains("robin") || name_lower.contains("dr400");
+        let is_vans = name_lower.contains("van's") || name_lower.contains("rv-");
+        let is_pilatus = name_lower.contains("pilatus")
+            || name_lower.contains("pc-")
+            || name_lower.contains("pc12")
+            || name_lower.contains("pc24");
+        let is_icon = name_lower.contains("icon") && name_lower.contains("a5");
+        let is_flight_design = name_lower.contains("flight design")
+            || name_lower.contains("ctsw")
+            || name_lower.contains("ctls");
 
         if is_boeing {
             tags.push("Boeing".to_string());
@@ -405,6 +439,9 @@ impl BitNetModel {
             || name_lower.contains("discus");
         let is_military = name_lower.contains("military")
             || name_lower.contains("fighter")
+            || name_lower.contains("bomber")
+            || name_lower.contains("tanker")
+            || name_lower.contains("awacs")
             || name_lower.contains("f-")
             || name_lower.contains("mig-")
             || name_lower.contains("su-")
@@ -412,7 +449,14 @@ impl BitNetModel {
             || name_lower.contains("mustang")
             || name_lower.contains("p-51")
             || name_lower.contains("t-6")
-            || name_lower.contains("j-");
+            || name_lower.contains("j-")
+            || name_lower.contains("vulcan")
+            || name_lower.contains("mirage")
+            || name_lower.contains("rafale")
+            || name_lower.contains("eurofighter")
+            || name_lower.contains("typhoon")
+            || name_lower.contains("tornado")
+            || name_lower.contains("harrier");
 
         // --- Step 3: Detection Pass 2: Propulsion ---
         let is_jet = name_lower.contains("jet")
@@ -438,7 +482,14 @@ impl BitNetModel {
             || name_lower.contains("f-8")
             || name_lower.contains("f-22")
             || name_lower.contains("mig-")
-            || name_lower.contains("su-");
+            || name_lower.contains("su-")
+            || name_lower.contains("vulcan")
+            || name_lower.contains("mirage")
+            || name_lower.contains("rafale")
+            || name_lower.contains("eurofighter")
+            || name_lower.contains("typhoon")
+            || name_lower.contains("tornado")
+            || name_lower.contains("harrier");
         let is_turboprop = name_lower.contains("turboprop")
             || name_lower.contains("kingair")
             || name_lower.contains("king air")
@@ -486,6 +537,9 @@ impl BitNetModel {
             || name_lower.contains("ilyushin")
             || name_lower.contains("il-")
             || name_lower.contains("yak-")
+            || name_lower.contains("antonov")
+            || name_lower.contains("an-")
+            || (name_lower.contains("sukhoi") && name_lower.contains("superjet"))
             || name_lower.contains("bac")
             || name_lower.contains("vickers")
             // Strict Commercial Keywords
@@ -529,6 +583,21 @@ impl BitNetModel {
             // This prevents "Unknown Jets" (which are usually airliners) from falling into GA.
             let likely_airliner = is_airliner || (is_jet && !is_bizjet);
 
+            // Define "Positively GA" to avoid fallback for unknowns
+            let is_positively_ga = is_cessna
+                || is_piper
+                || is_beech
+                || is_mooney
+                || is_diamond
+                || is_cirrus
+                || is_socata
+                || is_robin
+                || is_vans
+                || is_pilatus
+                || is_icon
+                || is_flight_design
+                || is_bizjet;
+
             if likely_airliner {
                 tags.push("Airliner".to_string());
                 if is_jet {
@@ -536,14 +605,13 @@ impl BitNetModel {
                 } else if is_turboprop {
                     tags.push("Turboprop".to_string());
                 } else if !is_airliner && !is_jet {
-                    // If we only guessed it's an airliner because of "Airways" but it's not a jet (maybe a prop airliner),
-                    // we still tag it. But let's check propulsion.
+                    // Prop airliner
                     tags.push("Prop".to_string());
                 } else {
                     tags.push("Prop".to_string());
                 }
-            } else {
-                // Default to General Aviation for everything else that isn't military, glider or helicopter
+            } else if is_positively_ga {
+                // Default to General Aviation for known GA types
                 tags.push("General Aviation".to_string());
 
                 if is_bizjet {
@@ -557,7 +625,48 @@ impl BitNetModel {
                 } else {
                     tags.push("Prop".to_string());
                 }
+            } else {
+                // No specific category identified (not Airliner, Military, or known GA)
+                // Do NOT tag as "Unknown" or "General Aviation". Just define propulsion.
+
+                if is_jet {
+                    tags.push("Jet".to_string());
+                } else if is_turboprop {
+                    tags.push("Turboprop".to_string());
+                } else {
+                    tags.push("Prop".to_string());
+                }
             }
+        }
+
+        // --- Step 6: Apply Definitive Parser Overrides ---
+        if let Some(pt) = definitive_prop_type {
+            // Remove guessed propulsion tags first
+            tags.retain(|t| t != "Jet" && t != "Prop" && t != "Turboprop" && t != "Electric");
+
+            match pt {
+                parser::PropType::LoBypassJet | parser::PropType::HiBypassJet => {
+                    tags.push("Jet".to_string());
+                }
+                parser::PropType::FreeTurbine | parser::PropType::FixedTurbine => {
+                    tags.push("Turboprop".to_string());
+                }
+                parser::PropType::RecipCarb | parser::PropType::RecipInjected => {
+                    tags.push("Prop".to_string());
+                }
+                parser::PropType::Electric => {
+                    tags.push("Prop".to_string()); // Treat electric as prop key for filtering for now
+                }
+                parser::PropType::Rocket | parser::PropType::TipRockets => {
+                    tags.push("Jet".to_string()); // Rockets are closer to jets? Or distinct? Defaults to Jet for now.
+                }
+                _ => {}
+            }
+
+            // If checking for "Unknown" tags, we might want to resolve it?
+            // If parsed successfully, is it still "Unknown"?
+            // Maybe we trust the parser's logic for "Airliner" vs "GA" based on description?
+            // For now, let's just fix the propulsion.
         }
 
         // Additional Context Tags
@@ -720,5 +829,70 @@ mod tests {
         assert!(tags.contains(&"Airliner".to_string()));
         assert!(tags.contains(&"Jet".to_string()));
         assert!(!tags.contains(&"General Aviation".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_unknown_prop() {
+        // A truly unknown prop should have NO category (not GA, not Unknown), just Prop
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Mystery Machine Prop", Path::new("test"));
+        assert!(!tags.contains(&"Unknown".to_string()));
+        assert!(tags.contains(&"Prop".to_string()));
+        assert!(!tags.contains(&"General Aviation".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_vulcan_bomber() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Avro Vulcan B2", Path::new("test"));
+        assert!(tags.contains(&"Military".to_string()));
+        assert!(tags.contains(&"Jet".to_string()));
+        assert!(!tags.contains(&"General Aviation".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_il76_cargo() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Ilyushin Il-76", Path::new("test"));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(!tags.contains(&"General Aviation".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_pc12_ga() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Pilatus PC-12", Path::new("test"));
+        assert!(tags.contains(&"General Aviation".to_string()));
+        assert!(tags.contains(&"Turboprop".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_with_acf_parsing() -> Result<()> {
+        use std::io::Write;
+        use tempfile::tempdir;
+
+        // 1. Setup temp dir and acf file
+        let dir = tempdir()?;
+        let acf_path = dir.path().join("test.acf");
+        let mut file = std::fs::File::create(&acf_path)?;
+
+        // Write ACF header forcing it to be a Jet (1)
+        writeln!(file, "I")?;
+        writeln!(file, "1000 Version")?;
+        writeln!(file, "P acf/_descrip Forced Jet Type")?;
+        writeln!(file, "P acf/_engn/0/_type 4")?; // 4 = LoBypassJet
+
+        // 2. Predict using a name that would normally default to Prop or Unknown
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Unknown Aircraft", dir.path());
+
+        // 3. Verify that the parser override worked
+        assert!(
+            tags.contains(&"Jet".to_string()),
+            "Should be detected as Jet from ACF"
+        );
+        assert!(!tags.contains(&"Prop".to_string()), "Should NOT be Prop");
+
+        Ok(())
     }
 }
