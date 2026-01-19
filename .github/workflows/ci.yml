@@ -26,7 +26,7 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bin: x-adox-gui
-            formats: appimage
+            formats: binary
           - name: Windows
             os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -106,7 +106,6 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          dist/appimage/*.AppImage
           dist/nsis/*.exe
           dist/dmg/*.dmg
           dist/macos/*.app
