@@ -21,6 +21,12 @@ The sidebar on the left organizes your library into four categories:
 - **Map View**: Scenery packages are plotted as green dots on the world map.
 - **Toggling**: Use the **Enable/Disable** buttons on scenery cards. This modifies your `scenery_packs.ini` instantly.
 - **Inspector**: Hover over a card to see details in the Inspector Panel, including tile coordinates and airport counts.
+- **Interactive Sorting**: Hover over a scenery card to reveal **Move Up** and **Move Down** arrows. Manual reorders instantly create a **Pin** (Red Icon) which the AI will honor forever.
+- **Smart Pinning**: Any manual adjustment "teaches" the AI your preferred order. Pinned items are highlighted with a red glow and icon.
+- **Clear All Pins**: If you want to undo your manual reorders, use the button at the top of the Scenery list to revert to the default AI logic.
+
+> [!IMPORTANT]
+> **Applying Changes**: Manual reorders and pins update the AI's internal logic immediately. However, to write the new order to your actual X-Plane `scenery_packs.ini` file, you must click the **Smart Sort** button and then **Apply Changes** in the Simulation Report.
 
 > [!NOTE]
 > **Expected Behavior**: When running "Smart Sort", X-ADOX adds helpful headers and spacing to your `scenery_packs.ini`. However, X-Plane 12 automatically "sanitizes" this file on load, removing all comments and blank lines. **This is normal**; your custom sorting order remains perfectly intact, even if the visual formatting is removed by the sim.

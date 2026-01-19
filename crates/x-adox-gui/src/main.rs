@@ -1,6 +1,6 @@
 use iced::widget::{
     button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, slider,
-    svg, text, text_editor, tooltip, Column,
+    svg, text, text_editor, tooltip, Column, Row,
 };
 use iced::{Background, Border, Color, Element, Length, Renderer, Shadow, Task, Theme};
 use std::path::PathBuf;
@@ -129,6 +129,16 @@ enum Message {
     SetPriority(String, u8),
     RemovePriority(String),
     CancelPriorityEdit,
+
+    // Interactive Sorting (Phase 4)
+    MovePack(String, MoveDirection),
+    ClearAllPins,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MoveDirection {
+    Up,
+    Down,
 }
 
 struct App {
@@ -183,6 +193,10 @@ struct App {
 
     // Sticky Sort Editing
     editing_priority: Option<(String, u8)>,
+
+    // Phase 4 Icons
+    icon_arrow_up: svg::Handle,
+    icon_arrow_down: svg::Handle,
 }
 
 impl App {
@@ -244,6 +258,12 @@ impl App {
             ignored_issues: std::collections::HashSet::new(),
             expanded_issue_groups: std::collections::HashSet::new(),
             editing_priority: None,
+            icon_arrow_up: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/arrow_up.svg").to_vec(),
+            ),
+            icon_arrow_down: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/arrow_down.svg").to_vec(),
+            ),
         };
 
         let tasks = if let Some(r) = root {
@@ -658,6 +678,64 @@ impl App {
             }
             Message::CancelPriorityEdit => {
                 self.editing_priority = None;
+                Task::none()
+            }
+            Message::MovePack(name, direction) => {
+                if let Some(idx) = self.packs.iter().position(|p| p.name == name) {
+                    let neighbor_idx = match direction {
+                        MoveDirection::Up => {
+                            if idx == 0 {
+                                None
+                            } else {
+                                Some(idx - 1)
+                            }
+                        }
+                        MoveDirection::Down => {
+                            if idx + 1 >= self.packs.len() {
+                                None
+                            } else {
+                                Some(idx + 1)
+                            }
+                        }
+                    };
+
+                    if let Some(n_idx) = neighbor_idx {
+                        let neighbor_name = self.packs[n_idx].name.clone();
+
+                        // Get neighbor's current score
+                        let neighbor_score = self.heuristics_model.predict(
+                            &neighbor_name,
+                            std::path::Path::new(""),
+                            &x_adox_bitnet::PredictContext {
+                                region_focus: self.region_focus.clone(),
+                            },
+                        );
+
+                        // Calculate new score for our target
+                        let new_score = match direction {
+                            MoveDirection::Up => neighbor_score.saturating_sub(1),
+                            MoveDirection::Down => neighbor_score.saturating_add(1),
+                        };
+
+                        // Pin it!
+                        self.heuristics_model
+                            .config
+                            .overrides
+                            .insert(name.clone(), new_score);
+                        let _ = self.heuristics_model.save();
+
+                        // Locally swap to provide instant feedback
+                        self.packs.swap(idx, n_idx);
+                        self.status = format!("Moved {} and pinned to score {}", name, new_score);
+                    }
+                }
+                Task::none()
+            }
+            Message::ClearAllPins => {
+                self.heuristics_model.config.overrides.clear();
+                let _ = self.heuristics_model.save();
+                self.resort_scenery();
+                self.status = "All manual reorder pins cleared".to_string();
                 Task::none()
             }
             Message::Refresh => {
@@ -1706,6 +1784,19 @@ impl App {
         .into()
     }
 
+    fn resort_scenery(&mut self) {
+        let context = x_adox_bitnet::PredictContext {
+            region_focus: self.region_focus.clone(),
+        };
+        let model = &self.heuristics_model;
+
+        self.packs.sort_by(|a, b| {
+            let score_a = model.predict(&a.name, std::path::Path::new(""), &context);
+            let score_b = model.predict(&b.name, std::path::Path::new(""), &context);
+            score_a.cmp(&score_b)
+        });
+    }
+
     fn sidebar_button(&self, label: &'static str, tab: Tab) -> Element<'_, Message> {
         let is_active = self.active_tab == tab;
 
@@ -1850,9 +1941,38 @@ impl App {
         let list_container = scrollable(list).id(self.scenery_scroll_id.clone());
 
         column![
-            row![text("Scenery Library").size(24).width(Length::Fill)]
-                .align_y(iced::Alignment::Center)
-                .padding(10),
+            row![
+                text("Scenery Library").size(24).width(Length::Fill),
+                if !self.heuristics_model.config.overrides.is_empty() {
+                    let btn: Element<'_, Message> =
+                        button(
+                            Row::<Message, Theme, Renderer>::new()
+                                .push(svg(self.icon_pin.clone()).width(14).height(14).style(
+                                    |_, _| svg::Style {
+                                        color: Some(style::palette::ACCENT_RED),
+                                    },
+                                ))
+                                .push(
+                                    text(format!(
+                                        "Clear All Pins ({})",
+                                        self.heuristics_model.config.overrides.len()
+                                    ))
+                                    .size(12),
+                                )
+                                .spacing(8)
+                                .align_y(iced::Alignment::Center),
+                        )
+                        .on_press(Message::ClearAllPins)
+                        .style(style::button_secondary)
+                        .padding([6, 12])
+                        .into();
+                    btn
+                } else {
+                    iced::widget::Space::new(Length::Fixed(0.0), Length::Fixed(0.0)).into()
+                }
+            ]
+            .align_y(iced::Alignment::Center)
+            .padding(10),
             list_container
         ]
         .spacing(10)
@@ -2129,9 +2249,42 @@ impl App {
         .padding([5, 10])
         .width(Length::Fixed(80.0));
 
-        let content_row = row![status_dot, info_col, type_tag, pin_btn, action_btn]
-            .spacing(15)
-            .align_y(iced::Alignment::Center);
+        let move_up_btn = button(
+            svg(self.icon_arrow_up.clone())
+                .width(Length::Fixed(12.0))
+                .height(Length::Fixed(12.0))
+                .style(move |_: &Theme, _| svg::Style {
+                    color: Some(style::palette::TEXT_SECONDARY),
+                }),
+        )
+        .on_press(Message::MovePack(pack.name.clone(), MoveDirection::Up))
+        .style(style::button_ghost)
+        .padding(4);
+
+        let move_down_btn = button(
+            svg(self.icon_arrow_down.clone())
+                .width(Length::Fixed(12.0))
+                .height(Length::Fixed(12.0))
+                .style(move |_: &Theme, _| svg::Style {
+                    color: Some(style::palette::TEXT_SECONDARY),
+                }),
+        )
+        .on_press(Message::MovePack(pack.name.clone(), MoveDirection::Down))
+        .style(style::button_ghost)
+        .padding(4);
+
+        let move_controls = column![move_up_btn, move_down_btn].spacing(2);
+
+        let content_row = row![
+            status_dot,
+            info_col,
+            type_tag,
+            move_controls,
+            pin_btn,
+            action_btn
+        ]
+        .spacing(15)
+        .align_y(iced::Alignment::Center);
 
         // Interactive container for selection
         // Interactive container for selection
