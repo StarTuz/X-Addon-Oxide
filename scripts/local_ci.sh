@@ -12,34 +12,18 @@ echo "Starting Local CI Pipeline..."
 echo -e "${GREEN}Step 1: Building Release...${NC}"
 cargo build --release -p x-adox-gui
 
-# 2. Package (Current Platform)
-echo -e "${GREEN}Step 2: Packaging...${NC}"
-if ! cargo packager --version &> /dev/null; then
-    echo "cargo-packager not found. Installing..."
-    cargo install cargo-packager --locked
-fi
+# 2. Run Tests
+echo -e "${GREEN}Step 2: Running Tests...${NC}"
+cargo test
 
-# Run packager
-# We build for the local platform (binary) to verify TOML structure
-cargo packager --release -p x-adox-gui --formats binary
-
-
-# 3. Verify Artifacts
-echo -e "${GREEN}Step 3: Verifying Artifacts...${NC}"
-if [ -d "dist" ]; then
-    echo "Contents of dist/:"
-    ls -R dist/
-    
-    # Check for binary
-    if find dist -name "x-adox-gui" | grep -q .; then
-        echo -e "${GREEN}✓ Binary generated successfully.${NC}"
-    else
-        echo -e "${RED}✗ Binary not found in dist/.${NC}"
-        exit 1
-    fi
-
+# 3. Verify Binary
+echo -e "${GREEN}Step 3: Verifying Binary...${NC}"
+BINARY="target/release/x-adox-gui"
+if [ -f "$BINARY" ]; then
+    echo -e "${GREEN}✓ Binary exists at $BINARY${NC}"
+    ls -lh "$BINARY"
 else
-    echo -e "${RED}✗ dist/ directory not found.${NC}"
+    echo -e "${RED}✗ Binary not found at $BINARY${NC}"
     exit 1
 fi
 

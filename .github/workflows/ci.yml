@@ -26,7 +26,7 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bin: x-adox-gui
-            formats: binary
+            formats: ""
           - name: Windows
             os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -56,13 +56,24 @@ jobs:
     - name: Build
       run: cargo build --release -p x-adox-gui
 
+    - name: Run Tests
+      run: cargo test
+
     - name: Install cargo-packager
       uses: taiki-e/install-action@v2
       with:
         tool: cargo-packager
 
     - name: Package
+      if: matrix.platform.formats != ''
       run: cargo packager --release -p x-adox-gui --formats ${{ matrix.platform.formats }}
+
+    - name: Package Linux Binary
+      if: matrix.platform.name == 'Linux'
+      run: |
+        mkdir -p dist/linux
+        cp target/release/${{ matrix.platform.bin }} dist/linux/
+        cd dist/linux && tar -czvf X-Addon-Oxide-linux-x86_64.tar.gz ${{ matrix.platform.bin }}
 
     - name: Code Sign & Notarize (macOS)
       if: matrix.platform.name == 'macOS' && env.APPLE_CERTIFICATE != ''
@@ -88,7 +99,6 @@ jobs:
         if-no-files-found: warn
         path: |
           dist/**/*
-          *.zip
 
   release:
     name: Create Release
@@ -109,7 +119,7 @@ jobs:
           dist/nsis/*.exe
           dist/dmg/*.dmg
           dist/macos/*.app
-          *.zip
+          dist/linux/*.tar.gz
         draft: false
         prerelease: false
       env:

@@ -64,7 +64,7 @@ fn test_discovery_aircraft() {
     fs::create_dir_all(&aircraft_dir).unwrap();
     fs::write(aircraft_dir.join("Cessna_172.acf"), "ACF BODY").unwrap();
 
-    let results = DiscoveryManager::scan_aircraft(&mock.root.join("Aircraft"));
+    let results = DiscoveryManager::scan_aircraft(&mock.root);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].name, "Cessna 172");
     if let AddonType::Aircraft(ref name) = results[0].addon_type {
