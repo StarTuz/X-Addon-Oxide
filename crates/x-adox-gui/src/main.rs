@@ -1262,7 +1262,7 @@ impl App {
                 iced::widget::Space::new(Length::Fixed(4.0), Length::Fill), // Balancing spacer
                 btn,
                 column![
-                    iced::widget::Space::new(Length::Fill, Length::Fixed(22.0)), // Explicit top offset
+                    iced::widget::Space::new(Length::Fill, Length::Fixed(25.0)), // Explicit top offset
                     container(iced::widget::Space::new(
                         Length::Fixed(4.0),
                         Length::Fixed(48.0)
