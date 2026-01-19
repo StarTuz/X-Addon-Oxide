@@ -66,7 +66,17 @@ jobs:
 
     - name: Package
       if: matrix.platform.formats != ''
-      run: cargo packager --release -p x-adox-gui --formats ${{ matrix.platform.formats }}
+      run: cargo packager --release -p x-adox-gui --formats ${{ matrix.platform.formats }} -v
+
+    - name: List dist contents
+      if: matrix.platform.formats != ''
+      run: |
+        echo "=== Listing dist directory ==="
+        ls -laR dist/ || echo "dist/ not found"
+        echo "=== Listing current directory ==="
+        ls -la
+        echo "=== Finding installer files ==="
+        find . -name "*.exe" -o -name "*.dmg" -o -name "*.app" 2>/dev/null || true
 
     - name: Package Linux Binary
       if: matrix.platform.name == 'Linux'
@@ -99,6 +109,7 @@ jobs:
         if-no-files-found: warn
         path: |
           dist/**/*
+          target/release/bundle/**/*
 
   release:
     name: Create Release
