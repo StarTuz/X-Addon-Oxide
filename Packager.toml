@@ -16,7 +16,7 @@ icons = [
 [product.windows]
 default_install_path = "$PROGRAMFILES/X-Addon-Oxide"
 wix = { language = "en-US" }
-nsis = { compression = "lzma", languages = ["English"] }
+nsis = { compression = "lzma", languages = ["English"], appdata_paths = ["$APPDATA/x-adox/X-Addon-Oxide"] }
 
 [product.macos]
 minimum_system_version = "10.15"
