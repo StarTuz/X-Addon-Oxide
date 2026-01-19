@@ -25,7 +25,6 @@ entitlements = "assets/packaging/entitlements.plist"
 
 [[binaries]]
 filename = "x-adox-gui"
-path = "target/release/x-adox-gui"
 
 [package]
 out_dir = "dist"
