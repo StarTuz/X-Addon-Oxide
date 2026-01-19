@@ -323,7 +323,6 @@ impl BitNetModel {
         }
 
         let name_lower = text_to_check;
-        println!("[DEBUG] name_lower: '{}'", name_lower);
 
         // --- Step 0: Try Native Parsing ---
         // Attempt to parse the .acf file to get definitive data
