@@ -2799,7 +2799,15 @@ fn toggle_plugin(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(
 fn load_aircraft(root: Option<PathBuf>) -> Result<Vec<DiscoveredAddon>, String> {
     let root = root.ok_or("X-Plane root not found")?;
     let aircraft_path = root.join("Aircraft");
-    Ok(DiscoveryManager::scan_aircraft(&aircraft_path))
+    let mut aircraft = DiscoveryManager::scan_aircraft(&aircraft_path);
+
+    // Add tags
+    let bitnet = BitNetModel::new().unwrap_or_default();
+    for ac in &mut aircraft {
+        ac.tags = bitnet.predict_aircraft_tags(&ac.name, &ac.path);
+    }
+
+    Ok(aircraft)
 }
 
 fn load_plugins(root: Option<PathBuf>) -> Result<Vec<DiscoveredAddon>, String> {
