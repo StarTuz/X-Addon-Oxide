@@ -344,7 +344,8 @@ impl BitNetModel {
 
         let is_boeing = matches_any(&[
             "boeing", "b707", "b717", "b727", "b737", "b747", "b757", "b767", "b777", "b787",
-            "b-17", "b-29", "b-52", "c-17", "f-15", "f/a-18", "apache", "chinook",
+            "707-", "717-", "727-", "737-", "747-", "757-", "767-", "777-", "787-", "b-17", "b-29",
+            "b-52", "c-17", "f-15", "f/a-18", "apache", "chinook",
         ]);
         let is_airbus = matches_any(&[
             "airbus",
@@ -375,12 +376,8 @@ impl BitNetModel {
             "mcdonnell",
             "douglas",
             "md-11",
-            "md-80",
-            "md-82",
-            "md-83",
-            "md-87",
-            "md-90",
-            "md-95",
+            "md-8",
+            "md-9",
             "dc-3",
             "dc-4",
             "dc-6",
@@ -398,9 +395,9 @@ impl BitNetModel {
             "challenger",
             "global express",
             "global 5000",
-            "global 6000",
-            "global 7500",
-            "global 8000",
+            "global 6",
+            "global 7",
+            "global 8",
             "learjet",
             "dash 8",
             "q400",
@@ -470,7 +467,6 @@ impl BitNetModel {
             "an-124", "an-225",
         ]);
 
-        // Minor/Other Manufacturers
         let is_mooney = matches_any(&["mooney", "m20"]);
         let is_cirrus = matches_any(&["cirrus", "sr20", "sr22", "sf50"]);
         let is_diamond = matches_any(&["diamond", "da20", "da40", "da42", "da62"]);
@@ -486,78 +482,7 @@ impl BitNetModel {
         let is_icon = matches_any(&["icon", " a5"]);
         let is_flight_design = matches_any(&["flight design", "ctsw", "ctls"]);
 
-        if is_boeing {
-            tags.push("Boeing".to_string());
-        }
-        if is_airbus {
-            tags.push("Airbus".to_string());
-        }
-        if is_cessna {
-            tags.push("Cessna".to_string());
-        }
-        if is_piper {
-            tags.push("Piper".to_string());
-        }
-        if is_beech {
-            tags.push("Beechcraft".to_string());
-        }
-        if is_mooney {
-            tags.push("Mooney".to_string());
-        }
-        if is_diamond {
-            tags.push("Diamond".to_string());
-        }
-        if is_cirrus {
-            tags.push("Cirrus".to_string());
-        }
-        if is_embraer {
-            tags.push("Embraer".to_string());
-        }
-        if is_bombardier {
-            tags.push("Bombardier".to_string());
-        }
-        if is_mcdonnell {
-            tags.push("McDonnell Douglas".to_string());
-        }
-        if is_lockheed {
-            tags.push("Lockheed".to_string());
-        }
-        if is_de_havilland {
-            tags.push("De Havilland".to_string());
-        }
-        if is_socata {
-            tags.push("Socata".to_string());
-        }
-        if is_pilatus {
-            tags.push("Pilatus".to_string());
-        }
-        if is_fokker {
-            tags.push("Fokker".to_string());
-        }
-        if is_gulfstream {
-            tags.push("Gulfstream".to_string());
-        }
-        if is_tupolev {
-            tags.push("Tupolev".to_string());
-        }
-        if is_ilyushin {
-            tags.push("Ilyushin".to_string());
-        }
-        if is_antonov {
-            tags.push("Antonov".to_string());
-        }
-        if is_icon {
-            tags.push("Icon".to_string());
-        }
-        if is_flight_design {
-            tags.push("Flight Design".to_string());
-        }
-        if is_robin {
-            tags.push("Robin".to_string());
-        }
-        if is_vans {
-            tags.push("Van's".to_string());
-        }
+        // (Removed early pushes - moved to Step 7)
 
         // --- Step 2: Detection Pass 1: Broad Category (Special Roles) ---
         let is_helicopter = matches_any(&[
@@ -874,16 +799,13 @@ impl BitNetModel {
         let is_airliner = is_boeing
             || is_airbus
             || is_lockheed
-            || matches_any(&[
-                "mcdonnell",
-                "douglas",
-                "fokker",
-                "bombardier",
-                "embraer",
-                "tupolev",
-                "ilyushin",
-                "antonov",
-            ])
+            || is_mcdonnell
+            || is_fokker
+            || is_bombardier
+            || is_embraer
+            || is_tupolev
+            || is_ilyushin
+            || is_antonov
             || matches_any(&[
                 "atr",
                 "dash 8",
@@ -1044,6 +966,52 @@ impl BitNetModel {
             // For now, let's just fix the propulsion.
         }
 
+        // --- Step 7: Apply Manufacturer Tags (Consolidated) ---
+        if is_boeing {
+            tags.push("Boeing".to_string());
+        }
+        if is_airbus {
+            tags.push("Airbus".to_string());
+        }
+        if is_cessna {
+            tags.push("Cessna".to_string());
+        }
+        if is_piper {
+            tags.push("Piper".to_string());
+        }
+        if is_beech {
+            tags.push("Beechcraft".to_string());
+        }
+        if is_mooney {
+            tags.push("Mooney".to_string());
+        }
+        if is_diamond {
+            tags.push("Diamond".to_string());
+        }
+        if is_cirrus {
+            tags.push("Cirrus".to_string());
+        }
+        if is_embraer {
+            tags.push("Embraer".to_string());
+        }
+        if is_bombardier {
+            tags.push("Bombardier".to_string());
+        }
+        if is_mcdonnell {
+            tags.push("McDonnell Douglas".to_string());
+        }
+        if is_lockheed {
+            tags.push("Lockheed".to_string());
+        }
+        if is_de_havilland {
+            tags.push("De Havilland".to_string());
+        }
+        if is_socata {
+            tags.push("Socata".to_string());
+        }
+        if is_pilatus {
+            tags.push("Pilatus".to_string());
+        }
         if is_fokker {
             tags.push("Fokker".to_string());
         }
@@ -1355,5 +1323,30 @@ mod tests {
         assert!(!tags.contains(&"Prop".to_string()), "Should NOT be Prop");
 
         Ok(())
+    }
+
+    #[test]
+    fn test_predict_tags_boeing_707() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Boeing 707", Path::new("test"));
+        assert!(tags.contains(&"Boeing".to_string()));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(tags.contains(&"Jet".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_standalone_707() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("707-320C", Path::new("test"));
+        assert!(tags.contains(&"Boeing".to_string()));
+        assert!(tags.contains(&"Airliner".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_airbus_standalone_320() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("A320neo", Path::new("test"));
+        assert!(tags.contains(&"Airbus".to_string()));
+        assert!(tags.contains(&"Airliner".to_string()));
     }
 }
