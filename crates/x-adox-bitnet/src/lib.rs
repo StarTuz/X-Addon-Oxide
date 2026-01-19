@@ -315,6 +315,7 @@ impl BitNetModel {
         }
 
         let name_lower = text_to_check;
+        println!("[DEBUG] name_lower: '{}'", name_lower);
 
         // --- Step 0: Try Native Parsing ---
         // Attempt to parse the .acf file to get definitive data
@@ -338,57 +339,152 @@ impl BitNetModel {
         }
 
         // --- Step 1: Detect Manufacturers & Core Brands ---
-        let is_boeing = name_lower.contains("boeing") || name_lower.contains("b7");
-        let is_airbus = name_lower.contains("airbus") || name_lower.contains("a3");
-        let is_cessna = name_lower.contains("cessna")
-            || name_lower.contains("c172")
-            || name_lower.contains("c152")
-            || name_lower.contains("c208");
-        let is_piper = name_lower.contains("piper")
-            || name_lower.contains("pa-")
-            || name_lower.contains("archer")
-            || name_lower.contains("warrior");
-        let is_beech = name_lower.contains("beech")
-            || name_lower.contains("kingair")
-            || name_lower.contains("baron")
-            || name_lower.contains("bonanza");
-        let is_mooney = name_lower.contains("mooney");
-        let is_cirrus = name_lower.contains("cirrus")
-            || name_lower.contains("sr22")
-            || name_lower.contains("sf50");
-        let is_diamond = name_lower.contains("diamond")
-            || name_lower.contains("da40")
-            || name_lower.contains("da42")
-            || name_lower.contains("da62");
-        let is_embraer = name_lower.contains("embraer")
-            || name_lower.contains("erj")
-            || name_lower.contains("e1")
-            || name_lower.contains("e2")
-            || name_lower.contains("phenom");
-        let is_bombardier = name_lower.contains("bombardier")
-            || name_lower.contains("crj")
-            || name_lower.contains("challenger")
-            || name_lower.contains("global");
-        let is_mcdonnell = name_lower.contains("mcdonnell")
-            || name_lower.contains("douglas")
-            || name_lower.contains("md-")
-            || name_lower.contains("dc-");
-        let is_gulfstream = name_lower.contains("gulfstream")
-            || name_lower.contains("g-")
-            || name_lower.contains("g550")
-            || name_lower.contains("g650");
+        // Helper to check for keywords in a list
+        let matches_any = |keywords: &[&str]| keywords.iter().any(|&k| name_lower.contains(k));
 
-        let is_socata = name_lower.contains("socata") || name_lower.contains("tbm");
-        let is_robin = name_lower.contains("robin") || name_lower.contains("dr400");
-        let is_vans = name_lower.contains("van's") || name_lower.contains("rv-");
-        let is_pilatus = name_lower.contains("pilatus")
-            || name_lower.contains("pc-")
-            || name_lower.contains("pc12")
-            || name_lower.contains("pc24");
-        let is_icon = name_lower.contains("icon") && name_lower.contains("a5");
-        let is_flight_design = name_lower.contains("flight design")
-            || name_lower.contains("ctsw")
-            || name_lower.contains("ctls");
+        let is_boeing = matches_any(&[
+            "boeing", "b707", "b717", "b727", "b737", "b747", "b757", "b767", "b777", "b787",
+            "b-17", "b-29", "b-52", "c-17", "f-15", "f/a-18", "apache", "chinook",
+        ]);
+        let is_airbus = matches_any(&[
+            "airbus",
+            "a300",
+            "a310",
+            "a318",
+            "a319",
+            "a320",
+            "a321",
+            "a330",
+            "a340",
+            "a350",
+            "a380",
+            "a220",
+            "beluga",
+            "a400m",
+            "c295",
+            "h125",
+            "h135",
+            "h145",
+            "h160",
+            "h175",
+            "h225",
+            "eurofighter",
+            "typhoon",
+        ]);
+        let is_mcdonnell = matches_any(&[
+            "mcdonnell",
+            "douglas",
+            "md-11",
+            "md-80",
+            "md-82",
+            "md-83",
+            "md-87",
+            "md-90",
+            "md-95",
+            "dc-3",
+            "dc-4",
+            "dc-6",
+            "dc-8",
+            "dc-9",
+            "dc-10",
+            "kc-10",
+            "a-4",
+            "f-4",
+            "phantom",
+        ]);
+        let is_bombardier = matches_any(&[
+            "bombardier",
+            "crj",
+            "challenger",
+            "global express",
+            "global 5000",
+            "global 6000",
+            "global 7500",
+            "global 8000",
+            "learjet",
+            "dash 8",
+            "q400",
+        ]);
+        let is_embraer = matches_any(&[
+            "embraer", "erj", "e170", "e175", "e190", "e195", "phenom", "legacy", "praetor",
+            "tucano", "emb-", "emb 110", "emb 120",
+        ]);
+        let is_lockheed = matches_any(&[
+            "lockheed",
+            "c-130",
+            "hercules",
+            "f-16",
+            "f-22",
+            "raptor",
+            "f-35",
+            "l-1011",
+            "tristar",
+            "constellation",
+            "p-3",
+            "orion",
+            "u-2",
+        ]);
+        let is_cessna = matches_any(&[
+            "cessna", "c150", "c152", "c172", "c182", "c206", "c208", "c210", "c310", "c340",
+            "c402", "c404", "c421", "citation", "caravan",
+        ]);
+        let is_piper = matches_any(&[
+            "piper", "pa-18", "pa-28", "pa-31", "pa-32", "pa-34", "pa-44", "pa-46", "archer",
+            "warrior", "seneca", "seminole", "navajo", "cheyenne", "malibu", "meridian",
+        ]);
+        let is_beech = matches_any(&[
+            "beech", "kingair", "king air", "baron", "bonanza", "be36", "be58", "be200", "be300",
+            "be350", "be90", "be99", "be1900",
+        ]);
+        let is_gulfstream = matches_any(&[
+            "gulfstream",
+            " g-",
+            "giv",
+            "gv",
+            "g450",
+            "g550",
+            "g650",
+            "g700",
+            "g800",
+        ]);
+        let is_de_havilland = matches_any(&[
+            "de havilland",
+            "dhc-2",
+            "dhc-3",
+            "dhc-6",
+            "dhc-8",
+            "beaver",
+            "otter",
+            "twin otter",
+            "dash 8",
+            "mosquito",
+            "comet",
+        ]);
+        let is_fokker = matches_any(&["fokker", "f27", "f50", "f70", "f100"]);
+        let is_tupolev = matches_any(&[
+            "tupolev", "tu-134", "tu-154", "tu-204", "tu-214", "tu-160", "tu-95",
+        ]);
+        let is_ilyushin = matches_any(&["ilyushin", "il-18", "il-62", "il-76", "il-86", "il-96"]);
+        let is_antonov = matches_any(&[
+            "antonov", "an-2", "an-12", "an-24", "an-26", "an-30", "an-32", "an-72", "an-74",
+            "an-124", "an-225",
+        ]);
+
+        // Minor/Other Manufacturers
+        let is_mooney = matches_any(&["mooney", "m20"]);
+        let is_cirrus = matches_any(&["cirrus", "sr20", "sr22", "sf50"]);
+        let is_diamond = matches_any(&["diamond", "da20", "da40", "da42", "da62"]);
+        let is_socata = matches_any(&[
+            "socata", "tbm700", "tbm850", "tbm900", "tbm910", "tbm930", "tbm940", "tbm960",
+        ]);
+        let is_robin = matches_any(&["robin", "dr400"]);
+        let is_vans = matches_any(&[
+            "van's", "rv-4", "rv-6", "rv-7", "rv-8", "rv-9", "rv-10", "rv-12", "rv-14",
+        ]);
+        let is_pilatus =
+            matches_any(&["pilatus", "pc-6", "pc-7", "pc-9", "pc-12", "pc-21", "pc-24"]);
+        let is_icon = matches_any(&["icon", " a5"]);
+        let is_flight_design = matches_any(&["flight design", "ctsw", "ctls"]);
 
         if is_boeing {
             tags.push("Boeing".to_string());
@@ -423,143 +519,411 @@ impl BitNetModel {
         if is_mcdonnell {
             tags.push("McDonnell Douglas".to_string());
         }
+        if is_lockheed {
+            tags.push("Lockheed".to_string());
+        }
+        if is_de_havilland {
+            tags.push("De Havilland".to_string());
+        }
+        if is_socata {
+            tags.push("Socata".to_string());
+        }
+        if is_pilatus {
+            tags.push("Pilatus".to_string());
+        }
+        if is_fokker {
+            tags.push("Fokker".to_string());
+        }
+        if is_gulfstream {
+            tags.push("Gulfstream".to_string());
+        }
+        if is_tupolev {
+            tags.push("Tupolev".to_string());
+        }
+        if is_ilyushin {
+            tags.push("Ilyushin".to_string());
+        }
+        if is_antonov {
+            tags.push("Antonov".to_string());
+        }
+        if is_icon {
+            tags.push("Icon".to_string());
+        }
+        if is_flight_design {
+            tags.push("Flight Design".to_string());
+        }
+        if is_robin {
+            tags.push("Robin".to_string());
+        }
+        if is_vans {
+            tags.push("Van's".to_string());
+        }
 
         // --- Step 2: Detection Pass 1: Broad Category (Special Roles) ---
-        let is_helicopter = name_lower.contains("helicopter")
-            || name_lower.contains("rotor")
-            || name_lower.contains("bell")
-            || name_lower.contains("aw139")
-            || name_lower.contains("ec135")
-            || name_lower.contains("bk117")
-            || name_lower.contains("cabri")
-            || name_lower.contains("sikorsky");
-        let is_glider = name_lower.contains("glider")
-            || name_lower.contains("ask21")
-            || name_lower.contains("ls8")
-            || name_lower.contains("discus");
-        let is_military = name_lower.contains("military")
-            || name_lower.contains("fighter")
-            || name_lower.contains("bomber")
-            || name_lower.contains("tanker")
-            || name_lower.contains("awacs")
-            || name_lower.contains("f-")
-            || name_lower.contains("mig-")
-            || name_lower.contains("su-")
-            || name_lower.contains("spitfire")
-            || name_lower.contains("mustang")
-            || name_lower.contains("p-51")
-            || name_lower.contains("t-6")
-            || name_lower.contains("j-")
-            || name_lower.contains("vulcan")
-            || name_lower.contains("mirage")
-            || name_lower.contains("rafale")
-            || name_lower.contains("eurofighter")
-            || name_lower.contains("typhoon")
-            || name_lower.contains("tornado")
-            || name_lower.contains("harrier");
+        let is_helicopter = matches_any(&[
+            "helicopter",
+            "rotor",
+            "bell",
+            "aw139",
+            "ec135",
+            "bk117",
+            "cabri",
+            "sikorsky",
+            "robinson",
+            "r22",
+            "r44",
+            "r66",
+            "guimbal",
+            "eurocopter",
+            "airbus helicopters",
+            "as350",
+            "h125",
+            "h135",
+            "h145",
+        ]);
+        let is_glider = matches_any(&[
+            "glider",
+            "sailplane",
+            "ask21",
+            "ls8",
+            "discus",
+            "schleicher",
+            "schempp-hirth",
+            "dg flugzeugbau",
+        ]);
+
+        let is_military = matches_any(&[
+            "military",
+            "fighter",
+            "bomber",
+            "tanker",
+            "awacs",
+            "trainer",
+            "usaf",
+            "navy",
+            "royal air force",
+            "luftwaffe",
+            "f-4",
+            "f-5",
+            "f-8",
+            "f-14",
+            "f-15",
+            "f-16",
+            "f-18",
+            "f-22",
+            "f-35",
+            "f-104",
+            "f-117",
+            "b-1b",
+            "rockwell b-1",
+            "b-2 spirit",
+            "b-17",
+            "b-24",
+            "b-25",
+            "b-29",
+            "b-47",
+            "b-52",
+            "b-58",
+            "c-5",
+            "c-17",
+            "c-47",
+            "c-130",
+            "kc-10",
+            "kc-135",
+            "douglas a-4",
+            "mcdonnell a-4",
+            "skyhawk a-4",
+            "a-6",
+            "a-10",
+            "av-8b",
+            "sr-71",
+            "u-2",
+            "t-6 texan",
+            "t-33",
+            "t-37",
+            "t-38",
+            "t-45",
+            "t-6a",
+            "mig-",
+            "su-2",
+            "su-3",
+            "su-5",
+            "tu-95",
+            "tu-160",
+            // "il-76", // Removed to favor Airliner/Cargo tagging (IL-76 is often used as freighter)
+            // "an-12", // Removed to favor Airliner/Cargo
+            "an-124",
+            "an-225",
+            "spitfire",
+            "hurricane",
+            "mustang",
+            "corsair",
+            "zero",
+            "messerschmitt",
+            "fw190",
+            "bf109",
+            "me262",
+            "eurofighter",
+            "typhoon",
+            "tornado",
+            "rafale",
+            "mirage",
+            "gripen",
+            "viggen",
+            "draken",
+            "vulcan",
+            "victor",
+            "valiant",
+            "harrier",
+            "hawk t1",
+            "hawk t2",
+            "bae hawk",
+            "apache",
+            "chinook",
+            "blackhawk",
+            "cobra",
+            "hind",
+            "mi-8",
+            "mi-24",
+        ]);
 
         // --- Step 3: Detection Pass 2: Propulsion ---
-        let is_jet = name_lower.contains("jet")
-            || name_lower.contains("citation")
-            || name_lower.contains("lear")
-            || is_boeing
-            || is_airbus
-            || is_gulfstream
-            || name_lower.contains("crj")
-            || name_lower.contains("erj")
-            || name_lower.contains("fokker")
-            || name_lower.contains("tupolev")
-            || name_lower.contains("il-")
-            || name_lower.contains("concorde")
-            || name_lower.contains("trident")
-            || name_lower.contains("comet")
-            || name_lower.contains("caravelle")
-            || name_lower.contains("md-")
-            || name_lower.contains("dc-")
-            || name_lower.contains("f-1")
-            || name_lower.contains("f-2")
-            || name_lower.contains("f-3")
-            || name_lower.contains("f-8")
-            || name_lower.contains("f-22")
-            || name_lower.contains("mig-")
-            || name_lower.contains("su-")
-            || name_lower.contains("vulcan")
-            || name_lower.contains("mirage")
-            || name_lower.contains("rafale")
-            || name_lower.contains("eurofighter")
-            || name_lower.contains("typhoon")
-            || name_lower.contains("tornado")
-            || name_lower.contains("harrier");
-        let is_turboprop = name_lower.contains("turboprop")
-            || name_lower.contains("kingair")
-            || name_lower.contains("king air")
-            || name_lower.contains("tbm")
-            || name_lower.contains("pc12")
-            || name_lower.contains("pc-12")
-            || name_lower.contains("q400")
-            || name_lower.contains("dhc-")
-            || name_lower.contains("atr")
-            || name_lower.contains("caravan")
-            || name_lower.contains("c208")
-            || name_lower.contains("kodiak")
-            || name_lower.contains("ansel")
-            || name_lower.contains("an-")
-            || name_lower.contains("t-6")
-            || name_lower.contains("t6");
+        let is_known_jet_model = matches_any(&[
+            // Airliners
+            "b707",
+            "b717",
+            "b727",
+            "b737",
+            "b747",
+            "b757",
+            "b767",
+            "b777",
+            "b787",
+            "a300",
+            "a310",
+            "a318",
+            "a319",
+            "a320",
+            "a321",
+            "a330",
+            "a340",
+            "a350",
+            "a380",
+            "dc-8",
+            "dc-9",
+            "dc-10",
+            "md-11",
+            "md-80",
+            "md-90",
+            "md-95",
+            "crj",
+            "erj",
+            "e170",
+            "e175",
+            "e190",
+            "e195",
+            "f70",
+            "f100",
+            "baebb",
+            "rj85",
+            "rj100",
+            "tu-134",
+            "tu-154",
+            "tu-204",
+            "il-62",
+            "il-76",
+            "il-86",
+            "il-96",
+            "yak-40",
+            "yak-42",
+            "concorde",
+            "trident",
+            "comet",
+            "caravelle",
+            "mercure",
+            "vfw-614",
+            "l-1011",
+            "tristar",
+            // BizJets
+            "citation",
+            "lear",
+            "learjet",
+            "gulfstream",
+            "falcon",
+            "challenger",
+            "global express",
+            "global 5000",
+            "phenom",
+            "premier",
+            "hawker",
+            "hondajet",
+            "cirrus sf50",
+            "eclipse 500",
+            "mustang",
+            // Military Jets provided in is_military check mostly cover this, but explicitly:
+            "f-15",
+            "f-16",
+            "f-18",
+            "f-22",
+            "f-35",
+            "b-1b",
+            "b-2",
+            "b-52",
+            "sr-71",
+            "me262",
+            "vulcan",
+            "tornado",
+        ]);
+
+        let is_jet = name_lower.contains("jet") || is_known_jet_model;
+
+        let is_known_turboprop_model = matches_any(&[
+            "king air",
+            "kingair",
+            "b1900",
+            "b200",
+            "b350",
+            "c90",
+            "pc-12",
+            "pc-6",
+            "pc-7",
+            "pc-9",
+            "pc-21",
+            "tbm",
+            "kodiak",
+            "caravan",
+            "c208",
+            "dash 8",
+            "q400",
+            "dhc-6",
+            "twin otter",
+            "dhc-2",
+            "beaver",
+            "otter", // DHC-2 Beaver is technically piston usually but DHC-2T exists. Regular Beaver is Piston.
+            "atr",
+            "f27",
+            "f50",
+            "l-188",
+            "electra",
+            "c-130",
+            "hercules",
+            "an-12",
+            "an-24",
+            "an-26",
+            "an-32",
+            "il-18",
+            "tu-95",
+            "sf340",
+            "s2000",
+            "js41",
+            "js31",
+            "mu-2",
+            "commander",
+            "cheyenne",
+            "merlin",
+            "metro",
+        ]);
+
+        let is_turboprop = name_lower.contains("turboprop") || is_known_turboprop_model;
+
+        // Redefine Prop to be explicit about pistons if possible, or fallback
+        // These are strictly PISTON props (usually)
+        let is_known_piston = matches_any(&[
+            "c150",
+            "c152",
+            "c172",
+            "c182",
+            "c206",
+            "c210",
+            "c310",
+            "pa-18",
+            "pa-28",
+            "pa-32",
+            "pa-34",
+            "pa-44",
+            "archer",
+            "warrior",
+            "seneca",
+            "seminole",
+            "bonanza",
+            "baron",
+            "mooney",
+            "sr20",
+            "sr22",
+            "da20",
+            "da40",
+            "da62",
+            "dr400",
+            "tb10",
+            "tb20",
+            "rv-",
+            "cub",
+            "scout",
+            "decathlon",
+            "dc-3",
+            "dc-4",
+            "dc-6",
+            "c-47",
+            "constellation",
+            "p-51",
+            "spitfire",
+            "b-17",
+        ]);
 
         // --- Step 4: Detection Pass 3: Operational Role ---
         let is_airliner = is_boeing
             || is_airbus
-            || name_lower.contains("md-")
-            || name_lower.contains("dc-10")
-            || name_lower.contains("dc-8")
-            || name_lower.contains("dc-9")
-            || name_lower.contains("fokker")
-            || name_lower.contains("q400")
-            || name_lower.contains("atr")
-            || name_lower.contains("crj")
-            || name_lower.contains("e17")
-            || name_lower.contains("e19")
-            || name_lower.contains("ba-")
-            || name_lower.contains("lufthansa")
-            || name_lower.contains("air france")
-            || name_lower.contains("delta")
-            || name_lower.contains("united")
-            || name_lower.contains("southwest")
-            || name_lower.contains("ryanair")
-            || name_lower.contains("emirates")
-            || name_lower.contains("concorde")
-            || name_lower.contains("trident")
-            || name_lower.contains("comet")
-            || name_lower.contains("caravelle")
-            || name_lower.contains("tupolev")
-            || name_lower.contains("tu-")
-            || name_lower.contains("ilyushin")
-            || name_lower.contains("il-")
-            || name_lower.contains("yak-")
-            || name_lower.contains("antonov")
-            || name_lower.contains("an-")
-            || (name_lower.contains("sukhoi") && name_lower.contains("superjet"))
-            || name_lower.contains("bac")
-            || name_lower.contains("vickers")
-            // Strict Commercial Keywords
-            || name_lower.contains("cargo")
-            || name_lower.contains("transport")
-            || name_lower.contains("freight")
-            || name_lower.contains("express")
-            || name_lower.contains("airways")
-            || name_lower.contains("airlines")
-            || name_lower.contains("trans")
-            || name_lower.contains("international");
+            || is_lockheed
+            || matches_any(&[
+                "mcdonnell",
+                "douglas",
+                "fokker",
+                "bombardier",
+                "embraer",
+                "tupolev",
+                "ilyushin",
+                "antonov",
+            ])
+            || matches_any(&[
+                "atr",
+                "dash 8",
+                "q400",
+                "crj",
+                "erj",
+                "saab",
+                "bae",
+                "concorde",
+                "trident",
+                "comet",
+                "caravelle",
+                "mercure",
+                "lufthansa",
+                "air france",
+                "british airways",
+                "delta",
+                "united",
+                "american",
+                "klm",
+                "airliner",
+                "airways",
+                "express",
+                "cargo",
+                "freight",
+            ]);
 
-        let is_bizjet = name_lower.contains("citation")
-            || name_lower.contains("lear")
-            || name_lower.contains("gulfstream")
-            || name_lower.contains("challenger")
-            || name_lower.contains("global")
-            || name_lower.contains("falcon")
-            || name_lower.contains("hondajet")
-            || name_lower.contains("phenom");
+        let is_bizjet = matches_any(&[
+            "citation",
+            "lear",
+            "gulfstream",
+            "challenger",
+            "global",
+            "falcon",
+            "hondajet",
+            "phenom",
+            "hawker",
+            "bizjet",
+            "business jet",
+        ]);
 
         // --- Step 5: Assign Final Tags ---
         if is_helicopter {
@@ -573,30 +937,16 @@ impl BitNetModel {
             } else if is_turboprop {
                 tags.push("Turboprop".to_string());
             } else {
+                // If not jet/turboprop, assume Prop for military (WW2, Trainers)
                 tags.push("Prop".to_string());
             }
         } else {
             // Operational Role tagging: Airliner vs General Aviation
-            // Note: Per user request, Business Jets are part of General Aviation.
+            // Strict exclusion: If it's an Airliner model, it is NOT GA.
 
-            // STRICT EXCLUSION: If it looks like a jet but isn't a BizJet, assume Airliner/Commercial.
-            // This prevents "Unknown Jets" (which are usually airliners) from falling into GA.
+            // BizJets are GA per user rules, but we tag them as BizJet + GA
+
             let likely_airliner = is_airliner || (is_jet && !is_bizjet);
-
-            // Define "Positively GA" to avoid fallback for unknowns
-            let is_positively_ga = is_cessna
-                || is_piper
-                || is_beech
-                || is_mooney
-                || is_diamond
-                || is_cirrus
-                || is_socata
-                || is_robin
-                || is_vans
-                || is_pilatus
-                || is_icon
-                || is_flight_design
-                || is_bizjet;
 
             if likely_airliner {
                 tags.push("Airliner".to_string());
@@ -604,37 +954,62 @@ impl BitNetModel {
                     tags.push("Jet".to_string());
                 } else if is_turboprop {
                     tags.push("Turboprop".to_string());
-                } else if !is_airliner && !is_jet {
-                    // Prop airliner
-                    tags.push("Prop".to_string());
+                } else if is_known_piston {
+                    tags.push("Prop".to_string()); // DC-3/DC-6 etc
                 } else {
-                    tags.push("Prop".to_string());
-                }
-            } else if is_positively_ga {
-                // Default to General Aviation for known GA types
-                tags.push("General Aviation".to_string());
-
-                if is_bizjet {
-                    tags.push("Business Jet".to_string());
-                }
-
-                if is_jet {
-                    tags.push("Jet".to_string());
-                } else if is_turboprop {
-                    tags.push("Turboprop".to_string());
-                } else {
-                    tags.push("Prop".to_string());
+                    // Default Airliner to Jet if unknown? Or Prop?
+                    // Most unknown airliners in sim context are likely jets or turboprops.
+                    // Let's stick to explicitly detected propulsion or generic fallback
+                    if name_lower.contains("prop") {
+                        tags.push("Prop".to_string());
+                    } else {
+                        tags.push("Jet".to_string());
+                    } // Fallback for "Airbus" -> Jet
                 }
             } else {
-                // No specific category identified (not Airliner, Military, or known GA)
-                // Do NOT tag as "Unknown" or "General Aviation". Just define propulsion.
+                // General Aviation
 
-                if is_jet {
-                    tags.push("Jet".to_string());
-                } else if is_turboprop {
-                    tags.push("Turboprop".to_string());
+                // If strictly unidentified (no matches at all), NO TAGS (as per "Unknown" removal)
+                // BUT we need to check if we matched *anything* to call it GA.
+                // We shouldn't default to GA if we just don't know what it is.
+
+                let is_positively_ga = is_cessna
+                    || is_piper
+                    || is_beech
+                    || is_mooney
+                    || is_cirrus
+                    || is_diamond
+                    || is_socata
+                    || is_robin
+                    || is_vans
+                    || is_pilatus
+                    || is_bizjet
+                    || is_known_piston
+                    || is_known_turboprop_model;
+
+                if is_positively_ga {
+                    tags.push("General Aviation".to_string());
+                    if is_bizjet {
+                        tags.push("Business Jet".to_string());
+                        tags.push("Jet".to_string());
+                    } else if is_jet {
+                        // Cirrus Jet etc
+                        tags.push("Jet".to_string());
+                    } else if is_turboprop {
+                        tags.push("Turboprop".to_string());
+                    } else {
+                        tags.push("Prop".to_string());
+                    }
                 } else {
-                    tags.push("Prop".to_string());
+                    // Truly unidentified.
+                    // Just try to apply propulsion if we know it (e.g. from "jet" keyword)
+                    if is_jet {
+                        tags.push("Jet".to_string());
+                    } else if is_turboprop {
+                        tags.push("Turboprop".to_string());
+                    } else if name_lower.contains("prop") {
+                        tags.push("Prop".to_string());
+                    }
                 }
             }
         }
@@ -667,6 +1042,34 @@ impl BitNetModel {
             // If parsed successfully, is it still "Unknown"?
             // Maybe we trust the parser's logic for "Airliner" vs "GA" based on description?
             // For now, let's just fix the propulsion.
+        }
+
+        if is_fokker {
+            tags.push("Fokker".to_string());
+        }
+        if is_gulfstream {
+            tags.push("Gulfstream".to_string());
+        }
+        if is_tupolev {
+            tags.push("Tupolev".to_string());
+        }
+        if is_ilyushin {
+            tags.push("Ilyushin".to_string());
+        }
+        if is_antonov {
+            tags.push("Antonov".to_string());
+        }
+        if is_icon {
+            tags.push("Icon".to_string());
+        }
+        if is_flight_design {
+            tags.push("Flight Design".to_string());
+        }
+        if is_robin {
+            tags.push("Robin".to_string());
+        }
+        if is_vans {
+            tags.push("Van's".to_string());
         }
 
         // Additional Context Tags
@@ -839,6 +1242,64 @@ mod tests {
         assert!(!tags.contains(&"Unknown".to_string()));
         assert!(tags.contains(&"Prop".to_string()));
         assert!(!tags.contains(&"General Aviation".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_historical_prop_airliner() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Douglas DC-6 Cloudmaster", Path::new("test"));
+        assert!(tags.contains(&"McDonnell Douglas".to_string()));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(tags.contains(&"Prop".to_string()));
+        assert!(!tags.contains(&"Jet".to_string()));
+        assert!(!tags.contains(&"General Aviation".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_historical_bomber() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Boeing B-17 Flying Fortress", Path::new("test"));
+        assert!(tags.contains(&"Boeing".to_string()));
+        assert!(tags.contains(&"Military".to_string()));
+        assert!(tags.contains(&"Prop".to_string()));
+        assert!(!tags.contains(&"Jet".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_modern_bomber() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Boeing B-52 Stratofortress", Path::new("test"));
+        assert!(tags.contains(&"Boeing".to_string()));
+        assert!(tags.contains(&"Military".to_string()));
+        assert!(tags.contains(&"Jet".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_regional_turboprop() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Bombardier Dash 8 Q400", Path::new("test"));
+        assert!(tags.contains(&"Bombardier".to_string()));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(tags.contains(&"Turboprop".to_string()));
+        assert!(!tags.contains(&"Prop".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_new_manufacturer_lockheed() {
+        let model = BitNetModel::default();
+        // L-1011 TriStar is a jet airliner
+        let tags = model.predict_aircraft_tags("Lockheed L-1011 TriStar", Path::new("test"));
+        assert!(tags.contains(&"Lockheed".to_string()));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(tags.contains(&"Jet".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_helicopter_specific() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Airbus H135", Path::new("test"));
+        assert!(tags.contains(&"Airbus".to_string()));
+        assert!(tags.contains(&"Helicopter".to_string()));
     }
 
     #[test]
