@@ -85,7 +85,7 @@ jobs:
       with:
         name: ${{ matrix.platform.name }}-installers
         path: |
-          dist/*
+          dist/**/*
           *.zip
 
   release:
@@ -104,7 +104,11 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          *
+          dist/**/*
+          *.zip
+          *.AppImage
+          *.exe
+          *.dmg
         draft: false
         prerelease: false
       env:
