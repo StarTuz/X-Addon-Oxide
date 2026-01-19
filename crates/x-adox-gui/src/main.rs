@@ -1261,29 +1261,32 @@ impl App {
             row![
                 iced::widget::Space::new(Length::Fixed(4.0), Length::Fill), // Balancing spacer
                 btn,
-                container(iced::widget::Space::new(
-                    Length::Fixed(4.0),
-                    Length::Fixed(48.0)
-                ))
-                .padding(iced::Padding::default().top(20.0)) // Slightly lower to center better
-                .style(move |_| container::Style {
-                    background: Some(iced::Background::Color(active_color)),
-                    border: iced::Border {
-                        radius: 2.0.into(),
+                column![
+                    iced::widget::Space::new(Length::Fill, Length::Fixed(18.0)), // Explicit top offset
+                    container(iced::widget::Space::new(
+                        Length::Fixed(4.0),
+                        Length::Fixed(48.0)
+                    ))
+                    .style(move |_| container::Style {
+                        background: Some(iced::Background::Color(active_color)),
+                        border: iced::Border {
+                            radius: 2.0.into(),
+                            ..Default::default()
+                        },
+                        shadow: iced::Shadow {
+                            color: Color::from_rgba(
+                                active_color.r,
+                                active_color.g,
+                                active_color.b,
+                                0.8
+                            ),
+                            offset: iced::Vector::new(0.0, 0.0),
+                            blur_radius: 12.0,
+                        },
                         ..Default::default()
-                    },
-                    shadow: iced::Shadow {
-                        color: Color::from_rgba(
-                            active_color.r,
-                            active_color.g,
-                            active_color.b,
-                            0.8
-                        ),
-                        offset: iced::Vector::new(0.0, 0.0),
-                        blur_radius: 12.0,
-                    },
-                    ..Default::default()
-                })
+                    })
+                ]
+                .width(Length::Fixed(4.0))
             ]
             .align_y(iced::Alignment::Start)
             .into()
