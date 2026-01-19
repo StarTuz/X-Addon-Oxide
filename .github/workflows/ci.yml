@@ -141,9 +141,9 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          dist/windows/*-setup.exe
-          dist/macos/*.dmg
-          dist/linux/*.tar.gz
+          windows/*-setup.exe
+          macos/*.dmg
+          linux/*.tar.gz
         draft: false
         prerelease: false
       env:
