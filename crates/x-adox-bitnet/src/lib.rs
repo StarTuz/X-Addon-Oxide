@@ -487,7 +487,17 @@ impl BitNetModel {
             || name_lower.contains("il-")
             || name_lower.contains("yak-")
             || name_lower.contains("bac")
-            || name_lower.contains("vickers");
+            || name_lower.contains("vickers")
+            // Strict Commercial Keywords
+            || name_lower.contains("cargo")
+            || name_lower.contains("transport")
+            || name_lower.contains("freight")
+            || name_lower.contains("express")
+            || name_lower.contains("airways")
+            || name_lower.contains("airlines")
+            || name_lower.contains("trans")
+            || name_lower.contains("international");
+
         let is_bizjet = name_lower.contains("citation")
             || name_lower.contains("lear")
             || name_lower.contains("gulfstream")
@@ -514,18 +524,28 @@ impl BitNetModel {
         } else {
             // Operational Role tagging: Airliner vs General Aviation
             // Note: Per user request, Business Jets are part of General Aviation.
-            if is_airliner {
+
+            // STRICT EXCLUSION: If it looks like a jet but isn't a BizJet, assume Airliner/Commercial.
+            // This prevents "Unknown Jets" (which are usually airliners) from falling into GA.
+            let likely_airliner = is_airliner || (is_jet && !is_bizjet);
+
+            if likely_airliner {
                 tags.push("Airliner".to_string());
                 if is_jet {
                     tags.push("Jet".to_string());
                 } else if is_turboprop {
                     tags.push("Turboprop".to_string());
+                } else if !is_airliner && !is_jet {
+                    // If we only guessed it's an airliner because of "Airways" but it's not a jet (maybe a prop airliner),
+                    // we still tag it. But let's check propulsion.
+                    tags.push("Prop".to_string());
                 } else {
                     tags.push("Prop".to_string());
                 }
             } else {
                 // Default to General Aviation for everything else that isn't military, glider or helicopter
                 tags.push("General Aviation".to_string());
+
                 if is_bizjet {
                     tags.push("Business Jet".to_string());
                 }
@@ -672,5 +692,33 @@ mod tests {
         assert!(tags.contains(&"General Aviation".to_string()));
         assert!(tags.contains(&"Business Jet".to_string()));
         assert!(tags.contains(&"Jet".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_generic_cargo_jet() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Generic Cargo Jet", Path::new("test"));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(tags.contains(&"Jet".to_string()));
+        assert!(!tags.contains(&"General Aviation".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_airways_express() {
+        // Even if we don't know the plane, "Airways" implies commercial service
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Fake Airways Express", Path::new("test"));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(!tags.contains(&"General Aviation".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_unknown_jet_safety_net() {
+        // An unknown jet should default to Airliner, NOT GA
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Mystery Jet 2000", Path::new("test"));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(tags.contains(&"Jet".to_string()));
+        assert!(!tags.contains(&"General Aviation".to_string()));
     }
 }
