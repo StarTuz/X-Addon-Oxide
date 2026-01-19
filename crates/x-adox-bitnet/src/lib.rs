@@ -22,6 +22,8 @@ pub struct Rule {
 pub struct HeuristicsConfig {
     pub rules: Vec<Rule>,
     pub fallback_score: u8,
+    #[serde(default)]
+    pub overrides: std::collections::HashMap<String, u8>,
 }
 
 impl Default for HeuristicsConfig {
@@ -152,6 +154,7 @@ impl Default for HeuristicsConfig {
                 },
             ],
             fallback_score: 40,
+            overrides: std::collections::HashMap::new(),
         }
     }
 }
@@ -211,6 +214,11 @@ impl BitNetModel {
     /// Predicts the scenery priority score (0-100) based on the pack name and path.
     /// Lower score = higher priority.
     pub fn predict(&self, name: &str, _path: &Path, context: &PredictContext) -> u8 {
+        // 1. Check for manual overrides first (Sticky Sort)
+        if let Some(&score) = self.config.overrides.get(name) {
+            return score;
+        }
+
         let name_lower = name.to_lowercase();
 
         // DEBUG: Print current rules count

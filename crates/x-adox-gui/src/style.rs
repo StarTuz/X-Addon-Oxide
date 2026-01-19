@@ -8,6 +8,7 @@ pub mod palette {
     pub const SURFACE: Color = Color::from_rgb(0.18, 0.18, 0.18); // #2d2d2d
     pub const ACCENT_BLUE: Color = Color::from_rgb(0.23, 0.51, 0.96); // #3b82f6
     pub const ACCENT_ORANGE: Color = Color::from_rgb(0.98, 0.45, 0.09); // #f97316
+    pub const ACCENT_RED: Color = Color::from_rgb(0.93, 0.25, 0.25); // #ef4444 (Red 500)
     pub const ACCENT_GREEN: Color = Color::from_rgb(0.2, 0.7, 0.3); // #33b34d
     pub const ACCENT_PURPLE: Color = Color::from_rgb(0.66, 0.33, 0.97); // #a855f7 (Electric Violet)
     pub const TEXT_PRIMARY: Color = Color::from_rgb(0.9, 0.9, 0.9);
@@ -47,6 +48,23 @@ pub fn container_card(_theme: &Theme) -> container::Style {
             color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
             offset: iced::Vector::new(0.0, 4.0),
             blur_radius: 12.0,
+        },
+        ..Default::default()
+    }
+}
+
+pub fn container_modal(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(palette::SURFACE)),
+        border: Border {
+            color: palette::BORDER,
+            width: 1.0,
+            radius: 12.0.into(),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.8),
+            offset: iced::Vector::new(0.0, 10.0),
+            blur_radius: 30.0,
         },
         ..Default::default()
     }
@@ -366,6 +384,72 @@ pub fn button_premium_glow(_theme: &Theme, status: button::Status) -> button::St
         },
         button::Status::Active => button::Style {
             background: Some(Background::Color(Color::from_rgb(0.8, 0.8, 0.8))),
+            ..base
+        },
+        _ => base,
+    }
+}
+pub fn button_pin_active(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(Color::from_rgba(0.93, 0.25, 0.25, 0.1))),
+        text_color: palette::ACCENT_RED,
+        border: Border {
+            radius: 8.0.into(),
+            color: palette::ACCENT_RED,
+            width: 1.5,
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.93, 0.25, 0.25, 0.4),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 15.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgba(0.93, 0.25, 0.25, 0.2))),
+            shadow: Shadow {
+                color: Color::from_rgba(0.93, 0.25, 0.25, 0.7),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 25.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(palette::ACCENT_RED)),
+            text_color: Color::WHITE,
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_pin_ghost(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.03))),
+        text_color: Color::from_rgba(0.93, 0.25, 0.25, 0.4),
+        border: Border {
+            radius: 8.0.into(),
+            color: Color::from_rgba(0.93, 0.25, 0.25, 0.2),
+            width: 1.0,
+        },
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Hovered | button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgba(0.93, 0.25, 0.25, 0.1))),
+            text_color: palette::ACCENT_RED,
+            border: Border {
+                color: palette::ACCENT_RED,
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.93, 0.25, 0.25, 0.2),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 10.0,
+            },
             ..base
         },
         _ => base,

@@ -1,6 +1,6 @@
 use iced::widget::{
-    button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, svg,
-    text, text_editor, tooltip, Column,
+    button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, slider,
+    svg, text, text_editor, tooltip, Column,
 };
 use iced::{Background, Border, Color, Element, Length, Renderer, Shadow, Task, Theme};
 use std::path::PathBuf;
@@ -122,6 +122,13 @@ enum Message {
     // Issues
     LogIssuesLoaded(Result<Vec<x_adox_core::LogIssue>, String>),
     CheckLogIssues,
+
+    // Sticky Sort (Phase 3)
+    OpenPriorityEditor(String),
+    UpdatePriorityValue(String, u8),
+    SetPriority(String, u8),
+    RemovePriority(String),
+    CancelPriorityEdit,
 }
 
 struct App {
@@ -162,6 +169,8 @@ struct App {
     // Issues
     log_issues: Vec<x_adox_core::LogIssue>,
     icon_warning: svg::Handle,
+    icon_pin: svg::Handle,
+    icon_pin_outline: svg::Handle,
 
     // Pro Mode
     validation_report: Option<x_adox_core::scenery::validator::ValidationReport>,
@@ -171,6 +180,9 @@ struct App {
     // UI State for polish
     ignored_issues: std::collections::HashSet<(String, String)>, // (type, pack_name)
     expanded_issue_groups: std::collections::HashSet<String>,    // type
+
+    // Sticky Sort Editing
+    editing_priority: Option<(String, u8)>,
 }
 
 impl App {
@@ -222,11 +234,16 @@ impl App {
             icon_warning: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/warning.svg").to_vec(),
             ),
+            icon_pin: svg::Handle::from_memory(include_bytes!("../assets/icons/pin.svg").to_vec()),
+            icon_pin_outline: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/pin_outline.svg").to_vec(),
+            ),
             validation_report: None,
             simulated_packs: None,
             region_focus: None,
             ignored_issues: std::collections::HashSet::new(),
             expanded_issue_groups: std::collections::HashSet::new(),
+            editing_priority: None,
         };
 
         let tasks = if let Some(r) = root {
@@ -607,6 +624,40 @@ impl App {
                 } else {
                     self.expanded_issue_groups.insert(issue_type);
                 }
+                Task::none()
+            }
+            Message::OpenPriorityEditor(pack_name) => {
+                let current_score = self.heuristics_model.predict(
+                    &pack_name,
+                    std::path::Path::new(""), // Not used in predict if it's an override
+                    &x_adox_bitnet::PredictContext {
+                        region_focus: self.region_focus.clone(),
+                    },
+                );
+                self.editing_priority = Some((pack_name, current_score));
+                Task::none()
+            }
+            Message::UpdatePriorityValue(pack_name, score) => {
+                self.editing_priority = Some((pack_name, score));
+                Task::none()
+            }
+            Message::SetPriority(pack_name, score) => {
+                self.heuristics_model
+                    .config
+                    .overrides
+                    .insert(pack_name, score);
+                let _ = self.heuristics_model.save();
+                self.editing_priority = None;
+                Task::none()
+            }
+            Message::RemovePriority(pack_name) => {
+                self.heuristics_model.config.overrides.remove(&pack_name);
+                let _ = self.heuristics_model.save();
+                self.editing_priority = None;
+                Task::none()
+            }
+            Message::CancelPriorityEdit => {
+                self.editing_priority = None;
                 Task::none()
             }
             Message::Refresh => {
@@ -1019,7 +1070,19 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill);
 
-        if let (Some(report), Some(packs)) = (&self.validation_report, &self.simulated_packs) {
+        if let Some((pack_name, score)) = &self.editing_priority {
+            container(self.view_priority_editor(pack_name, *score))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .style(|_| container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.85))),
+                    ..Default::default()
+                })
+                .into()
+        } else if let (Some(report), Some(packs)) = (&self.validation_report, &self.simulated_packs)
+        {
             container(self.view_simulation_modal(report, packs))
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -1033,6 +1096,61 @@ impl App {
         } else {
             main_view.into()
         }
+    }
+
+    fn view_priority_editor<'a>(
+        &'a self,
+        pack_name: &'a str,
+        current_score: u8,
+    ) -> Element<'a, Message> {
+        let title = text(format!("Set Custom Priority: {}", pack_name))
+            .size(20)
+            .color(style::palette::TEXT_PRIMARY);
+
+        // Live slider updates are handled via UpdatePriorityValue
+
+        container(
+            column![
+                title,
+                text(format!(
+                    "Priority Score: {} (Lower = Higher Priority)",
+                    current_score
+                ))
+                .size(14)
+                .color(style::palette::TEXT_SECONDARY),
+                row![
+                    text("0 (Top)").size(10),
+                    slider(0..=100, current_score, move |s| {
+                        Message::UpdatePriorityValue(pack_name.to_string(), s)
+                    })
+                    .width(Length::Fill),
+                    text("100 (Bottom)").size(10),
+                ]
+                .spacing(10)
+                .align_y(iced::Alignment::Center),
+                row![
+                    button(text("Reset Default").size(12))
+                        .on_press(Message::RemovePriority(pack_name.to_string()))
+                        .style(style::button_secondary)
+                        .padding([8, 16]),
+                    iced::widget::Space::with_width(Length::Fill),
+                    button(text("Cancel").size(12))
+                        .on_press(Message::CancelPriorityEdit)
+                        .style(style::button_secondary)
+                        .padding([8, 16]),
+                    button(text("Apply").size(12))
+                        .on_press(Message::SetPriority(pack_name.to_string(), current_score))
+                        .style(style::button_primary)
+                        .padding([8, 16]),
+                ]
+                .spacing(10)
+            ]
+            .spacing(20)
+            .padding(30)
+            .max_width(500),
+        )
+        .style(style::container_modal)
+        .into()
     }
 
     fn view_simulation_modal<'a>(
@@ -1125,18 +1243,48 @@ impl App {
                         .spacing(10)
                         .align_y(iced::Alignment::Center),
                         if count == 1 {
-                            text(&first.pack_name)
-                                .size(12)
-                                .color(style::palette::TEXT_SECONDARY)
+                            let pack_name = &first.pack_name;
+                            let is_pinned = self
+                                .heuristics_model
+                                .config
+                                .overrides
+                                .contains_key(pack_name);
+                            Element::from(container(
+                                row![
+                                    if is_pinned {
+                                        Element::from(
+                                            svg(self.icon_pin.clone())
+                                                .width(Length::Fixed(12.0))
+                                                .height(Length::Fixed(12.0))
+                                                .style(move |_: &Theme, _| svg::Style {
+                                                    color: Some(style::palette::ACCENT_RED),
+                                                }),
+                                        )
+                                    } else {
+                                        Element::from(iced::widget::Space::with_width(
+                                            Length::Shrink,
+                                        ))
+                                    },
+                                    text(pack_name.clone())
+                                        .size(12)
+                                        .color(style::palette::TEXT_SECONDARY),
+                                ]
+                                .spacing(5)
+                                .align_y(iced::Alignment::Center),
+                            ))
                         } else if !is_expanded {
-                            text(format!("Click to expand {} affected packs", count))
-                                .size(12)
-                                .color(style::palette::TEXT_SECONDARY)
+                            Element::from(container(
+                                text(format!("Click to expand {} affected packs", count))
+                                    .size(12)
+                                    .color(style::palette::TEXT_SECONDARY),
+                            ))
                         } else {
-                            text("Group Details")
-                                .size(12)
-                                .color(style::palette::TEXT_SECONDARY)
-                        },
+                            Element::from(container(
+                                text("Group Details")
+                                    .size(12)
+                                    .color(style::palette::TEXT_SECONDARY),
+                            ))
+                        }
                     ]
                     .spacing(5),
                 )
@@ -1936,6 +2084,36 @@ impl App {
                 ..Default::default()
             });
 
+        // Sticky Pin Indicator
+        let is_overridden = self
+            .heuristics_model
+            .config
+            .overrides
+            .contains_key(&pack.name);
+        let pin_btn = if is_overridden {
+            button(
+                svg(self.icon_pin.clone())
+                    .width(Length::Fixed(16.0))
+                    .height(Length::Fixed(16.0))
+                    .style(move |_: &Theme, _| svg::Style {
+                        color: Some(style::palette::ACCENT_RED),
+                    }),
+            )
+            .on_press(Message::RemovePriority(pack.name.clone()))
+            .style(style::button_pin_active)
+        } else {
+            button(
+                svg(self.icon_pin_outline.clone())
+                    .width(Length::Fixed(16.0))
+                    .height(Length::Fixed(16.0))
+                    .style(move |_: &Theme, _| svg::Style {
+                        color: Some(Color::from_rgba(0.93, 0.25, 0.25, 0.6)),
+                    }),
+            )
+            .on_press(Message::OpenPriorityEditor(pack.name.clone()))
+            .style(style::button_pin_ghost)
+        };
+
         // Action Button
         let action_btn = button(
             text(if is_active { "DISABLE" } else { "ENABLE" })
@@ -1951,7 +2129,7 @@ impl App {
         .padding([5, 10])
         .width(Length::Fixed(80.0));
 
-        let content_row = row![status_dot, info_col, type_tag, action_btn]
+        let content_row = row![status_dot, info_col, type_tag, pin_btn, action_btn]
             .spacing(15)
             .align_y(iced::Alignment::Center);
 
