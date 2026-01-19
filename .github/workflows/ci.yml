@@ -68,15 +68,24 @@ jobs:
       if: matrix.platform.formats != ''
       run: cargo packager --release -p x-adox-gui --formats ${{ matrix.platform.formats }} -v
 
-    - name: List dist contents
-      if: matrix.platform.formats != ''
+    - name: List dist contents (Unix)
+      if: matrix.platform.formats != '' && matrix.platform.name != 'Windows'
       run: |
         echo "=== Listing dist directory ==="
         ls -laR dist/ || echo "dist/ not found"
-        echo "=== Listing current directory ==="
-        ls -la
         echo "=== Finding installer files ==="
-        find . -name "*.exe" -o -name "*.dmg" -o -name "*.app" 2>/dev/null || true
+        find . -name "*.dmg" -o -name "*.app" 2>/dev/null || true
+
+    - name: List dist contents (Windows)
+      if: matrix.platform.name == 'Windows'
+      shell: pwsh
+      run: |
+        Write-Host "=== Listing dist directory ==="
+        if (Test-Path dist) { Get-ChildItem -Recurse dist } else { Write-Host "dist/ not found" }
+        Write-Host "=== Listing current directory ==="
+        Get-ChildItem
+        Write-Host "=== Finding exe files ==="
+        Get-ChildItem -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object FullName
 
     - name: Package Linux Binary
       if: matrix.platform.name == 'Linux'
