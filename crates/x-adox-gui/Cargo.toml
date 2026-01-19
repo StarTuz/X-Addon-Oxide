@@ -38,7 +38,6 @@ out_dir = "../../dist"
 formats = ["nsis", "dmg", "app", "appimage"]
 
 [package.metadata.packager.windows]
-default_install_path = "$PROGRAMFILES/X-Addon-Oxide"
 nsis = { compression = "lzma", languages = ["English"], appdata_paths = ["$APPDATA/x-adox/X-Addon-Oxide"] }
 
 [package.metadata.packager.macos]
