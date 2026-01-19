@@ -1265,6 +1265,7 @@ impl App {
                     Length::Fixed(4.0),
                     Length::Fixed(48.0)
                 ))
+                .padding(iced::Padding::default().top(15.0)) // Top padding to align with icon
                 .style(move |_| container::Style {
                     background: Some(iced::Background::Color(active_color)),
                     border: iced::Border {
@@ -1284,7 +1285,7 @@ impl App {
                     ..Default::default()
                 })
             ]
-            .align_y(iced::Alignment::Center)
+            .align_y(iced::Alignment::Start)
             .into()
         } else {
             btn.into()
