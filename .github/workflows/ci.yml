@@ -25,14 +25,17 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bin: x-adox-gui
+            formats: appimage
           - name: Windows
             os: windows-latest
             target: x86_64-pc-windows-msvc
             bin: x-adox-gui.exe
+            formats: nsis
           - name: macOS
             os: macos-latest
             target: x86_64-apple-darwin
             bin: x-adox-gui
+            formats: dmg,app
 
     steps:
     - uses: actions/checkout@v4
@@ -58,7 +61,7 @@ jobs:
         tool: cargo-packager
 
     - name: Package
-      run: cargo packager --release -p x-adox-gui
+      run: cargo packager --release -p x-adox-gui --formats ${{ matrix.platform.formats }}
 
     - name: Code Sign & Notarize (macOS)
       if: matrix.platform.name == 'macOS' && env.APPLE_CERTIFICATE != ''
