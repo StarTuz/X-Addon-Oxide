@@ -10,14 +10,19 @@ impl Classifier {
         let name_lower = name.to_lowercase();
         let name_clean = name.trim_matches(|c| c == '*' || c == ' ');
 
-        // 1. Explicit System Packs (Global Airports)
+        // 2. Explicit System Packs (Global Airports)
         if name_clean.eq_ignore_ascii_case("global airports")
             || name_clean.eq_ignore_ascii_case("global_airports")
         {
             return SceneryCategory::GlobalAirport;
         }
 
-        // 2. Check for specific files (High signal)
+        // 3. SimHeaven X-World / Overlays (Force category to avoid Library-vs-Scenery interleaving)
+        if name_lower.contains("simheaven") || name_lower.contains("x-world") {
+            return SceneryCategory::Overlay;
+        }
+
+        // 4. Check for specific files (High signal)
         if path.join("Earth nav data/earth_wed.xml").exists() || path.join("earth.wed.xml").exists()
         {
             return SceneryCategory::EarthAirports;

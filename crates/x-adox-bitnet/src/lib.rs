@@ -30,6 +30,16 @@ impl Default for HeuristicsConfig {
                     is_exclusion: false,
                 },
                 Rule {
+                    name: "SimHeaven / X-World".to_string(),
+                    keywords: vec![
+                        "simheaven".to_string(),
+                        "x-world".to_string(),
+                        "w2xp".to_string(),
+                    ],
+                    score: 31, // Slightly above Birds/Landmarks
+                    is_exclusion: false,
+                },
+                Rule {
                     name: "AutoOrtho Overlays".to_string(),
                     keywords: vec!["yautoortho".to_string(), "y_autoortho".to_string()],
                     score: 42,
@@ -104,16 +114,6 @@ impl Default for HeuristicsConfig {
                     name: "Orbx B / TrueEarth".to_string(),
                     keywords: vec!["orbx_b".to_string(), "trueearth_overlay".to_string()],
                     score: 35,
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "SimHeaven / X-World".to_string(),
-                    keywords: vec![
-                        "simheaven".to_string(),
-                        "x-world".to_string(),
-                        "w2xp".to_string(),
-                    ],
-                    score: 30, // Grouped together for alphabetical sub-sort
                     is_exclusion: false,
                 },
                 Rule {
@@ -303,8 +303,8 @@ mod tests {
         };
         let score1 = model.predict("simHeaven_X-World_America-1-vfr", Path::new("test"));
         let score2 = model.predict("simHeaven_X-World_Europe-8-network", Path::new("test"));
-        assert_eq!(score1, 30);
-        assert_eq!(score2, 30);
+        assert_eq!(score1, 31);
+        assert_eq!(score2, 31);
         assert_eq!(
             score1, score2,
             "SimHeaven layers should have the same score to allow alphabetical continent grouping"
