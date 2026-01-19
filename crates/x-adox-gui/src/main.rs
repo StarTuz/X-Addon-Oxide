@@ -1265,7 +1265,7 @@ impl App {
                     Length::Fixed(4.0),
                     Length::Fixed(48.0)
                 ))
-                .padding(iced::Padding::default().top(15.0)) // Top padding to align with icon
+                .padding(iced::Padding::default().top(20.0)) // Slightly lower to center better
                 .style(move |_| container::Style {
                     background: Some(iced::Background::Color(active_color)),
                     border: iced::Border {
