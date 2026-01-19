@@ -50,10 +50,13 @@ jobs:
     - name: Build
       run: cargo build --release -p x-adox-gui
 
-    - name: Package
-      uses: crabnebula-dev/cargo-packager-action@main
+    - name: Install cargo-packager
+      uses: taiki-e/install-action@v2
       with:
-        args: --release
+        tool: cargo-packager
+
+    - name: Package
+      run: cargo packager --release
 
     - name: Code Sign & Notarize (macOS)
       if: matrix.platform.name == 'macOS' && env.APPLE_CERTIFICATE != ''
