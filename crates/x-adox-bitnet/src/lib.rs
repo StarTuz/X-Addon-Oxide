@@ -24,6 +24,12 @@ impl Default for HeuristicsConfig {
         Self {
             rules: vec![
                 Rule {
+                    name: "Major Airports (PANC, etc.)".to_string(),
+                    keywords: vec!["panc".to_string(), "anchorage".to_string()],
+                    score: 10,
+                    is_exclusion: false,
+                },
+                Rule {
                     name: "AutoOrtho Overlays".to_string(),
                     keywords: vec!["yautoortho".to_string(), "y_autoortho".to_string()],
                     score: 42,
@@ -107,7 +113,7 @@ impl Default for HeuristicsConfig {
                         "x-world".to_string(),
                         "w2xp".to_string(),
                     ],
-                    score: 31,
+                    score: 30, // Grouped together for alphabetical sub-sort
                     is_exclusion: false,
                 },
                 Rule {
@@ -120,7 +126,7 @@ impl Default for HeuristicsConfig {
                         "pigeon".to_string(),
                         "seagulls".to_string(),
                     ],
-                    score: 33,
+                    score: 32,
                     is_exclusion: false,
                 },
                 Rule {
@@ -215,7 +221,9 @@ impl BitNetModel {
             || name_lower.contains("apt")
             || name_lower.contains("airfield")
             || name_lower.contains("heliport")
-            || name_lower.contains("seaplane");
+            || name_lower.contains("seaplane")
+            || name_lower.contains("anchorage")
+            || name_lower.contains("panc");
 
         let is_major_dev = name_lower.contains("aerosoft")
             || name_lower.contains("justsim")
@@ -227,10 +235,13 @@ impl BitNetModel {
             || name_lower.contains("skyline")
             || name_lower.contains("fly2high")
             || name_lower.contains("skyhigh")
-            || name_lower.contains("orbx");
+            || name_lower.contains("orbx")
+            || name_lower.contains("x-scenery");
 
         let has_icao = name.split(|c: char| !c.is_alphanumeric()).any(|word| {
-            word.len() == 4 && word.chars().all(|c| c.is_alphabetic() && c.is_uppercase())
+            word.len() == 4
+                && word.chars().all(|c| c.is_alphabetic())
+                && (word.chars().all(|c| c.is_uppercase()) || name_lower.starts_with(word))
         });
 
         let is_airport = has_airport_keyword || is_major_dev || has_icao;
@@ -264,5 +275,49 @@ impl BitNetModel {
         }
 
         self.config.fallback_score
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_predict_panc() {
+        let model = BitNetModel {
+            config: HeuristicsConfig::default(),
+            config_path: PathBuf::from("test_heuristics.json"),
+        };
+        let score = model.predict("panc---anchorage-v2.0.2", Path::new("test"));
+        assert_eq!(
+            score, 10,
+            "PANC should be recognized as a high-priority airport"
+        );
+    }
+
+    #[test]
+    fn test_predict_simheaven_consistency() {
+        let model = BitNetModel {
+            config: HeuristicsConfig::default(),
+            config_path: PathBuf::from("test_heuristics.json"),
+        };
+        let score1 = model.predict("simHeaven_X-World_America-1-vfr", Path::new("test"));
+        let score2 = model.predict("simHeaven_X-World_Europe-8-network", Path::new("test"));
+        assert_eq!(score1, 30);
+        assert_eq!(score2, 30);
+        assert_eq!(
+            score1, score2,
+            "SimHeaven layers should have the same score to allow alphabetical continent grouping"
+        );
+    }
+
+    #[test]
+    fn test_predict_xplane_airports() {
+        let model = BitNetModel {
+            config: HeuristicsConfig::default(),
+            config_path: PathBuf::from("test_heuristics.json"),
+        };
+        let score = model.predict("X-Plane Airports - EGPR Barra", Path::new("test"));
+        assert_eq!(score, 10, "Default X-Plane airports should be prioritized");
     }
 }
