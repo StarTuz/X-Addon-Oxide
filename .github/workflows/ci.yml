@@ -56,7 +56,7 @@ jobs:
         tool: cargo-packager
 
     - name: Package
-      run: cargo packager --release
+      run: cargo packager --release -p x-adox-gui
 
     - name: Code Sign & Notarize (macOS)
       if: matrix.platform.name == 'macOS' && env.APPLE_CERTIFICATE != ''
