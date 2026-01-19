@@ -25,6 +25,8 @@ pub struct HeuristicsConfig {
     pub fallback_score: u8,
     #[serde(default)]
     pub overrides: std::collections::HashMap<String, u8>,
+    #[serde(default)]
+    pub aircraft_overrides: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Default for HeuristicsConfig {
@@ -156,6 +158,7 @@ impl Default for HeuristicsConfig {
             ],
             fallback_score: 40,
             overrides: std::collections::HashMap::new(),
+            aircraft_overrides: std::collections::HashMap::new(),
         }
     }
 }
@@ -300,6 +303,11 @@ impl BitNetModel {
     }
     /// Predicts aircraft tags based on name and path.
     pub fn predict_aircraft_tags(&self, name: &str, path: &Path) -> Vec<String> {
+        // 1. Check for manual overrides first
+        if let Some(tags) = self.config.aircraft_overrides.get(name) {
+            return tags.clone();
+        }
+
         let mut tags = Vec::new();
         let mut text_to_check = name.to_lowercase();
 
@@ -1348,5 +1356,32 @@ mod tests {
         let tags = model.predict_aircraft_tags("A320neo", Path::new("test"));
         assert!(tags.contains(&"Airbus".to_string()));
         assert!(tags.contains(&"Airliner".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_manual_override() {
+        let mut model = BitNetModel {
+            config: HeuristicsConfig::default(),
+            config_path: PathBuf::from("test_heuristics_override.json"),
+        };
+
+        // Before override
+        let tags = model.predict_aircraft_tags("Boeing 737", Path::new("test"));
+        assert!(tags.contains(&"Boeing".to_string()));
+        assert!(tags.contains(&"Airliner".to_string()));
+
+        // Set override
+        model.config.aircraft_overrides.insert(
+            "Boeing 737".to_string(),
+            vec!["Military".to_string(), "Jet".to_string()],
+        );
+
+        // After override
+        let tags_after = model.predict_aircraft_tags("Boeing 737", Path::new("test"));
+        assert_eq!(tags_after.len(), 2);
+        assert!(tags_after.contains(&"Military".to_string()));
+        assert!(tags_after.contains(&"Jet".to_string()));
+        assert!(!tags_after.contains(&"Boeing".to_string()));
+        assert!(!tags_after.contains(&"Airliner".to_string()));
     }
 }

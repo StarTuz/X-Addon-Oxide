@@ -1,6 +1,6 @@
 use iced::widget::{
-    button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, slider,
-    svg, text, text_editor, tooltip, Column, Row,
+    button, checkbox, column, container, image, pick_list, progress_bar, responsive, row,
+    scrollable, slider, svg, text, text_editor, tooltip, Column, Row,
 };
 use iced::{Background, Border, Color, Element, Length, Renderer, Shadow, Task, Theme};
 use std::path::{Path, PathBuf};
@@ -13,6 +13,15 @@ use x_adox_core::XPlaneManager;
 mod map;
 mod style;
 use map::{MapView, TileManager};
+
+const AIRCRAFT_CATEGORIES: &[&str] = &[
+    "Airliner",
+    "General Aviation",
+    "Military",
+    "Helicopter",
+    "Glider",
+    "Business Jet",
+];
 
 fn main() -> iced::Result {
     iced::application("X-Addon-Oxide", App::update, App::view)
@@ -138,6 +147,9 @@ enum Message {
     // Interactive Sorting (Phase 4)
     MovePack(String, MoveDirection),
     ClearAllPins,
+
+    // Aircraft Override
+    SetAircraftCategory(String, String), // Name, Category
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -157,6 +169,7 @@ struct App {
     xplane_root: Option<PathBuf>,
     selected_scenery: Option<String>,
     selected_aircraft: Option<PathBuf>,
+    selected_aircraft_name: Option<String>,
     selected_aircraft_icon: Option<image::Handle>,
     selected_aircraft_tags: Vec<String>,
     selected_plugin: Option<PathBuf>,
@@ -222,6 +235,7 @@ impl App {
             xplane_root: root.clone(),
             selected_scenery: None,
             selected_aircraft: None,
+            selected_aircraft_name: None,
             selected_aircraft_icon: None,
             selected_aircraft_tags: Vec::new(),
             selected_plugin: None,
@@ -778,6 +792,40 @@ impl App {
                 self.status = "All manual reorder pins cleared".to_string();
                 Task::none()
             }
+            Message::SetAircraftCategory(name, category) => {
+                // Determine tags based on selected category
+                // For now, let's keep it simple: one tag if it's a known category,
+                // or we could append it to manufacturer?
+                // The implementation plan says: "it will replace the predicted tags."
+                let tags = if category == "Airliner" {
+                    vec!["Airliner".to_string(), "Jet".to_string()]
+                } else if category == "General Aviation" {
+                    vec!["General Aviation".to_string(), "Prop".to_string()]
+                } else if category == "Military" {
+                    vec!["Military".to_string(), "Jet".to_string()]
+                } else if category == "Helicopter" {
+                    vec!["Helicopter".to_string()]
+                } else if category == "Glider" {
+                    vec!["Glider".to_string()]
+                } else if category == "Business Jet" {
+                    vec![
+                        "General Aviation".to_string(),
+                        "Business Jet".to_string(),
+                        "Jet".to_string(),
+                    ]
+                } else {
+                    vec![category.clone()]
+                };
+
+                self.heuristics_model
+                    .config
+                    .aircraft_overrides
+                    .insert(name, tags);
+                let _ = self.heuristics_model.save();
+
+                // Refresh to show changes
+                Task::done(Message::Refresh)
+            }
             Message::Refresh => {
                 self.status = "Refreshing...".to_string();
                 let root1 = self.xplane_root.clone();
@@ -873,6 +921,8 @@ impl App {
             }
             Message::SelectAircraft(path) => {
                 self.selected_aircraft = Some(path.clone());
+                self.selected_aircraft_name =
+                    path.file_name().map(|n| n.to_string_lossy().to_string());
 
                 // Get tags
                 if let Some(tree) = &self.aircraft_tree {
@@ -2573,10 +2623,35 @@ impl App {
             .spacing(5)
             .wrap();
 
+            let category_selector: Element<'_, Message> =
+                if let Some(name) = &self.selected_aircraft_name {
+                    let options: Vec<String> =
+                        AIRCRAFT_CATEGORIES.iter().map(|&s| s.to_string()).collect();
+                    column![
+                        text("Set AI Category Manually:")
+                            .size(12)
+                            .color(style::palette::TEXT_SECONDARY),
+                        pick_list(options, None::<String>, move |selected| {
+                            Message::SetAircraftCategory(name.clone(), selected)
+                        })
+                        .placeholder("Choose override...")
+                        .padding(8)
+                        .width(Length::Fill),
+                    ]
+                    .spacing(5)
+                    .into()
+                } else {
+                    column![].into()
+                };
+
             container(
-                column![iced::widget::image(icon.clone()), tags_row]
-                    .spacing(10)
-                    .align_x(iced::Alignment::Center),
+                column![
+                    iced::widget::image(icon.clone()),
+                    tags_row,
+                    category_selector
+                ]
+                .spacing(20)
+                .align_x(iced::Alignment::Center),
             )
             .width(Length::FillPortion(1))
             .height(Length::Fill)
