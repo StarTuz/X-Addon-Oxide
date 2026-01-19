@@ -44,35 +44,41 @@ jobs:
     - name: Rust Cache
       uses: Swatinem/rust-cache@v2
 
-    - name: Build Release
-      run: cargo build --release -p x-adox-gui
+    - name: Install cargo-packager
+      run: cargo install cargo-packager
 
-    - name: Package (Windows)
-      if: matrix.platform.name == 'Windows'
+    - name: Build and Package
       run: |
-        mkdir dist
-        cp target/release/x-adox-gui.exe dist/
-        7z a x-adox-windows-x64.zip ./dist/*
+        cargo build --release -p x-adox-gui
+        cargo packager --release
 
-    - name: Package (Linux)
-      if: matrix.platform.name == 'Linux'
+    - name: Code Sign & Notarize (macOS)
+      if: matrix.platform.name == 'macOS' && secrets.APPLE_CERTIFICATE != ''
+      env:
+        APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       run: |
-        mkdir dist
-        cp target/release/x-adox-gui dist/
-        zip -j x-adox-linux-x64.zip dist/x-adox-gui
+        echo "Code signing logic would go here"
+        # xcrun notarytool submit ...
 
-    - name: Package (macOS)
-      if: matrix.platform.name == 'macOS'
+    - name: Code Sign (Windows)
+      if: matrix.platform.name == 'Windows' && secrets.WIN_CERTIFICATE != ''
+      env:
+        WIN_CERTIFICATE: ${{ secrets.WIN_CERTIFICATE }}
       run: |
-        mkdir -p "X-ADOX.app/Contents/MacOS"
-        cp target/release/x-adox-gui "X-ADOX.app/Contents/MacOS/x-adox-gui"
-        zip -r x-adox-macos-x64.zip X-ADOX.app
+        echo "Windows code signing logic would go here"
+        # signtool sign /f certificate.pfx ...
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.platform.name }}-binary
-        path: "*.zip"
+        name: ${{ matrix.platform.name }}-installers
+        path: |
+          dist/*
+          *.zip
 
   release:
     name: Create Release
@@ -90,7 +96,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          *.zip
+          *
         draft: false
         prerelease: false
       env:
