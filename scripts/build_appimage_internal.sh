@@ -12,13 +12,13 @@ mkdir -p AppDir/usr/bin
 cp target/release/x-adox-gui AppDir/usr/bin/x-adox-gui
 
 # Copy icons
-mkdir -p AppDir/usr/share/icons/hicolor/1024x1024/apps
-cp assets/packaging/icon_1024.png AppDir/usr/share/icons/hicolor/1024x1024/apps/x-adox-gui.png
+mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
+cp assets/packaging/icon_512.png AppDir/usr/share/icons/hicolor/512x512/apps/x-adox-gui.png
 
 # Run linuxdeploy
 linuxdeploy --appdir AppDir \
     --desktop-file crates/x-adox-gui/assets/xam-addon-oxide.desktop \
-    --icon-file assets/packaging/icon_1024.png \
+    --icon-file assets/packaging/icon_512.png \
     --output appimage
 
 echo "AppImage build complete!"
