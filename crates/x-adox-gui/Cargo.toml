@@ -34,8 +34,9 @@ icons = [
     "../../assets/packaging/icon.icns",
     "../../assets/packaging/icon_512.png"
 ]
-out_dir = "../../dist"
-[package.metadata.packager.windows.nsis]
+formats = ["nsis", "dmg", "app", "appimage"]
+
+[package.metadata.packager.nsis]
 compression = "lzma"
 languages = ["English"]
 appdata-paths = ["$APPDATA/x-adox/X-Addon-Oxide"]
@@ -43,7 +44,8 @@ appdata-paths = ["$APPDATA/x-adox/X-Addon-Oxide"]
 [package.metadata.packager.windows]
 # Add windows specific signing if needed later
 
-
 [package.metadata.packager.macos]
-minimum_system_version = "10.15"
+minimum-system-version = "10.15"
 entitlements = "../../assets/packaging/entitlements.plist"
+
+
