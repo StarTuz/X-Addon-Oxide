@@ -30,8 +30,8 @@ For more detailed instructions, see the [Full User Guide](USER_GUIDE.md).
 Grab the latest professional installers from the [Releases](https://github.com/StarTuz/X-Addon-Oxide/releases) page:
 
 - **Windows**: `.exe` (NSIS Installer)
-- **macOS**: `.dmg` (Disk Image) or `.app` bundle.
-- **Linux**: `.AppImage` or `.deb` package.
+- **macOS**: `.dmg` (Disk Image)
+- **Linux**: `.tar.gz` (Binary tarball)
 
 ### Building from Source
 

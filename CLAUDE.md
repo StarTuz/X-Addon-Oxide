@@ -25,12 +25,24 @@ cargo test
 cargo test -p x-adox-core
 cargo test -p x-adox-bitnet
 
-# Package for distribution (requires cargo-packager)
-cargo packager --release -p x-adox-gui --formats nsis,dmg,app,appimage
-
-# Local CI pipeline
+# Local CI pipeline (build + test)
 ./scripts/local_ci.sh
 ```
+
+## CI/CD
+
+GitHub Actions builds on push to main and on tags:
+- **Windows**: NSIS installer (`.exe`) via cargo-packager
+- **macOS**: DMG + App bundle via cargo-packager
+- **Linux**: Binary tarball (`.tar.gz`) - AppImage built separately via Docker
+
+Releases are created automatically when pushing a version tag:
+```bash
+git tag v2.1.0
+git push origin v2.1.0
+```
+
+Artifacts are collected to `dist/{platform}/` and uploaded to GitHub Releases.
 
 ## Architecture
 
