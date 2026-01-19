@@ -427,6 +427,9 @@ impl BitNetModel {
             || name_lower.contains("tupolev")
             || name_lower.contains("il-")
             || name_lower.contains("concorde")
+            || name_lower.contains("trident")
+            || name_lower.contains("comet")
+            || name_lower.contains("caravelle")
             || name_lower.contains("md-")
             || name_lower.contains("dc-")
             || name_lower.contains("f-1")
@@ -449,7 +452,9 @@ impl BitNetModel {
             || name_lower.contains("c208")
             || name_lower.contains("kodiak")
             || name_lower.contains("ansel")
-            || name_lower.contains("an-");
+            || name_lower.contains("an-")
+            || name_lower.contains("t-6")
+            || name_lower.contains("t6");
 
         // --- Step 4: Detection Pass 3: Operational Role ---
         let is_airliner = is_boeing
@@ -471,7 +476,18 @@ impl BitNetModel {
             || name_lower.contains("united")
             || name_lower.contains("southwest")
             || name_lower.contains("ryanair")
-            || name_lower.contains("emirates");
+            || name_lower.contains("emirates")
+            || name_lower.contains("concorde")
+            || name_lower.contains("trident")
+            || name_lower.contains("comet")
+            || name_lower.contains("caravelle")
+            || name_lower.contains("tupolev")
+            || name_lower.contains("tu-")
+            || name_lower.contains("ilyushin")
+            || name_lower.contains("il-")
+            || name_lower.contains("yak-")
+            || name_lower.contains("bac")
+            || name_lower.contains("vickers");
         let is_bizjet = name_lower.contains("citation")
             || name_lower.contains("lear")
             || name_lower.contains("gulfstream")
@@ -490,25 +506,33 @@ impl BitNetModel {
             tags.push("Military".to_string());
             if is_jet {
                 tags.push("Jet".to_string());
+            } else if is_turboprop {
+                tags.push("Turboprop".to_string());
             } else {
                 tags.push("Prop".to_string());
             }
         } else {
-            // Priority: Airliner > Business Jet > GA
+            // Operational Role tagging: Airliner vs General Aviation
+            // Note: Per user request, Business Jets are part of General Aviation.
             if is_airliner {
                 tags.push("Airliner".to_string());
                 if is_jet {
                     tags.push("Jet".to_string());
                 } else if is_turboprop {
                     tags.push("Turboprop".to_string());
+                } else {
+                    tags.push("Prop".to_string());
                 }
-            } else if is_bizjet {
-                tags.push("Business Jet".to_string());
-                tags.push("Jet".to_string());
             } else {
-                // General Aviation is the default for everything else that isn't a helicopter/glider/military/airliner/bizjet
+                // Default to General Aviation for everything else that isn't military, glider or helicopter
                 tags.push("General Aviation".to_string());
-                if is_turboprop {
+                if is_bizjet {
+                    tags.push("Business Jet".to_string());
+                }
+
+                if is_jet {
+                    tags.push("Jet".to_string());
+                } else if is_turboprop {
                     tags.push("Turboprop".to_string());
                 } else {
                     tags.push("Prop".to_string());
@@ -592,7 +616,7 @@ mod tests {
         assert!(tags.contains(&"Cessna".to_string()));
         assert!(tags.contains(&"Business Jet".to_string()));
         assert!(tags.contains(&"Jet".to_string()));
-        assert!(!tags.contains(&"General Aviation".to_string()));
+        assert!(tags.contains(&"General Aviation".to_string()));
     }
 
     #[test]
@@ -623,9 +647,30 @@ mod tests {
     }
 
     #[test]
-    fn test_predict_tags_helicopter() {
+    fn test_predict_tags_concorde() {
         let model = BitNetModel::default();
-        let tags = model.predict_aircraft_tags("Bell 407", Path::new("test"));
-        assert!(tags.contains(&"Helicopter".to_string()));
+        let tags = model.predict_aircraft_tags("CONCORDE_FXP", Path::new("test"));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(tags.contains(&"Jet".to_string()));
+        assert!(!tags.contains(&"Prop".to_string()));
+        assert!(!tags.contains(&"General Aviation".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_trident() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Trident_2E", Path::new("test"));
+        assert!(tags.contains(&"Airliner".to_string()));
+        assert!(tags.contains(&"Jet".to_string()));
+        assert!(!tags.contains(&"Prop".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_bizjet_is_ga() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Cessna Citation CJ4", Path::new("test"));
+        assert!(tags.contains(&"General Aviation".to_string()));
+        assert!(tags.contains(&"Business Jet".to_string()));
+        assert!(tags.contains(&"Jet".to_string()));
     }
 }
