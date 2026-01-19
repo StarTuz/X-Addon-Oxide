@@ -1,0 +1,31 @@
+[product]
+name = "X-Addon-Oxide"
+version = "2.0.3"
+description = "A modern addon manager for X-Plane"
+authors = ["StarTuz"]
+publisher = "StarTuz"
+identifier = "com.startux.x-adox"
+copyright = "Copyright © 2026 StarTuz"
+category = "Utility"
+icons = [
+    "assets/packaging/icon.ico",
+    "assets/packaging/icon.icns"
+]
+
+[product.windows]
+default_install_path = "$PROGRAMFILES/X-Addon-Oxide"
+wix = { language = "en-US" }
+nsis = { compression = "lzma", languages = ["English"] }
+
+[product.macos]
+minimum_system_version = "10.15"
+identifier = "com.startux.x-adox"
+entitlements = "assets/packaging/entitlements.plist"
+
+[[binaries]]
+filename = "x-adox-gui"
+path = "target/release/x-adox-gui"
+
+[package]
+out_dir = "dist"
+formats = ["nsis", "dmg", "app", "appimage"]
