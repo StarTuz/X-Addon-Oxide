@@ -297,6 +297,94 @@ impl BitNetModel {
 
         final_score
     }
+    /// Predicts aircraft tags based on name and path.
+    pub fn predict_aircraft_tags(&self, name: &str, _path: &Path) -> Vec<String> {
+        let mut tags = Vec::new();
+        let name_lower = name.to_lowercase();
+
+        // Manufacturers
+        if name_lower.contains("boeing")
+            || name_lower.contains("b737")
+            || name_lower.contains("b747")
+            || name_lower.contains("b777")
+            || name_lower.contains("b787")
+        {
+            tags.push("Boeing".to_string());
+        }
+        if name_lower.contains("airbus")
+            || name_lower.contains("a320")
+            || name_lower.contains("a330")
+            || name_lower.contains("a350")
+        {
+            tags.push("Airbus".to_string());
+        }
+        if name_lower.contains("cessna") || name_lower.contains("c172") {
+            tags.push("Cessna".to_string());
+        }
+        if name_lower.contains("cirrus") {
+            tags.push("Cirrus".to_string());
+        }
+        if name_lower.contains("beechcraft")
+            || name_lower.contains("baron")
+            || name_lower.contains("kingair")
+        {
+            tags.push("Beechcraft".to_string());
+        }
+        if name_lower.contains("bombardier")
+            || name_lower.contains("crj")
+            || name_lower.contains("challenger")
+        {
+            tags.push("Bombardier".to_string());
+        }
+        if name_lower.contains("embraer")
+            || name_lower.contains("erj")
+            || name_lower.contains("e175")
+        {
+            tags.push("Embraer".to_string());
+        }
+
+        // Types
+        if name_lower.contains("helicopter")
+            || name_lower.contains("rotor")
+            || name_lower.contains("bell")
+            || name_lower.contains("aw139")
+        {
+            tags.push("Helicopter".to_string());
+        } else if name_lower.contains("glider") || name_lower.contains("ask21") {
+            tags.push("Glider".to_string());
+        } else if name_lower.contains("jet")
+            || name_lower.contains("citation")
+            || name_lower.contains("learner")
+            || tags.contains(&"Boeing".to_string())
+            || tags.contains(&"Airbus".to_string())
+            || tags.contains(&"Bombardier".to_string())
+            || tags.contains(&"Embraer".to_string())
+        {
+            tags.push("Jet".to_string());
+        } else {
+            tags.push("Prop".to_string());
+        } // Fallback assumption for GA
+
+        // Additional
+        if name_lower.contains("military")
+            || name_lower.contains("fighter")
+            || name_lower.contains("f-16")
+            || name_lower.contains("f-14")
+            || name_lower.contains("f-18")
+        {
+            tags.push("Military".to_string());
+        }
+        if name_lower.contains("seaplane")
+            || name_lower.contains("float")
+            || name_lower.contains("amphibian")
+        {
+            tags.push("Seaplane".to_string());
+        }
+
+        tags.sort();
+        tags.dedup();
+        tags
+    }
 }
 
 #[cfg(test)]

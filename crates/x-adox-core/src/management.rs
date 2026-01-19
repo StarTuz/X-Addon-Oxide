@@ -52,4 +52,53 @@ impl ModManager {
         manager.save()?;
         Ok(())
     }
+
+    /// Enables or disables an aircraft by moving it between `Aircraft` and `Aircraft (Disabled)`.
+    pub fn set_aircraft_enabled(
+        xplane_root: &Path,
+        path: &Path,
+        enabled: bool,
+    ) -> Result<PathBuf, std::io::Error> {
+        let aircraft_root = xplane_root.join("Aircraft");
+        let disabled_root = xplane_root.join("Aircraft (Disabled)");
+
+        // Determine source and target roots based on current state
+        let (source_root, target_root) = if enabled {
+            (&disabled_root, &aircraft_root)
+        } else {
+            (&aircraft_root, &disabled_root)
+        };
+
+        // Calculate relative path from source root
+        let relative_path = path.strip_prefix(source_root).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Path {} is not inside source root {}",
+                    path.display(),
+                    source_root.display()
+                ),
+            )
+        })?;
+
+        let target_path = target_root.join(relative_path);
+
+        // Ensure parent directory exists in target
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        // Move the file/bucket
+        fs::rename(path, &target_path)?;
+
+        // Optional: Clean up empty parent directories in source
+        if let Some(parent) = path.parent() {
+            // Only remove if it's not the root itself and is empty
+            if parent != source_root && parent.read_dir()?.next().is_none() {
+                let _ = fs::remove_dir(parent);
+            }
+        }
+
+        Ok(target_path)
+    }
 }

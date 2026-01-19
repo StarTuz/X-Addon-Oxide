@@ -23,6 +23,7 @@ pub struct DiscoveredAddon {
     pub name: String,
     pub addon_type: AddonType,
     pub is_enabled: bool,
+    pub tags: Vec<String>,
 }
 
 pub struct DiscoveryManager;
@@ -32,36 +33,50 @@ impl DiscoveryManager {
     /// Returns a list of paths to directories containing .acf files.
     pub fn scan_aircraft(root: &Path) -> Vec<DiscoveredAddon> {
         let mut results = Vec::new();
-        let walker = WalkDir::new(root).into_iter();
 
-        for entry in walker.filter_entry(|e| !is_hidden(e)) {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
+        let aircraft_root = root.join("Aircraft");
+        let disabled_root = root.join("Aircraft (Disabled)");
 
-            if entry.file_type().is_file() {
-                if let Some(ext) = entry.path().extension() {
-                    if ext == "acf" {
-                        let acf_name = entry.file_name().to_string_lossy().to_string();
-                        if let Some(parent) = entry.path().parent() {
-                            if !results.iter().any(|d: &DiscoveredAddon| d.path == parent) {
-                                results.push(DiscoveredAddon {
-                                    path: parent.to_path_buf(),
-                                    name: parent
-                                        .file_name()
-                                        .unwrap_or_default()
-                                        .to_string_lossy()
-                                        .to_string(),
-                                    addon_type: AddonType::Aircraft(acf_name),
-                                    is_enabled: true,
-                                });
+        let scan_folder = |dir: &Path, is_enabled: bool, results: &mut Vec<DiscoveredAddon>| {
+            if !dir.exists() {
+                return;
+            }
+            let walker = WalkDir::new(dir).into_iter();
+
+            for entry in walker.filter_entry(|e| !is_hidden(e)) {
+                let entry = match entry {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+
+                if entry.file_type().is_file() {
+                    if let Some(ext) = entry.path().extension() {
+                        if ext == "acf" {
+                            let acf_name = entry.file_name().to_string_lossy().to_string();
+                            if let Some(parent) = entry.path().parent() {
+                                if !results.iter().any(|d: &DiscoveredAddon| d.path == parent) {
+                                    results.push(DiscoveredAddon {
+                                        path: parent.to_path_buf(),
+                                        name: parent
+                                            .file_name()
+                                            .unwrap_or_default()
+                                            .to_string_lossy()
+                                            .to_string(),
+                                        addon_type: AddonType::Aircraft(acf_name),
+                                        is_enabled,
+                                        tags: Vec::new(),
+                                    });
+                                }
                             }
                         }
                     }
                 }
             }
-        }
+        };
+
+        scan_folder(&aircraft_root, true, &mut results);
+        scan_folder(&disabled_root, false, &mut results);
+
         results
     }
 
@@ -93,6 +108,7 @@ impl DiscoveryManager {
                         airports: Vec::new(),
                     },
                     is_enabled: true, // Default to true, calling code should reconcile with scenery_packs.ini
+                    tags: Vec::new(),
                 });
             }
         }
@@ -158,6 +174,7 @@ impl DiscoveryManager {
                                     ), // Simple hook, might need refinement
                                 },
                                 is_enabled: enabled,
+                                tags: Vec::new(),
                             });
                         }
                     }
@@ -208,6 +225,7 @@ impl DiscoveryManager {
                                 path: path.clone(),
                                 addon_type: AddonType::CSL(true),
                                 is_enabled: true,
+                                tags: Vec::new(),
                             });
                         }
                     }
@@ -229,6 +247,7 @@ impl DiscoveryManager {
                                 path: path.clone(),
                                 addon_type: AddonType::CSL(false),
                                 is_enabled: false,
+                                tags: Vec::new(),
                             });
                         }
                     }

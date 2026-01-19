@@ -3,7 +3,7 @@ use iced::widget::{
     svg, text, text_editor, tooltip, Column, Row,
 };
 use iced::{Background, Border, Color, Element, Length, Renderer, Shadow, Task, Theme};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use x_adox_bitnet::BitNetModel;
 use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
 use x_adox_core::management::ModManager;
@@ -38,6 +38,8 @@ struct AircraftNode {
     is_expanded: bool,
     children: Vec<AircraftNode>,
     acf_file: Option<String>, // .acf filename if aircraft
+    is_enabled: bool,
+    tags: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +54,8 @@ enum Message {
 
     // Aircraft & Plugins
     AircraftLoaded(Result<Vec<DiscoveredAddon>, String>),
+    ToggleAircraft(PathBuf, bool),
+    AircraftToggled(Result<(), String>),
     PluginsLoaded(Result<Vec<DiscoveredAddon>, String>),
     TogglePlugin(PathBuf, bool),
     PluginToggled(Result<(), String>),
@@ -66,6 +70,7 @@ enum Message {
     // Aircraft tree
     ToggleAircraftFolder(PathBuf),
     AircraftTreeLoaded(Result<AircraftNode, String>),
+    ToggleAircraftSmartView,
 
     // Install/Delete
     SelectScenery(String),
@@ -153,10 +158,12 @@ struct App {
     selected_scenery: Option<String>,
     selected_aircraft: Option<PathBuf>,
     selected_aircraft_icon: Option<image::Handle>,
+    selected_aircraft_tags: Vec<String>,
     selected_plugin: Option<PathBuf>,
     selected_csl: Option<PathBuf>,
     show_delete_confirm: bool,
     show_csl_tab: bool,
+    use_smart_view: bool,
     // Assets
     tile_manager: TileManager,
     icon_aircraft: svg::Handle,
@@ -205,6 +212,7 @@ impl App {
 
         let app = Self {
             active_tab: Tab::Scenery,
+            use_smart_view: false,
             packs: Vec::new(),
             aircraft: Vec::new(),
             aircraft_tree: None,
@@ -215,6 +223,7 @@ impl App {
             selected_scenery: None,
             selected_aircraft: None,
             selected_aircraft_icon: None,
+            selected_aircraft_tags: Vec::new(),
             selected_plugin: None,
             selected_csl: None,
             show_delete_confirm: false,
@@ -466,6 +475,37 @@ impl App {
                     Task::none()
                 }
             },
+            Message::ToggleAircraft(path, enable) => {
+                let root = self.xplane_root.clone();
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                self.status = format!(
+                    "{} Aircraft {}...",
+                    if enable { "Enabling" } else { "Disabling" },
+                    name
+                );
+                Task::perform(
+                    async move { toggle_aircraft(root, path, enable) },
+                    Message::AircraftToggled,
+                )
+            }
+            Message::AircraftToggled(result) => match result {
+                Ok(_) => {
+                    self.status = "Aircraft toggled!".to_string();
+                    Task::done(Message::Refresh)
+                }
+                Err(e) => {
+                    self.status = format!("Error toggling aircraft: {}", e);
+                    Task::none()
+                }
+            },
+            Message::ToggleAircraftSmartView => {
+                self.use_smart_view = !self.use_smart_view;
+                Task::none()
+            }
             Message::SelectCSL(path) => {
                 self.selected_csl = Some(path);
                 Task::none()
@@ -833,6 +873,14 @@ impl App {
             }
             Message::SelectAircraft(path) => {
                 self.selected_aircraft = Some(path.clone());
+
+                // Get tags
+                if let Some(tree) = &self.aircraft_tree {
+                    self.selected_aircraft_tags =
+                        Self::find_tags_in_tree(tree, &path).unwrap_or_default();
+                } else {
+                    self.selected_aircraft_tags = Vec::new();
+                }
 
                 // Try to find icon11.png or icon.png
                 // Based on .acf filename
@@ -2468,26 +2516,75 @@ impl App {
             None
         };
 
-        let tree_content: Element<'_, Message> = match &self.aircraft_tree {
-            Some(tree) => {
-                let items = self.collect_tree_nodes(tree, 0);
-                let col: Column<Message> = items
-                    .into_iter()
-                    .fold(Column::new().spacing(2), |c, e| c.push(e));
-                Element::from(scrollable(col).height(Length::Fill))
+        let toggle_view = button(
+            text(if self.use_smart_view {
+                "Folder View"
+            } else {
+                "AI Smart View"
+            })
+            .size(12),
+        )
+        .on_press(Message::ToggleAircraftSmartView)
+        .style(style::button_secondary)
+        .padding([4, 8]);
+
+        let items = if self.use_smart_view {
+            self.collect_smart_nodes()
+        } else {
+            match &self.aircraft_tree {
+                Some(tree) => self.collect_tree_nodes(tree, 0),
+                None => vec![text("Loading aircraft...").size(14).into()],
             }
-            None => text("Loading aircraft...").size(14).into(),
         };
 
+        let tree_content = if items.is_empty() && self.aircraft_tree.is_some() {
+            text("No aircraft found.").size(14).into()
+        } else {
+            let col: Column<'_, Message> = items
+                .into_iter()
+                .fold(Column::new().spacing(2), |c, e| c.push(e));
+            Element::from(scrollable(col).height(Length::Fill))
+        };
+
+        let list_pane = column![
+            row![text("Aircraft Library").size(18), toggle_view]
+                .spacing(10)
+                .align_y(iced::Alignment::Center)
+                .padding(iced::Padding {
+                    top: 0.0,
+                    right: 0.0,
+                    bottom: 10.0,
+                    left: 0.0,
+                }),
+            tree_content
+        ];
+
         let preview: Element<'_, Message> = if let Some(icon) = &self.selected_aircraft_icon {
-            container(iced::widget::image(icon.clone()))
-                .width(Length::FillPortion(1))
-                .height(Length::Fill)
-                .padding(20)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .style(style::container_card)
-                .into()
+            let tags_row = row(self
+                .selected_aircraft_tags
+                .iter()
+                .map(|t| {
+                    container(text(t).size(12).color(style::palette::TEXT_PRIMARY))
+                        .padding([4, 8])
+                        .style(style::container_card)
+                        .into()
+                })
+                .collect::<Vec<_>>())
+            .spacing(5)
+            .wrap();
+
+            container(
+                column![iced::widget::image(icon.clone()), tags_row]
+                    .spacing(10)
+                    .align_x(iced::Alignment::Center),
+            )
+            .width(Length::FillPortion(1))
+            .height(Length::Fill)
+            .padding(20)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(style::container_card)
+            .into()
         } else {
             container(text("No preview available").color(style::palette::TEXT_SECONDARY))
                 .width(Length::FillPortion(1))
@@ -2498,11 +2595,8 @@ impl App {
                 .into()
         };
 
-        let main_content = row![
-            container(tree_content).width(Length::FillPortion(2)),
-            preview
-        ]
-        .spacing(20);
+        let main_content =
+            row![container(list_pane).width(Length::FillPortion(2)), preview].spacing(20);
 
         if let Some(confirm_msg) = confirm_text {
             column![
@@ -2527,17 +2621,32 @@ impl App {
     }
 
     fn collect_tree_nodes(&self, node: &AircraftNode, depth: usize) -> Vec<Element<'_, Message>> {
-        let mut result = Vec::new();
-        let indent = 20 * depth;
+        let mut result = vec![self.render_aircraft_row(node, depth)];
+
+        // Collect children if expanded
+        if node.is_expanded {
+            for child in &node.children {
+                result.extend(self.collect_tree_nodes(child, depth + 1));
+            }
+        }
+
+        result
+    }
+
+    fn render_aircraft_row(&self, node: &AircraftNode, depth: usize) -> Element<'_, Message> {
+        let indent = 20.0 * depth as f32;
 
         // Determine icon based on node type
-        let (icon, label_color) = if node.is_folder {
-            let arrow = if node.is_expanded { "v" } else { ">" };
-            (arrow.to_string(), Color::WHITE)
+        let icon = if node.is_folder {
+            if node.is_expanded {
+                "v"
+            } else {
+                ">"
+            }
         } else if node.acf_file.is_some() {
-            ("   •".to_string(), Color::from_rgb(0.6, 0.9, 0.6))
+            "   •"
         } else {
-            ("   -".to_string(), Color::from_rgb(0.6, 0.6, 0.6))
+            "   -"
         };
 
         let display_name = if let Some(acf) = &node.acf_file {
@@ -2553,12 +2662,18 @@ impl App {
             style::button_ghost
         };
 
+        let label_color = if node.is_enabled {
+            style::palette::TEXT_PRIMARY
+        } else {
+            style::palette::TEXT_SECONDARY // Dimmed for disabled
+        };
+
         let node_row: Element<'_, Message> = if node.is_folder {
             let path = node.path.clone();
             let path_for_select = node.path.clone();
 
             row![
-                button(text(icon.clone()).size(14))
+                button(text(icon).size(14))
                     .on_press(Message::ToggleAircraftFolder(path))
                     .padding([4, 8])
                     .style(style::button_ghost),
@@ -2571,35 +2686,98 @@ impl App {
             .into()
         } else {
             let path = node.path.clone();
-            button(
-                row![
-                    text(icon).size(12),
-                    text(display_name).size(14).color(label_color),
-                ]
-                .spacing(5),
-            )
-            .on_press(Message::SelectAircraft(path))
-            .style(style)
-            .padding([4, 8])
+            let toggle_path = node.path.clone();
+            let is_enabled = node.is_enabled;
+
+            // Allow toggling only if it's an aircraft package (leaf node with .acf usually)
+            let toggle_btn: Element<'_, Message> = if node.acf_file.is_some() {
+                checkbox("Enabled", is_enabled)
+                    .on_toggle(move |v| Message::ToggleAircraft(toggle_path.clone(), v))
+                    .size(16)
+                    .spacing(10)
+                    .into()
+            } else {
+                iced::widget::Space::with_width(Length::Fixed(26.0)).into()
+            };
+
+            row![
+                toggle_btn,
+                button(
+                    row![
+                        text(icon).size(12),
+                        text(display_name).size(14).color(label_color),
+                    ]
+                    .spacing(5),
+                )
+                .on_press(Message::SelectAircraft(path))
+                .style(style)
+                .padding([4, 8])
+            ]
+            .spacing(10)
             .into()
         };
 
-        let indented: Element<'_, Message> = row![
-            container(text("")).width(Length::Fixed(indent as f32)),
-            node_row,
-        ]
-        .into();
+        row![container(text("")).width(Length::Fixed(indent)), node_row,].into()
+    }
 
-        result.push(indented);
+    fn flatten_aircraft_tree(node: &AircraftNode) -> Vec<AircraftNode> {
+        let mut result = Vec::new();
+        if node.acf_file.is_some() {
+            result.push(node.clone());
+        }
+        for child in &node.children {
+            result.extend(Self::flatten_aircraft_tree(child));
+        }
+        result
+    }
 
-        // Collect children if expanded
-        if node.is_expanded {
-            for child in &node.children {
-                result.extend(self.collect_tree_nodes(child, depth + 1));
+    fn collect_smart_nodes(&self) -> Vec<Element<'_, Message>> {
+        use std::collections::BTreeMap;
+        let Some(tree) = &self.aircraft_tree else {
+            return Vec::new();
+        };
+        let all_aircraft = Self::flatten_aircraft_tree(tree);
+
+        let mut groups: BTreeMap<String, Vec<AircraftNode>> = BTreeMap::new();
+        for ac in all_aircraft {
+            if ac.tags.is_empty() {
+                groups.entry("Other".to_string()).or_default().push(ac);
+            } else {
+                for tag in &ac.tags {
+                    groups.entry(tag.clone()).or_default().push(ac.clone());
+                }
             }
         }
 
+        let mut result = Vec::new();
+        for (tag, aircraft) in groups {
+            result.push(
+                container(text(tag).size(16))
+                    .padding(iced::Padding {
+                        top: 15.0,
+                        right: 5.0,
+                        bottom: 5.0,
+                        left: 5.0,
+                    })
+                    .into(),
+            );
+            for ac in aircraft {
+                result.push(self.render_aircraft_row(&ac, 1));
+            }
+        }
         result
+    }
+
+    fn find_tags_in_tree(node: &AircraftNode, target: &std::path::Path) -> Option<Vec<String>> {
+        if node.path == target {
+            return Some(node.tags.clone());
+        }
+        for child in &node.children {
+            if let Some(tags) = Self::find_tags_in_tree(child, target) {
+                return Some(tags);
+            }
+        }
+        None
     }
 }
 
@@ -2674,53 +2852,109 @@ fn toggle_pack(root: Option<PathBuf>, name: String, enable: bool) -> Result<(), 
 fn load_aircraft_tree(root: Option<PathBuf>) -> Result<AircraftNode, String> {
     let root = root.ok_or("X-Plane root not found")?;
     let aircraft_path = root.join("Aircraft");
+    let disabled_path = root.join("Aircraft (Disabled)");
 
     if !aircraft_path.exists() {
         return Err("Aircraft folder not found".to_string());
     }
 
-    Ok(build_aircraft_tree(&aircraft_path))
+    // Load BitNet model for tagging
+    let bitnet = BitNetModel::new().unwrap_or_default();
+
+    let merged_node =
+        build_merged_aircraft_tree(&aircraft_path, &disabled_path, Path::new(""), &bitnet);
+
+    Ok(merged_node)
 }
 
-fn build_aircraft_tree(path: &std::path::Path) -> AircraftNode {
-    let name = path
+fn build_merged_aircraft_tree(
+    enabled_root: &Path,
+    disabled_root: &Path,
+    relative_path: &Path,
+    bitnet: &BitNetModel,
+) -> AircraftNode {
+    let enabled_full = enabled_root.join(relative_path);
+    let disabled_full = disabled_root.join(relative_path);
+
+    let name = relative_path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "Aircraft".to_string());
+        .unwrap_or_else(|| "Addon Library".to_string());
 
     let mut children = Vec::new();
     let mut acf_file = None;
+    let mut is_enabled = true;
 
-    if let Ok(entries) = std::fs::read_dir(path) {
-        let mut entries: Vec<_> = entries.flatten().collect();
-        entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    // Use absolute path for identifying which root it's in actually is_enabled
+    // But we are merging. An aircraft folder (containing .acf) will exist in ONLY ONE of them.
+    // So we check which one contains .acf.
 
-        for entry in entries {
-            let entry_path = entry.path();
-            let entry_name = entry.file_name().to_string_lossy().to_string();
+    let mut entries_map = std::collections::BTreeSet::new();
+    if let Ok(entries) = std::fs::read_dir(&enabled_full) {
+        for entry in entries.flatten() {
+            entries_map.insert(entry.file_name());
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(&disabled_full) {
+        for entry in entries.flatten() {
+            entries_map.insert(entry.file_name());
+        }
+    }
 
-            // Skip hidden files
-            if entry_name.starts_with('.') {
-                continue;
-            }
+    for entry_name in entries_map {
+        let entry_name_str = entry_name.to_string_lossy().to_string();
+        if entry_name_str.starts_with('.') {
+            continue;
+        }
 
-            if entry_path.is_dir() {
-                // Recursively build tree for subdirectories
-                children.push(build_aircraft_tree(&entry_path));
-            } else if entry_name.ends_with(".acf") {
-                // Found an aircraft file
-                acf_file = Some(entry_name);
+        let entry_rel = relative_path.join(&entry_name);
+        let e_full = enabled_root.join(&entry_rel);
+        let d_full = disabled_root.join(&entry_rel);
+
+        if e_full.is_dir() || d_full.is_dir() {
+            // Check if this subdirectory is an aircraft (contains .acf)
+            // Or if it's just a grouping folder.
+            children.push(build_merged_aircraft_tree(
+                enabled_root,
+                disabled_root,
+                &entry_rel,
+                bitnet,
+            ));
+        } else if entry_name_str.ends_with(".acf") {
+            acf_file = Some(entry_name_str);
+            // If the .acf is found in disabled_full, then this whole folder is disabled.
+            if disabled_full.join(&entry_name).exists() {
+                is_enabled = false;
             }
         }
     }
 
+    // Determine path for display/actions
+    // If it's disabled, we MUST use the d_full path for actions to work.
+    let final_path = if !is_enabled {
+        disabled_full
+    } else {
+        enabled_full
+    };
+
+    // Predict tags
+    let tags = if acf_file.is_some()
+        || (!children.is_empty() && children.iter().any(|c| c.acf_file.is_some()))
+    {
+        bitnet.predict_aircraft_tags(&name, &final_path)
+    } else {
+        Vec::new()
+    };
+
     AircraftNode {
         name,
-        path: path.to_path_buf(),
+        path: final_path,
         is_folder: acf_file.is_none() && !children.is_empty(),
-        is_expanded: path.file_name().map(|n| n == "Aircraft").unwrap_or(false), // Expand root
+        is_expanded: relative_path.as_os_str().is_empty(), // Expand root
         children,
         acf_file,
+        is_enabled,
+        tags,
     }
 }
 
@@ -2740,53 +2974,29 @@ async fn install_addon(
     zip_path: PathBuf,
     tab: Tab,
     dest_override: Option<PathBuf>,
-    mut on_progress: impl FnMut(f32),
+    on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
+    let res = tokio::task::spawn_blocking(move || {
+        extract_zip_task(root, zip_path, tab, dest_override, on_progress)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    res
+}
+
+fn toggle_aircraft(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(), String> {
     let root = root.ok_or("X-Plane root not found")?;
-    let dest_dir = if let Some(dest) = dest_override {
-        dest
-    } else {
-        match tab {
-            Tab::Scenery => root.join("Custom Scenery"),
-            Tab::Aircraft => root.join("Aircraft"),
-            Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::CSLs => {
-                let ivap = root
-                    .join("Resources")
-                    .join("plugins")
-                    .join("X-Ivap Resources")
-                    .join("CSL");
-                let xpilot = root
-                    .join("Resources")
-                    .join("plugins")
-                    .join("xPilot")
-                    .join("Resources")
-                    .join("CSL");
-                let custom = root.join("Custom Data").join("CSL");
+    ModManager::set_aircraft_enabled(&root, &path, enable).map_err(|e| e.to_string())?;
+    Ok(())
+}
 
-                if xpilot.exists() {
-                    xpilot
-                } else if custom.exists() {
-                    custom
-                } else if ivap.exists() {
-                    ivap
-                } else {
-                    custom
-                }
-            }
-            Tab::Heuristics | Tab::Issues => {
-                return Err("Cannot install to Heuristics or Issues tab".to_string())
-            }
-        }
-    };
-
-    if !dest_dir.exists() {
-        return Err(format!(
-            "Destination directory {} not found",
-            dest_dir.display()
-        ));
-    }
-
+fn extract_zip_task(
+    root: Option<PathBuf>,
+    zip_path: PathBuf,
+    tab: Tab,
+    dest_override: Option<PathBuf>,
+    mut on_progress: impl FnMut(f32) + Send + 'static,
+) -> Result<String, String> {
     // Open the zip file
     let file = std::fs::File::open(&zip_path).map_err(|e| format!("Failed to open zip: {}", e))?;
     let mut archive =
@@ -2799,36 +3009,45 @@ async fn install_addon(
         return Err("Empty zip archive".to_string());
     };
 
+    let root = root.ok_or("X-Plane root not found".to_string())?;
+
+    let dest_dir = if let Some(dest) = dest_override {
+        dest
+    } else {
+        match tab {
+            Tab::Aircraft => root.join("Aircraft"),
+            Tab::Plugins => root.join("Resources").join("plugins"),
+            Tab::Scenery => root.join("Custom Scenery"),
+            Tab::CSLs => root.join("Resources").join("plugins"),
+            _ => return Err("Unsupported install tab".to_string()),
+        }
+    };
+
     // Extract to destination
     let total_files = archive.len();
     for i in 0..total_files {
-        {
-            let mut file = archive
-                .by_index(i)
-                .map_err(|e| format!("Failed to read zip entry: {}", e))?;
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read zip entry: {}", e))?;
 
-            let outpath = dest_dir.join(file.name());
+        let outpath = dest_dir.join(file.name());
 
-            if file.name().ends_with('/') {
-                std::fs::create_dir_all(&outpath)
-                    .map_err(|e| format!("Failed to create dir: {}", e))?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|e| format!("Failed to create parent dir: {}", e))?;
-                }
-                let mut outfile = std::fs::File::create(&outpath)
-                    .map_err(|e| format!("Failed to create file: {}", e))?;
-
-                // Optimization: use a buffer to copy instead of read_to_end
-                std::io::copy(&mut file, &mut outfile)
-                    .map_err(|e| format!("Failed to extract file: {}", e))?;
+        if file.name().ends_with('/') {
+            std::fs::create_dir_all(&outpath)
+                .map_err(|e| format!("Failed to create dir: {}", e))?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create parent dir: {}", e))?;
             }
+            let mut outfile = std::fs::File::create(&outpath)
+                .map_err(|e| format!("Failed to create file: {}", e))?;
+            std::io::copy(&mut file, &mut outfile)
+                .map_err(|e| format!("Failed to copy file content: {}", e))?;
         }
 
-        // Update progress
-        let progress = ((i + 1) as f32 / total_files as f32) * 100.0;
-        on_progress(progress);
+        // Send progress
+        on_progress((i as f32 / total_files as f32) * 100.0);
     }
 
     // Special handling for Scenery: add to scenery_packs.ini
