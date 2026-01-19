@@ -20,8 +20,12 @@ sudo cp crates/x-adox-gui/assets/xam-addon-oxide.desktop /usr/share/applications
 
 # Step 4: Icons
 echo "Installing icons..."
-sudo mkdir -p /usr/share/icons/hicolor/scalable/apps
-sudo cp crates/x-adox-gui/assets/icons/aircraft.svg /usr/share/icons/hicolor/scalable/apps/x-adox-gui.svg
+sudo mkdir -p /usr/share/icons/hicolor/1024x1024/apps
+sudo cp assets/packaging/icon_1024.png /usr/share/icons/hicolor/1024x1024/apps/x-adox-gui.png
+# Also install to a standard fallback location
+sudo mkdir -p /usr/share/icons/hicolor/256x256/apps
+magick assets/packaging/icon_1024.png -resize 256x256 icon_256.png
+sudo mv icon_256.png /usr/share/icons/hicolor/256x256/apps/x-adox-gui.png
 
 echo "----------------------------------"
 echo "Installation Complete!"

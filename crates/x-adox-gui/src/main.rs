@@ -2,6 +2,7 @@ use iced::widget::{
     button, checkbox, column, container, image, pick_list, progress_bar, responsive, row,
     scrollable, slider, svg, text, text_editor, tooltip, Column, Row,
 };
+use iced::window::icon;
 use iced::{Background, Border, Color, Element, Length, Renderer, Shadow, Task, Theme};
 use std::path::{Path, PathBuf};
 use x_adox_bitnet::BitNetModel;
@@ -24,8 +25,15 @@ const AIRCRAFT_CATEGORIES: &[&str] = &[
 ];
 
 fn main() -> iced::Result {
+    let icon_data = include_bytes!("../../../icon.png");
+    let window_icon = icon::from_file_data(icon_data, None).ok();
+
     iced::application("X-Addon-Oxide", App::update, App::view)
         .theme(|_| Theme::Dark)
+        .window(iced::window::Settings {
+            icon: window_icon,
+            ..Default::default()
+        })
         .run_with(App::new)
 }
 

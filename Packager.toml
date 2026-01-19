@@ -9,7 +9,8 @@ copyright = "Copyright © 2026 StarTuz"
 category = "Utility"
 icons = [
     "assets/packaging/icon.ico",
-    "assets/packaging/icon.icns"
+    "assets/packaging/icon.icns",
+    "assets/packaging/icon_1024.png"
 ]
 
 [product.windows]
