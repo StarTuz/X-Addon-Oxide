@@ -13,6 +13,9 @@ jobs:
   build:
     name: Build - ${{ matrix.platform.name }}
     runs-on: ${{ matrix.platform.os }}
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      WIN_CERTIFICATE: ${{ secrets.WIN_CERTIFICATE }}
     strategy:
       matrix:
         platform:
@@ -53,9 +56,8 @@ jobs:
         args: --release
 
     - name: Code Sign & Notarize (macOS)
-      if: matrix.platform.name == 'macOS' && secrets.APPLE_CERTIFICATE != ''
+      if: matrix.platform.name == 'macOS' && env.APPLE_CERTIFICATE != ''
       env:
-        APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
         APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         APPLE_ID: ${{ secrets.APPLE_ID }}
         APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -65,9 +67,7 @@ jobs:
         # xcrun notarytool submit ...
 
     - name: Code Sign (Windows)
-      if: matrix.platform.name == 'Windows' && secrets.WIN_CERTIFICATE != ''
-      env:
-        WIN_CERTIFICATE: ${{ secrets.WIN_CERTIFICATE }}
+      if: matrix.platform.name == 'Windows' && env.WIN_CERTIFICATE != ''
       run: |
         echo "Windows code signing logic would go here"
         # signtool sign /f certificate.pfx ...
