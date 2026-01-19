@@ -1,5 +1,4 @@
 use crate::scenery::{SceneryCategory, SceneryPack};
-use x_adox_bitnet::BitNetModel;
 
 impl SceneryCategory {
     // Lower value = Higher priority (loads first)
@@ -19,15 +18,16 @@ impl SceneryCategory {
 }
 
 // Custom sort implementation
-pub fn sort_packs(packs: &mut [SceneryPack]) {
-    // Attempt to load the BitNet model (even if it's currently a mock/distilled version)
-    let model = BitNetModel::new().ok();
-
+pub fn sort_packs(
+    packs: &mut [SceneryPack],
+    model: Option<&x_adox_bitnet::BitNetModel>,
+    context: &x_adox_bitnet::PredictContext,
+) {
     packs.sort_by(|a, b| {
         // 1. BitNet Smart Sort (if available)
         if let Some(model) = &model {
-            let score_a = model.predict(&a.name, &a.path);
-            let score_b = model.predict(&b.name, &b.path);
+            let score_a = model.predict(&a.name, &a.path, context);
+            let score_b = model.predict(&b.name, &b.path, context);
 
             // If the model is confident in a difference, use it
             if score_a != score_b {

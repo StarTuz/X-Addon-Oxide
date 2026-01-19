@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Default)]
+pub struct PredictContext {
+    pub region_focus: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Rule {
     pub name: String,
@@ -36,7 +41,7 @@ impl Default for HeuristicsConfig {
                         "x-world".to_string(),
                         "w2xp".to_string(),
                     ],
-                    score: 31, // Slightly above Birds/Landmarks
+                    score: 15, // Above Global Airports (20)
                     is_exclusion: false,
                 },
                 Rule {
@@ -107,7 +112,7 @@ impl Default for HeuristicsConfig {
                         "global_forests".to_string(),
                         "landmark".to_string(),
                     ],
-                    score: 40,
+                    score: 25,
                     is_exclusion: false,
                 },
                 Rule {
@@ -126,7 +131,7 @@ impl Default for HeuristicsConfig {
                         "pigeon".to_string(),
                         "seagulls".to_string(),
                     ],
-                    score: 32,
+                    score: 31,
                     is_exclusion: false,
                 },
                 Rule {
@@ -151,6 +156,7 @@ impl Default for HeuristicsConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct BitNetModel {
     pub config: HeuristicsConfig,
     config_path: PathBuf,
@@ -204,7 +210,7 @@ impl BitNetModel {
 
     /// Predicts the scenery priority score (0-100) based on the pack name and path.
     /// Lower score = higher priority.
-    pub fn predict(&self, name: &str, _path: &Path) -> u8 {
+    pub fn predict(&self, name: &str, _path: &Path, context: &PredictContext) -> u8 {
         let name_lower = name.to_lowercase();
 
         // DEBUG: Print current rules count
@@ -246,35 +252,42 @@ impl BitNetModel {
 
         let is_airport = has_airport_keyword || is_major_dev || has_icao;
 
-        // Custom Airport check (hardcoded threshold for now, but will be rule-based below)
-        if is_airport && !name_lower.contains("overlay") {
-            // We'll check rules first, but if none match, airports are usually 10
-        }
+        let mut score = None;
 
         for rule in &self.config.rules {
             let matches = rule.keywords.iter().any(|k| name_lower.contains(k));
             if matches {
                 if rule.is_exclusion {
                     if !is_airport {
-                        return rule.score;
+                        score = Some(rule.score);
+                        break;
                     }
                 } else {
-                    return rule.score;
+                    score = Some(rule.score);
+                    break;
                 }
             }
         }
 
-        // Final airport fallback if no rule caught it
-        if is_airport && !name_lower.contains("overlay") {
-            return 10;
+        let mut final_score = if let Some(s) = score {
+            s
+        } else if is_airport && !name_lower.contains("overlay") {
+            10
+        } else if name_lower.starts_with('z') || name_lower.starts_with('y') {
+            50
+        } else {
+            self.config.fallback_score
+        };
+
+        // Pro Mode: Region Biasing
+        if let Some(focus) = &context.region_focus {
+            if name_lower.contains(&focus.to_lowercase()) {
+                // Boost priority by 1 (lower score) if it matches the focus region
+                final_score = final_score.saturating_sub(1);
+            }
         }
 
-        // Fallback for Z-prefix or other
-        if name_lower.starts_with('z') || name_lower.starts_with('y') {
-            return 50;
-        }
-
-        self.config.fallback_score
+        final_score
     }
 }
 
@@ -288,7 +301,11 @@ mod tests {
             config: HeuristicsConfig::default(),
             config_path: PathBuf::from("test_heuristics.json"),
         };
-        let score = model.predict("panc---anchorage-v2.0.2", Path::new("test"));
+        let score = model.predict(
+            "panc---anchorage-v2.0.2",
+            Path::new("test"),
+            &PredictContext::default(),
+        );
         assert_eq!(
             score, 10,
             "PANC should be recognized as a high-priority airport"
@@ -301,8 +318,16 @@ mod tests {
             config: HeuristicsConfig::default(),
             config_path: PathBuf::from("test_heuristics.json"),
         };
-        let score1 = model.predict("simHeaven_X-World_America-1-vfr", Path::new("test"));
-        let score2 = model.predict("simHeaven_X-World_Europe-8-network", Path::new("test"));
+        let score1 = model.predict(
+            "simHeaven_X-World_America-1-vfr",
+            Path::new("test"),
+            &PredictContext::default(),
+        );
+        let score2 = model.predict(
+            "simHeaven_X-World_Europe-8-network",
+            Path::new("test"),
+            &PredictContext::default(),
+        );
         assert_eq!(score1, 31);
         assert_eq!(score2, 31);
         assert_eq!(
@@ -317,7 +342,11 @@ mod tests {
             config: HeuristicsConfig::default(),
             config_path: PathBuf::from("test_heuristics.json"),
         };
-        let score = model.predict("X-Plane Airports - EGPR Barra", Path::new("test"));
+        let score = model.predict(
+            "X-Plane Airports - EGPR Barra",
+            Path::new("test"),
+            &PredictContext::default(),
+        );
         assert_eq!(score, 10, "Default X-Plane airports should be prioritized");
     }
 }

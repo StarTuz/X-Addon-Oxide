@@ -5,5 +5,6 @@ edition = "2021"
 
 [dependencies]
 x-adox-core = { workspace = true }
+x-adox-bitnet = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }

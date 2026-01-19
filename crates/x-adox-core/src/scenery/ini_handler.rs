@@ -87,7 +87,11 @@ pub fn write_ini(file_path: &Path, packs: &[SceneryPack]) -> io::Result<()> {
 
     for pack in packs {
         // Determine section header based on BitNet score
-        let score = model.predict(&pack.name, &pack.path);
+        let score = model.predict(
+            &pack.name,
+            &pack.path,
+            &x_adox_bitnet::PredictContext::default(),
+        );
         let current_section = match score {
             0..=10 => "# Payware & Custom Airports",
             11..=21 => "# Global Airports & Landmarks",

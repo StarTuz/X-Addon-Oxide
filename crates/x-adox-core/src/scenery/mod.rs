@@ -1,6 +1,7 @@
 pub mod classifier;
 pub mod ini_handler;
 pub mod sorter;
+pub mod validator;
 
 use crate::apt_dat::{Airport, AptDatParser};
 use serde::{Deserialize, Serialize};
@@ -174,13 +175,37 @@ impl SceneryManager {
 
     pub fn sorted_for_ui(&self) -> Vec<SceneryPack> {
         let mut ui_packs = self.packs.clone();
-        sorter::sort_packs(&mut ui_packs);
+        sorter::sort_packs(
+            &mut ui_packs,
+            None,
+            &x_adox_bitnet::PredictContext::default(),
+        );
         ui_packs
     }
 
-    pub fn sort(&mut self) {
+    pub fn sort(
+        &mut self,
+        model: Option<&x_adox_bitnet::BitNetModel>,
+        context: &x_adox_bitnet::PredictContext,
+    ) {
         Self::handle_duplicates(&mut self.packs);
-        sorter::sort_packs(&mut self.packs);
+        sorter::sort_packs(&mut self.packs, model, context);
+    }
+
+    pub fn validate_sort(&self) -> validator::ValidationReport {
+        validator::SceneryValidator::validate(&self.packs)
+    }
+
+    pub fn simulate_sort(
+        &self,
+        model: &x_adox_bitnet::BitNetModel,
+        context: &x_adox_bitnet::PredictContext,
+    ) -> (Vec<SceneryPack>, validator::ValidationReport) {
+        let mut simulated_packs = self.packs.clone();
+        Self::handle_duplicates(&mut simulated_packs);
+        sorter::sort_packs(&mut simulated_packs, Some(model), context);
+        let report = validator::SceneryValidator::validate(&simulated_packs);
+        (simulated_packs, report)
     }
 
     pub fn save(&self) -> Result<(), SceneryError> {

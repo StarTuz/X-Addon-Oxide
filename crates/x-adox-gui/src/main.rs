@@ -1,13 +1,13 @@
 use iced::widget::{
     button, checkbox, column, container, image, progress_bar, responsive, row, scrollable, svg,
-    text, text_editor, Column,
+    text, text_editor, tooltip, Column,
 };
-use iced::{Background, Border, Color, Element, Length, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Renderer, Shadow, Task, Theme};
 use std::path::PathBuf;
 use x_adox_bitnet::BitNetModel;
 use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
 use x_adox_core::management::ModManager;
-use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType};
+use x_adox_core::scenery::{SceneryCategory, SceneryManager, SceneryPack, SceneryPackType};
 use x_adox_core::XPlaneManager;
 
 mod map;
@@ -99,6 +99,25 @@ enum Message {
     ExportHeuristics,
     ResetHeuristics,
     HeuristicsImported(String),
+    SetRegionFocus(Option<String>),
+
+    // Simulation & Validation
+    SimulationReportLoaded(
+        Result<
+            (
+                Vec<SceneryPack>,
+                x_adox_core::scenery::validator::ValidationReport,
+            ),
+            String,
+        >,
+    ),
+    ApplySort(Vec<SceneryPack>),
+    CancelSort,
+
+    // Simulation Report interactions
+    AutoFixIssue(String),        // Fixes all issues of a type
+    IgnoreIssue(String, String), // Ignore specific issue (type, pack_name)
+    ToggleIssueGroup(String),    // Toggle visibility of a group
 
     // Issues
     LogIssuesLoaded(Result<Vec<x_adox_core::LogIssue>, String>),
@@ -143,6 +162,15 @@ struct App {
     // Issues
     log_issues: Vec<x_adox_core::LogIssue>,
     icon_warning: svg::Handle,
+
+    // Pro Mode
+    validation_report: Option<x_adox_core::scenery::validator::ValidationReport>,
+    simulated_packs: Option<Vec<SceneryPack>>,
+    region_focus: Option<String>,
+
+    // UI State for polish
+    ignored_issues: std::collections::HashSet<(String, String)>, // (type, pack_name)
+    expanded_issue_groups: std::collections::HashSet<String>,    // type
 }
 
 impl App {
@@ -194,6 +222,11 @@ impl App {
             icon_warning: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/warning.svg").to_vec(),
             ),
+            validation_report: None,
+            simulated_packs: None,
+            region_focus: None,
+            ignored_issues: std::collections::HashSet::new(),
+            expanded_issue_groups: std::collections::HashSet::new(),
         };
 
         let tasks = if let Some(r) = root {
@@ -434,6 +467,148 @@ impl App {
                     Task::none()
                 }
             },
+            Message::SmartSort => {
+                let root = self.xplane_root.clone();
+                let context = x_adox_bitnet::PredictContext {
+                    region_focus: self.region_focus.clone(),
+                };
+                let model = self.heuristics_model.clone();
+                self.status = "Simulating sort...".to_string();
+                Task::perform(
+                    async move { simulate_sort_task(root, model, context) },
+                    Message::SimulationReportLoaded,
+                )
+            }
+            Message::SimulationReportLoaded(result) => {
+                match result {
+                    Ok((packs, report)) => {
+                        self.simulated_packs = Some(packs);
+                        self.validation_report = Some(report);
+                        self.status = "Simulation complete. Review warnings if any.".to_string();
+                    }
+                    Err(e) => self.status = format!("Simulation error: {}", e),
+                }
+                Task::none()
+            }
+            Message::ApplySort(packs) => {
+                self.packs = packs;
+                let packs_to_save = self.packs.clone();
+                let root = self.xplane_root.clone();
+                self.simulated_packs = None;
+                self.validation_report = None;
+                self.status = "Applying changes...".to_string();
+                Task::perform(
+                    async move { save_packs_task(root, packs_to_save) },
+                    Message::PackToggled,
+                )
+            }
+            Message::CancelSort => {
+                self.simulated_packs = None;
+                self.validation_report = None;
+                self.status = "Sort cancelled.".to_string();
+                Task::none()
+            }
+            Message::SetRegionFocus(focus) => {
+                self.region_focus = focus;
+                Task::none()
+            }
+            Message::AutoFixIssue(issue_type) => {
+                if let Some(ref mut packs) = self.simulated_packs {
+                    match issue_type.as_str() {
+                        "simheaven_below_global" => {
+                            if let Some(ga_idx) = packs
+                                .iter()
+                                .position(|p| p.category == SceneryCategory::GlobalAirport)
+                            {
+                                let mut to_move = Vec::new();
+                                // Collect all simheaven/x-world packs below GA
+                                let mut i = ga_idx + 1;
+                                while i < packs.len() {
+                                    let name = packs[i].name.to_lowercase();
+                                    if name.contains("simheaven") || name.contains("x-world") {
+                                        to_move.push(packs.remove(i));
+                                    } else {
+                                        i += 1;
+                                    }
+                                }
+                                // Move to just ABOVE ga_idx (which might have shifted)
+                                let new_ga_idx = packs
+                                    .iter()
+                                    .position(|p| p.category == SceneryCategory::GlobalAirport)
+                                    .unwrap_or(0);
+                                for pack in to_move.into_iter().rev() {
+                                    packs.insert(new_ga_idx, pack);
+                                }
+
+                                // PERSISTENCE: Update the BitNet rules so it stays fixed!
+                                let mut rules_updated = false;
+                                for rule in &mut self.heuristics_model.config.rules {
+                                    if rule.name.contains("SimHeaven") {
+                                        rule.score = 15;
+                                        rules_updated = true;
+                                    }
+                                    if rule.name.contains("Global Airports") {
+                                        rule.score = 20;
+                                        rules_updated = true;
+                                    }
+                                }
+
+                                if rules_updated {
+                                    let _ = self.heuristics_model.save();
+                                }
+                            }
+                        }
+                        "mesh_above_overlay" => {
+                            let mut meshes = Vec::new();
+                            let mut i = 0;
+                            while i < packs.len() {
+                                if packs[i].category == SceneryCategory::Mesh
+                                    || packs[i].category == SceneryCategory::Ortho
+                                {
+                                    meshes.push(packs.remove(i));
+                                } else {
+                                    i += 1;
+                                }
+                            }
+                            packs.extend(meshes);
+
+                            // PERSISTENCE: Update the BitNet rules for Mesh ordering
+                            let mut rules_updated = false;
+                            for rule in &mut self.heuristics_model.config.rules {
+                                if rule.name.contains("Mesh") {
+                                    rule.score = 60;
+                                    rules_updated = true;
+                                }
+                                if rule.name.contains("Overlay") {
+                                    rule.score = 40;
+                                    rules_updated = true;
+                                }
+                            }
+
+                            if rules_updated {
+                                let _ = self.heuristics_model.save();
+                            }
+                        }
+                        _ => {}
+                    }
+                    // Re-validate
+                    let report = x_adox_core::scenery::validator::SceneryValidator::validate(packs);
+                    self.validation_report = Some(report);
+                }
+                Task::none()
+            }
+            Message::IgnoreIssue(issue_type, pack_name) => {
+                self.ignored_issues.insert((issue_type, pack_name));
+                Task::none()
+            }
+            Message::ToggleIssueGroup(issue_type) => {
+                if self.expanded_issue_groups.contains(&issue_type) {
+                    self.expanded_issue_groups.remove(&issue_type);
+                } else {
+                    self.expanded_issue_groups.insert(issue_type);
+                }
+                Task::none()
+            }
             Message::Refresh => {
                 self.status = "Refreshing...".to_string();
                 let root1 = self.xplane_root.clone();
@@ -822,51 +997,6 @@ impl App {
                     },
                 )
             }
-            Message::SmartSort => {
-                let root = self.xplane_root.clone();
-                return Task::perform(
-                    async move {
-                        let root = root.ok_or("X-Plane root not found")?;
-                        let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
-                        let ini_path = xpm.get_scenery_packs_path();
-
-                        // --- Safety Backup Logic (Timestamped) ---
-                        if ini_path.exists() {
-                            let parent = ini_path.parent().unwrap_or(&ini_path);
-                            // 1. Rotate existing bak1_TIMESTAMP -> bak2_TIMESTAMP
-                            if let Ok(entries) = std::fs::read_dir(parent) {
-                                for entry in entries.flatten() {
-                                    let path = entry.path();
-                                    let filename = path.file_name().unwrap().to_string_lossy();
-                                    if filename.starts_with("scenery_packs.ini.bak1_") {
-                                        // Found a bak1, rotate it to bak2 preserving timestamp
-                                        let new_name = filename.replace(".bak1_", ".bak2_");
-                                        let new_path = parent.join(new_name);
-                                        let _ = std::fs::rename(&path, &new_path);
-                                    }
-                                }
-                            }
-
-                            // 2. Create new bak1_CURRENT_TIMESTAMP
-                            let timestamp =
-                                chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
-                            let bak1_name = format!("scenery_packs.ini.bak1_{}", timestamp);
-                            let bak1_path = parent.join(bak1_name);
-                            let _ = std::fs::copy(&ini_path, &bak1_path);
-                        }
-
-                        let mut sm = SceneryManager::new(ini_path);
-                        sm.load().map_err(|e| e.to_string())?;
-                        sm.sort();
-                        sm.save().map_err(|e| e.to_string())?;
-                        Ok::<(), String>(())
-                    },
-                    |res| match res {
-                        Ok(_) => Message::Refresh,
-                        Err(e) => Message::SceneryLoaded(Err(e)),
-                    },
-                );
-            }
         }
     }
 
@@ -875,7 +1005,7 @@ impl App {
         let content = self.view_xaddonmanager();
         let inspector = self.view_inspector();
 
-        row![
+        let main_view = row![
             navigator,
             column![
                 content,
@@ -887,21 +1017,286 @@ impl App {
             ]
         ]
         .width(Length::Fill)
-        .height(Length::Fill)
+        .height(Length::Fill);
+
+        if let (Some(report), Some(packs)) = (&self.validation_report, &self.simulated_packs) {
+            container(self.view_simulation_modal(report, packs))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .style(|_| container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.85))),
+                    ..Default::default()
+                })
+                .into()
+        } else {
+            main_view.into()
+        }
+    }
+
+    fn view_simulation_modal<'a>(
+        &'a self,
+        report: &'a x_adox_core::scenery::validator::ValidationReport,
+        simulated_packs: &'a [SceneryPack],
+    ) -> Element<'a, Message> {
+        use x_adox_core::scenery::validator::ValidationSeverity;
+
+        // Group issues by type
+        let mut groups: std::collections::BTreeMap<
+            &str,
+            Vec<&x_adox_core::scenery::validator::ValidationIssue>,
+        > = std::collections::BTreeMap::new();
+        let mut visible_count = 0;
+
+        for issue in &report.issues {
+            if self
+                .ignored_issues
+                .contains(&(issue.issue_type.clone(), issue.pack_name.clone()))
+            {
+                continue;
+            }
+            groups.entry(&issue.issue_type).or_default().push(issue);
+            visible_count += 1;
+        }
+
+        let issues_view: Element<'a, Message, Theme, Renderer> = if visible_count == 0 {
+            container(
+                column![
+                    svg(self.icon_scenery.clone()) // Use scenery icon as placeholder or add a "check" icon
+                        .width(Length::Fixed(48.0))
+                        .height(Length::Fixed(48.0)),
+                    text("All checks passed!")
+                        .size(20)
+                        .color(style::palette::ACCENT_GREEN),
+                    text("Safe to apply these changes to scenery_packs.ini.")
+                        .size(14)
+                        .color(style::palette::TEXT_SECONDARY),
+                ]
+                .spacing(10)
+                .align_x(iced::Alignment::Center),
+            )
+            .width(Length::Fill)
+            .padding(40)
+            .align_x(iced::alignment::Horizontal::Center)
+            .into()
+        } else {
+            let mut content = Column::new().spacing(15);
+
+            for (issue_type, issues) in groups {
+                let is_expanded = self.expanded_issue_groups.contains(issue_type);
+                let count = issues.len();
+                let first = issues[0];
+
+                let (icon_color, _) = match first.severity {
+                    ValidationSeverity::Critical => {
+                        (Color::from_rgb(1.0, 0.3, 0.3), style::button_card)
+                    } // Highlight critical
+                    ValidationSeverity::Warning => {
+                        (style::palette::ACCENT_ORANGE, style::button_card)
+                    }
+                    ValidationSeverity::Info => {
+                        (style::palette::TEXT_SECONDARY, style::button_card)
+                    }
+                };
+
+                // Group Header / Compact Card
+                let header = container(
+                    column![
+                        row![
+                            svg(self.icon_warning.clone())
+                                .width(Length::Fixed(20.0))
+                                .height(Length::Fixed(20.0))
+                                .style(move |_, _| iced::widget::svg::Style {
+                                    color: Some(icon_color)
+                                }),
+                            tooltip(
+                                text(if count > 1 {
+                                    format!("{} ({} affected)", first.message, count)
+                                } else {
+                                    first.message.clone()
+                                })
+                                .size(16)
+                                .color(icon_color),
+                                text(&first.details).size(12),
+                                tooltip::Position::Top,
+                            ),
+                        ]
+                        .spacing(10)
+                        .align_y(iced::Alignment::Center),
+                        if count == 1 {
+                            text(&first.pack_name)
+                                .size(12)
+                                .color(style::palette::TEXT_SECONDARY)
+                        } else if !is_expanded {
+                            text(format!("Click to expand {} affected packs", count))
+                                .size(12)
+                                .color(style::palette::TEXT_SECONDARY)
+                        } else {
+                            text("Group Details")
+                                .size(12)
+                                .color(style::palette::TEXT_SECONDARY)
+                        },
+                    ]
+                    .spacing(5),
+                )
+                .width(Length::Fill);
+
+                let mut group_col = Column::new().spacing(10);
+
+                if count > 1 {
+                    // Group with expansion logic
+                    let toggle_btn = button(header)
+                        .on_press(Message::ToggleIssueGroup(issue_type.to_string()))
+                        .style(style::button_ghost)
+                        .width(Length::Fill);
+
+                    group_col = group_col.push(toggle_btn);
+
+                    if is_expanded {
+                        for issue in issues {
+                            group_col = group_col.push(
+                                container(
+                                    row![
+                                        text(&issue.pack_name)
+                                            .size(13)
+                                            .width(Length::Fill)
+                                            .color(style::palette::TEXT_PRIMARY),
+                                        button(text("Ignore").size(11))
+                                            .on_press(Message::IgnoreIssue(
+                                                issue.issue_type.clone(),
+                                                issue.pack_name.clone()
+                                            ))
+                                            .style(style::button_secondary)
+                                            .padding([4, 8]),
+                                    ]
+                                    .spacing(10)
+                                    .align_y(iced::Alignment::Center),
+                                )
+                                .padding([5, 15])
+                                .style(style::container_card),
+                            );
+                        }
+                    }
+                } else {
+                    // Single issue card
+                    group_col = group_col.push(
+                        container(
+                            column![
+                                header,
+                                text(&first.fix_suggestion)
+                                    .size(13)
+                                    .color(style::palette::TEXT_PRIMARY),
+                                row![
+                                    button(text("Auto-Fix").size(12))
+                                        .on_press(Message::AutoFixIssue(issue_type.to_string()))
+                                        .style(style::button_primary)
+                                        .padding([6, 12]),
+                                    button(text("Manual Edit").size(12))
+                                        .on_press(Message::OpenHeuristicsEditor)
+                                        .style(style::button_secondary)
+                                        .padding([6, 12]),
+                                    button(text("Ignore this").size(12))
+                                        .on_press(Message::IgnoreIssue(
+                                            first.issue_type.clone(),
+                                            first.pack_name.clone()
+                                        ))
+                                        .style(style::button_secondary)
+                                        .padding([6, 12]),
+                                ]
+                                .spacing(10)
+                            ]
+                            .spacing(10),
+                        )
+                        .padding(15)
+                        .style(style::container_card),
+                    );
+                }
+
+                // If expanded group has more than 1, add a global auto-fix button for the whole type
+                if count > 1 && is_expanded {
+                    group_col = group_col.push(
+                        button(text(format!("Auto-Fix all {}", count)).size(12))
+                            .on_press(Message::AutoFixIssue(issue_type.to_string()))
+                            .style(style::button_primary)
+                            .padding([8, 16]),
+                    );
+                }
+
+                content = content.push(group_col);
+            }
+            content.into()
+        };
+
+        let preview: Column<'a, Message, Theme, Renderer> = column(
+            simulated_packs
+                .iter()
+                .take(15) // Just show top 15 for preview
+                .map(|p| {
+                    row![
+                        text(format!("{:?}", p.category))
+                            .size(10)
+                            .width(Length::Fixed(100.0)),
+                        text(&p.name).size(12),
+                    ]
+                    .spacing(10)
+                    .into()
+                })
+                .collect::<Vec<Element<'a, Message, Theme, Renderer>>>(),
+        )
+        .spacing(5);
+
+        container(
+            column![
+                text("Smart Sort Simulation Report")
+                    .size(24)
+                    .color(Color::WHITE),
+                text("Review potential issues before applying changes.")
+                    .size(14)
+                    .color(style::palette::TEXT_SECONDARY),
+                scrollable(
+                    Column::<Message, Theme, Renderer>::new()
+                        .push(issues_view)
+                        .push(
+                            container(text("Resulting Order (Top 15):").size(18)).padding([10, 0])
+                        )
+                        .push(container(preview).padding(10).style(style::container_card))
+                        .spacing(20)
+                )
+                .height(Length::Fill),
+                row![
+                    button(text("Cancel").size(14))
+                        .on_press(Message::CancelSort)
+                        .style(style::button_secondary)
+                        .padding([10, 20]),
+                    button(text("Apply Changes").size(14))
+                        .on_press(Message::ApplySort(simulated_packs.to_vec()))
+                        .style(style::button_premium_glow)
+                        .padding([10, 30]),
+                ]
+                .spacing(20)
+                .align_y(iced::Alignment::Center),
+            ]
+            .spacing(20)
+            .padding(30)
+            .width(Length::Fixed(700.0)) // Wider for buttons
+            .height(Length::Fixed(600.0)),
+        )
+        .padding(20)
+        .style(style::container_card)
         .into()
     }
 
     fn view_navigator(&self) -> Element<'_, Message> {
         container(
-            column![
-                self.sidebar_button("Aircraft", Tab::Aircraft),
-                self.sidebar_button("Scenery", Tab::Scenery),
-                self.sidebar_button("Plugins", Tab::Plugins),
-                self.sidebar_button("CSLs", Tab::CSLs),
-                self.sidebar_button("Issues", Tab::Issues),
-            ]
-            .spacing(25)
-            .padding([20, 0]),
+            Column::<Message, Theme, Renderer>::new()
+                .push(self.sidebar_button("Aircraft", Tab::Aircraft))
+                .push(self.sidebar_button("Scenery", Tab::Scenery))
+                .push(self.sidebar_button("Plugins", Tab::Plugins))
+                .push(self.sidebar_button("CSLs", Tab::CSLs))
+                .push(self.sidebar_button("Issues", Tab::Issues))
+                .spacing(25)
+                .padding([20, 0]),
         )
         .width(Length::Fixed(120.0))
         .height(Length::Fill)
@@ -1300,7 +1695,7 @@ impl App {
             self.packs
                 .iter()
                 .map(|pack| self.view_scenery_card(pack))
-                .collect::<Vec<_>>(),
+                .collect::<Vec<Element<'_, Message>>>(),
         )
         .spacing(10);
 
@@ -1357,6 +1752,31 @@ impl App {
                 text("Customize the weights and keywords used by the BitNet AI for sorting.")
                     .size(14)
                     .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                row![
+                    text("Region Focus:").size(14),
+                    row(vec!["America", "Europe", "Asia", "Australia", "Africa"]
+                        .into_iter()
+                        .map(|r| {
+                            let is_selected = self.region_focus.as_deref() == Some(r);
+                            button(text(r).size(12))
+                                .on_press(Message::SetRegionFocus(if is_selected {
+                                    None
+                                } else {
+                                    Some(r.to_string())
+                                }))
+                                .style(if is_selected {
+                                    style::button_primary
+                                } else {
+                                    style::button_secondary
+                                })
+                                .padding([5, 10])
+                                .into()
+                        })
+                        .collect::<Vec<Element<'_, Message>>>())
+                    .spacing(10),
+                ]
+                .spacing(20)
+                .align_y(iced::Alignment::Center),
                 error_banner,
                 container(editor)
                     .height(Length::Fill)
@@ -2138,7 +2558,7 @@ fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), St
             Tab::Scenery => root.join("Custom Scenery"),
             Tab::Aircraft => root.join("Aircraft"),
             Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::CSLs | Tab::Heuristics | Tab::Issues => unreachable!(), // Handled above or not applicable
+            Tab::CSLs | Tab::Heuristics | Tab::Issues => unreachable!(),
         };
 
         if !full_path.starts_with(&allowed_dir) {
@@ -2199,4 +2619,54 @@ fn load_log_issues(root: Option<PathBuf>) -> Result<Vec<x_adox_core::LogIssue>, 
     let root = root.ok_or("X-Plane root not found")?;
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     xpm.check_log().map_err(|e| e.to_string())
+}
+
+fn simulate_sort_task(
+    root: Option<PathBuf>,
+    model: BitNetModel,
+    context: x_adox_bitnet::PredictContext,
+) -> Result<
+    (
+        Vec<SceneryPack>,
+        x_adox_core::scenery::validator::ValidationReport,
+    ),
+    String,
+> {
+    let root = root.ok_or("X-Plane root not found")?;
+    let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+    let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
+    sm.load().map_err(|e| e.to_string())?;
+    Ok(sm.simulate_sort(&model, &context))
+}
+
+fn save_packs_task(root: Option<PathBuf>, packs: Vec<SceneryPack>) -> Result<(), String> {
+    let root = root.ok_or("X-Plane root not found")?;
+    let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+    let ini_path = xpm.get_scenery_packs_path();
+
+    // --- Safety Backup Logic (Timestamped) ---
+    if ini_path.exists() {
+        let parent = ini_path.parent().unwrap_or(&ini_path);
+        // 1. Rotate existing bak1_TIMESTAMP -> bak2_TIMESTAMP
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(filename) = path.file_name().map(|f| f.to_string_lossy()) {
+                    if filename.starts_with("scenery_packs.ini.bak1_") {
+                        let new_name = filename.replace(".bak1_", ".bak2_");
+                        let _ = std::fs::rename(&path, parent.join(new_name));
+                    }
+                }
+            }
+        }
+
+        // 2. Create new bak1_CURRENT_TIMESTAMP
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let bak1_path = parent.join(format!("scenery_packs.ini.bak1_{}", timestamp));
+        let _ = std::fs::copy(&ini_path, &bak1_path);
+    }
+
+    let mut sm = SceneryManager::new(ini_path);
+    sm.packs = packs;
+    sm.save().map_err(|e| e.to_string())
 }
