@@ -68,24 +68,21 @@ jobs:
       if: matrix.platform.formats != ''
       run: cargo packager --release -p x-adox-gui --formats ${{ matrix.platform.formats }} -v
 
-    - name: List dist contents (Unix)
-      if: matrix.platform.formats != '' && matrix.platform.name != 'Windows'
+    - name: Collect macOS artifacts
+      if: matrix.platform.name == 'macOS'
       run: |
-        echo "=== Listing dist directory ==="
-        ls -laR dist/ || echo "dist/ not found"
-        echo "=== Finding installer files ==="
-        find . -name "*.dmg" -o -name "*.app" 2>/dev/null || true
+        mkdir -p dist/macos
+        cp -r target/release/*.app dist/macos/ || true
+        cp target/release/*.dmg dist/macos/ || true
+        ls -la dist/macos/
 
-    - name: List dist contents (Windows)
+    - name: Collect Windows artifacts
       if: matrix.platform.name == 'Windows'
       shell: pwsh
       run: |
-        Write-Host "=== Listing dist directory ==="
-        if (Test-Path dist) { Get-ChildItem -Recurse dist } else { Write-Host "dist/ not found" }
-        Write-Host "=== Listing current directory ==="
-        Get-ChildItem
-        Write-Host "=== Finding exe files ==="
-        Get-ChildItem -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object FullName
+        New-Item -ItemType Directory -Force -Path dist/windows
+        Copy-Item target/release/*-setup.exe dist/windows/ -ErrorAction SilentlyContinue
+        Get-ChildItem dist/windows/
 
     - name: Package Linux Binary
       if: matrix.platform.name == 'Linux'
@@ -118,7 +115,6 @@ jobs:
         if-no-files-found: warn
         path: |
           dist/**/*
-          target/release/bundle/**/*
 
   release:
     name: Create Release
@@ -136,9 +132,8 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          dist/nsis/*.exe
-          dist/dmg/*.dmg
-          dist/macos/*.app
+          dist/windows/*-setup.exe
+          dist/macos/*.dmg
           dist/linux/*.tar.gz
         draft: false
         prerelease: false
