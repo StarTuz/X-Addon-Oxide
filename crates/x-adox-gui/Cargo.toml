@@ -38,7 +38,7 @@ icons = [
 formats = ["nsis", "dmg", "app", "appimage"]
 
 [package.metadata.packager.nsis]
-install_mode = "perMachine"
+installMode = "perMachine"
 compression = "lzma"
 languages = ["English"]
 appdata-paths = ["$APPDATA/x-adox/X-Addon-Oxide"]
