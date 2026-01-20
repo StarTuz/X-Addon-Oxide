@@ -226,6 +226,12 @@ struct App {
     // Phase 4 Icons
     icon_arrow_up: svg::Handle,
     icon_arrow_down: svg::Handle,
+
+    // Fallback Icons
+    fallback_airliner: image::Handle,
+    fallback_ga: image::Handle,
+    fallback_military: image::Handle,
+    fallback_helicopter: image::Handle,
 }
 
 impl App {
@@ -295,6 +301,18 @@ impl App {
             ),
             icon_arrow_down: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/arrow_down.svg").to_vec(),
+            ),
+            fallback_airliner: image::Handle::from_bytes(
+                include_bytes!("../assets/fallback_airliner.png").to_vec(),
+            ),
+            fallback_ga: image::Handle::from_bytes(
+                include_bytes!("../assets/fallback_ga.png").to_vec(),
+            ),
+            fallback_military: image::Handle::from_bytes(
+                include_bytes!("../assets/fallback_military.png").to_vec(),
+            ),
+            fallback_helicopter: image::Handle::from_bytes(
+                include_bytes!("../assets/fallback_helicopter.png").to_vec(),
             ),
         };
 
@@ -945,33 +963,40 @@ impl App {
                     self.selected_aircraft_tags = Vec::new();
                 }
 
-                // Try to find icon11.png or icon.png
-                // Based on .acf filename
+                // Improved icon search
                 let mut icon_handle = None;
-                if let Ok(entries) = std::fs::read_dir(&path) {
-                    let acf_file = entries
-                        .flatten()
-                        .into_iter()
-                        .find(|e| e.path().extension().map_or(false, |ext| ext == "acf"));
 
-                    if let Some(acf) = acf_file {
-                        let acf_stem = acf
-                            .path()
-                            .file_stem()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string();
-                        let dir = acf.path().parent().unwrap().to_path_buf();
+                // 1. Check immediate directory and parent directory (for shared icons/CSLs)
+                let mut search_dirs = Vec::new();
+                search_dirs.push(path.clone());
+                if let Some(parent) = path.parent() {
+                    search_dirs.push(parent.to_path_buf());
+                }
 
-                        // Look for {acf_stem}_icon11.png or {acf_stem}_icon.png
-                        let icon_paths = [
-                            dir.join(format!("{}_icon11.png", acf_stem)),
-                            dir.join(format!("{}_icon.png", acf_stem)),
-                            dir.join("icon11.png"), // fallback
-                            dir.join("icon.png"),
-                        ];
+                for dir in search_dirs {
+                    if let Ok(entries) = std::fs::read_dir(&dir) {
+                        let entries_vec: Vec<_> = entries.flatten().collect();
 
-                        for p in icon_paths {
+                        // Try to find .acf to get stem name
+                        let acf_stem = entries_vec
+                            .iter()
+                            .find(|e| e.path().extension().map_or(false, |ext| ext == "acf"))
+                            .and_then(|e| {
+                                e.path()
+                                    .file_stem()
+                                    .map(|s| s.to_string_lossy().to_string())
+                            });
+
+                        // Candidates based on standard naming
+                        let mut candidates = Vec::new();
+                        if let Some(stem) = &acf_stem {
+                            candidates.push(dir.join(format!("{}_icon11.png", stem)));
+                            candidates.push(dir.join(format!("{}_icon.png", stem)));
+                        }
+                        candidates.push(dir.join("icon11.png"));
+                        candidates.push(dir.join("icon.png"));
+
+                        for p in candidates {
                             if p.exists() {
                                 if let Ok(bytes) = std::fs::read(&p) {
                                     icon_handle = Some(image::Handle::from_bytes(bytes));
@@ -979,8 +1004,51 @@ impl App {
                                 }
                             }
                         }
+
+                        if icon_handle.is_some() {
+                            break;
+                        }
+
+                        // Fallback: look for ANY png that might be an icon
+                        for e in entries_vec {
+                            let name = e.file_name().to_string_lossy().to_lowercase();
+                            if name.contains("icon")
+                                || name.contains("preview")
+                                || name.contains("thumbnail")
+                            {
+                                if let Ok(bytes) = std::fs::read(e.path()) {
+                                    icon_handle = Some(image::Handle::from_bytes(bytes));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if icon_handle.is_some() {
+                        break;
                     }
                 }
+
+                // 2. High-quality category-based fallback if still no icon found
+                if icon_handle.is_none() {
+                    let tags = &self.selected_aircraft_tags;
+                    let fallback = if tags
+                        .iter()
+                        .any(|t| t.contains("Airliner") || t.contains("Jet"))
+                    {
+                        self.fallback_airliner.clone()
+                    } else if tags
+                        .iter()
+                        .any(|t| t.contains("Military") || t.contains("Combat"))
+                    {
+                        self.fallback_military.clone()
+                    } else if tags.iter().any(|t| t.contains("Helicopter")) {
+                        self.fallback_helicopter.clone()
+                    } else {
+                        self.fallback_ga.clone()
+                    };
+                    icon_handle = Some(fallback);
+                }
+
                 self.selected_aircraft_icon = icon_handle;
                 Task::none()
             }
