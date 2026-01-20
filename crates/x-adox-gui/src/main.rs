@@ -381,33 +381,7 @@ impl App {
 
         let tasks = if let Some(r) = root {
             let r1 = r.clone();
-            let r2 = r.clone();
-            let r3 = r.clone();
-            let r4 = r.clone();
-            let r5 = r.clone();
-            let r6 = r.clone();
-            let ex1 = app.scan_exclusions.clone();
-            let ex2 = app.scan_exclusions.clone();
-            Task::batch(vec![
-                Task::perform(async move { load_packs(Some(r1)) }, Message::SceneryLoaded),
-                Task::perform(
-                    async move { load_aircraft_tree(Some(r2), ex1) },
-                    Message::AircraftTreeLoaded,
-                ),
-                Task::perform(
-                    async move { load_plugins(Some(r3)) },
-                    Message::PluginsLoaded,
-                ),
-                Task::perform(
-                    async move { load_aircraft(Some(r4), ex2) },
-                    Message::AircraftLoaded,
-                ),
-                Task::perform(async move { load_csls(Some(r6)) }, Message::CSLsLoaded),
-                Task::perform(
-                    async move { load_log_issues(Some(r5)) },
-                    Message::LogIssuesLoaded,
-                ),
-            ])
+            Task::perform(async move { load_packs(Some(r1)) }, Message::SceneryLoaded)
         } else {
             Task::none()
         };
@@ -469,10 +443,20 @@ impl App {
                     Ok(packs) => {
                         self.packs = packs;
                         self.status = format!("{} scenery packs", self.packs.len());
+
+                        // Pipeline: Trigger next scan
+                        let root = self.xplane_root.clone();
+                        let exclusions = self.scan_exclusions.clone();
+                        Task::perform(
+                            async move { load_aircraft(root, exclusions) },
+                            Message::AircraftLoaded,
+                        )
                     }
-                    Err(e) => self.status = format!("Scenery error: {}", e),
+                    Err(e) => {
+                        self.status = format!("Scenery error: {}", e);
+                        Task::none()
+                    }
                 }
-                Task::none()
             }
             Message::AircraftLoaded(result) => {
                 match result {
@@ -481,14 +465,42 @@ impl App {
                         if self.active_tab == Tab::Aircraft {
                             self.status = format!("{} aircraft", self.aircraft.len());
                         }
+
+                        // Pipeline: Trigger next scan
+                        let root = self.xplane_root.clone();
+                        let exclusions = self.scan_exclusions.clone();
+                        Task::perform(
+                            async move { load_aircraft_tree(root, exclusions) },
+                            Message::AircraftTreeLoaded,
+                        )
                     }
                     Err(e) => {
                         if self.active_tab == Tab::Aircraft {
                             self.status = format!("Aircraft error: {}", e);
                         }
+                        Task::none()
                     }
                 }
-                Task::none()
+            }
+            Message::AircraftTreeLoaded(result) => {
+                match result {
+                    Ok(tree) => {
+                        self.aircraft_tree = Some(tree);
+                        if self.active_tab == Tab::Aircraft {
+                            self.status = "Aircraft tree loaded".to_string();
+                        }
+
+                        // Pipeline: Trigger next scan
+                        let root = self.xplane_root.clone();
+                        Task::perform(async move { load_plugins(root) }, Message::PluginsLoaded)
+                    }
+                    Err(e) => {
+                        if self.active_tab == Tab::Aircraft {
+                            self.status = format!("Aircraft tree error: {}", e);
+                        }
+                        Task::none()
+                    }
+                }
             }
             Message::PluginsLoaded(result) => {
                 match result {
@@ -497,14 +509,18 @@ impl App {
                         if self.active_tab == Tab::Plugins {
                             self.status = format!("{} plugins", self.plugins.len());
                         }
+
+                        // Pipeline: Trigger next scan
+                        let root = self.xplane_root.clone();
+                        Task::perform(async move { load_csls(root) }, Message::CSLsLoaded)
                     }
                     Err(e) => {
                         if self.active_tab == Tab::Plugins {
                             self.status = format!("Plugins error: {}", e);
                         }
+                        Task::none()
                     }
                 }
-                Task::none()
             }
             Message::CSLsLoaded(result) => {
                 match result {
@@ -514,30 +530,21 @@ impl App {
                         if self.active_tab == Tab::CSLs {
                             self.status = format!("{} CSL packages", self.csls.len());
                         }
+
+                        // Pipeline: Trigger next scan (Final: Log issues)
+                        let root = self.xplane_root.clone();
+                        Task::perform(
+                            async move { load_log_issues(root) },
+                            Message::LogIssuesLoaded,
+                        )
                     }
                     Err(e) => {
                         if self.active_tab == Tab::CSLs {
                             self.status = format!("CSL error: {}", e);
                         }
+                        Task::none()
                     }
                 }
-                Task::none()
-            }
-            Message::AircraftTreeLoaded(result) => {
-                match result {
-                    Ok(tree) => {
-                        self.aircraft_tree = Some(tree);
-                        if self.active_tab == Tab::Aircraft {
-                            self.status = "Aircraft tree loaded".to_string();
-                        }
-                    }
-                    Err(e) => {
-                        if self.active_tab == Tab::Aircraft {
-                            self.status = format!("Aircraft tree error: {}", e);
-                        }
-                    }
-                }
-                Task::none()
             }
             Message::ToggleCSL(path, enable) => {
                 let root = self.xplane_root.clone();
@@ -821,6 +828,7 @@ impl App {
                 Arc::make_mut(&mut self.heuristics_model.config)
                     .overrides
                     .insert(pack_name, score);
+                self.heuristics_model.refresh_regex_set();
                 let _ = self.heuristics_model.save();
                 self.editing_priority = None;
                 Task::none()
@@ -829,6 +837,7 @@ impl App {
                 Arc::make_mut(&mut self.heuristics_model.config)
                     .overrides
                     .remove(&pack_name);
+                self.heuristics_model.refresh_regex_set();
                 let _ = self.heuristics_model.save();
                 self.editing_priority = None;
                 Task::none()
@@ -878,6 +887,7 @@ impl App {
                         Arc::make_mut(&mut self.heuristics_model.config)
                             .overrides
                             .insert(name.clone(), new_score);
+                        self.heuristics_model.refresh_regex_set();
                         let _ = self.heuristics_model.save();
 
                         // Locally swap to provide instant feedback
@@ -891,6 +901,7 @@ impl App {
                 Arc::make_mut(&mut self.heuristics_model.config)
                     .overrides
                     .clear();
+                self.heuristics_model.refresh_regex_set();
                 let _ = self.heuristics_model.save();
                 self.resort_scenery();
                 self.status = "All manual reorder pins cleared".to_string();
@@ -924,6 +935,7 @@ impl App {
                 Arc::make_mut(&mut self.heuristics_model.config)
                     .aircraft_overrides
                     .insert(name, tags);
+                self.heuristics_model.refresh_regex_set();
                 let _ = self.heuristics_model.save();
 
                 // Refresh to show changes
@@ -931,27 +943,8 @@ impl App {
             }
             Message::Refresh => {
                 self.status = "Refreshing...".to_string();
-                let root1 = self.xplane_root.clone();
-                let root2 = self.xplane_root.clone();
-                let root3 = self.xplane_root.clone();
-                let root4 = self.xplane_root.clone();
-                let root5 = self.xplane_root.clone();
-
-                let ex1 = self.scan_exclusions.clone();
-                let ex2 = self.scan_exclusions.clone();
-                Task::batch([
-                    Task::perform(async move { load_packs(root1) }, Message::SceneryLoaded),
-                    Task::perform(
-                        async move { load_aircraft(root2, ex1) },
-                        Message::AircraftLoaded,
-                    ),
-                    Task::perform(
-                        async move { load_aircraft_tree(root3, ex2) },
-                        Message::AircraftTreeLoaded,
-                    ),
-                    Task::perform(async move { load_plugins(root4) }, Message::PluginsLoaded),
-                    Task::perform(async move { load_csls(root5) }, Message::CSLsLoaded),
-                ])
+                let root = self.xplane_root.clone();
+                Task::perform(async move { load_packs(root) }, Message::SceneryLoaded)
             }
             Message::SelectFolder => {
                 self.status = "Select X-Plane folder...".to_string();
@@ -1334,7 +1327,7 @@ impl App {
                 let text = self.heuristics_json.text();
                 match serde_json::from_str::<x_adox_bitnet::HeuristicsConfig>(&text) {
                     Ok(config) => {
-                        self.heuristics_model.config = Arc::new(config);
+                        self.heuristics_model.update_config(config);
                         if let Err(e) = self.heuristics_model.save() {
                             self.heuristics_error = Some(format!("Save failed: {}", e));
                         } else {
@@ -1352,6 +1345,7 @@ impl App {
                 if let Err(e) = self.heuristics_model.reset_defaults() {
                     self.heuristics_error = Some(format!("Reset failed: {}", e));
                 } else {
+                    self.heuristics_model.refresh_regex_set();
                     let json = serde_json::to_string_pretty(self.heuristics_model.config.as_ref())
                         .unwrap_or_default();
                     self.heuristics_json = text_editor::Content::with_text(&json);

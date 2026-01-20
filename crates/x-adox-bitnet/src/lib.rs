@@ -190,6 +190,15 @@ impl BitNetModel {
         Ok(Self::default())
     }
 
+    pub fn update_config(&mut self, config: HeuristicsConfig) {
+        self.regex_set = Self::build_regex_set(&config);
+        self.config = Arc::new(config);
+    }
+
+    pub fn refresh_regex_set(&mut self) {
+        self.regex_set = Self::build_regex_set(&self.config);
+    }
+
     fn get_config_path() -> PathBuf {
         ProjectDirs::from("com", "x-adox", "X-Addon-Oxide")
             .map(|dirs| dirs.config_dir().join("heuristics.json"))
