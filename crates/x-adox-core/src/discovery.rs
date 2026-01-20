@@ -3,14 +3,14 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use x_adox_bitnet::BitNetModel;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
 pub struct PythonScript {
     pub name: String,
     pub path: PathBuf,
     pub is_enabled: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
 pub enum AddonType {
     Scenery { airports: Vec<String> },
     Aircraft(String), // String name of the .acf file
@@ -18,7 +18,7 @@ pub enum AddonType {
     CSL(bool), // bool is_enabled
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq)]
 pub struct DiscoveredAddon {
     pub path: PathBuf,
     pub name: String,

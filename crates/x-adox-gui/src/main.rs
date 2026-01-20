@@ -38,8 +38,8 @@ fn main() -> iced::Result {
         .run_with(App::new)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Tab {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Tab {
     Scenery,
     Aircraft,
     Plugins,
@@ -48,7 +48,7 @@ enum Tab {
     Issues,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 struct AircraftNode {
     name: String,
     path: PathBuf,
@@ -87,7 +87,7 @@ enum Message {
 
     // Aircraft tree
     ToggleAircraftFolder(PathBuf),
-    AircraftTreeLoaded(Result<AircraftNode, String>),
+    AircraftTreeLoaded(Result<Arc<AircraftNode>, String>),
     ToggleAircraftSmartView,
 
     // Install/Delete
@@ -171,7 +171,7 @@ struct App {
     active_tab: Tab,
     packs: Arc<Vec<SceneryPack>>,
     aircraft: Arc<Vec<DiscoveredAddon>>,
-    aircraft_tree: Option<AircraftNode>,
+    aircraft_tree: Option<Arc<AircraftNode>>,
     plugins: Arc<Vec<DiscoveredAddon>>,
     csls: Arc<Vec<DiscoveredAddon>>,
     status: String,
@@ -909,9 +909,8 @@ impl App {
                 Task::none()
             }
             Message::ToggleAircraftFolder(path) => {
-                // Toggle expand/collapse for the folder at path
                 if let Some(ref mut tree) = self.aircraft_tree {
-                    toggle_folder_at_path(tree, &path);
+                    toggle_folder_at_path(Arc::make_mut(tree), &path);
                 }
                 Task::none()
             }
@@ -2042,15 +2041,40 @@ impl App {
     }
 
     fn view_scenery(&self) -> Element<'_, Message> {
-        let list = column(
-            self.packs
-                .iter()
-                .map(|pack| self.view_scenery_card(pack))
-                .collect::<Vec<Element<'_, Message>>>(),
-        )
-        .spacing(10);
+        use iced::widget::lazy;
 
-        let list_container = scrollable(list).id(self.scenery_scroll_id.clone());
+        let packs = self.packs.clone();
+        let selected = self.selected_scenery.clone();
+        let hovered = self.hovered_scenery.clone();
+        let overrides = self.heuristics_model.config.overrides.clone();
+
+        // Icons needed for cards
+        let icons = (
+            self.icon_pin.clone(),
+            self.icon_pin_outline.clone(),
+            self.icon_arrow_up.clone(),
+            self.icon_arrow_down.clone(),
+        );
+
+        let list_container = scrollable(lazy(
+            (packs, selected, hovered, overrides),
+            move |(packs, selected, _hovered, overrides)| {
+                let cards: Vec<Element<'static, Message, Theme, Renderer>> = packs
+                    .iter()
+                    .map(|pack| {
+                        Self::render_scenery_card(
+                            pack,
+                            selected.as_ref() == Some(&pack.name),
+                            overrides.contains_key(&pack.name),
+                            icons.clone(),
+                        )
+                    })
+                    .collect();
+
+                Element::from(column(cards).spacing(10))
+            },
+        ))
+        .id(self.scenery_scroll_id.clone());
 
         column![
             row![
@@ -2257,9 +2281,19 @@ impl App {
         .into()
     }
 
-    fn view_scenery_card<'a>(&self, pack: &'a SceneryPack) -> Element<'a, Message> {
+    fn render_scenery_card(
+        pack: &SceneryPack,
+        is_selected: bool,
+        is_heroic: bool,
+        icons: (
+            iced::widget::svg::Handle,
+            iced::widget::svg::Handle,
+            iced::widget::svg::Handle,
+            iced::widget::svg::Handle,
+        ),
+    ) -> Element<'static, Message> {
         let is_active = pack.status == SceneryPackType::Active;
-        let is_selected = self.selected_scenery.as_ref() == Some(&pack.name);
+        let (icon_pin, icon_pin_outline, icon_arrow_up, icon_arrow_down) = icons;
 
         let status_dot = container(iced::widget::Space::new(
             Length::Fixed(0.0),
@@ -2280,7 +2314,7 @@ impl App {
             ..Default::default()
         });
 
-        let name_text = text(&pack.name)
+        let name_text = text(pack.name.clone())
             .size(14)
             .color(style::palette::TEXT_PRIMARY);
         let sub_text = text(if is_active { "Active" } else { "Disabled" })
@@ -2289,15 +2323,12 @@ impl App {
 
         let info_col = column![name_text, sub_text].spacing(4).width(Length::Fill);
 
-        // Type Tag
-        // let cat_name = format!("{:?}", pack.category); // Simplified for now
         let tag_color = match pack.category {
             x_adox_core::scenery::SceneryCategory::EarthAirports => style::palette::ACCENT_ORANGE,
             x_adox_core::scenery::SceneryCategory::Library => style::palette::ACCENT_BLUE,
             _ => style::palette::TEXT_SECONDARY,
         };
 
-        // Shorten category for display
         let cat_display = match pack.category {
             x_adox_core::scenery::SceneryCategory::EarthAirports => "AIRPORT",
             x_adox_core::scenery::SceneryCategory::Library => "LIB",
@@ -2316,15 +2347,9 @@ impl App {
                 ..Default::default()
             });
 
-        // Sticky Pin Indicator
-        let is_overridden = self
-            .heuristics_model
-            .config
-            .overrides
-            .contains_key(&pack.name);
-        let pin_btn = if is_overridden {
+        let pin_btn = if is_heroic {
             button(
-                svg(self.icon_pin.clone())
+                svg(icon_pin.clone())
                     .width(Length::Fixed(16.0))
                     .height(Length::Fixed(16.0))
                     .style(move |_: &Theme, _| svg::Style {
@@ -2335,7 +2360,7 @@ impl App {
             .style(style::button_pin_active)
         } else {
             button(
-                svg(self.icon_pin_outline.clone())
+                svg(icon_pin_outline.clone())
                     .width(Length::Fixed(16.0))
                     .height(Length::Fixed(16.0))
                     .style(move |_: &Theme, _| svg::Style {
@@ -2346,7 +2371,6 @@ impl App {
             .style(style::button_pin_ghost)
         };
 
-        // Action Button
         let action_btn = button(
             text(if is_active { "DISABLE" } else { "ENABLE" })
                 .size(10)
@@ -2362,7 +2386,7 @@ impl App {
         .width(Length::Fixed(80.0));
 
         let move_up_btn = button(
-            svg(self.icon_arrow_up.clone())
+            svg(icon_arrow_up.clone())
                 .width(Length::Fixed(12.0))
                 .height(Length::Fixed(12.0))
                 .style(move |_: &Theme, _| svg::Style {
@@ -2374,7 +2398,7 @@ impl App {
         .padding(4);
 
         let move_down_btn = button(
-            svg(self.icon_arrow_down.clone())
+            svg(icon_arrow_down.clone())
                 .width(Length::Fixed(12.0))
                 .height(Length::Fixed(12.0))
                 .style(move |_: &Theme, _| svg::Style {
@@ -2398,8 +2422,6 @@ impl App {
         .spacing(15)
         .align_y(iced::Alignment::Center);
 
-        // Interactive container for selection
-        // Interactive container for selection
         button(content_row)
             .on_press(Message::SelectScenery(pack.name.clone()))
             .style(move |theme, status| {
@@ -2418,155 +2440,163 @@ impl App {
 
     fn view_addon_list<'a>(
         &'a self,
-        addons: &'a [DiscoveredAddon],
+        addons: &'a Arc<Vec<DiscoveredAddon>>,
         label: &str,
     ) -> Element<'a, Message> {
-        let is_plugins = label == "Plugin";
-        let is_csls = label == "CSL Package";
+        use iced::widget::lazy;
 
-        let selected_path = if is_plugins {
-            &self.selected_plugin
-        } else if is_csls {
-            &self.selected_csl
-        } else {
-            &self.selected_aircraft
+        let label_owned = label.to_string();
+        let active_tab = self.active_tab;
+        let selected_path = match label {
+            "Plugin" => self.selected_plugin.clone(),
+            "CSL Package" => self.selected_csl.clone(),
+            _ => self.selected_aircraft.clone(),
         };
+        let show_delete_confirm = self.show_delete_confirm;
 
-        let confirm_text = if self.show_delete_confirm
-            && ((is_plugins && self.active_tab == Tab::Plugins)
-                || (!is_plugins && !is_csls && self.active_tab == Tab::Aircraft)
-                || (is_csls && self.active_tab == Tab::CSLs))
-        {
-            if let Some(ref path) = selected_path {
-                Some(format!("Delete {} at '{}'?", label, path.display()))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        lazy(
+            (
+                addons.clone(),
+                selected_path.clone(),
+                show_delete_confirm,
+                active_tab,
+                label_owned,
+            ),
+            move |(addons, selected_path, show_delete_confirm, active_tab, label)| {
+                let is_plugins = label == "Plugin";
+                let is_csls = label == "CSL Package";
 
-        let list_content: Element<'_, Message> = if addons.is_empty() {
-            text(format!("No {} found", label)).size(14).into()
-        } else {
-            let list: Column<Message> =
-                addons.iter().fold(Column::new().spacing(4), |col, addon| {
-                    let type_label = match &addon.addon_type {
-                        AddonType::Aircraft(acf) => format!("• {}", acf),
-                        AddonType::Scenery { .. } => "• Scenery".to_string(),
-                        AddonType::Plugin { .. } => "• Plugin".to_string(),
-                        AddonType::CSL(_) => "• CSL".to_string(),
-                    };
-
-                    let is_selected = selected_path.as_ref() == Some(&addon.path);
-                    let style = if is_selected {
-                        style::button_sidebar_active
+                let confirm_text = if *show_delete_confirm
+                    && ((is_plugins && *active_tab == Tab::Plugins)
+                        || (!is_plugins && !is_csls && *active_tab == Tab::Aircraft)
+                        || (is_csls && *active_tab == Tab::CSLs))
+                {
+                    if let Some(ref path) = selected_path {
+                        Some(format!("Delete {} at '{}'?", label, path.display()))
                     } else {
-                        style::button_sidebar_inactive
-                    };
+                        None
+                    }
+                } else {
+                    None
+                };
 
-                    let path = addon.path.clone();
-                    let row_content: Element<'_, Message> = if is_csls || is_plugins {
-                        let is_enabled = addon.is_enabled;
-                        let path_for_toggle = path.clone();
-                        let _toggle_msg = if is_plugins {
-                            Message::TogglePlugin(path_for_toggle.clone(), !is_enabled)
-                        } else {
-                            Message::ToggleCSL(path_for_toggle.clone(), !is_enabled)
-                        };
+                let list_content: Element<'_, Message, Theme, Renderer> = if addons.is_empty() {
+                    Element::from(text(format!("No {} found", label)).size(14))
+                } else {
+                    let list: Column<Message, Theme, Renderer> =
+                        addons.iter().fold(Column::new().spacing(4), |col, addon| {
+                            let type_label = match &addon.addon_type {
+                                AddonType::Aircraft(acf) => format!("• {}", acf),
+                                AddonType::Scenery { .. } => "• Scenery".to_string(),
+                                AddonType::Plugin { .. } => "• Plugin".to_string(),
+                                AddonType::CSL(_) => "• CSL".to_string(),
+                            };
 
-                        // Selection Message
-                        let select_msg = if is_plugins {
-                            Message::SelectPlugin(path.clone())
-                        } else {
-                            Message::SelectCSL(path.clone())
-                        };
+                            let is_selected = selected_path.as_ref() == Some(&addon.path);
+                            let style = if is_selected {
+                                style::button_sidebar_active
+                            } else {
+                                style::button_sidebar_inactive
+                            };
 
-                        row![
-                            checkbox("", is_enabled)
-                                .on_toggle(move |e| if is_plugins {
-                                    Message::TogglePlugin(path_for_toggle.clone(), e)
-                                } else {
-                                    Message::ToggleCSL(path_for_toggle.clone(), e)
-                                })
-                                .text_size(14),
-                            button(text(&addon.name).size(14).width(Length::Fill))
-                                .on_press(select_msg)
+                            let path = addon.path.clone();
+                            let row_content: Element<'_, Message, Theme, Renderer> = if is_csls
+                                || is_plugins
+                            {
+                                let is_enabled = addon.is_enabled;
+                                let path_for_toggle = path.clone();
+
+                                row![
+                                    checkbox("", is_enabled)
+                                        .on_toggle(move |e| if is_plugins {
+                                            Message::TogglePlugin(path_for_toggle.clone(), e)
+                                        } else {
+                                            Message::ToggleCSL(path_for_toggle.clone(), e)
+                                        })
+                                        .text_size(14),
+                                    button(text(addon.name.clone()).size(14).width(Length::Fill))
+                                        .on_press(if is_plugins {
+                                            Message::SelectPlugin(path.clone())
+                                        } else {
+                                            Message::SelectCSL(path.clone())
+                                        })
+                                        .style(style)
+                                        .padding([4, 8])
+                                        .width(Length::Fill),
+                                ]
+                                .spacing(5)
+                                .into()
+                            } else {
+                                button(
+                                    row![
+                                        text(addon.name.clone()).size(14).width(Length::Fill),
+                                        text(type_label.clone())
+                                            .size(12)
+                                            .color(style::palette::TEXT_SECONDARY),
+                                    ]
+                                    .spacing(10)
+                                    .align_y(iced::Alignment::Center),
+                                )
+                                .on_press(Message::SelectAircraft(path))
                                 .style(style)
                                 .padding([4, 8])
-                                .width(Length::Fill),
-                        ]
-                        .spacing(5)
+                                .width(Length::Fill)
+                                .into()
+                            };
+
+                            col.push(row_content)
+                        });
+
+                    scrollable(list)
+                        .height(Length::Fill)
+                        .width(Length::Fill)
                         .into()
-                    } else {
-                        let addon_btn = button(
+                };
+
+                let main_content = column![list_content].spacing(10);
+
+                if let Some(confirm_msg) = confirm_text {
+                    Element::from(
+                        column![
+                            main_content,
                             row![
-                                text(&addon.name).size(14).width(Length::Fill),
-                                text(type_label)
-                                    .size(12)
-                                    .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                                text(confirm_msg.clone()).size(14),
+                                button("Yes, Delete")
+                                    .on_press(Message::ConfirmDelete(
+                                        if is_plugins {
+                                            Tab::Plugins
+                                        } else if is_csls {
+                                            Tab::CSLs
+                                        } else {
+                                            Tab::Aircraft
+                                        },
+                                        true,
+                                    ))
+                                    .padding([6, 12]),
+                                button("Cancel")
+                                    .on_press(Message::ConfirmDelete(
+                                        if is_plugins {
+                                            Tab::Plugins
+                                        } else if is_csls {
+                                            Tab::CSLs
+                                        } else {
+                                            Tab::Aircraft
+                                        },
+                                        false,
+                                    ))
+                                    .padding([6, 12]),
                             ]
                             .spacing(10)
-                            .align_y(iced::Alignment::Center),
-                        )
-                        .on_press(if is_plugins {
-                            Message::SelectPlugin(path)
-                        } else {
-                            Message::SelectAircraft(path)
-                        })
-                        .style(style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                        addon_btn.into()
-                    };
-
-                    col.push(row_content)
-                });
-
-            Element::from(scrollable(list).height(Length::Fill))
-        };
-
-        let main_content = column![list_content].spacing(10);
-
-        if let Some(confirm_msg) = confirm_text {
-            column![
-                main_content,
-                row![
-                    text(confirm_msg).size(14),
-                    button("Yes, Delete")
-                        .on_press(Message::ConfirmDelete(
-                            if is_plugins {
-                                Tab::Plugins
-                            } else if is_csls {
-                                Tab::CSLs
-                            } else {
-                                Tab::Aircraft
-                            },
-                            true
-                        ))
-                        .padding([6, 12]),
-                    button("Cancel")
-                        .on_press(Message::ConfirmDelete(
-                            if is_plugins {
-                                Tab::Plugins
-                            } else if is_csls {
-                                Tab::CSLs
-                            } else {
-                                Tab::Aircraft
-                            },
-                            false
-                        ))
-                        .padding([6, 12]),
-                ]
-                .spacing(10)
-                .align_y(iced::Alignment::Center)
-            ]
-            .spacing(10)
-            .into()
-        } else {
-            main_content.into()
-        }
+                            .align_y(iced::Alignment::Center)
+                        ]
+                        .spacing(10),
+                    )
+                } else {
+                    Element::from(main_content)
+                }
+            },
+        )
+        .into()
     }
 
     fn view_aircraft_tree(&self) -> Element<'_, Message> {
@@ -2593,21 +2623,38 @@ impl App {
         .padding([4, 8]);
 
         let items = if self.use_smart_view {
-            self.collect_smart_nodes()
+            Self::collect_smart_nodes(&self.aircraft_tree, &self.selected_aircraft)
         } else {
             match &self.aircraft_tree {
-                Some(tree) => self.collect_tree_nodes(tree, 0),
-                None => vec![text("Loading aircraft...").size(14).into()],
+                Some(tree) => Self::collect_tree_nodes(tree, 0, &self.selected_aircraft),
+                None => vec![Element::from(text("Loading aircraft...").size(14))],
             }
         };
 
+        use iced::widget::lazy;
         let tree_content = if items.is_empty() && self.aircraft_tree.is_some() {
-            text("No aircraft found.").size(14).into()
+            Element::from(text("No aircraft found.").size(14))
         } else {
-            let col: Column<'_, Message> = items
-                .into_iter()
-                .fold(Column::new().spacing(2), |c, e| c.push(e));
-            Element::from(scrollable(col).height(Length::Fill))
+            let use_smart = self.use_smart_view;
+            let tree = self.aircraft_tree.clone();
+            let selected = self.selected_aircraft.clone();
+
+            scrollable(lazy(
+                (use_smart, tree.clone(), selected.clone()),
+                move |(use_smart, tree, selected)| {
+                    let items: Vec<Element<'_, Message, Theme, Renderer>> = if *use_smart {
+                        Self::collect_smart_nodes(&tree, &selected)
+                    } else {
+                        match tree {
+                            Some(t) => Self::collect_tree_nodes(t, 0, selected),
+                            None => vec![Element::from(text("Loading aircraft...").size(14))],
+                        }
+                    };
+                    Element::from(column(items).spacing(2))
+                },
+            ))
+            .height(Length::Fill)
+            .into()
         };
 
         let list_pane = column![
@@ -2709,20 +2756,32 @@ impl App {
         }
     }
 
-    fn collect_tree_nodes(&self, node: &AircraftNode, depth: usize) -> Vec<Element<'_, Message>> {
-        let mut result = vec![self.render_aircraft_row(node, depth)];
+    fn collect_tree_nodes(
+        node: &AircraftNode,
+        depth: usize,
+        selected_aircraft: &Option<std::path::PathBuf>,
+    ) -> Vec<Element<'static, Message>> {
+        let mut result = vec![Self::render_aircraft_row(node, depth, selected_aircraft)];
 
         // Collect children if expanded
         if node.is_expanded {
             for child in &node.children {
-                result.extend(self.collect_tree_nodes(child, depth + 1));
+                result.extend(Self::collect_tree_nodes(
+                    child,
+                    depth + 1,
+                    selected_aircraft,
+                ));
             }
         }
 
         result
     }
 
-    fn render_aircraft_row(&self, node: &AircraftNode, depth: usize) -> Element<'_, Message> {
+    fn render_aircraft_row(
+        node: &AircraftNode,
+        depth: usize,
+        selected_aircraft: &Option<std::path::PathBuf>,
+    ) -> Element<'static, Message> {
         let indent = 20.0 * depth as f32;
 
         // Determine icon based on node type
@@ -2744,7 +2803,7 @@ impl App {
             node.name.clone()
         };
 
-        let is_selected = self.selected_aircraft.as_ref() == Some(&node.path);
+        let is_selected = selected_aircraft.as_ref() == Some(&node.path);
         let style = if is_selected {
             button::primary
         } else {
@@ -2757,7 +2816,7 @@ impl App {
             style::palette::TEXT_SECONDARY // Dimmed for disabled
         };
 
-        let node_row: Element<'_, Message> = if node.is_folder {
+        let node_row: Element<'static, Message> = if node.is_folder {
             let path = node.path.clone();
             let path_for_select = node.path.clone();
 
@@ -2779,7 +2838,7 @@ impl App {
             let is_enabled = node.is_enabled;
 
             // Allow toggling only if it's an aircraft package (leaf node with .acf usually)
-            let toggle_btn: Element<'_, Message> = if node.acf_file.is_some() {
+            let toggle_btn: Element<'static, Message> = if node.acf_file.is_some() {
                 checkbox("Enabled", is_enabled)
                     .on_toggle(move |v| Message::ToggleAircraft(toggle_path.clone(), v))
                     .size(16)
@@ -2820,9 +2879,12 @@ impl App {
         result
     }
 
-    fn collect_smart_nodes(&self) -> Vec<Element<'_, Message>> {
+    fn collect_smart_nodes(
+        tree: &Option<Arc<AircraftNode>>,
+        selected_aircraft: &Option<std::path::PathBuf>,
+    ) -> Vec<Element<'static, Message>> {
         use std::collections::BTreeMap;
-        let Some(tree) = &self.aircraft_tree else {
+        let Some(tree) = tree else {
             return Vec::new();
         };
         let all_aircraft = Self::flatten_aircraft_tree(tree);
@@ -2840,18 +2902,16 @@ impl App {
 
         let mut result = Vec::new();
         for (tag, aircraft) in groups {
-            result.push(
-                container(text(tag).size(16))
-                    .padding(iced::Padding {
-                        top: 15.0,
-                        right: 5.0,
-                        bottom: 5.0,
-                        left: 5.0,
-                    })
-                    .into(),
-            );
+            result.push(Element::from(container(text(tag).size(16)).padding(
+                iced::Padding {
+                    top: 15.0,
+                    right: 5.0,
+                    bottom: 5.0,
+                    left: 5.0,
+                },
+            )));
             for ac in aircraft {
-                result.push(self.render_aircraft_row(&ac, 1));
+                result.push(Self::render_aircraft_row(&ac, 1, selected_aircraft));
             }
         }
         result
@@ -2948,7 +3008,7 @@ fn toggle_pack(root: Option<PathBuf>, name: String, enable: bool) -> Result<(), 
     sm.save().map_err(|e| e.to_string())
 }
 
-fn load_aircraft_tree(root: Option<PathBuf>) -> Result<AircraftNode, String> {
+fn load_aircraft_tree(root: Option<PathBuf>) -> Result<Arc<AircraftNode>, String> {
     let root = root.ok_or("X-Plane root not found")?;
     let aircraft_path = root.join("Aircraft");
     let disabled_path = root.join("Aircraft (Disabled)");
@@ -2963,7 +3023,7 @@ fn load_aircraft_tree(root: Option<PathBuf>) -> Result<AircraftNode, String> {
     let merged_node =
         build_merged_aircraft_tree(&aircraft_path, &disabled_path, Path::new(""), &bitnet);
 
-    Ok(merged_node)
+    Ok(Arc::new(merged_node))
 }
 
 fn build_merged_aircraft_tree(

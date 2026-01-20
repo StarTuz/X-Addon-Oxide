@@ -12,7 +12,7 @@ pub struct PredictContext {
     pub region_focus: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Hash)]
 pub struct Rule {
     pub name: String,
     pub keywords: Vec<String>,
@@ -21,14 +21,14 @@ pub struct Rule {
     pub is_exclusion: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Hash)]
 pub struct HeuristicsConfig {
     pub rules: Vec<Rule>,
     pub fallback_score: u8,
     #[serde(default)]
-    pub overrides: std::collections::HashMap<String, u8>,
+    pub overrides: std::collections::BTreeMap<String, u8>,
     #[serde(default)]
-    pub aircraft_overrides: std::collections::HashMap<String, Vec<String>>,
+    pub aircraft_overrides: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 impl Default for HeuristicsConfig {
@@ -159,8 +159,8 @@ impl Default for HeuristicsConfig {
                 },
             ],
             fallback_score: 40,
-            overrides: std::collections::HashMap::new(),
-            aircraft_overrides: std::collections::HashMap::new(),
+            overrides: std::collections::BTreeMap::new(),
+            aircraft_overrides: std::collections::BTreeMap::new(),
         }
     }
 }

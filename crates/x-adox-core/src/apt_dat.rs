@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
 pub enum AirportType {
     Land,
     Seaplane,
@@ -18,6 +18,20 @@ pub struct Airport {
     pub airport_type: AirportType,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
+}
+
+impl std::hash::Hash for Airport {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.name.hash(state);
+        self.airport_type.hash(state);
+        if let Some(lat) = self.lat {
+            lat.to_bits().hash(state);
+        }
+        if let Some(lon) = self.lon {
+            lon.to_bits().hash(state);
+        }
+    }
 }
 
 pub struct AptDatParser;

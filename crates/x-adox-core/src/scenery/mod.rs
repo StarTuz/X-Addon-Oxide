@@ -9,14 +9,14 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
 pub enum SceneryPackType {
     Active,
     Disabled,
     DuplicateHidden, // To be written as a comment with a special note
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, Hash)]
 pub enum SceneryCategory {
     #[default]
     Unknown,
@@ -50,7 +50,7 @@ impl SceneryCategory {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
 pub struct SceneryPack {
     pub name: String,
     pub path: PathBuf,
@@ -113,7 +113,8 @@ impl SceneryManager {
 
         // 2. Scan the directory for new packs not yet in the INI
         let mut cache = crate::cache::DiscoveryCache::load();
-        let discovered = crate::discovery::DiscoveryManager::scan_scenery(custom_scenery_dir, &mut cache);
+        let discovered =
+            crate::discovery::DiscoveryManager::scan_scenery(custom_scenery_dir, &mut cache);
         let _ = cache.save();
         println!(
             "[SceneryManager] Discovered {} folders on disk",

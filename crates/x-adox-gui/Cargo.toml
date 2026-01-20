@@ -17,8 +17,8 @@ x-adox-core = { workspace = true }
 x-adox-bitnet = { path = "../x-adox-bitnet" }
 serde_json = "1.0"
 anyhow = { workspace = true }
-reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls"], default-features = false }
-tokio = { version = "1", features = ["full"] }
+ureq = "2.9"
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 url = "2"
 futures = "0.3"
 chrono = "0.4"

@@ -82,21 +82,20 @@ impl TileManager {
         let tiles_arc = Arc::clone(&self.tiles);
         let pending_arc = Arc::clone(&self.pending);
 
-        // Simple background fetcher using std::thread to avoid tokio runtime dependency
+        // Simple background fetcher using std::thread
         std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::builder()
-                .user_agent("X-Addon-Oxide/0.1.0")
+            let resp = ureq::get(&coords.url())
+                .set("User-Agent", "X-Addon-Oxide/0.1.0")
                 .timeout(std::time::Duration::from_secs(10))
-                .build()
-                .unwrap();
+                .call();
 
-            match client.get(coords.url()).send() {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if !status.is_success() {
-                        eprintln!("Tile fetch failed for {:?}: Status {}", coords, status);
-                    } else if let Ok(bytes) = resp.bytes() {
-                        let handle = image::Handle::from_bytes(bytes.to_vec());
+            match resp {
+                Ok(response) => {
+                    let mut bytes = Vec::new();
+                    if let Ok(_) =
+                        std::io::Read::read_to_end(&mut response.into_reader(), &mut bytes)
+                    {
+                        let handle = image::Handle::from_bytes(bytes);
                         let mut tiles = tiles_arc.lock().unwrap();
                         tiles.put(coords, handle);
                     }
