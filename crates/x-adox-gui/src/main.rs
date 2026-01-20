@@ -189,6 +189,10 @@ enum Message {
 
     // Smart View Toggles
     ToggleSmartFolder(String),
+
+    // Icon Customization
+    BrowseForIcon(std::path::PathBuf), // Trigger file picker for this aircraft path
+    IconSelected(std::path::PathBuf, std::path::PathBuf), // (Aircraft Path, Icon Path)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -265,13 +269,16 @@ struct App {
 
     // Smart View State
     smart_view_expanded: std::collections::BTreeSet<String>,
+
+    // Icon Overrides
+    icon_overrides: std::collections::BTreeMap<PathBuf, PathBuf>,
 }
 
 impl App {
     fn new() -> (Self, Task<Message>) {
         let root = XPlaneManager::try_find_root();
 
-        let app = Self {
+        let mut app = Self {
             active_tab: Tab::Scenery,
             use_smart_view: false,
             packs: Arc::new(Vec::new()),
@@ -348,7 +355,10 @@ impl App {
                 include_bytes!("../assets/fallback_helicopter.png").to_vec(),
             ),
             smart_view_expanded: std::collections::BTreeSet::new(),
+            icon_overrides: std::collections::BTreeMap::new(),
         };
+
+        app.load_icon_overrides();
 
         let tasks = if let Some(r) = root {
             let r1 = r.clone();
@@ -1000,11 +1010,20 @@ impl App {
                 // Improved icon search
                 let mut icon_handle = None;
 
+                // 0. Check Overrides
+                if let Some(override_path) = self.icon_overrides.get(&path) {
+                    if let Ok(bytes) = std::fs::read(override_path) {
+                        icon_handle = Some(image::Handle::from_bytes(bytes));
+                    }
+                }
+
                 // 1. Check immediate directory and parent directory (for shared icons/CSLs)
                 let mut search_dirs = Vec::new();
-                search_dirs.push(path.clone());
-                if let Some(parent) = path.parent() {
-                    search_dirs.push(parent.to_path_buf());
+                if icon_handle.is_none() {
+                    search_dirs.push(path.clone());
+                    if let Some(parent) = path.parent() {
+                        search_dirs.push(parent.to_path_buf());
+                    }
                 }
 
                 for dir in search_dirs {
@@ -1344,6 +1363,44 @@ impl App {
                     self.smart_view_expanded.remove(&id);
                 } else {
                     self.smart_view_expanded.insert(id);
+                }
+                Task::none()
+            }
+            Message::BrowseForIcon(path) => {
+                let path_c = path.clone();
+                Task::perform(
+                    async move {
+                        let result = tokio::task::spawn_blocking(move || {
+                            native_dialog::FileDialog::new()
+                                .set_location(&path_c)
+                                .set_title("Select Custom Aircraft Icon")
+                                .add_filter("Images", &["png", "jpg", "jpeg", "webp"])
+                                .show_open_single_file()
+                        })
+                        .await;
+                        match result {
+                            Ok(Ok(Some(icon_path))) => Some((path, icon_path)),
+                            _ => None,
+                        }
+                    },
+                    |res| {
+                        if let Some((path, icon)) = res {
+                            Message::IconSelected(path, icon)
+                        } else {
+                            Message::Refresh // No-op
+                        }
+                    },
+                )
+            }
+            Message::IconSelected(acf_path, icon_path) => {
+                self.icon_overrides.insert(acf_path.clone(), icon_path);
+                self.save_icon_overrides();
+
+                // If the modified aircraft is currently selected, re-select it to refresh the icon
+                if let Some(selected) = &self.selected_aircraft {
+                    if selected == &acf_path {
+                        return Task::done(Message::SelectAircraft(acf_path));
+                    }
                 }
                 Task::none()
             }
@@ -2824,9 +2881,22 @@ impl App {
                     column![].into()
                 };
 
+            let change_icon_btn: Element<'_, Message> = if let Some(path) = &self.selected_aircraft
+            {
+                let p = path.clone();
+                button(text("Change Icon").size(12))
+                    .on_press(Message::BrowseForIcon(p))
+                    .style(style::button_secondary)
+                    .padding([5, 10])
+                    .into()
+            } else {
+                column![].into()
+            };
+
             container(
                 column![
                     iced::widget::image(icon.clone()),
+                    change_icon_btn,
                     tags_row,
                     category_selector
                 ]
@@ -3218,6 +3288,36 @@ impl App {
 
         // Default: return raw name as is (preserving case if not matched)
         raw_name.to_string()
+    }
+
+    fn get_icon_overrides_path() -> Option<PathBuf> {
+        let proj_dirs = directories::ProjectDirs::from("com", "startux", "x-adox")?;
+        let config_dir = proj_dirs.config_dir();
+        if !config_dir.exists() {
+            let _ = std::fs::create_dir_all(config_dir);
+        }
+        Some(config_dir.join("icon_overrides.json"))
+    }
+
+    fn load_icon_overrides(&mut self) {
+        if let Some(path) = Self::get_icon_overrides_path() {
+            if let Ok(file) = std::fs::File::open(path) {
+                let reader = std::io::BufReader::new(file);
+                if let Ok(overrides) = serde_json::from_reader(reader) {
+                    self.icon_overrides = overrides;
+                    println!("Loaded {} icon overrides", self.icon_overrides.len());
+                }
+            }
+        }
+    }
+
+    fn save_icon_overrides(&self) {
+        if let Some(path) = Self::get_icon_overrides_path() {
+            if let Ok(file) = std::fs::File::create(path) {
+                let writer = std::io::BufWriter::new(file);
+                let _ = serde_json::to_writer_pretty(writer, &self.icon_overrides);
+            }
+        }
     }
 }
 
