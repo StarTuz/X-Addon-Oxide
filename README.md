@@ -9,9 +9,10 @@ X-Addon-Oxide is a powerful, cross-platform tool designed for both flight sim en
 - **🚀 Mod Management**: Effortlessly enable or disable Plugins and CSLs with a single click.
 - **🗺️ World Map**: View all your installed scenery packages on an interactive global map.
 - **✈️ AI Smart View**: Automatically categorizes aircraft using a built-in BitNet heuristic model (Airliners, Military, GA, etc.).
-- **🔧 User Overrides**: Manually override AI aircraft categories to perfectly organize your hangar.
+- **🔧 User Overrides**: Manually override AI aircraft categories and set **Custom Aircraft Icons** to perfectly organize your hangar.
+- **🛡️ Folder Exclusions**: Exclude specific aircraft folders from the scan to keep your library clean.
 - **✨ Premium UI**: A sleek, dark-themed interface with neon glow effects and reactive hover feedback.
-- **📦 Multi-Platform**: Native installers for Windows (NSIS), macOS (DMG), and Linux (AppImage).
+- **📦 Multi-Platform**: Native installers for Windows (NSIS), macOS (DMG), and Linux (AppImage/Binary).
 - **🛠️ Developer Friendly**: Quickly toggle addons for testing without manual file renaming.
 
 ## Getting Started
@@ -41,9 +42,29 @@ You will need the **Rust** toolchain installed ([rustup.rs](https://rustup.rs/))
 
 #### System Dependencies (Linux)
 
+**Ubuntu / Debian:**
+
 ```bash
 sudo apt-get update
-sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-dev libxkbcommon-dev libdbus-1-dev
+sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-dev libxkbcommon-dev libdbus-1-dev pkg-config
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus pkgconf
+```
+
+**Fedora:**
+
+```bash
+sudo dnf install alsa-lib-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-devel pkg-config
+```
+
+**openSUSE:**
+
+```bash
+sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-1-devel pkg-config
 ```
 
 #### Steps

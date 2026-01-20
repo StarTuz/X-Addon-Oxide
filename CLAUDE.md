@@ -82,15 +82,20 @@ Rules-based heuristics engine that:
 
 Iced framework with Elm-like message-driven architecture:
 
-- Tab navigation: Scenery, Aircraft, Plugins, CSLs, Heuristics, Issues
+- Tab navigation: Scenery, Aircraft, Plugins, CSLs, Heuristics, Issues, Settings (Aircraft context)
 - `map.rs` - Interactive world map showing scenery locations
 - `style.rs` - Dark theme with neon glow effects
+- **Folder Exclusions**: Manage scanning scope via Settings (gear icon in Aircraft tab)
+- **Aircraft Icon Overrides**: Manually set high-res icons for specific aircraft
 
 ## X-Plane Path Conventions
 
 - Scenery config: `$XPLANE_ROOT/Custom Scenery/scenery_packs.ini`
 - Disabled addons use suffix: `Aircraft (Disabled)/`, `plugins (disabled)/`
-- Config storage: `~/.config/x-adox/X-Addon-Oxide/heuristics.json`
+- Config storage (`~/.config/x-adox/X-Addon-Oxide/`):
+  - `heuristics.json`: AI sorting rules and tags
+  - `scan_config.json`: Folder exclusions/inclusions
+  - `icon_overrides.json`: Manual aircraft icon paths
 
 ## Error Handling
 

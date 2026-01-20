@@ -18,7 +18,21 @@ The sidebar on the left organizes your library into four categories:
   - Select the aircraft in the tree.
   - In the preview pane, use the **Set AI Category Manually** dropdown.
   - The change is saved instantly and persists across restarts.
+- **Custom Aircraft Icons**: You can manually set a custom icon for any aircraft.
+  - Select the aircraft in the tree.
+  - In the preview pane, click the **Change Icon** button next to the aircraft image.
+  - Browse for a `.png`, `.jpg`, `.jpeg`, or `.webp` file.
 - **Preview**: Selecting an aircraft shows its icon (if available) and technical tags.
+
+### 🛡️ Settings & Exclusions
+
+Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is enabled), the Settings panel allows you to manage your library scan:
+
+- **Folder Exclusions**: Prevent the scanner from searching specific subdirectories.
+  - Click **Add Exclusion Folder** to browse for a path to ignore.
+  - This is useful for hiding "Generic" or "Static" aircraft libraries that clutter your smart view.
+  - Click **Remove** to restore a folder to the scan.
+  - Changes require a **Refresh** to take effect in the views.
 
 ### 🏔️ Scenery
 
@@ -76,7 +90,13 @@ If you ever need to remove X-Addon-Oxide, follow these simple steps:
 2. Drag **X-Addon-Oxide.app** to the **Trash**.
 3. To remove local configuration (optional): Delete the folder at `~/Library/Application Support/com.x-adox.X-Addon-Oxide`.
 
-### Linux (Manual Install)
+### Linux (AppImage)
+
+Simply delete the `.AppImage` file. If you integrated it with your desktop (e.g., using `appimaged`), use your desktop's "Remove" feature.
+
+To remove local configuration (optional): Delete the folder at `~/.config/x-adox/X-Addon-Oxide`.
+
+### Linux (Manual/Binary Install)
 
 1. Delete the binaries and desktop entry:
    - `sudo rm /usr/local/bin/x-adox-gui`
