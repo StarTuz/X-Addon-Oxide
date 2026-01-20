@@ -1,4 +1,5 @@
 pub mod apt_dat;
+pub mod cache;
 pub mod discovery;
 pub mod management;
 pub mod scenery;

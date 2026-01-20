@@ -64,7 +64,8 @@ fn test_discovery_aircraft() {
     fs::create_dir_all(&aircraft_dir).unwrap();
     fs::write(aircraft_dir.join("Cessna_172.acf"), "ACF BODY").unwrap();
 
-    let results = DiscoveryManager::scan_aircraft(&mock.root);
+    let mut cache = x_adox_core::cache::DiscoveryCache::new();
+    let results = DiscoveryManager::scan_aircraft(&mock.root, &mut cache);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].name, "Cessna 172");
     if let AddonType::Aircraft(ref name) = results[0].addon_type {
@@ -80,7 +81,8 @@ fn test_discovery_scenery() {
     let pack_dir = mock.root.join("Custom Scenery").join("My_Airport");
     fs::create_dir_all(&pack_dir).unwrap();
 
-    let results = DiscoveryManager::scan_scenery(&mock.root.join("Custom Scenery"));
+    let mut cache = x_adox_core::cache::DiscoveryCache::new();
+    let results = DiscoveryManager::scan_scenery(&mock.root.join("Custom Scenery"), &mut cache);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].name, "My_Airport");
 }

@@ -5,6 +5,7 @@ use iced::widget::{
 use iced::window::icon;
 use iced::{Background, Border, Color, Element, Length, Renderer, Shadow, Task, Theme};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
 use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
 use x_adox_core::management::ModManager;
@@ -65,18 +66,18 @@ enum Message {
     SwitchTab(Tab),
 
     // Scenery
-    SceneryLoaded(Result<Vec<SceneryPack>, String>),
+    SceneryLoaded(Result<Arc<Vec<SceneryPack>>, String>),
     TogglePack(String),
     PackToggled(Result<(), String>),
 
     // Aircraft & Plugins
-    AircraftLoaded(Result<Vec<DiscoveredAddon>, String>),
+    AircraftLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     ToggleAircraft(PathBuf, bool),
     AircraftToggled(Result<(), String>),
-    PluginsLoaded(Result<Vec<DiscoveredAddon>, String>),
+    PluginsLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     TogglePlugin(PathBuf, bool),
     PluginToggled(Result<(), String>),
-    CSLsLoaded(Result<Vec<DiscoveredAddon>, String>),
+    CSLsLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     ToggleCSL(PathBuf, bool),
 
     // Common
@@ -127,13 +128,13 @@ enum Message {
     SimulationReportLoaded(
         Result<
             (
-                Vec<SceneryPack>,
+                Arc<Vec<SceneryPack>>,
                 x_adox_core::scenery::validator::ValidationReport,
             ),
             String,
         >,
     ),
-    ApplySort(Vec<SceneryPack>),
+    ApplySort(Arc<Vec<SceneryPack>>),
     CancelSort,
 
     // Simulation Report interactions
@@ -142,7 +143,7 @@ enum Message {
     ToggleIssueGroup(String),    // Toggle visibility of a group
 
     // Issues
-    LogIssuesLoaded(Result<Vec<x_adox_core::LogIssue>, String>),
+    LogIssuesLoaded(Result<Arc<Vec<x_adox_core::LogIssue>>, String>),
     CheckLogIssues,
 
     // Sticky Sort (Phase 3)
@@ -168,11 +169,11 @@ pub enum MoveDirection {
 
 struct App {
     active_tab: Tab,
-    packs: Vec<SceneryPack>,
-    aircraft: Vec<DiscoveredAddon>,
+    packs: Arc<Vec<SceneryPack>>,
+    aircraft: Arc<Vec<DiscoveredAddon>>,
     aircraft_tree: Option<AircraftNode>,
-    plugins: Vec<DiscoveredAddon>,
-    csls: Vec<DiscoveredAddon>,
+    plugins: Arc<Vec<DiscoveredAddon>>,
+    csls: Arc<Vec<DiscoveredAddon>>,
     status: String,
     xplane_root: Option<PathBuf>,
     selected_scenery: Option<String>,
@@ -205,14 +206,14 @@ struct App {
     heuristics_error: Option<String>,
 
     // Issues
-    log_issues: Vec<x_adox_core::LogIssue>,
+    log_issues: Arc<Vec<x_adox_core::LogIssue>>,
     icon_warning: svg::Handle,
     icon_pin: svg::Handle,
     icon_pin_outline: svg::Handle,
 
     // Pro Mode
     validation_report: Option<x_adox_core::scenery::validator::ValidationReport>,
-    simulated_packs: Option<Vec<SceneryPack>>,
+    simulated_packs: Option<Arc<Vec<SceneryPack>>>,
     region_focus: Option<String>,
 
     // UI State for polish
@@ -234,11 +235,11 @@ impl App {
         let app = Self {
             active_tab: Tab::Scenery,
             use_smart_view: false,
-            packs: Vec::new(),
-            aircraft: Vec::new(),
+            packs: Arc::new(Vec::new()),
+            aircraft: Arc::new(Vec::new()),
             aircraft_tree: None,
-            plugins: Vec::new(),
-            csls: Vec::new(),
+            plugins: Arc::new(Vec::new()),
+            csls: Arc::new(Vec::new()),
             status: "Loading...".to_string(),
             xplane_root: root.clone(),
             selected_scenery: None,
@@ -275,7 +276,7 @@ impl App {
             heuristics_model: BitNetModel::new().unwrap_or_default(),
             heuristics_json: text_editor::Content::new(),
             heuristics_error: None,
-            log_issues: Vec::new(),
+            log_issues: Arc::new(Vec::new()),
             icon_warning: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/warning.svg").to_vec(),
             ),
@@ -612,7 +613,8 @@ impl App {
                 Task::none()
             }
             Message::AutoFixIssue(issue_type) => {
-                if let Some(ref mut packs) = self.simulated_packs {
+                if let Some(ref mut packs_arc) = self.simulated_packs {
+                    let packs = Arc::make_mut(packs_arc);
                     match issue_type.as_str() {
                         "simheaven_below_global" => {
                             if let Some(ga_idx) = packs
@@ -641,7 +643,9 @@ impl App {
 
                                 // PERSISTENCE: Update the BitNet rules so it stays fixed!
                                 let mut rules_updated = false;
-                                for rule in &mut self.heuristics_model.config.rules {
+                                for rule in
+                                    &mut Arc::make_mut(&mut self.heuristics_model.config).rules
+                                {
                                     if rule.name.contains("SimHeaven") {
                                         rule.score = 15;
                                         rules_updated = true;
@@ -673,7 +677,8 @@ impl App {
 
                             // PERSISTENCE: Update the BitNet rules for Mesh ordering
                             let mut rules_updated = false;
-                            for rule in &mut self.heuristics_model.config.rules {
+                            for rule in &mut Arc::make_mut(&mut self.heuristics_model.config).rules
+                            {
                                 if rule.name.contains("Mesh") {
                                     rule.score = 60;
                                     rules_updated = true;
@@ -724,8 +729,7 @@ impl App {
                 Task::none()
             }
             Message::SetPriority(pack_name, score) => {
-                self.heuristics_model
-                    .config
+                Arc::make_mut(&mut self.heuristics_model.config)
                     .overrides
                     .insert(pack_name, score);
                 let _ = self.heuristics_model.save();
@@ -733,7 +737,9 @@ impl App {
                 Task::none()
             }
             Message::RemovePriority(pack_name) => {
-                self.heuristics_model.config.overrides.remove(&pack_name);
+                Arc::make_mut(&mut self.heuristics_model.config)
+                    .overrides
+                    .remove(&pack_name);
                 let _ = self.heuristics_model.save();
                 self.editing_priority = None;
                 Task::none()
@@ -780,21 +786,22 @@ impl App {
                         };
 
                         // Pin it!
-                        self.heuristics_model
-                            .config
+                        Arc::make_mut(&mut self.heuristics_model.config)
                             .overrides
                             .insert(name.clone(), new_score);
                         let _ = self.heuristics_model.save();
 
                         // Locally swap to provide instant feedback
-                        self.packs.swap(idx, n_idx);
+                        Arc::make_mut(&mut self.packs).swap(idx, n_idx);
                         self.status = format!("Moved {} and pinned to score {}", name, new_score);
                     }
                 }
                 Task::none()
             }
             Message::ClearAllPins => {
-                self.heuristics_model.config.overrides.clear();
+                Arc::make_mut(&mut self.heuristics_model.config)
+                    .overrides
+                    .clear();
                 let _ = self.heuristics_model.save();
                 self.resort_scenery();
                 self.status = "All manual reorder pins cleared".to_string();
@@ -825,8 +832,7 @@ impl App {
                     vec![category.clone()]
                 };
 
-                self.heuristics_model
-                    .config
+                Arc::make_mut(&mut self.heuristics_model.config)
                     .aircraft_overrides
                     .insert(name, tags);
                 let _ = self.heuristics_model.save();
@@ -1145,8 +1151,8 @@ impl App {
                 Task::none()
             }
             Message::OpenHeuristicsEditor => {
-                let json =
-                    serde_json::to_string_pretty(&self.heuristics_model.config).unwrap_or_default();
+                let json = serde_json::to_string_pretty(self.heuristics_model.config.as_ref())
+                    .unwrap_or_default();
                 self.heuristics_json = text_editor::Content::with_text(&json);
                 self.heuristics_error = None;
                 self.active_tab = Tab::Heuristics;
@@ -1161,7 +1167,7 @@ impl App {
                 let text = self.heuristics_json.text();
                 match serde_json::from_str::<x_adox_bitnet::HeuristicsConfig>(&text) {
                     Ok(config) => {
-                        self.heuristics_model.config = config;
+                        self.heuristics_model.config = Arc::new(config);
                         if let Err(e) = self.heuristics_model.save() {
                             self.heuristics_error = Some(format!("Save failed: {}", e));
                         } else {
@@ -1179,7 +1185,7 @@ impl App {
                 if let Err(e) = self.heuristics_model.reset_defaults() {
                     self.heuristics_error = Some(format!("Reset failed: {}", e));
                 } else {
-                    let json = serde_json::to_string_pretty(&self.heuristics_model.config)
+                    let json = serde_json::to_string_pretty(self.heuristics_model.config.as_ref())
                         .unwrap_or_default();
                     self.heuristics_json = text_editor::Content::with_text(&json);
                     self.heuristics_error = None;
@@ -1340,7 +1346,7 @@ impl App {
     fn view_simulation_modal<'a>(
         &'a self,
         report: &'a x_adox_core::scenery::validator::ValidationReport,
-        simulated_packs: &'a [SceneryPack],
+        simulated_packs: &'a Arc<Vec<SceneryPack>>,
     ) -> Element<'a, Message> {
         use x_adox_core::scenery::validator::ValidationSeverity;
 
@@ -1602,7 +1608,7 @@ impl App {
                         .style(style::button_secondary)
                         .padding([10, 20]),
                     button(text("Apply Changes").size(14))
-                        .on_press(Message::ApplySort(simulated_packs.to_vec()))
+                        .on_press(Message::ApplySort(simulated_packs.clone()))
                         .style(style::button_premium_glow)
                         .padding([10, 30]),
                 ]
@@ -1896,7 +1902,7 @@ impl App {
         };
         let model = &self.heuristics_model;
 
-        self.packs.sort_by(|a, b| {
+        Arc::make_mut(&mut self.packs).sort_by(|a, b| {
             let score_a = model.predict(&a.name, std::path::Path::new(""), &context);
             let score_b = model.predict(&b.name, std::path::Path::new(""), &context);
             score_a.cmp(&score_b)
@@ -2865,12 +2871,12 @@ impl App {
 }
 
 // Data loading functions
-fn load_packs(root: Option<PathBuf>) -> Result<Vec<SceneryPack>, String> {
+fn load_packs(root: Option<PathBuf>) -> Result<Arc<Vec<SceneryPack>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
     sm.load().map_err(|e| e.to_string())?;
-    Ok(sm.packs)
+    Ok(Arc::new(sm.packs))
 }
 
 fn toggle_plugin(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(), String> {
@@ -2879,28 +2885,30 @@ fn toggle_plugin(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(
     Ok(())
 }
 
-fn load_aircraft(root: Option<PathBuf>) -> Result<Vec<DiscoveredAddon>, String> {
+fn load_aircraft(root: Option<PathBuf>) -> Result<Arc<Vec<DiscoveredAddon>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
+    let mut cache = x_adox_core::cache::DiscoveryCache::load();
     let aircraft_path = root.join("Aircraft");
-    let mut aircraft = DiscoveryManager::scan_aircraft(&aircraft_path);
+    let aircraft = DiscoveryManager::scan_aircraft(&aircraft_path, &mut cache);
+    let _ = cache.save();
 
-    // Add tags
-    let bitnet = BitNetModel::new().unwrap_or_default();
-    for ac in &mut aircraft {
-        ac.tags = bitnet.predict_aircraft_tags(&ac.name, &ac.path);
-    }
-
-    Ok(aircraft)
+    Ok(Arc::new(aircraft))
 }
 
-fn load_plugins(root: Option<PathBuf>) -> Result<Vec<DiscoveredAddon>, String> {
+fn load_plugins(root: Option<PathBuf>) -> Result<Arc<Vec<DiscoveredAddon>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
-    Ok(DiscoveryManager::scan_plugins(&root))
+    let mut cache = x_adox_core::cache::DiscoveryCache::load();
+    let plugins = DiscoveryManager::scan_plugins(&root, &mut cache);
+    let _ = cache.save();
+    Ok(Arc::new(plugins))
 }
 
-fn load_csls(root: Option<PathBuf>) -> Result<Vec<DiscoveredAddon>, String> {
+fn load_csls(root: Option<PathBuf>) -> Result<Arc<Vec<DiscoveredAddon>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
-    Ok(DiscoveryManager::scan_csls(&root))
+    let mut cache = x_adox_core::cache::DiscoveryCache::load();
+    let csls = DiscoveryManager::scan_csls(&root, &mut cache);
+    let _ = cache.save();
+    Ok(Arc::new(csls))
 }
 
 fn toggle_csl(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(), String> {
@@ -3256,10 +3264,11 @@ async fn pick_folder(title: &str, start_dir: Option<PathBuf>) -> Option<PathBuf>
     .flatten()
 }
 
-fn load_log_issues(root: Option<PathBuf>) -> Result<Vec<x_adox_core::LogIssue>, String> {
+fn load_log_issues(root: Option<PathBuf>) -> Result<Arc<Vec<x_adox_core::LogIssue>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
-    xpm.check_log().map_err(|e| e.to_string())
+    let issues = xpm.check_log().map_err(|e| e.to_string())?;
+    Ok(Arc::new(issues))
 }
 
 fn simulate_sort_task(
@@ -3268,7 +3277,7 @@ fn simulate_sort_task(
     context: x_adox_bitnet::PredictContext,
 ) -> Result<
     (
-        Vec<SceneryPack>,
+        Arc<Vec<SceneryPack>>,
         x_adox_core::scenery::validator::ValidationReport,
     ),
     String,
@@ -3277,10 +3286,11 @@ fn simulate_sort_task(
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
     sm.load().map_err(|e| e.to_string())?;
-    Ok(sm.simulate_sort(&model, &context))
+    let (packs, report) = sm.simulate_sort(&model, &context);
+    Ok((Arc::new(packs), report))
 }
 
-fn save_packs_task(root: Option<PathBuf>, packs: Vec<SceneryPack>) -> Result<(), String> {
+fn save_packs_task(root: Option<PathBuf>, packs: Arc<Vec<SceneryPack>>) -> Result<(), String> {
     let root = root.ok_or("X-Plane root not found")?;
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     let ini_path = xpm.get_scenery_packs_path();
@@ -3308,6 +3318,6 @@ fn save_packs_task(root: Option<PathBuf>, packs: Vec<SceneryPack>) -> Result<(),
     }
 
     let mut sm = SceneryManager::new(ini_path);
-    sm.packs = packs;
+    sm.packs = packs.as_ref().clone();
     sm.save().map_err(|e| e.to_string())
 }

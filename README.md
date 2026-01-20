@@ -62,6 +62,17 @@ sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-
    cargo run --release -p x-adox-gui
    ```
 
+#### Building AppImage (Linux)
+
+For a portable Linux distribution, you can build an AppImage using Docker to ensure compatibility across distributions (like Arch or Ubuntu):
+
+```bash
+chmod +x scripts/build_appimage.sh
+./scripts/build_appimage.sh
+```
+
+This will create `X-Addon-Oxide-x86_64.AppImage` in the root directory.
+
 ## Contributing
 
 See [GitHub](https://github.com/StarTuz/X-Addon-Oxide) for the latest source and issues.

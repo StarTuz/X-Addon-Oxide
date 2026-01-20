@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use x_adox_bitnet::BitNetModel;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PythonScript {
@@ -29,59 +30,89 @@ pub struct DiscoveredAddon {
 pub struct DiscoveryManager;
 
 impl DiscoveryManager {
-    /// Scans a given root directory for Aircraft.
-    /// Returns a list of paths to directories containing .acf files.
-    pub fn scan_aircraft(root: &Path) -> Vec<DiscoveredAddon> {
-        let mut results = Vec::new();
+    fn scan_folder(
+        dir: &Path,
+        is_enabled: bool,
+        cache: &mut crate::cache::DiscoveryCache,
+        bitnet: &BitNetModel,
+        results: &mut Vec<DiscoveredAddon>,
+    ) {
+        if !dir.exists() {
+            return;
+        }
 
-        let aircraft_root = root.join("Aircraft");
-        let disabled_root = root.join("Aircraft (Disabled)");
+        if let Some(cached) = cache.get(dir) {
+            results.extend(cached.clone());
+            return;
+        }
 
-        let scan_folder = |dir: &Path, is_enabled: bool, results: &mut Vec<DiscoveredAddon>| {
-            if !dir.exists() {
-                return;
-            }
-            let walker = WalkDir::new(dir).into_iter();
+        let mut folder_results = Vec::new();
+        let walker = WalkDir::new(dir).into_iter();
 
-            for entry in walker.filter_entry(|e| !is_hidden(e)) {
-                let entry = match entry {
-                    Ok(e) => e,
-                    Err(_) => continue,
-                };
+        for entry in walker.filter_entry(|e| !is_hidden(e)) {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
 
-                if entry.file_type().is_file() {
-                    if let Some(ext) = entry.path().extension() {
-                        if ext == "acf" {
-                            let acf_name = entry.file_name().to_string_lossy().to_string();
-                            if let Some(parent) = entry.path().parent() {
-                                if !results.iter().any(|d: &DiscoveredAddon| d.path == parent) {
-                                    results.push(DiscoveredAddon {
-                                        path: parent.to_path_buf(),
-                                        name: parent
-                                            .file_name()
-                                            .unwrap_or_default()
-                                            .to_string_lossy()
-                                            .to_string(),
-                                        addon_type: AddonType::Aircraft(acf_name),
-                                        is_enabled,
-                                        tags: Vec::new(),
-                                    });
-                                }
+            if entry.file_type().is_file() {
+                if let Some(ext) = entry.path().extension() {
+                    if ext == "acf" {
+                        let acf_name = entry.file_name().to_string_lossy().to_string();
+                        if let Some(parent) = entry.path().parent() {
+                            let path = parent.to_path_buf();
+                            let name = path
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string();
+                            if !folder_results
+                                .iter()
+                                .any(|d: &DiscoveredAddon| d.path == path)
+                            {
+                                let tags = bitnet.predict_aircraft_tags(&name, &path);
+                                folder_results.push(DiscoveredAddon {
+                                    path,
+                                    name,
+                                    addon_type: AddonType::Aircraft(acf_name),
+                                    is_enabled,
+                                    tags,
+                                });
                             }
                         }
                     }
                 }
             }
-        };
+        }
+        cache.insert(dir.to_path_buf(), folder_results.clone());
+        results.extend(folder_results);
+    }
 
-        scan_folder(&aircraft_root, true, &mut results);
-        scan_folder(&disabled_root, false, &mut results);
+    pub fn scan_aircraft(
+        root: &Path,
+        cache: &mut crate::cache::DiscoveryCache,
+    ) -> Vec<DiscoveredAddon> {
+        let mut results = Vec::new();
+
+        let aircraft_root = root.join("Aircraft");
+        let disabled_root = root.join("Aircraft (Disabled)");
+
+        let bitnet = BitNetModel::new().unwrap_or_default();
+
+        DiscoveryManager::scan_folder(&aircraft_root, true, cache, &bitnet, &mut results);
+        DiscoveryManager::scan_folder(&disabled_root, false, cache, &bitnet, &mut results);
 
         results
     }
 
     /// Scans Custom Scenery for valid packs.
-    pub fn scan_scenery(root: &Path) -> Vec<DiscoveredAddon> {
+    pub fn scan_scenery(
+        root: &Path,
+        cache: &mut crate::cache::DiscoveryCache,
+    ) -> Vec<DiscoveredAddon> {
+        if let Some(cached) = cache.get(root).cloned() {
+            return cached;
+        }
         let mut results = Vec::new();
 
         let read_dir = match std::fs::read_dir(root) {
@@ -112,84 +143,102 @@ impl DiscoveryManager {
                 });
             }
         }
+        cache.insert(root.to_path_buf(), results.clone());
         results
     }
 
     /// Scans Plugins in Resources/plugins and Resources/plugins (disabled).
-    pub fn scan_plugins(root: &Path) -> Vec<DiscoveredAddon> {
+    fn scan_plugin_dir(
+        dir: &Path,
+        enabled: bool,
+        root: &Path,
+        cache: &mut crate::cache::DiscoveryCache,
+        results: &mut Vec<DiscoveredAddon>,
+    ) {
+        if !dir.exists() {
+            return;
+        }
+
+        if let Some(cached) = cache.get(dir) {
+            results.extend(cached.clone());
+            return;
+        }
+
+        let mut dir_results = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+
+                    if name == "PythonScripts"
+                        || name == "PythonPlugins"
+                        || name == "X-Ivap Resources"
+                        || name == "xPilot"
+                        || name.starts_with('.')
+                    {
+                        continue;
+                    }
+
+                    let has_xpl = std::fs::read_dir(&path)
+                        .map(|mut r| {
+                            r.any(|e| {
+                                e.ok()
+                                    .map(|ee| {
+                                        ee.path()
+                                            .extension()
+                                            .map(|ext| ext == "xpl")
+                                            .unwrap_or(false)
+                                    })
+                                    .unwrap_or(false)
+                            })
+                        })
+                        .unwrap_or(false)
+                        || path.join("64").exists()
+                        || path.join("lin_x64").exists();
+
+                    if has_xpl {
+                        dir_results.push(DiscoveredAddon {
+                            path: path.clone(),
+                            name: name.clone(),
+                            addon_type: AddonType::Plugin {
+                                scripts: DiscoveryManager::scan_python_scripts(root, "XPPython3"),
+                            },
+                            is_enabled: enabled,
+                            tags: Vec::new(),
+                        });
+                    }
+                }
+            }
+        }
+        cache.insert(dir.to_path_buf(), dir_results.clone());
+        results.extend(dir_results);
+    }
+
+    /// Scans Plugins in Resources/plugins and Resources/plugins (disabled).
+    pub fn scan_plugins(
+        root: &Path,
+        cache: &mut crate::cache::DiscoveryCache,
+    ) -> Vec<DiscoveredAddon> {
         let mut results = Vec::new();
         let plugins_dir = root.join("Resources").join("plugins");
         let disabled_dir = root.join("Resources").join("plugins (disabled)");
 
-        // Helper to scan a specific directory
-        let scan_dir = |dir: &Path, enabled: bool, results: &mut Vec<DiscoveredAddon>| {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        let name = path
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string();
-
-                        // Skip standard plugins/folders
-                        if name == "PythonScripts"
-                            || name == "PythonPlugins"
-                            || name == "X-Ivap Resources"
-                            || name == "xPilot"
-                            || name.starts_with('.')
-                        {
-                            continue;
-                        }
-
-                        // Basic check: is it a plugin? (Has mac.xpl, lin.xpl, win.xpl or is a folder with these?)
-                        // For now we assume any folder here is a plugin unless excluded.
-                        // Ideally we check for signatures (xpl files).
-                        let has_xpl = std::fs::read_dir(&path)
-                            .map(|mut r| {
-                                r.any(|e| {
-                                    e.ok()
-                                        .map(|ee| {
-                                            ee.path()
-                                                .extension()
-                                                .map(|ext| ext == "xpl")
-                                                .unwrap_or(false)
-                                        })
-                                        .unwrap_or(false)
-                                })
-                            })
-                            .unwrap_or(false)
-                            || path.join("64").exists() // Often in a '64' subdir
-                            || path.join("lin_x64").exists();
-
-                        if has_xpl {
-                            results.push(DiscoveredAddon {
-                                path: path.clone(),
-                                name,
-                                addon_type: AddonType::Plugin {
-                                    scripts: DiscoveryManager::scan_python_scripts(
-                                        root,
-                                        "XPPython3",
-                                    ), // Simple hook, might need refinement
-                                },
-                                is_enabled: enabled,
-                                tags: Vec::new(),
-                            });
-                        }
-                    }
-                }
-            }
-        };
-
-        scan_dir(&plugins_dir, true, &mut results);
-        scan_dir(&disabled_dir, false, &mut results);
+        DiscoveryManager::scan_plugin_dir(&plugins_dir, true, root, cache, &mut results);
+        DiscoveryManager::scan_plugin_dir(&disabled_dir, false, root, cache, &mut results);
 
         results
     }
 
     /// Scans for CSL packages in X-IvAp, xPilot, and Custom Data directories.
-    pub fn scan_csls(root: &Path) -> Vec<DiscoveredAddon> {
+    pub fn scan_csls(
+        root: &Path,
+        cache: &mut crate::cache::DiscoveryCache,
+    ) -> Vec<DiscoveredAddon> {
         let mut results = Vec::new();
         let csl_roots = [
             root.join("Resources")
@@ -207,6 +256,12 @@ impl DiscoveryManager {
                 continue;
             }
 
+            if let Some(cached) = cache.get(&csl_root) {
+                results.extend(cached.clone());
+                continue;
+            }
+
+            let mut csl_results = Vec::new();
             let enabled_path = csl_root.join("CSL");
             let disabled_path = csl_root.join("CSL (disabled)");
 
@@ -216,7 +271,7 @@ impl DiscoveryManager {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() && path.join("xsb_aircraft.txt").exists() {
-                            results.push(DiscoveredAddon {
+                            csl_results.push(DiscoveredAddon {
                                 name: path
                                     .file_name()
                                     .unwrap_or_default()
@@ -238,7 +293,7 @@ impl DiscoveryManager {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() && path.join("xsb_aircraft.txt").exists() {
-                            results.push(DiscoveredAddon {
+                            csl_results.push(DiscoveredAddon {
                                 name: path
                                     .file_name()
                                     .unwrap_or_default()
@@ -253,6 +308,8 @@ impl DiscoveryManager {
                     }
                 }
             }
+            cache.insert(csl_root.clone(), csl_results.clone());
+            results.extend(csl_results);
         }
 
         results

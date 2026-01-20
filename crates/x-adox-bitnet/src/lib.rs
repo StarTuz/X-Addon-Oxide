@@ -1,8 +1,10 @@
 use anyhow::Result;
 use directories::ProjectDirs;
+use regex::RegexSet;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 pub mod parser;
 
 #[derive(Debug, Clone, Default)]
@@ -165,17 +167,20 @@ impl Default for HeuristicsConfig {
 
 #[derive(Clone)]
 pub struct BitNetModel {
-    pub config: HeuristicsConfig,
+    pub config: Arc<HeuristicsConfig>,
     config_path: PathBuf,
+    regex_set: Option<RegexSet>,
 }
 
 impl Default for BitNetModel {
     fn default() -> Self {
         let config_path = Self::get_config_path();
         let config = Self::load_config(&config_path).unwrap_or_default();
+        let regex_set = Self::build_regex_set(&config);
         Self {
-            config,
+            config: Arc::new(config),
             config_path,
+            regex_set,
         }
     }
 }
@@ -201,17 +206,32 @@ impl BitNetModel {
         }
     }
 
+    fn build_regex_set(config: &HeuristicsConfig) -> Option<RegexSet> {
+        let mut patterns = Vec::new();
+        for rule in &config.rules {
+            for keyword in &rule.keywords {
+                patterns.push(regex::escape(&keyword.to_lowercase()));
+            }
+        }
+        if patterns.is_empty() {
+            None
+        } else {
+            RegexSet::new(patterns).ok()
+        }
+    }
+
     pub fn save(&self) -> Result<()> {
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let content = serde_json::to_string_pretty(&self.config)?;
+        let content = serde_json::to_string_pretty(self.config.as_ref())?;
         fs::write(&self.config_path, content)?;
         Ok(())
     }
 
     pub fn reset_defaults(&mut self) -> Result<()> {
-        self.config = HeuristicsConfig::default();
+        self.config = Arc::new(HeuristicsConfig::default());
+        self.regex_set = Self::build_regex_set(&self.config);
         self.save()
     }
 
@@ -266,17 +286,40 @@ impl BitNetModel {
 
         let mut score = None;
 
-        for rule in &self.config.rules {
-            let matches = rule.keywords.iter().any(|k| name_lower.contains(k));
-            if matches {
-                if rule.is_exclusion {
-                    if !is_airport {
+        if let Some(set) = &self.regex_set {
+            if set.is_match(&name_lower) {
+                let matches = set.matches(&name_lower);
+                let mut current_idx = 0;
+                for rule in &self.config.rules {
+                    let end_idx = current_idx + rule.keywords.len();
+                    if (current_idx..end_idx).any(|i| matches.matched(i)) {
+                        if rule.is_exclusion {
+                            if !is_airport {
+                                score = Some(rule.score);
+                                break;
+                            }
+                        } else {
+                            score = Some(rule.score);
+                            break;
+                        }
+                    }
+                    current_idx = end_idx;
+                }
+            }
+        } else {
+            // Fallback to iterative matching if RegexSet is not built
+            for rule in &self.config.rules {
+                let matches = rule.keywords.iter().any(|k| name_lower.contains(k));
+                if matches {
+                    if rule.is_exclusion {
+                        if !is_airport {
+                            score = Some(rule.score);
+                            break;
+                        }
+                    } else {
                         score = Some(rule.score);
                         break;
                     }
-                } else {
-                    score = Some(rule.score);
-                    break;
                 }
             }
         }
@@ -1068,8 +1111,9 @@ mod tests {
     #[test]
     fn test_predict_panc() {
         let model = BitNetModel {
-            config: HeuristicsConfig::default(),
+            config: Arc::new(HeuristicsConfig::default()),
             config_path: PathBuf::from("test_heuristics.json"),
+            regex_set: None,
         };
         let score = model.predict(
             "panc---anchorage-v2.0.2",
@@ -1085,8 +1129,9 @@ mod tests {
     #[test]
     fn test_predict_simheaven_consistency() {
         let model = BitNetModel {
-            config: HeuristicsConfig::default(),
+            config: Arc::new(HeuristicsConfig::default()),
             config_path: PathBuf::from("test_heuristics.json"),
+            regex_set: None,
         };
         let score1 = model.predict(
             "simHeaven_X-World_America-1-vfr",
@@ -1360,8 +1405,9 @@ mod tests {
     #[test]
     fn test_predict_tags_manual_override() {
         let mut model = BitNetModel {
-            config: HeuristicsConfig::default(),
+            config: Arc::new(HeuristicsConfig::default()),
             config_path: PathBuf::from("test_heuristics_override.json"),
+            regex_set: None,
         };
 
         // Before override
@@ -1370,7 +1416,7 @@ mod tests {
         assert!(tags.contains(&"Airliner".to_string()));
 
         // Set override
-        model.config.aircraft_overrides.insert(
+        Arc::make_mut(&mut model.config).aircraft_overrides.insert(
             "Boeing 737".to_string(),
             vec!["Military".to_string(), "Jet".to_string()],
         );

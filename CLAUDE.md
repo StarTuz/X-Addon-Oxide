@@ -25,6 +25,9 @@ cargo test
 cargo test -p x-adox-core
 cargo test -p x-adox-bitnet
 
+# Build AppImage (Linux via Docker)
+./scripts/build_appimage.sh
+
 # Local CI pipeline (build + test)
 ./scripts/local_ci.sh
 ```
@@ -32,11 +35,13 @@ cargo test -p x-adox-bitnet
 ## CI/CD
 
 GitHub Actions builds on push to main and on tags:
+
 - **Windows**: NSIS installer (`.exe`) via cargo-packager
 - **macOS**: DMG + App bundle via cargo-packager
 - **Linux**: Binary tarball (`.tar.gz`) - AppImage built separately via Docker
 
 Releases are created automatically when pushing a version tag:
+
 ```bash
 git tag v2.1.0
 git push origin v2.1.0
@@ -68,6 +73,7 @@ crates/
 ### x-adox-bitnet
 
 Rules-based heuristics engine that:
+
 - Scores scenery packs (0-100) for smart sorting
 - Classifies aircraft by engine type and category
 - Supports manual priority overrides (sticky sort)
@@ -75,6 +81,7 @@ Rules-based heuristics engine that:
 ### x-adox-gui
 
 Iced framework with Elm-like message-driven architecture:
+
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, Heuristics, Issues
 - `map.rs` - Interactive world map showing scenery locations
 - `style.rs` - Dark theme with neon glow effects

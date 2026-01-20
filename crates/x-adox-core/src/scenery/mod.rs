@@ -112,7 +112,9 @@ impl SceneryManager {
         }
 
         // 2. Scan the directory for new packs not yet in the INI
-        let discovered = crate::discovery::DiscoveryManager::scan_scenery(custom_scenery_dir);
+        let mut cache = crate::cache::DiscoveryCache::load();
+        let discovered = crate::discovery::DiscoveryManager::scan_scenery(custom_scenery_dir, &mut cache);
+        let _ = cache.save();
         println!(
             "[SceneryManager] Discovered {} folders on disk",
             discovered.len()
