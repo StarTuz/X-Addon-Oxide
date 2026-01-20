@@ -73,6 +73,7 @@ pub enum Tab {
     CSLs,
     Heuristics,
     Issues,
+    Settings,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq)]
@@ -140,6 +141,11 @@ enum Message {
     },
     InstallProgress(f32),
     SmartSort,
+
+    // Settings
+    AddExclusion,
+    ExclusionSelected(Option<PathBuf>),
+    RemoveExclusion(PathBuf),
 
     // Heuristics
     OpenHeuristicsEditor,
@@ -244,6 +250,7 @@ struct App {
     icon_warning: svg::Handle,
     icon_pin: svg::Handle,
     icon_pin_outline: svg::Handle,
+    icon_settings: svg::Handle,
 
     // Pro Mode
     validation_report: Option<x_adox_core::scenery::validator::ValidationReport>,
@@ -256,7 +263,8 @@ struct App {
 
     // Sticky Sort Editing
     editing_priority: Option<(String, u8)>,
-
+    // UI Helpers
+    is_picking_exclusion: bool,
     // Phase 4 Icons
     icon_arrow_up: svg::Handle,
     icon_arrow_down: svg::Handle,
@@ -272,6 +280,10 @@ struct App {
 
     // Icon Overrides
     icon_overrides: std::collections::BTreeMap<PathBuf, PathBuf>,
+
+    // Scan Settings
+    scan_exclusions: Vec<PathBuf>,
+    scan_inclusions: Vec<PathBuf>,
 }
 
 impl App {
@@ -330,6 +342,9 @@ impl App {
             icon_pin_outline: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/pin_outline.svg").to_vec(),
             ),
+            icon_settings: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/settings.svg").to_vec(),
+            ),
             validation_report: None,
             simulated_packs: None,
             region_focus: None,
@@ -342,6 +357,7 @@ impl App {
             icon_arrow_down: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/arrow_down.svg").to_vec(),
             ),
+            is_picking_exclusion: false,
             fallback_airliner: image::Handle::from_bytes(
                 include_bytes!("../assets/fallback_airliner.png").to_vec(),
             ),
@@ -356,9 +372,12 @@ impl App {
             ),
             smart_view_expanded: std::collections::BTreeSet::new(),
             icon_overrides: std::collections::BTreeMap::new(),
+            scan_exclusions: Vec::new(),
+            scan_inclusions: Vec::new(),
         };
 
         app.load_icon_overrides();
+        app.load_scan_config();
 
         let tasks = if let Some(r) = root {
             let r1 = r.clone();
@@ -366,17 +385,24 @@ impl App {
             let r3 = r.clone();
             let r4 = r.clone();
             let r5 = r.clone();
+            let r6 = r.clone();
+            let ex1 = app.scan_exclusions.clone();
+            let ex2 = app.scan_exclusions.clone();
             Task::batch(vec![
                 Task::perform(async move { load_packs(Some(r1)) }, Message::SceneryLoaded),
                 Task::perform(
-                    async move { load_aircraft_tree(Some(r2)) },
+                    async move { load_aircraft_tree(Some(r2), ex1) },
                     Message::AircraftTreeLoaded,
                 ),
                 Task::perform(
                     async move { load_plugins(Some(r3)) },
                     Message::PluginsLoaded,
                 ),
-                Task::perform(async move { load_csls(Some(r4)) }, Message::CSLsLoaded),
+                Task::perform(
+                    async move { load_aircraft(Some(r4), ex2) },
+                    Message::AircraftLoaded,
+                ),
+                Task::perform(async move { load_csls(Some(r6)) }, Message::CSLsLoaded),
                 Task::perform(
                     async move { load_log_issues(Some(r5)) },
                     Message::LogIssuesLoaded,
@@ -414,6 +440,7 @@ impl App {
                     Tab::CSLs => format!("{} CSL packages", self.csls.len()),
                     Tab::Heuristics => "Sorting Heuristics Editor".to_string(),
                     Tab::Issues => "Known Issues & Log Analysis".to_string(),
+                    Tab::Settings => "Settings & Configuration".to_string(),
                 };
                 Task::none()
             }
@@ -910,11 +937,16 @@ impl App {
                 let root4 = self.xplane_root.clone();
                 let root5 = self.xplane_root.clone();
 
+                let ex1 = self.scan_exclusions.clone();
+                let ex2 = self.scan_exclusions.clone();
                 Task::batch([
                     Task::perform(async move { load_packs(root1) }, Message::SceneryLoaded),
-                    Task::perform(async move { load_aircraft(root2) }, Message::AircraftLoaded),
                     Task::perform(
-                        async move { load_aircraft_tree(root3) },
+                        async move { load_aircraft(root2, ex1) },
+                        Message::AircraftLoaded,
+                    ),
+                    Task::perform(
+                        async move { load_aircraft_tree(root3, ex2) },
                         Message::AircraftTreeLoaded,
                     ),
                     Task::perform(async move { load_plugins(root4) }, Message::PluginsLoaded),
@@ -942,22 +974,37 @@ impl App {
                         Ok(_) => {
                             self.xplane_root = Some(path);
                             self.status = "X-Plane folder set! Reloading...".to_string();
-                            // Reload all data
                             let root1 = self.xplane_root.clone();
                             let root2 = self.xplane_root.clone();
                             let root3 = self.xplane_root.clone();
+                            let root4 = self.xplane_root.clone();
+                            let root5 = self.xplane_root.clone();
+                            let root6 = self.xplane_root.clone();
+
+                            let ex1 = self.scan_exclusions.clone();
+                            let ex2 = self.scan_exclusions.clone();
+
                             return Task::batch([
                                 Task::perform(
                                     async move { load_packs(root1) },
                                     Message::SceneryLoaded,
                                 ),
                                 Task::perform(
-                                    async move { load_aircraft(root2) },
+                                    async move { load_aircraft(root2, ex1) },
                                     Message::AircraftLoaded,
                                 ),
                                 Task::perform(
-                                    async move { load_plugins(root3) },
+                                    async move { load_aircraft_tree(root3, ex2) },
+                                    Message::AircraftTreeLoaded,
+                                ),
+                                Task::perform(
+                                    async move { load_plugins(root4) },
                                     Message::PluginsLoaded,
+                                ),
+                                Task::perform(async move { load_csls(root5) }, Message::CSLsLoaded),
+                                Task::perform(
+                                    async move { load_log_issues(root6) },
+                                    Message::LogIssuesLoaded,
                                 ),
                             ]);
                         }
@@ -1215,7 +1262,7 @@ impl App {
                         .selected_csl
                         .as_ref()
                         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
-                    Tab::Heuristics | Tab::Issues => None,
+                    Tab::Heuristics | Tab::Issues | Tab::Settings => None,
                 };
 
                 if let Some(name) = name_opt {
@@ -1253,7 +1300,7 @@ impl App {
                         Tab::Aircraft => self.selected_aircraft.clone(),
                         Tab::Plugins => self.selected_plugin.clone(),
                         Tab::CSLs => self.selected_csl.clone(),
-                        Tab::Heuristics | Tab::Issues => None,
+                        Tab::Heuristics | Tab::Issues | Tab::Settings => None,
                     };
 
                     if let Some(p) = path {
@@ -1357,6 +1404,45 @@ impl App {
                         Message::Refresh
                     },
                 )
+            }
+            Message::AddExclusion => {
+                if self.is_picking_exclusion {
+                    return Task::none();
+                }
+                self.is_picking_exclusion = true;
+                Task::perform(
+                    async move {
+                        use native_dialog::FileDialog;
+                        FileDialog::new()
+                            .set_location("~")
+                            .show_open_single_dir()
+                            .ok()
+                            .flatten()
+                    },
+                    Message::ExclusionSelected,
+                )
+            }
+            Message::ExclusionSelected(Some(path)) => {
+                self.is_picking_exclusion = false;
+                let final_path = path.canonicalize().unwrap_or(path);
+                if !self.scan_exclusions.contains(&final_path) {
+                    self.scan_exclusions.push(final_path);
+                    let _ = self.save_scan_config();
+                    return Task::done(Message::Refresh);
+                }
+                Task::none()
+            }
+            Message::ExclusionSelected(None) => {
+                self.is_picking_exclusion = false;
+                Task::none()
+            }
+            Message::RemoveExclusion(path) => {
+                if let Some(pos) = self.scan_exclusions.iter().position(|x| *x == path) {
+                    self.scan_exclusions.remove(pos);
+                    self.save_scan_config();
+                    return Task::done(Message::Refresh);
+                }
+                Task::none()
             }
             Message::ToggleSmartFolder(id) => {
                 if self.smart_view_expanded.contains(&id) {
@@ -1816,6 +1902,7 @@ impl App {
             Tab::CSLs => self.view_addon_list(&self.csls, "CSL Package"),
             Tab::Heuristics => self.view_heuristics_editor(),
             Tab::Issues => self.view_issues(),
+            Tab::Settings => self.view_settings(),
         };
 
         // Path text for display
@@ -1848,6 +1935,7 @@ impl App {
             ),
             Tab::Heuristics => (Message::SaveHeuristics, Message::ResetHeuristics, true),
             Tab::Issues => (Message::CheckLogIssues, Message::Refresh, false),
+            Tab::Settings => (Message::Refresh, Message::Refresh, false), // Settings tab doesn't have these actions
         };
 
         let install_btn = button(
@@ -1908,6 +1996,27 @@ impl App {
             };
 
         let mut actions = row![install_btn, delete_btn, refresh_btn].spacing(10);
+
+        if self.active_tab == Tab::Aircraft && self.use_smart_view {
+            let settings_btn = button(
+                row![
+                    svg(self.icon_settings.clone())
+                        .width(14)
+                        .height(14)
+                        .style(|_, _| svg::Style {
+                            color: Some(Color::WHITE),
+                        }),
+                    text("Settings").size(12)
+                ]
+                .spacing(6)
+                .align_y(iced::Alignment::Center),
+            )
+            .on_press(Message::SwitchTab(Tab::Settings))
+            .style(style::button_secondary)
+            .padding([6, 12]);
+
+            actions = actions.push(settings_btn);
+        }
         if let Some(btn) = smart_sort_btn {
             actions = actions.push(btn);
 
@@ -2085,6 +2194,7 @@ impl App {
             Tab::CSLs => (&self.icon_csls, Color::from_rgb(1.0, 0.6, 0.2)),       // Orange
             Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
             Tab::Issues => (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)), // Always red for Issues
+            Tab::Settings => (&self.icon_settings, Color::from_rgb(0.7, 0.7, 0.7)), // Light gray for settings
         };
 
         let icon = svg(icon_handle.clone())
@@ -2362,6 +2472,85 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill)
         .style(style::container_main_content)
+        .into()
+    }
+
+    fn view_settings(&self) -> Element<'_, Message> {
+        let title = text("Scan Settings").size(24);
+
+        // Exclusions Section
+        let exclusions_title = text("Excluded Folders (Ignored by AI Scan)").size(18);
+
+        let exclusions_list: Element<'_, Message> = if self.scan_exclusions.is_empty() {
+            text("No folders excluded.")
+                .color(style::palette::TEXT_SECONDARY)
+                .into()
+        } else {
+            column(
+                self.scan_exclusions
+                    .iter()
+                    .map(|path| {
+                        let p = path.clone();
+                        container(
+                            row![
+                                text(path.to_string_lossy()).width(Length::Fill),
+                                button(text("Remove").size(12))
+                                    .on_press(Message::RemoveExclusion(p))
+                                    .style(style::button_danger)
+                                    .padding([5, 10])
+                            ]
+                            .align_y(iced::Alignment::Center)
+                            .spacing(10),
+                        )
+                        .padding(10)
+                        .style(style::container_card)
+                        .into()
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .spacing(5)
+            .into()
+        };
+
+        let add_btn = button(
+            row![
+                svg(self.icon_plugins.clone()).width(Length::Fixed(16.0)), // reusing plugins icon as generic 'plus' or folder
+                text("Add Exclusion Folder")
+            ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center),
+        )
+        .on_press(Message::AddExclusion)
+        .padding(10)
+        .style(style::button_primary);
+
+        column![
+            row![
+                button(text("Back").size(12))
+                    .on_press(Message::SwitchTab(Tab::Aircraft))
+                    .style(style::button_secondary)
+                    .padding([5, 10]),
+                title
+            ]
+            .spacing(20)
+            .align_y(iced::Alignment::Center),
+            container(
+                column![
+                    exclusions_title,
+                    text("Changes require a refresh to take effect.")
+                        .size(12)
+                        .color(style::palette::TEXT_SECONDARY),
+                    add_btn,
+                    exclusions_list
+                ]
+                .spacing(20)
+            )
+            .padding(20)
+            .style(style::container_card)
+            .width(Length::Fill)
+        ]
+        .spacing(20)
+        .padding(20)
         .into()
     }
 
@@ -3319,6 +3508,70 @@ impl App {
             }
         }
     }
+
+    fn get_scan_config_path() -> Option<PathBuf> {
+        let proj_dirs = directories::ProjectDirs::from("com", "startux", "x-adox")?;
+        let config_dir = proj_dirs.config_dir();
+        if !config_dir.exists() {
+            let _ = std::fs::create_dir_all(config_dir);
+        }
+        Some(config_dir.join("scan_config.json"))
+    }
+
+    fn load_scan_config(&mut self) {
+        if let Some(path) = Self::get_scan_config_path() {
+            if let Ok(file) = std::fs::File::open(path) {
+                let reader = std::io::BufReader::new(file);
+                // Define a struct for serialization matching what we want
+                #[derive(serde::Deserialize)]
+                struct ScanConfig {
+                    exclusions: Vec<PathBuf>,
+                    #[serde(default)]
+                    inclusions: Vec<PathBuf>,
+                }
+
+                if let Ok(config) = serde_json::from_reader::<_, ScanConfig>(reader) {
+                    self.scan_exclusions = config
+                        .exclusions
+                        .into_iter()
+                        .map(|p| p.canonicalize().unwrap_or(p))
+                        .collect();
+                    self.scan_inclusions = config.inclusions;
+                    println!("Loaded {} excluded paths", self.scan_exclusions.len());
+                }
+            }
+        }
+    }
+
+    fn save_scan_config(&self) {
+        if let Some(path) = Self::get_scan_config_path() {
+            if let Ok(file) = std::fs::File::create(path) {
+                #[derive(serde::Serialize)]
+                struct ScanConfig<'a> {
+                    exclusions: &'a [PathBuf],
+                    inclusions: &'a [PathBuf],
+                }
+                let config = ScanConfig {
+                    exclusions: &self.scan_exclusions,
+                    inclusions: &self.scan_inclusions,
+                };
+                let writer = std::io::BufWriter::new(file);
+                let _ = serde_json::to_writer_pretty(writer, &config);
+            }
+        }
+    }
+}
+
+fn is_path_excluded(path: &Path, exclusions: &[PathBuf]) -> bool {
+    let p = path.to_string_lossy().to_string();
+    let p_clean = p.trim_end_matches('/').to_string();
+
+    exclusions.iter().any(|ex| {
+        let e = ex.to_string_lossy().to_string();
+        let e_clean = e.trim_end_matches('/').to_string();
+
+        p_clean == e_clean || p_clean.starts_with(&(e_clean.clone() + "/"))
+    })
 }
 
 // Data loading functions
@@ -3336,11 +3589,16 @@ fn toggle_plugin(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(
     Ok(())
 }
 
-fn load_aircraft(root: Option<PathBuf>) -> Result<Arc<Vec<DiscoveredAddon>>, String> {
+fn load_aircraft(
+    root: Option<PathBuf>,
+    exclusions: Vec<PathBuf>,
+) -> Result<Arc<Vec<DiscoveredAddon>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
+    // Canonicalize root for robust exclusion matching
+    let root = root.canonicalize().unwrap_or(root);
+
     let mut cache = x_adox_core::cache::DiscoveryCache::load();
-    let aircraft_path = root.join("Aircraft");
-    let aircraft = DiscoveryManager::scan_aircraft(&aircraft_path, &mut cache);
+    let aircraft = DiscoveryManager::scan_aircraft(&root, &mut cache, &exclusions);
     let _ = cache.save();
 
     Ok(Arc::new(aircraft))
@@ -3399,8 +3657,14 @@ fn toggle_pack(root: Option<PathBuf>, name: String, enable: bool) -> Result<(), 
     sm.save().map_err(|e| e.to_string())
 }
 
-fn load_aircraft_tree(root: Option<PathBuf>) -> Result<Arc<AircraftNode>, String> {
+fn load_aircraft_tree(
+    root: Option<PathBuf>,
+    exclusions: Vec<PathBuf>,
+) -> Result<Arc<AircraftNode>, String> {
     let root = root.ok_or("X-Plane root not found")?;
+    // Canonicalize root for robust exclusion matching
+    let root = root.canonicalize().unwrap_or(root);
+
     let aircraft_path = root.join("Aircraft");
     let disabled_path = root.join("Aircraft (Disabled)");
 
@@ -3411,8 +3675,13 @@ fn load_aircraft_tree(root: Option<PathBuf>) -> Result<Arc<AircraftNode>, String
     // Load BitNet model for tagging
     let bitnet = BitNetModel::new().unwrap_or_default();
 
-    let merged_node =
-        build_merged_aircraft_tree(&aircraft_path, &disabled_path, Path::new(""), &bitnet);
+    let merged_node = build_merged_aircraft_tree(
+        &aircraft_path,
+        &disabled_path,
+        Path::new(""),
+        &bitnet,
+        &exclusions,
+    );
 
     Ok(Arc::new(merged_node))
 }
@@ -3422,6 +3691,7 @@ fn build_merged_aircraft_tree(
     disabled_root: &Path,
     relative_path: &Path,
     bitnet: &BitNetModel,
+    exclusions: &[PathBuf],
 ) -> AircraftNode {
     let enabled_full = enabled_root.join(relative_path);
     let disabled_full = disabled_root.join(relative_path);
@@ -3462,13 +3732,17 @@ fn build_merged_aircraft_tree(
         let d_full = disabled_root.join(&entry_rel);
 
         if e_full.is_dir() || d_full.is_dir() {
-            // Check if this subdirectory is an aircraft (contains .acf)
-            // Or if it's just a grouping folder.
+            // Check if this folder itself is excluded
+            if is_path_excluded(&e_full, exclusions) || is_path_excluded(&d_full, exclusions) {
+                continue;
+            }
+
             children.push(build_merged_aircraft_tree(
                 enabled_root,
                 disabled_root,
                 &entry_rel,
                 bitnet,
+                exclusions,
             ));
         } else if entry_name_str.ends_with(".acf") {
             acf_file = Some(entry_name_str);
@@ -3658,7 +3932,7 @@ fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), St
             Tab::Scenery => root.join("Custom Scenery"),
             Tab::Aircraft => root.join("Aircraft"),
             Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::CSLs | Tab::Heuristics | Tab::Issues => unreachable!(),
+            Tab::CSLs | Tab::Heuristics | Tab::Issues | Tab::Settings => unreachable!(),
         };
 
         if !full_path.starts_with(&allowed_dir) {

@@ -29,6 +29,18 @@ pub struct DiscoveredAddon {
 
 pub struct DiscoveryManager;
 
+fn is_path_excluded(path: &Path, exclusions: &[PathBuf]) -> bool {
+    let p = path.to_string_lossy().to_string();
+    let p_clean = p.trim_end_matches('/').to_string();
+
+    exclusions.iter().any(|ex| {
+        let e = ex.to_string_lossy().to_string();
+        let e_clean = e.trim_end_matches('/').to_string();
+
+        p_clean == e_clean || p_clean.starts_with(&(e_clean.clone() + "/"))
+    })
+}
+
 impl DiscoveryManager {
     fn scan_folder(
         dir: &Path,
@@ -36,24 +48,57 @@ impl DiscoveryManager {
         cache: &mut crate::cache::DiscoveryCache,
         bitnet: &BitNetModel,
         results: &mut Vec<DiscoveredAddon>,
+        exclusions: &[PathBuf],
     ) {
         if !dir.exists() {
             return;
         }
 
+        // Check if this folder itself is excluded
+        if is_path_excluded(dir, exclusions) {
+            return;
+        }
+
         if let Some(cached) = cache.get(dir) {
-            results.extend(cached.clone());
+            // Filter cached results based on current exclusions
+            let filtered: Vec<_> = cached
+                .iter()
+                .filter(|addon| !is_path_excluded(&addon.path, exclusions))
+                .cloned()
+                .collect();
+            results.extend(filtered);
             return;
         }
 
         let mut folder_results = Vec::new();
-        let walker = WalkDir::new(dir).into_iter();
+        let walker = WalkDir::new(dir).follow_links(true);
 
-        for entry in walker.filter_entry(|e| !is_hidden(e)) {
+        // Pre-convert exclusions to absolute strings for simpler comparison if needed,
+        // but Path::starts_with is usually fine if both are absolute.
+        // We assume exclusions are absolute since they come from file picker.
+
+        let it = walker.into_iter().filter_entry(|e| {
+            if is_hidden(e) {
+                return false;
+            }
+            if e.file_type().is_dir() {
+                let path = e.path();
+                // If any exclusion starts with this path (parent), we must descend to find it?
+                // No, we want to exclude if THIS path starts with an exclusion.
+                if exclusions.iter().any(|ex| path.starts_with(ex)) {
+                    return false; // Skip this directory and its children
+                }
+            }
+            true
+        });
+
+        for entry in it {
             let entry = match entry {
                 Ok(e) => e,
                 Err(_) => continue,
             };
+
+            // Directory check moved to filter_entry, so we only need to handle files
 
             if entry.file_type().is_file() {
                 if let Some(ext) = entry.path().extension() {
@@ -91,6 +136,7 @@ impl DiscoveryManager {
     pub fn scan_aircraft(
         root: &Path,
         cache: &mut crate::cache::DiscoveryCache,
+        exclusions: &[PathBuf],
     ) -> Vec<DiscoveredAddon> {
         let mut results = Vec::new();
 
@@ -99,8 +145,22 @@ impl DiscoveryManager {
 
         let bitnet = BitNetModel::new().unwrap_or_default();
 
-        DiscoveryManager::scan_folder(&aircraft_root, true, cache, &bitnet, &mut results);
-        DiscoveryManager::scan_folder(&disabled_root, false, cache, &bitnet, &mut results);
+        DiscoveryManager::scan_folder(
+            &aircraft_root,
+            true,
+            cache,
+            &bitnet,
+            &mut results,
+            exclusions,
+        );
+        DiscoveryManager::scan_folder(
+            &disabled_root,
+            false,
+            cache,
+            &bitnet,
+            &mut results,
+            exclusions,
+        );
 
         results
     }

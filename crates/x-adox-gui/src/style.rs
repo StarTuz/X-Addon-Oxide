@@ -169,6 +169,55 @@ pub fn button_success(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+pub fn button_danger(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: None,
+        text_color: palette::TEXT_PRIMARY,
+        border: Border::default(),
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(palette::ACCENT_RED)),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            shadow: Shadow {
+                color: Color::from_rgba(0.93, 0.25, 0.25, 0.4),
+                offset: iced::Vector::new(0.0, 2.0),
+                blur_radius: 8.0,
+            },
+            ..base
+        },
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(1.0, 0.4, 0.4))),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            shadow: Shadow {
+                color: Color::from_rgba(0.93, 0.25, 0.25, 0.6),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 12.0,
+            },
+            ..base
+        },
+        _ => button::Style {
+            background: Some(Background::Color(palette::ACCENT_RED)),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            ..base
+        },
+    }
+}
+
 pub fn button_ai(_theme: &Theme, status: button::Status) -> button::Style {
     let base = button::Style {
         background: None,
