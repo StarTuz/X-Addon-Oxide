@@ -25,6 +25,33 @@ const AIRCRAFT_CATEGORIES: &[&str] = &[
     "Business Jet",
 ];
 
+const MANUFACTURERS: &[&str] = &[
+    "Airbus",
+    "Antonov",
+    "Beechcraft",
+    "Boeing",
+    "Bombardier",
+    "Cessna",
+    "Cirrus",
+    "De Havilland",
+    "Diamond",
+    "Embraer",
+    "Flight Design",
+    "Fokker",
+    "Gulfstream",
+    "Icon",
+    "Ilyushin",
+    "Lockheed",
+    "McDonnell Douglas",
+    "Mooney",
+    "Pilatus",
+    "Piper",
+    "Robin",
+    "Socata",
+    "Tupolev",
+    "Van's",
+];
+
 fn main() -> iced::Result {
     let icon_data = include_bytes!("../../../icon.png");
     let window_icon = icon::from_file_data(icon_data, None).ok();
@@ -159,6 +186,9 @@ enum Message {
 
     // Aircraft Override
     SetAircraftCategory(String, String), // Name, Category
+
+    // Smart View Toggles
+    ToggleSmartFolder(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -232,6 +262,9 @@ struct App {
     fallback_ga: image::Handle,
     fallback_military: image::Handle,
     fallback_helicopter: image::Handle,
+
+    // Smart View State
+    smart_view_expanded: std::collections::BTreeSet<String>,
 }
 
 impl App {
@@ -314,6 +347,7 @@ impl App {
             fallback_helicopter: image::Handle::from_bytes(
                 include_bytes!("../assets/fallback_helicopter.png").to_vec(),
             ),
+            smart_view_expanded: std::collections::BTreeSet::new(),
         };
 
         let tasks = if let Some(r) = root {
@@ -1304,6 +1338,14 @@ impl App {
                         Message::Refresh
                     },
                 )
+            }
+            Message::ToggleSmartFolder(id) => {
+                if self.smart_view_expanded.contains(&id) {
+                    self.smart_view_expanded.remove(&id);
+                } else {
+                    self.smart_view_expanded.insert(id);
+                }
+                Task::none()
             }
         }
     }
@@ -2691,7 +2733,11 @@ impl App {
         .padding([4, 8]);
 
         let items = if self.use_smart_view {
-            Self::collect_smart_nodes(&self.aircraft_tree, &self.selected_aircraft)
+            Self::collect_smart_nodes(
+                &self.aircraft_tree,
+                &self.selected_aircraft,
+                &self.smart_view_expanded,
+            )
         } else {
             match &self.aircraft_tree {
                 Some(tree) => Self::collect_tree_nodes(tree, 0, &self.selected_aircraft),
@@ -2708,10 +2754,15 @@ impl App {
             let selected = self.selected_aircraft.clone();
 
             scrollable(lazy(
-                (use_smart, tree.clone(), selected.clone()),
-                move |(use_smart, tree, selected)| {
+                (
+                    use_smart,
+                    tree.clone(),
+                    selected.clone(),
+                    self.smart_view_expanded.clone(),
+                ),
+                move |(use_smart, tree, selected, expanded)| {
                     let items: Vec<Element<'_, Message, Theme, Renderer>> = if *use_smart {
-                        Self::collect_smart_nodes(&tree, &selected)
+                        Self::collect_smart_nodes(&tree, &selected, &expanded)
                     } else {
                         match tree {
                             Some(t) => Self::collect_tree_nodes(t, 0, selected),
@@ -2950,6 +3001,7 @@ impl App {
     fn collect_smart_nodes(
         tree: &Option<Arc<AircraftNode>>,
         selected_aircraft: &Option<std::path::PathBuf>,
+        expanded_smart: &std::collections::BTreeSet<String>,
     ) -> Vec<Element<'static, Message>> {
         use std::collections::BTreeMap;
         let Some(tree) = tree else {
@@ -2959,10 +3011,18 @@ impl App {
 
         let mut groups: BTreeMap<String, Vec<AircraftNode>> = BTreeMap::new();
         for ac in all_aircraft {
-            if ac.tags.is_empty() {
+            let mut tags = ac.tags.clone();
+
+            // Redundancy Reduction: If manufacturer present, remove "Airliner"
+            let has_manufacturer = tags.iter().any(|t| MANUFACTURERS.contains(&t.as_str()));
+            if has_manufacturer {
+                tags.retain(|t| t != "Airliner");
+            }
+
+            if tags.is_empty() {
                 groups.entry("Other".to_string()).or_default().push(ac);
             } else {
-                for tag in &ac.tags {
+                for tag in &tags {
                     groups.entry(tag.clone()).or_default().push(ac.clone());
                 }
             }
@@ -2970,16 +3030,108 @@ impl App {
 
         let mut result = Vec::new();
         for (tag, aircraft) in groups {
-            result.push(Element::from(container(text(tag).size(16)).padding(
-                iced::Padding {
-                    top: 15.0,
-                    right: 5.0,
-                    bottom: 5.0,
-                    left: 5.0,
-                },
-            )));
-            for ac in aircraft {
-                result.push(Self::render_aircraft_row(&ac, 1, selected_aircraft));
+            let tag_id = format!("tag:{}", tag);
+            let is_expanded = expanded_smart.contains(&tag_id);
+            let icon = if is_expanded { "v" } else { ">" };
+
+            result.push(
+                row![
+                    button(text(icon).size(14))
+                        .on_press(Message::ToggleSmartFolder(tag_id))
+                        .padding([4, 8])
+                        .style(style::button_ghost),
+                    container(text(tag.clone()).size(16)).padding(iced::Padding {
+                        top: 5.0,
+                        right: 5.0,
+                        bottom: 5.0,
+                        left: 5.0,
+                    })
+                ]
+                .align_y(iced::Alignment::Center)
+                .into(),
+            );
+
+            if !is_expanded {
+                continue;
+            }
+
+            let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
+
+            if is_manufacturer {
+                // Group by model
+                let mut model_groups: BTreeMap<String, Vec<AircraftNode>> = BTreeMap::new();
+                for ac in aircraft {
+                    let raw_model = ac
+                        .acf_file
+                        .as_ref()
+                        .map(|f| f.strip_suffix(".acf").unwrap_or(f).to_string())
+                        .unwrap_or_else(|| ac.name.clone());
+                    let model = Self::normalize_model_name(&raw_model);
+                    model_groups.entry(model).or_default().push(ac);
+                }
+
+                for (model, acs) in model_groups {
+                    let model_id = format!("model:{}:{}", tag, model);
+                    let model_expanded = expanded_smart.contains(&model_id);
+
+                    if acs.len() == 1 {
+                        // Single entry: show as Model
+                        let mut ac = acs[0].clone();
+                        ac.name = model;
+                        ac.acf_file = None; // Hide the (acf) suffix
+                        result.push(Self::render_aircraft_row(&ac, 1, selected_aircraft));
+                    } else {
+                        // Multiple entries: folder for Model
+                        let folder = AircraftNode {
+                            name: model.clone(),
+                            path: PathBuf::new(), // dummy path
+                            is_folder: true,
+                            is_expanded: model_expanded,
+                            children: Vec::new(),
+                            acf_file: None,
+                            is_enabled: acs.iter().any(|ac| ac.is_enabled),
+                            tags: Vec::new(),
+                        };
+
+                        // Use a custom row for virtual folder to support ToggleSmartFolder
+                        let indent = 20.0;
+                        let icon = if model_expanded { "v" } else { ">" };
+                        let label_color = if folder.is_enabled {
+                            style::palette::TEXT_PRIMARY
+                        } else {
+                            style::palette::TEXT_SECONDARY
+                        };
+
+                        result.push(
+                            row![
+                                container(text("")).width(Length::Fixed(indent)),
+                                row![
+                                    button(text(icon).size(14))
+                                        .on_press(Message::ToggleSmartFolder(model_id))
+                                        .padding([4, 8])
+                                        .style(style::button_ghost),
+                                    button(text(folder.name).size(14).color(label_color))
+                                        .style(style::button_ghost)
+                                        .padding([4, 8])
+                                ]
+                                .spacing(5)
+                            ]
+                            .into(),
+                        );
+
+                        if model_expanded {
+                            for mut ac in acs {
+                                // In the folder, show the identifier (usually airline)
+                                ac.acf_file = None; // Hide (acf) because it's in the folder
+                                result.push(Self::render_aircraft_row(&ac, 2, selected_aircraft));
+                            }
+                        }
+                    }
+                }
+            } else {
+                for ac in aircraft {
+                    result.push(Self::render_aircraft_row(&ac, 1, selected_aircraft));
+                }
             }
         }
         result
@@ -2995,6 +3147,74 @@ impl App {
             }
         }
         None
+    }
+
+    fn normalize_model_name(raw_name: &str) -> String {
+        let upper = raw_name.to_uppercase();
+
+        // Airbus Heuristics
+        // A300 and A306 (Beluga) -> A300
+        if upper.starts_with("A300") || upper.starts_with("A306") {
+            return "A300".to_string();
+        }
+        if upper.starts_with("A310") {
+            return "A310".to_string();
+        }
+        // A320 Family - keep distinct but clean
+        if upper.starts_with("A318") {
+            return "A318".to_string();
+        }
+        if upper.starts_with("A319") {
+            return "A319".to_string();
+        }
+        if upper.starts_with("A320") {
+            return "A320".to_string();
+        }
+        if upper.starts_with("A321") {
+            return "A321".to_string();
+        }
+        if upper.starts_with("A330") {
+            return "A330".to_string();
+        }
+        if upper.starts_with("A340") {
+            return "A340".to_string();
+        }
+        if upper.starts_with("A350") {
+            return "A350".to_string();
+        }
+        if upper.starts_with("A380") {
+            return "A380".to_string();
+        }
+
+        // Boeing Heuristics
+        // Check for 7x7 pattern with optional B prefix
+        // 737
+        if upper.contains("737") && (upper.contains("B") || upper.starts_with("7")) {
+            return "737".to_string();
+        }
+        // 747
+        if upper.contains("747") && (upper.contains("B") || upper.starts_with("7")) {
+            return "747".to_string();
+        }
+        // 757
+        if upper.contains("757") && (upper.contains("B") || upper.starts_with("7")) {
+            return "757".to_string();
+        }
+        // 767
+        if upper.contains("767") && (upper.contains("B") || upper.starts_with("7")) {
+            return "767".to_string();
+        }
+        // 777
+        if upper.contains("777") && (upper.contains("B") || upper.starts_with("7")) {
+            return "777".to_string();
+        }
+        // 787
+        if upper.contains("787") && (upper.contains("B") || upper.starts_with("7")) {
+            return "787".to_string();
+        }
+
+        // Default: return raw name as is (preserving case if not matched)
+        raw_name.to_string()
     }
 }
 
