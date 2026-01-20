@@ -9,6 +9,7 @@ X-Addon-Oxide is a powerful, cross-platform tool designed for both flight sim en
 - **🚀 Mod Management**: Effortlessly enable or disable Plugins and CSLs with a single click.
 - **🗺️ World Map**: View all your installed scenery packages on an interactive global map.
 - **✈️ AI Smart View**: Automatically categorizes aircraft using a built-in BitNet heuristic model (Airliners, Military, GA, etc.).
+- **🕵️ Shadow Mesh Detection**: Identification of redundant mesh scenery that negatively impacts load times.
 - **🔧 User Overrides**: Manually override AI aircraft categories and set **Custom Aircraft Icons** to perfectly organize your hangar.
 - **🛡️ Folder Exclusions**: Exclude specific aircraft folders from the scan to keep your library clean.
 - **✨ Premium UI**: A sleek, dark-themed interface with neon glow effects and reactive hover feedback.
