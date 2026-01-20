@@ -1,6 +1,6 @@
 use iced::widget::{
     button, checkbox, column, container, image, pick_list, progress_bar, responsive, row,
-    scrollable, slider, svg, text, text_editor, tooltip, Column, Row,
+    scrollable, slider, stack, svg, text, text_editor, text_input, tooltip, Column, Row,
 };
 use iced::window::icon;
 use iced::{Background, Border, Color, Element, Length, Renderer, Shadow, Task, Theme};
@@ -9,6 +9,7 @@ use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
 use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
 use x_adox_core::management::ModManager;
+use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};
 use x_adox_core::scenery::{SceneryCategory, SceneryManager, SceneryPack, SceneryPackType};
 use x_adox_core::XPlaneManager;
 
@@ -199,6 +200,18 @@ enum Message {
     // Icon Customization
     BrowseForIcon(std::path::PathBuf), // Trigger file picker for this aircraft path
     IconSelected(std::path::PathBuf, std::path::PathBuf), // (Aircraft Path, Icon Path)
+
+    // Profiles (Phase 2)
+    ProfilesLoaded(Result<ProfileCollection, String>),
+    SwitchProfile(String),
+    SaveCurrentProfile(String),
+    DeleteProfile(String),
+    NewProfileNameChanged(String),
+    OpenProfileDialog,
+    CloseProfileDialog,
+    OpenRenameDialog,
+    RenameProfile(String, String), // (OldName, NewName)
+    RenameProfileNameChanged(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -268,6 +281,8 @@ struct App {
     // Phase 4 Icons
     icon_arrow_up: svg::Handle,
     icon_arrow_down: svg::Handle,
+    icon_edit: svg::Handle,
+    icon_trash: svg::Handle,
 
     // Fallback Icons
     fallback_airliner: image::Handle,
@@ -284,6 +299,14 @@ struct App {
     // Scan Settings
     scan_exclusions: Vec<PathBuf>,
     scan_inclusions: Vec<PathBuf>,
+
+    // Profiles (Phase 2)
+    profile_manager: Option<ProfileManager>,
+    profiles: ProfileCollection,
+    new_profile_name: String,
+    show_profile_dialog: bool,
+    show_rename_dialog: bool,
+    rename_profile_name: String,
 }
 
 impl App {
@@ -357,6 +380,12 @@ impl App {
             icon_arrow_down: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/arrow_down.svg").to_vec(),
             ),
+            icon_edit: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/edit.svg").to_vec(),
+            ),
+            icon_trash: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/trash.svg").to_vec(),
+            ),
             is_picking_exclusion: false,
             fallback_airliner: image::Handle::from_bytes(
                 include_bytes!("../assets/fallback_airliner.png").to_vec(),
@@ -374,7 +403,19 @@ impl App {
             icon_overrides: std::collections::BTreeMap::new(),
             scan_exclusions: Vec::new(),
             scan_inclusions: Vec::new(),
+            profile_manager: root.as_ref().map(|r| ProfileManager::new(r)),
+            profiles: ProfileCollection::default(),
+            new_profile_name: String::new(),
+            show_profile_dialog: false,
+            show_rename_dialog: false,
+            rename_profile_name: String::new(),
         };
+
+        if let Some(pm) = &app.profile_manager {
+            if let Ok(collection) = pm.load() {
+                app.profiles = collection;
+            }
+        }
 
         app.load_icon_overrides();
         app.load_scan_config();
@@ -594,6 +635,182 @@ impl App {
                     Task::none()
                 }
             },
+            Message::SwitchProfile(name) => {
+                if let Some(profile) = self
+                    .profiles
+                    .profiles
+                    .iter()
+                    .find(|p| p.name == name)
+                    .cloned()
+                {
+                    self.profiles.active_profile = Some(name.clone());
+                    let pm = self.profile_manager.clone();
+                    let collection = self.profiles.clone();
+                    let root = self.xplane_root.clone();
+
+                    // Save active profile choice
+                    if let Some(pm) = &pm {
+                        let _ = pm.save(&collection);
+                    }
+
+                    self.status = format!("Switching to profile {}...", name);
+                    Task::perform(
+                        async move { apply_profile_task(root, profile).await },
+                        |result: Result<(), String>| match result {
+                            Ok(_) => Message::Refresh,
+                            Err(e) => Message::ProfilesLoaded(Err(e)),
+                        },
+                    )
+                } else {
+                    Task::none()
+                }
+            }
+            Message::SaveCurrentProfile(name) => {
+                let pm = self.profile_manager.clone();
+                let mut collection = self.profiles.clone();
+
+                // Create profile from current state
+                let scenery_states = self
+                    .packs
+                    .iter()
+                    .map(|p| (p.name.clone(), p.status == SceneryPackType::Active))
+                    .collect();
+                let aircraft_states = self
+                    .aircraft
+                    .iter()
+                    .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
+                    .collect();
+                let plugin_states = self
+                    .plugins
+                    .iter()
+                    .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
+                    .collect();
+
+                let new_profile = Profile {
+                    name: name.clone(),
+                    scenery_states,
+                    aircraft_states,
+                    plugin_states,
+                };
+
+                // Add or update
+                if let Some(idx) = collection.profiles.iter().position(|p| p.name == name) {
+                    collection.profiles[idx] = new_profile;
+                } else {
+                    collection.profiles.push(new_profile);
+                }
+                collection.active_profile = Some(name.clone());
+
+                self.profiles = collection.clone();
+                self.show_profile_dialog = false;
+                self.new_profile_name = String::new();
+
+                self.status = format!("Profile {} saved", name);
+                Task::perform(
+                    async move {
+                        if let Some(pm) = pm {
+                            pm.save(&collection).map_err(|e| e.to_string())?;
+                        }
+                        Ok::<(), String>(())
+                    },
+                    |result: Result<(), String>| match result {
+                        Ok(_) => Message::Refresh,
+                        Err(e) => Message::ProfilesLoaded(Err(e)),
+                    },
+                )
+            }
+            Message::DeleteProfile(name) => {
+                self.profiles.profiles.retain(|p| p.name != name);
+                if self.profiles.active_profile.as_ref() == Some(&name) {
+                    self.profiles.active_profile = None;
+                }
+                let pm = self.profile_manager.clone();
+                let collection = self.profiles.clone();
+
+                self.status = format!("Deleted profile {}", name);
+                Task::perform(
+                    async move {
+                        if let Some(pm) = pm {
+                            pm.save(&collection).map_err(|e| e.to_string())?;
+                        }
+                        Ok::<(), String>(())
+                    },
+                    |_: Result<(), String>| Message::Refresh,
+                )
+            }
+            Message::ProfilesLoaded(result) => {
+                match result {
+                    Ok(collection) => {
+                        self.profiles = collection;
+                        self.status = "Profiles loaded".to_string();
+                    }
+                    Err(e) => self.status = format!("Profiles error: {}", e),
+                }
+                Task::none()
+            }
+            Message::NewProfileNameChanged(name) => {
+                self.new_profile_name = name;
+                Task::none()
+            }
+            Message::OpenProfileDialog => {
+                self.show_profile_dialog = true;
+                Task::none()
+            }
+            Message::OpenRenameDialog => {
+                if let Some(active) = &self.profiles.active_profile {
+                    self.rename_profile_name = active.clone();
+                    self.show_rename_dialog = true;
+                }
+                Task::none()
+            }
+            Message::RenameProfile(old_name, new_name) => {
+                if new_name.is_empty() || old_name == new_name {
+                    self.show_rename_dialog = false;
+                    return Task::none();
+                }
+
+                if let Some(profile) = self
+                    .profiles
+                    .profiles
+                    .iter_mut()
+                    .find(|p| p.name == old_name)
+                {
+                    profile.name = new_name.clone();
+                }
+
+                if self.profiles.active_profile.as_ref() == Some(&old_name) {
+                    self.profiles.active_profile = Some(new_name.clone());
+                }
+
+                let pm = self.profile_manager.clone();
+                let collection = self.profiles.clone();
+
+                self.show_rename_dialog = false;
+                self.rename_profile_name = String::new();
+                self.status = format!("Profile renamed to {}", new_name);
+
+                Task::perform(
+                    async move {
+                        if let Some(pm) = pm {
+                            pm.save(&collection).map_err(|e| e.to_string())?;
+                        }
+                        Ok::<(), String>(())
+                    },
+                    |result: Result<(), String>| match result {
+                        Ok(_) => Message::Refresh,
+                        Err(e) => Message::ProfilesLoaded(Err(e)),
+                    },
+                )
+            }
+            Message::RenameProfileNameChanged(name) => {
+                self.rename_profile_name = name;
+                Task::none()
+            }
+            Message::CloseProfileDialog => {
+                self.show_profile_dialog = false;
+                self.show_rename_dialog = false;
+                Task::none()
+            }
             Message::ToggleAircraft(path, enable) => {
                 let root = self.xplane_root.clone();
                 let name = path
@@ -2022,21 +2239,84 @@ impl App {
             actions = actions.push(edit_sort_btn);
         }
 
-        container(
+        let main_content = container(
             column![
                 // Top Bar
+                // Top Bar - Row 1: Path & Set Button
                 row![
                     actions,
-                    iced::widget::horizontal_space(),
-                    text(path_text)
-                        .size(12)
-                        .color(style::palette::TEXT_SECONDARY),
-                    button(text("Set").size(12).color(Color::WHITE))
-                        .on_press(Message::SelectFolder)
-                        .style(style::button_secondary)
-                        .padding([4, 8]),
+                    iced::widget::horizontal_space().width(Length::Fixed(20.0)),
+                    // Profile Selector (Phase 2)
+                    if self.profile_manager.is_some() {
+                        let options: Vec<String> = self
+                            .profiles
+                            .profiles
+                            .iter()
+                            .map(|p| p.name.clone())
+                            .collect();
+                        let selected = self.profiles.active_profile.clone();
+
+                        row![
+                            text("Profile:")
+                                .size(12)
+                                .color(style::palette::TEXT_SECONDARY),
+                            pick_list(options, selected.clone(), Message::SwitchProfile)
+                                .placeholder("Default")
+                                .width(Length::Fixed(140.0))
+                                .style(style::pick_list_primary)
+                                .padding(4),
+                            button(text("+").size(14))
+                                .on_press(Message::OpenProfileDialog)
+                                .style(style::button_secondary)
+                                .padding([4, 8]),
+                            // Rename Button
+                            button(svg(self.icon_edit.clone()).width(14).height(14).style(
+                                |_, _| svg::Style {
+                                    color: Some(Color::WHITE),
+                                }
+                            ),)
+                            .on_press(Message::OpenRenameDialog)
+                            .style(style::button_secondary)
+                            .padding([4, 8]),
+                            // Delete Button
+                            if let Some(name) = selected {
+                                button(svg(self.icon_trash.clone()).width(14).height(14).style(
+                                    |_, _| svg::Style {
+                                        color: Some(Color::WHITE),
+                                    },
+                                ))
+                                .on_press(Message::DeleteProfile(name))
+                                .style(style::button_danger)
+                                .padding([4, 8])
+                            } else {
+                                button(svg(self.icon_trash.clone()).width(14).height(14).style(
+                                    |_, _| svg::Style {
+                                        color: Some(Color::from_rgba(1.0, 1.0, 1.0, 0.4)),
+                                    },
+                                ))
+                                .style(style::button_secondary)
+                                .padding([4, 8])
+                            },
+                        ]
+                        .spacing(6)
+                        .align_y(iced::Alignment::Center)
+                    } else {
+                        row![]
+                    },
+                    iced::widget::horizontal_space().width(Length::Fixed(20.0)),
+                    row![
+                        text(path_text)
+                            .size(12)
+                            .color(style::palette::TEXT_SECONDARY),
+                        button(text("Set").size(12).color(Color::WHITE))
+                            .on_press(Message::SelectFolder)
+                            .style(style::button_secondary)
+                            .padding([4, 8]),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Alignment::Center),
                 ]
-                .spacing(20)
+                .spacing(10)
                 .align_y(iced::Alignment::Center),
                 if let Some(p) = self.install_progress {
                     let progress_col: Column<'_, Message, Theme, _> = column![
@@ -2070,8 +2350,116 @@ impl App {
         )
         .width(Length::Fill)
         .height(Length::FillPortion(2))
-        .style(style::container_main_content)
-        .into()
+        .style(style::container_main_content);
+
+        if self.show_profile_dialog {
+            stack![
+                main_content,
+                container(self.view_profile_dialog())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .center_x(iced::Length::Fill)
+                    .center_y(iced::Length::Fill)
+                    .style(|_theme: &Theme| container::Style {
+                        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.6))),
+                        ..Default::default()
+                    })
+            ]
+            .into()
+        } else if self.show_rename_dialog {
+            stack![
+                main_content,
+                container(self.view_rename_dialog())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .center_x(iced::Length::Fill)
+                    .center_y(iced::Length::Fill)
+                    .style(|_theme: &Theme| container::Style {
+                        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.6))),
+                        ..Default::default()
+                    })
+            ]
+            .into()
+        } else {
+            main_content.into()
+        }
+    }
+
+    fn view_profile_dialog(&self) -> Element<'_, Message> {
+        let content = column![
+            text("Save New Profile").size(24),
+            text("Enter a name for the current configuration")
+                .size(14)
+                .color(style::palette::TEXT_SECONDARY),
+            text_input("Profile Name", &self.new_profile_name)
+                .on_input(Message::NewProfileNameChanged)
+                .on_submit(Message::SaveCurrentProfile(self.new_profile_name.clone()))
+                .padding(10)
+                .size(16)
+                .style(style::text_input_primary),
+            row![
+                button(text("Cancel").size(14))
+                    .on_press(Message::CloseProfileDialog)
+                    .style(style::button_secondary)
+                    .padding([10, 20]),
+                button(text("Save Profile").size(14))
+                    .on_press(Message::SaveCurrentProfile(self.new_profile_name.clone()))
+                    .style(style::button_premium_glow)
+                    .padding([10, 30]),
+            ]
+            .spacing(20)
+            .align_y(iced::Alignment::Center),
+        ]
+        .spacing(20)
+        .padding(30)
+        .width(Length::Fixed(400.0));
+
+        container(content)
+            .style(style::container_modal)
+            .padding(20)
+            .into()
+    }
+
+    fn view_rename_dialog(&self) -> Element<'_, Message> {
+        let old_name = self.profiles.active_profile.clone().unwrap_or_default();
+        let content = column![
+            text("Rename Profile").size(24),
+            text(format!("Enter a new name for '{}'", old_name))
+                .size(14)
+                .color(style::palette::TEXT_SECONDARY),
+            text_input("New Name", &self.rename_profile_name)
+                .on_input(Message::RenameProfileNameChanged)
+                .on_submit(Message::RenameProfile(
+                    old_name.clone(),
+                    self.rename_profile_name.clone()
+                ))
+                .padding(10)
+                .size(16)
+                .style(style::text_input_primary),
+            row![
+                button(text("Cancel").size(14))
+                    .on_press(Message::CloseProfileDialog)
+                    .style(style::button_secondary)
+                    .padding([10, 20]),
+                button(text("Rename Profile").size(14))
+                    .on_press(Message::RenameProfile(
+                        old_name,
+                        self.rename_profile_name.clone()
+                    ))
+                    .style(style::button_premium_glow)
+                    .padding([10, 30]),
+            ]
+            .spacing(20)
+            .align_y(iced::Alignment::Center),
+        ]
+        .spacing(20)
+        .padding(30)
+        .width(Length::Fixed(400.0));
+
+        container(content)
+            .style(style::container_modal)
+            .padding(20)
+            .into()
     }
 
     fn view_inspector(&self) -> Element<'_, Message> {
@@ -4019,4 +4407,45 @@ fn save_packs_task(root: Option<PathBuf>, packs: Arc<Vec<SceneryPack>>) -> Resul
     let mut sm = SceneryManager::new(ini_path);
     sm.packs = packs.as_ref().clone();
     sm.save().map_err(|e| e.to_string())
+}
+
+async fn apply_profile_task(root: Option<PathBuf>, profile: Profile) -> Result<(), String> {
+    let root = root.ok_or("X-Plane root not found")?;
+
+    // 1. Scenery
+    ModManager::set_bulk_scenery_enabled(&root, &profile.scenery_states)
+        .map_err(|e| e.to_string())?;
+
+    // 2. Plugins & Aircraft require discovering current paths to correctly toggle
+    let mut cache = x_adox_core::cache::DiscoveryCache::load();
+
+    // Plugins
+    let current_plugins = DiscoveryManager::scan_plugins(&root, &mut cache);
+    for plugin in current_plugins {
+        if let Some(&should_be_enabled) = profile
+            .plugin_states
+            .get(&plugin.path.to_string_lossy().to_string())
+        {
+            if plugin.is_enabled != should_be_enabled {
+                ModManager::set_plugin_enabled(&root, &plugin.path, should_be_enabled)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    // Aircraft
+    let current_aircraft = DiscoveryManager::scan_aircraft(&root, &mut cache, &[]);
+    for aircraft in current_aircraft {
+        if let Some(&should_be_enabled) = profile
+            .aircraft_states
+            .get(&aircraft.path.to_string_lossy().to_string())
+        {
+            if aircraft.is_enabled != should_be_enabled {
+                ModManager::set_aircraft_enabled(&root, &aircraft.path, should_be_enabled)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    Ok(())
 }

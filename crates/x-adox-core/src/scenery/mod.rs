@@ -81,6 +81,18 @@ impl SceneryManager {
         }
     }
 
+    pub fn set_bulk_states(&mut self, states: &std::collections::HashMap<String, bool>) {
+        for pack in &mut self.packs {
+            if let Some(&enabled) = states.get(&pack.name) {
+                pack.status = if enabled {
+                    SceneryPackType::Active
+                } else {
+                    SceneryPackType::Disabled
+                };
+            }
+        }
+    }
+
     pub fn load(&mut self) -> Result<(), SceneryError> {
         let custom_scenery_dir = self.file_path.parent().unwrap_or(&self.file_path);
         println!("[SceneryManager] Loading from INI: {:?}", self.file_path);

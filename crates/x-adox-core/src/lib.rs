@@ -2,6 +2,7 @@ pub mod apt_dat;
 pub mod cache;
 pub mod discovery;
 pub mod management;
+pub mod profiles;
 pub mod scenery;
 
 use regex::Regex;

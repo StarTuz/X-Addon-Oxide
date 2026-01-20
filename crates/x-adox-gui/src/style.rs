@@ -1,4 +1,4 @@
-use iced::widget::{button, container};
+use iced::widget::{button, container, pick_list, text_input};
 use iced::{Background, Border, Color, Shadow, Theme};
 
 pub mod palette {
@@ -502,5 +502,34 @@ pub fn button_pin_ghost(_theme: &Theme, status: button::Status) -> button::Style
             ..base
         },
         _ => base,
+    }
+}
+
+pub fn pick_list_primary(_theme: &Theme, _status: pick_list::Status) -> pick_list::Style {
+    pick_list::Style {
+        text_color: palette::TEXT_PRIMARY,
+        placeholder_color: palette::TEXT_SECONDARY,
+        handle_color: palette::TEXT_PRIMARY,
+        background: Background::Color(palette::SURFACE),
+        border: Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: palette::BORDER,
+        },
+    }
+}
+
+pub fn text_input_primary(_theme: &Theme, _status: text_input::Status) -> text_input::Style {
+    text_input::Style {
+        background: Background::Color(palette::SURFACE),
+        border: Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: palette::BORDER,
+        },
+        icon: Color::WHITE,
+        placeholder: palette::TEXT_SECONDARY,
+        value: palette::TEXT_PRIMARY,
+        selection: palette::ACCENT_BLUE,
     }
 }

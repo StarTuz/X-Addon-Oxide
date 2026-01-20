@@ -53,6 +53,18 @@ impl ModManager {
         Ok(())
     }
 
+    pub fn set_bulk_scenery_enabled(
+        xplane_root: &Path,
+        states: &std::collections::HashMap<String, bool>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let scenery_ini_path = xplane_root.join("Custom Scenery").join("scenery_packs.ini");
+        let mut manager = SceneryManager::new(scenery_ini_path);
+        manager.load()?;
+        manager.set_bulk_states(states);
+        manager.save()?;
+        Ok(())
+    }
+
     /// Enables or disables an aircraft by moving it between `Aircraft` and `Aircraft (Disabled)`.
     pub fn set_aircraft_enabled(
         xplane_root: &Path,
