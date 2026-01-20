@@ -3180,8 +3180,19 @@ impl App {
 
         // Boeing Heuristics
         // Check for 7x7 pattern with optional B prefix
-        // 737
-        if upper.contains("737") && (upper.contains("B") || upper.starts_with("7")) {
+        // 737 (checking for 73x variants)
+        // 737, 732, 733, 734, 735, 736, 738, 739
+        // Also B737, B738, etc.
+        if (upper.contains("737")
+            || upper.contains("738")
+            || upper.contains("739")
+            || upper.contains("732")
+            || upper.contains("733")
+            || upper.contains("734")
+            || upper.contains("735")
+            || upper.contains("736"))
+            && (upper.contains("B") || upper.starts_with("7"))
+        {
             return "737".to_string();
         }
         // 747
