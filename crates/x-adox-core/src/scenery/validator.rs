@@ -38,15 +38,13 @@ impl SceneryValidator {
         // 3. Check for Library placement (Libraries should be above Orthos/Meshes)
         Self::check_library_placement(packs, &mut report);
 
-        // 4. Check for Shadowed Packs (Complete overlap)
-        // DISABLED due to false positives on additive scenery (e.g. Airports shadowing Global Airports).
-        // See shadow_analysis.md for details.
-        // Self::check_shadowing(packs, &mut report);
+        // 4. Check for Shadowed Meshes (Complete overlap)
+        Self::check_mesh_shadowing(packs, &mut report);
 
         report
     }
 
-    fn check_shadowing(packs: &[SceneryPack], report: &mut ValidationReport) {
+    fn check_mesh_shadowing(packs: &[SceneryPack], report: &mut ValidationReport) {
         use crate::scenery::SceneryPackType;
 
         // Only compare Active packs
@@ -60,8 +58,9 @@ impl SceneryValidator {
             if high_pack.tiles.is_empty() {
                 continue;
             }
-            // Only consider "substantial" scenery types (Airports, Overlays, Orthos)
-            if !is_substantial(high_pack) {
+            // Strict Filtering: ONLY Mesh and EarthScenery (Default Mesh)
+            // Explicitly EXCLUDE Ortho, Overlay, Airports
+            if !is_mesh(high_pack) {
                 continue;
             }
 
@@ -69,23 +68,23 @@ impl SceneryValidator {
                 if low_pack.tiles.is_empty() {
                     continue;
                 }
-                if !is_substantial(low_pack) {
+                if !is_mesh(low_pack) {
                     continue;
                 }
 
                 // If B is fully inside A
                 if is_subset(&low_pack.tiles, &high_pack.tiles) {
                     println!(
-                        "DEBUG: Shadow detected! High: '{}' ({:?}) | Low: '{}' ({:?})",
+                        "DEBUG: Mesh Shadow detected! High: '{}' ({:?}) | Low: '{}' ({:?})",
                         high_pack.name, high_pack.tiles, low_pack.name, low_pack.tiles
                     );
                     report.issues.push(ValidationIssue {
                         pack_name: low_pack.name.clone(),
                         severity: ValidationSeverity::Warning,
-                        issue_type: "shadowed_pack".to_string(),
-                        message: format!("Completely shadowed by '{}'", high_pack.name),
-                        fix_suggestion: "Disable or remove this pack as it is completely obscured by a higher priority pack.".to_string(),
-                        details: "This pack's geographical coverage is completely contained within the higher priority pack above it. The lower pack will likely never be seen.".to_string(),
+                        issue_type: "shadowed_mesh".to_string(),
+                        message: format!("Mesh completely shadowed by '{}'", high_pack.name),
+                        fix_suggestion: "Disable or remove this mesh pack as it is completely obscured by a higher priority mesh.".to_string(),
+                        details: "In X-Plane, only the highest priority mesh for a given tile is rendered. This pack is entirely covered by a mesh above it and will never be shown.".to_string(),
                     });
                 }
             }
@@ -161,16 +160,11 @@ impl SceneryValidator {
     }
 }
 
-fn is_substantial(pack: &crate::scenery::SceneryPack) -> bool {
+fn is_mesh(pack: &crate::scenery::SceneryPack) -> bool {
     use crate::scenery::SceneryCategory;
     matches!(
         pack.category,
-        SceneryCategory::EarthScenery
-            | SceneryCategory::EarthAirports
-            | SceneryCategory::Overlay
-            | SceneryCategory::Ortho
-            | SceneryCategory::Mesh
-            | SceneryCategory::Unknown // Treat unknown as potential scenery
+        SceneryCategory::Mesh | SceneryCategory::EarthScenery
     )
 }
 

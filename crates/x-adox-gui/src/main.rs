@@ -1089,11 +1089,11 @@ impl App {
                                 let _ = self.heuristics_model.save();
                             }
                         }
-                        "shadowed_pack" => {
+                        "shadowed_mesh" => {
                             if let Some(report) = &self.validation_report {
                                 let mut packs_to_disable = std::collections::HashSet::new();
                                 for issue in &report.issues {
-                                    if issue.issue_type == "shadowed_pack"
+                                    if issue.issue_type == "shadowed_mesh"
                                         && !self.ignored_issues.contains(&(
                                             issue.issue_type.clone(),
                                             issue.pack_name.clone(),
@@ -1986,11 +1986,19 @@ impl App {
                                     color: Some(icon_color)
                                 }),
                             tooltip(
-                                text(if count > 1 {
-                                    format!("{} ({} affected)", first.message, count)
-                                } else {
-                                    first.message.clone()
-                                })
+                                {
+                                    let base_msg = match issue_type {
+                                        "shadowed_mesh" => "Redundant Mesh Scenery Detected",
+                                        "simheaven_below_global" => "simHeaven Layers Misplaced",
+                                        "mesh_above_overlay" => "Mesh/Overlay Layering Issues",
+                                        _ => first.message.as_str(),
+                                    };
+                                    text(if count > 1 {
+                                        format!("{} ({} affected)", base_msg, count)
+                                    } else {
+                                        first.message.clone()
+                                    })
+                                }
                                 .size(16)
                                 .color(icon_color),
                                 text(&first.details).size(12),
