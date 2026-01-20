@@ -2243,6 +2243,8 @@ impl App {
             column![
                 // Top Bar
                 // Top Bar - Row 1: Path & Set Button
+                // Path Selector Row (Top)
+                // Actions & Profiles Row (Top)
                 row![
                     actions,
                     iced::widget::horizontal_space().width(Length::Fixed(20.0)),
@@ -2303,18 +2305,20 @@ impl App {
                     } else {
                         row![]
                     },
-                    iced::widget::horizontal_space().width(Length::Fixed(20.0)),
-                    row![
-                        text(path_text)
-                            .size(12)
-                            .color(style::palette::TEXT_SECONDARY),
-                        button(text("Set").size(12).color(Color::WHITE))
-                            .on_press(Message::SelectFolder)
-                            .style(style::button_secondary)
-                            .padding([4, 8]),
-                    ]
-                    .spacing(10)
-                    .align_y(iced::Alignment::Center),
+                    iced::widget::horizontal_space(),
+                ]
+                .spacing(10)
+                .align_y(iced::Alignment::Center),
+                // Path Selector Row (Bottom)
+                row![
+                    text(path_text)
+                        .size(12)
+                        .color(style::palette::TEXT_SECONDARY),
+                    button(text("Set").size(12).color(Color::WHITE))
+                        .on_press(Message::SelectFolder)
+                        .style(style::button_secondary)
+                        .padding([4, 8]),
+                    iced::widget::horizontal_space(),
                 ]
                 .spacing(10)
                 .align_y(iced::Alignment::Center),
