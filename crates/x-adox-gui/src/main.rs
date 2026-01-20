@@ -3074,57 +3074,49 @@ impl App {
                     let model_id = format!("model:{}:{}", tag, model);
                     let model_expanded = expanded_smart.contains(&model_id);
 
-                    if acs.len() == 1 {
-                        // Single entry: show as Model
-                        let mut ac = acs[0].clone();
-                        ac.name = model;
-                        ac.acf_file = None; // Hide the (acf) suffix
-                        result.push(Self::render_aircraft_row(&ac, 1, selected_aircraft));
+                    // Multiple entries or single entry: ALWAYS folder for Model
+                    let folder = AircraftNode {
+                        name: model.clone(),
+                        path: PathBuf::new(), // dummy path
+                        is_folder: true,
+                        is_expanded: model_expanded,
+                        children: Vec::new(),
+                        acf_file: None,
+                        is_enabled: acs.iter().any(|ac| ac.is_enabled),
+                        tags: Vec::new(),
+                    };
+
+                    // Use a custom row for virtual folder to support ToggleSmartFolder
+                    let indent = 20.0;
+                    let icon = if model_expanded { "v" } else { ">" };
+                    let label_color = if folder.is_enabled {
+                        style::palette::TEXT_PRIMARY
                     } else {
-                        // Multiple entries: folder for Model
-                        let folder = AircraftNode {
-                            name: model.clone(),
-                            path: PathBuf::new(), // dummy path
-                            is_folder: true,
-                            is_expanded: model_expanded,
-                            children: Vec::new(),
-                            acf_file: None,
-                            is_enabled: acs.iter().any(|ac| ac.is_enabled),
-                            tags: Vec::new(),
-                        };
+                        style::palette::TEXT_SECONDARY
+                    };
 
-                        // Use a custom row for virtual folder to support ToggleSmartFolder
-                        let indent = 20.0;
-                        let icon = if model_expanded { "v" } else { ">" };
-                        let label_color = if folder.is_enabled {
-                            style::palette::TEXT_PRIMARY
-                        } else {
-                            style::palette::TEXT_SECONDARY
-                        };
-
-                        result.push(
+                    result.push(
+                        row![
+                            container(text("")).width(Length::Fixed(indent)),
                             row![
-                                container(text("")).width(Length::Fixed(indent)),
-                                row![
-                                    button(text(icon).size(14))
-                                        .on_press(Message::ToggleSmartFolder(model_id))
-                                        .padding([4, 8])
-                                        .style(style::button_ghost),
-                                    button(text(folder.name).size(14).color(label_color))
-                                        .style(style::button_ghost)
-                                        .padding([4, 8])
-                                ]
-                                .spacing(5)
+                                button(text(icon).size(14))
+                                    .on_press(Message::ToggleSmartFolder(model_id))
+                                    .padding([4, 8])
+                                    .style(style::button_ghost),
+                                button(text(folder.name).size(14).color(label_color))
+                                    .style(style::button_ghost)
+                                    .padding([4, 8])
                             ]
-                            .into(),
-                        );
+                            .spacing(5)
+                        ]
+                        .into(),
+                    );
 
-                        if model_expanded {
-                            for mut ac in acs {
-                                // In the folder, show the identifier (usually airline)
-                                ac.acf_file = None; // Hide (acf) because it's in the folder
-                                result.push(Self::render_aircraft_row(&ac, 2, selected_aircraft));
-                            }
+                    if model_expanded {
+                        for mut ac in acs {
+                            // In the folder, show the identifier (usually airline)
+                            ac.acf_file = None; // Hide (acf) because it's in the folder
+                            result.push(Self::render_aircraft_row(&ac, 2, selected_aircraft));
                         }
                     }
                 }
