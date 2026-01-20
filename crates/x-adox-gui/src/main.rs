@@ -212,6 +212,12 @@ enum Message {
     OpenRenameDialog,
     RenameProfile(String, String), // (OldName, NewName)
     RenameProfileNameChanged(String),
+
+    // Phase 3: Tags & Validation
+    UpdateTagInput(String),
+    AddTag,
+    RemoveTag(String, String), // (PackName, Tag)
+    TagOperationComplete,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -307,6 +313,9 @@ struct App {
     show_profile_dialog: bool,
     show_rename_dialog: bool,
     rename_profile_name: String,
+
+    // Phase 3
+    new_tag_input: String,
 }
 
 impl App {
@@ -368,7 +377,6 @@ impl App {
             icon_settings: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/settings.svg").to_vec(),
             ),
-            validation_report: None,
             simulated_packs: None,
             region_focus: None,
             ignored_issues: std::collections::HashSet::new(),
@@ -409,6 +417,10 @@ impl App {
             show_profile_dialog: false,
             show_rename_dialog: false,
             rename_profile_name: String::new(),
+
+            // Phase 3
+            new_tag_input: String::new(),
+            validation_report: None,
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -806,6 +818,77 @@ impl App {
                 self.rename_profile_name = name;
                 Task::none()
             }
+            Message::TagOperationComplete => Task::none(),
+            Message::UpdateTagInput(txt) => {
+                self.new_tag_input = txt;
+                Task::none()
+            }
+            Message::AddTag => {
+                let tag = self.new_tag_input.trim().to_string();
+                if !tag.is_empty() {
+                    if let Some(pack_name) = self.selected_scenery.clone() {
+                        let packs = Arc::make_mut(&mut self.packs);
+                        if let Some(pack) = packs.iter_mut().find(|p| p.name == pack_name) {
+                            if !pack.tags.contains(&tag) {
+                                pack.tags.push(tag.clone());
+
+                                let root = self.xplane_root.clone();
+                                let p_name = pack_name.clone();
+                                let t_val = tag.clone();
+                                self.new_tag_input.clear();
+
+                                return Task::perform(
+                                    async move {
+                                        if let Some(r) = root {
+                                            let mgr = x_adox_core::groups::GroupManager::new(&r);
+                                            if let Ok(mut col) = mgr.load() {
+                                                let list = col.pack_tags.entry(p_name).or_default();
+                                                if !list.contains(&t_val) {
+                                                    list.push(t_val);
+                                                    let _ = mgr.save(&col);
+                                                }
+                                            }
+                                        }
+                                    },
+                                    |_| Message::TagOperationComplete,
+                                );
+                            }
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::RemoveTag(pack_name, tag) => {
+                let packs = Arc::make_mut(&mut self.packs);
+                if let Some(pack) = packs.iter_mut().find(|p| p.name == pack_name) {
+                    if let Some(pos) = pack.tags.iter().position(|t| t == &tag) {
+                        pack.tags.remove(pos);
+
+                        let root = self.xplane_root.clone();
+                        let p_name = pack_name.clone();
+                        let t_val = tag.clone();
+
+                        return Task::perform(
+                            async move {
+                                if let Some(r) = root {
+                                    let mgr = x_adox_core::groups::GroupManager::new(&r);
+                                    if let Ok(mut col) = mgr.load() {
+                                        if let Some(list) = col.pack_tags.get_mut(&p_name) {
+                                            if let Some(idx) = list.iter().position(|x| x == &t_val)
+                                            {
+                                                list.remove(idx);
+                                                let _ = mgr.save(&col);
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            |_| Message::TagOperationComplete,
+                        );
+                    }
+                }
+                Task::none()
+            }
             Message::CloseProfileDialog => {
                 self.show_profile_dialog = false;
                 self.show_rename_dialog = false;
@@ -1004,6 +1087,27 @@ impl App {
 
                             if rules_updated {
                                 let _ = self.heuristics_model.save();
+                            }
+                        }
+                        "shadowed_pack" => {
+                            if let Some(report) = &self.validation_report {
+                                let mut packs_to_disable = std::collections::HashSet::new();
+                                for issue in &report.issues {
+                                    if issue.issue_type == "shadowed_pack"
+                                        && !self.ignored_issues.contains(&(
+                                            issue.issue_type.clone(),
+                                            issue.pack_name.clone(),
+                                        ))
+                                    {
+                                        packs_to_disable.insert(issue.pack_name.clone());
+                                    }
+                                }
+                                for pack in packs.iter_mut() {
+                                    if packs_to_disable.contains(&pack.name) {
+                                        pack.status =
+                                            x_adox_core::scenery::SceneryPackType::Disabled;
+                                    }
+                                }
                             }
                         }
                         _ => {}
@@ -2514,36 +2618,99 @@ impl App {
             } else {
                 column![
                     text("Inspector Panel").size(18),
-                    text("FOLDER:")
-                        .size(10)
-                        .color(style::palette::TEXT_SECONDARY),
-                    text(
-                        self.selected_scenery
-                            .as_deref()
-                            .unwrap_or(self.hovered_scenery.as_deref().unwrap_or("None"))
-                    )
-                    .size(12),
-                    text(
+                    container(
                         if let Some(target_name) = self
                             .selected_scenery
                             .as_ref()
                             .or(self.hovered_scenery.as_ref())
                         {
                             if let Some(pack) = self.packs.iter().find(|p| &p.name == target_name) {
-                                format!(
-                                    "CATEGORY: {:?} | TILES: {} | AIRPORTS: {}",
-                                    pack.category,
-                                    pack.tiles.len(),
-                                    pack.airports.len()
-                                )
+                                let tags_ui: Element<'_, Message> = if !pack.tags.is_empty() {
+                                    let r = row(pack
+                                        .tags
+                                        .iter()
+                                        .map(|t| {
+                                            container(
+                                                row![
+                                                    text(t.clone()).size(12).color(Color::WHITE),
+                                                    button(text("×").size(12).color(Color::WHITE))
+                                                        .on_press(Message::RemoveTag(
+                                                            pack.name.clone(),
+                                                            t.clone()
+                                                        ))
+                                                        .style(style::button_ghost)
+                                                        .padding(0)
+                                                ]
+                                                .spacing(4)
+                                                .align_y(iced::Alignment::Center),
+                                            )
+                                            .padding([4, 8])
+                                            .style(|_| container::Style {
+                                                background: Some(iced::Background::Color(
+                                                    Color::from_rgb(0.3, 0.3, 0.3),
+                                                )),
+                                                border: iced::Border {
+                                                    radius: 10.0.into(),
+                                                    ..Default::default()
+                                                },
+                                                ..Default::default()
+                                            })
+                                            .into()
+                                        })
+                                        .collect::<Vec<Element<'_, Message>>>())
+                                    .spacing(5)
+                                    .wrap();
+                                    Element::from(r)
+                                } else {
+                                    text("No tags").size(10).into()
+                                };
+
+                                let add_ui: Element<'_, Message> =
+                                    if self.selected_scenery.as_ref() == Some(&pack.name) {
+                                        let r = row![
+                                            text_input("New Tag...", &self.new_tag_input)
+                                                .on_input(Message::UpdateTagInput)
+                                                .on_submit(Message::AddTag)
+                                                .padding(6)
+                                                .size(12)
+                                                .width(Length::Fill),
+                                            button(text("+").size(14))
+                                                .on_press(Message::AddTag)
+                                                .style(style::button_primary)
+                                                .padding([6, 12])
+                                        ]
+                                        .spacing(5);
+                                        Element::from(r)
+                                    } else {
+                                        text("Select to edit")
+                                            .size(10)
+                                            .color(style::palette::TEXT_SECONDARY)
+                                            .into()
+                                    };
+
+                                column![
+                                    text(target_name).size(12).font(iced::Font::MONOSPACE),
+                                    text(format!(
+                                        "CATEGORY: {:?} | TILES: {} | AIRPORTS: {}",
+                                        pack.category,
+                                        pack.tiles.len(),
+                                        pack.airports.len()
+                                    ))
+                                    .size(10),
+                                    iced::widget::horizontal_rule(1.0),
+                                    text("TAGS").size(10).color(style::palette::TEXT_SECONDARY),
+                                    tags_ui,
+                                    add_ui
+                                ]
+                                .spacing(10)
                             } else {
-                                "".to_string()
+                                column![text("Pack not found").size(12)].spacing(10)
                             }
                         } else {
-                            "".to_string()
+                            column![text("None").size(12)].spacing(10)
                         }
                     )
-                    .size(10),
+                    .style(|_| container::Style::default())
                 ]
                 .spacing(10)
             })
@@ -2941,86 +3108,155 @@ impl App {
     }
 
     fn view_issues(&self) -> Element<'_, Message> {
-        let title = text("Detected Log Issues")
+        let title = text("Issues Dashboard")
             .size(32)
             .color(style::palette::ACCENT_ORANGE);
 
-        if self.log_issues.is_empty() {
-            return container(
-                column![
-                    title,
-                    text("No issues detected in Log.txt").size(20),
-                    text("X-Plane seems to be finding all resources correctly.").size(16),
-                    button("Re-scan Log")
-                        .padding([10, 20])
-                        .style(style::button_primary)
-                        .on_press(Message::CheckLogIssues),
-                ]
-                .spacing(20),
-            )
-            .padding(40)
-            .center_x(Length::Fill)
-            .into();
-        }
+        let mut content = column![title].spacing(30);
 
-        let issues_list = column(self.log_issues.iter().map(|issue| {
+        // 1. Log Issues Section
+        content = content.push(text("X-Plane Log Analysis").size(24));
+
+        let log_content: Element<'_, Message> = if self.log_issues.is_empty() {
             container(
                 column![
-                    row![
-                        text("Missing Resource: ").color(style::palette::TEXT_SECONDARY),
-                        text(&issue.resource_path).color(style::palette::TEXT_PRIMARY),
-                    ]
-                    .spacing(5),
-                    row![
-                        text("Referenced from: ").color(style::palette::TEXT_SECONDARY),
-                        text(&issue.package_path).color(style::palette::TEXT_PRIMARY),
-                    ]
-                    .spacing(5),
-                    if let Some(lib) = &issue.potential_library {
-                        row![
-                            text("Potential Library: ").color(style::palette::TEXT_SECONDARY),
-                            text(lib).color(style::palette::ACCENT_BLUE),
-                        ]
-                        .spacing(5)
-                    } else {
-                        row![]
-                    },
-                ]
-                .spacing(8),
-            )
-            .padding(15)
-            .style(style::container_card)
-            .width(Length::Fill)
-            .into()
-        }))
-        .spacing(15);
-
-        container(
-            column![
-                row![
-                    title,
-                    iced::widget::horizontal_space(),
+                    text("No issues detected in Log.txt").size(16),
                     button("Re-scan Log")
                         .padding([8, 16])
                         .style(style::button_primary)
                         .on_press(Message::CheckLogIssues),
                 ]
-                .align_y(iced::Alignment::Center),
+                .spacing(10),
+            )
+            .padding(20)
+            .style(style::container_card)
+            .width(Length::Fill)
+            .into()
+        } else {
+            let issues_list = column(self.log_issues.iter().map(|issue| {
+                container(
+                    column![
+                        row![
+                            text("Missing Resource: ").color(style::palette::TEXT_SECONDARY),
+                            text(&issue.resource_path).color(style::palette::TEXT_PRIMARY),
+                        ]
+                        .spacing(5),
+                        row![
+                            text("Referenced from: ").color(style::palette::TEXT_SECONDARY),
+                            text(&issue.package_path).color(style::palette::TEXT_PRIMARY),
+                        ]
+                        .spacing(5),
+                        if let Some(lib) = &issue.potential_library {
+                            row![
+                                text("Potential Library: ").color(style::palette::TEXT_SECONDARY),
+                                text(lib).color(style::palette::ACCENT_BLUE),
+                            ]
+                            .spacing(5)
+                        } else {
+                            row![].into()
+                        },
+                    ]
+                    .spacing(8),
+                )
+                .padding(15)
+                .style(style::container_card)
+                .width(Length::Fill)
+                .into()
+            }))
+            .spacing(10);
+
+            column![
                 text(format!(
-                    "Found {} missing resources in your last X-Plane session.",
+                    "Found {} missing resources.",
                     self.log_issues.len()
                 ))
-                .size(16)
-                .color(style::palette::TEXT_SECONDARY),
-                scrollable(issues_list).height(Length::Fill),
+                .color(style::palette::ACCENT_RED),
+                issues_list,
+                button("Re-scan Log")
+                    .on_press(Message::CheckLogIssues)
+                    .style(style::button_secondary)
             ]
-            .spacing(20),
-        )
-        .padding(30)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(style::container_main_content)
-        .into()
+            .spacing(10)
+            .into()
+        };
+        content = content.push(log_content);
+
+        content = content.push(iced::widget::horizontal_rule(1.0));
+
+        // 2. Validation Issues Section
+        content = content.push(text("Scenery Order Validation").size(24));
+
+        let validation_content = if let Some(report) = &self.validation_report {
+            if report.issues.is_empty() {
+                let c = container(
+                    text("No validation issues found. Scenery order looks good!")
+                        .size(16)
+                        .color(style::palette::ACCENT_GREEN),
+                )
+                .padding(20)
+                .style(style::container_card)
+                .width(Length::Fill);
+                Element::from(c)
+            } else {
+                let issues = column(report.issues.iter().map(|issue| {
+                    let c = container(
+                        column![
+                            row![
+                                text(issue.issue_type.to_uppercase())
+                                    .size(12)
+                                    .font(iced::Font::MONOSPACE)
+                                    .color(style::palette::ACCENT_RED),
+                                text(&issue.pack_name).size(14).font(iced::Font::MONOSPACE)
+                            ]
+                            .spacing(10),
+                            text(&issue.message).size(14),
+                            text(format!("Fix: {}", issue.fix_suggestion))
+                                .size(12)
+                                .color(style::palette::ACCENT_BLUE),
+                            text(&issue.details)
+                                .size(10)
+                                .color(style::palette::TEXT_SECONDARY)
+                        ]
+                        .spacing(5),
+                    )
+                    .padding(15)
+                    .style(style::container_card)
+                    .width(Length::Fill);
+                    Element::from(c)
+                }))
+                .spacing(10);
+
+                column![
+                    text(format!("Found {} validation issues.", report.issues.len()))
+                        .color(style::palette::ACCENT_RED),
+                    issues
+                ]
+                .spacing(10)
+                .into()
+            }
+        } else {
+            container(
+                column![
+                    text("Validation not run yet.").size(16),
+                    text("Run 'Smart Sort/Simulate' to generate a validation report.")
+                        .size(12)
+                        .color(style::palette::TEXT_SECONDARY)
+                ]
+                .spacing(10),
+            )
+            .padding(20)
+            .style(style::container_card)
+            .width(Length::Fill)
+            .into()
+        };
+        content = content.push(validation_content);
+
+        container(scrollable(content).height(Length::Fill))
+            .padding(30)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(style::container_main_content)
+            .into()
     }
 
     fn render_scenery_card(
@@ -3089,6 +3325,25 @@ impl App {
                 ..Default::default()
             });
 
+        let tags_row = row(pack
+            .tags
+            .iter()
+            .map(|t| {
+                container(text(t.clone()).size(9).color(Color::WHITE))
+                    .padding([2, 5])
+                    .style(|_| container::Style {
+                        background: Some(iced::Background::Color(Color::from_rgb(0.4, 0.4, 0.4))),
+                        border: iced::Border {
+                            radius: 3.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    })
+                    .into()
+            })
+            .collect::<Vec<Element<'static, Message>>>())
+        .spacing(4);
+
         let pin_btn = if is_heroic {
             button(
                 svg(icon_pin.clone())
@@ -3156,6 +3411,7 @@ impl App {
         let content_row = row![
             status_dot,
             info_col,
+            tags_row,
             type_tag,
             move_controls,
             pin_btn,

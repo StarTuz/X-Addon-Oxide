@@ -65,6 +65,7 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
                     category: SceneryCategory::Unknown, // Will be classified later
                     airports: Vec::new(),
                     tiles: Vec::new(),
+                    tags: Vec::new(),
                 });
             }
         }

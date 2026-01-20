@@ -1,6 +1,7 @@
 pub mod apt_dat;
 pub mod cache;
 pub mod discovery;
+pub mod groups;
 pub mod management;
 pub mod profiles;
 pub mod scenery;

@@ -58,6 +58,8 @@ pub struct SceneryPack {
     pub category: SceneryCategory,
     pub airports: Vec<Airport>,
     pub tiles: Vec<(i32, i32)>, // SW corner (lat, lon)
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Error, Debug)]
@@ -71,6 +73,7 @@ pub enum SceneryError {
 pub struct SceneryManager {
     pub file_path: PathBuf,
     pub packs: Vec<SceneryPack>,
+    pub group_manager: Option<crate::groups::GroupManager>,
 }
 
 impl SceneryManager {
@@ -78,6 +81,7 @@ impl SceneryManager {
         Self {
             file_path,
             packs: Vec::new(),
+            group_manager: None,
         }
     }
 
@@ -140,17 +144,16 @@ impl SceneryManager {
             if !already_present {
                 println!("[SceneryManager] Adding NEW discovered pack: {}", disc.name);
                 // Prepend new discovery (X-Plane style)
-                packs.insert(
-                    0,
-                    SceneryPack {
-                        name: disc.name,
-                        path: disc.path,
-                        status: SceneryPackType::Active,
-                        category: SceneryCategory::Unknown,
-                        airports: Vec::new(),
-                        tiles: Vec::new(),
-                    },
-                );
+                let new_pack = SceneryPack {
+                    name: disc.name,
+                    path: disc.path,
+                    status: SceneryPackType::Active,
+                    category: SceneryCategory::Unknown,
+                    airports: Vec::new(),
+                    tiles: Vec::new(),
+                    tags: Vec::new(),
+                };
+                packs.insert(0, new_pack);
             }
         }
 
@@ -172,6 +175,18 @@ impl SceneryManager {
             }
         }
 
+        // 3. Load Tags
+        let xplane_root = custom_scenery_dir.parent().unwrap_or(custom_scenery_dir);
+        let group_mgr = crate::groups::GroupManager::new(xplane_root);
+        if let Ok(collection) = group_mgr.load() {
+            for pack in &mut packs {
+                if let Some(tags) = collection.pack_tags.get(&pack.name) {
+                    pack.tags = tags.clone();
+                }
+            }
+        }
+
+        self.group_manager = Some(group_mgr);
         self.packs = packs;
         Ok(())
     }
@@ -186,6 +201,39 @@ impl SceneryManager {
         if let Some(pack) = self.packs.iter_mut().find(|p| p.name == name) {
             pack.status = SceneryPackType::Disabled;
         }
+    }
+
+    pub fn add_tag(&mut self, pack_name: &str, tag: &str) -> anyhow::Result<()> {
+        if let Some(pack) = self.packs.iter_mut().find(|p| p.name == pack_name) {
+            if !pack.tags.contains(&tag.to_string()) {
+                pack.tags.push(tag.to_string());
+                self.save_tags()?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn remove_tag(&mut self, pack_name: &str, tag: &str) -> anyhow::Result<()> {
+        if let Some(pack) = self.packs.iter_mut().find(|p| p.name == pack_name) {
+            if let Some(pos) = pack.tags.iter().position(|t| t == tag) {
+                pack.tags.remove(pos);
+                self.save_tags()?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn save_tags(&self) -> anyhow::Result<()> {
+        if let Some(mgr) = &self.group_manager {
+            let mut map = std::collections::HashMap::new();
+            for p in &self.packs {
+                if !p.tags.is_empty() {
+                    map.insert(p.name.clone(), p.tags.clone());
+                }
+            }
+            mgr.save(&crate::groups::GroupCollection { pack_tags: map })?;
+        }
+        Ok(())
     }
 
     pub fn sorted_for_ui(&self) -> Vec<SceneryPack> {
@@ -729,6 +777,7 @@ mod tests {
             category: SceneryCategory::default(),
             airports: Vec::new(),
             tiles: Vec::new(),
+            tags: Vec::new(),
         });
 
         manager.save().expect("Failed to save");
@@ -775,6 +824,7 @@ mod tests {
                 category: SceneryCategory::default(),
                 airports: Vec::new(),
                 tiles: Vec::new(),
+                tags: Vec::new(),
             },
             SceneryPack {
                 name: "Bravo_Airport".to_string(),
@@ -783,6 +833,7 @@ mod tests {
                 category: SceneryCategory::default(),
                 airports: Vec::new(),
                 tiles: Vec::new(),
+                tags: Vec::new(),
             },
             SceneryPack {
                 name: "Alpha_Airport (1)".to_string(),
@@ -791,6 +842,7 @@ mod tests {
                 category: SceneryCategory::default(),
                 airports: Vec::new(),
                 tiles: Vec::new(),
+                tags: Vec::new(),
             },
         ];
 
@@ -847,7 +899,31 @@ mod tests {
         }
 
         let entries: Vec<_> = std::fs::read_dir(&backup_dir).unwrap().flatten().collect();
-
         assert_eq!(entries.len(), 10);
+    }
+
+    #[test]
+    fn test_is_subset() {
+        use super::validator::is_subset;
+
+        // Exact match
+        assert!(is_subset(&[(10, 20)], &[(10, 20)]));
+        // Subset
+        assert!(is_subset(&[(10, 20)], &[(10, 20), (11, 21)]));
+        // Multi-subset
+        assert!(is_subset(
+            &[(10, 20), (12, 22)],
+            &[(10, 20), (11, 21), (12, 22)]
+        ));
+
+        // Not subset (missing some)
+        assert!(!is_subset(
+            &[(10, 20), (13, 23)],
+            &[(10, 20), (11, 21), (12, 22)]
+        ));
+        // Not subset (completely different)
+        assert!(!is_subset(&[(50, 50)], &[(10, 20)]));
+        // Empty small is always subset
+        assert!(is_subset(&[], &[(10, 20)]));
     }
 }
