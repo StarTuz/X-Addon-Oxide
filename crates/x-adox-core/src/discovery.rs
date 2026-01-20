@@ -187,14 +187,16 @@ impl DiscoveryManager {
             };
 
             let path = entry.path();
-            if path.is_dir() {
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+
+            if path.is_dir() && !name.starts_with('.') {
                 results.push(DiscoveredAddon {
                     path: path.clone(),
-                    name: path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string(),
+                    name,
                     addon_type: AddonType::Scenery {
                         airports: Vec::new(),
                     },

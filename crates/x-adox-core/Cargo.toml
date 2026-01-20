@@ -13,6 +13,7 @@ x-adox-bitnet = { path = "../x-adox-bitnet" }
 regex = "1.12.2"
 directories = "5.0"
 serde_json = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

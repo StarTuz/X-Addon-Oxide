@@ -212,7 +212,64 @@ impl SceneryManager {
     }
 
     pub fn save(&self) -> Result<(), SceneryError> {
+        self.perform_backup()?;
         ini_handler::write_ini(&self.file_path, &self.packs)?;
+        Ok(())
+    }
+
+    /// Performs a rotating timestamped backup of scenery_packs.ini in a dedicated folder.
+    fn perform_backup(&self) -> Result<(), SceneryError> {
+        if !self.file_path.exists() {
+            return Ok(());
+        }
+
+        let parent = self.file_path.parent().unwrap_or(&self.file_path);
+        let backup_dir = parent.join(".xad_oxide");
+
+        // 1. Ensure backup directory exists
+        if !backup_dir.exists() {
+            std::fs::create_dir_all(&backup_dir)?;
+        }
+
+        // 2. Create new timestamped backup
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S%.3f").to_string();
+        let backup_path = backup_dir.join(format!("scenery_packs.ini.{}", timestamp));
+        std::fs::copy(&self.file_path, &backup_path)?;
+
+        // 3. Cleanup old backups (keep last 10)
+        self.cleanup_old_backups(&backup_dir)?;
+
+        Ok(())
+    }
+
+    /// Keeps only the most recent 10 backups in the specified directory.
+    fn cleanup_old_backups(&self, backup_dir: &std::path::Path) -> Result<(), SceneryError> {
+        let mut backups = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(backup_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Ok(metadata) = path.metadata() {
+                        if let Ok(modified) = metadata.modified() {
+                            backups.push((path, modified));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort by modification time (oldest first)
+        backups.sort_by_key(|&(_, modified)| modified);
+
+        // Remove oldest if more than 10
+        if backups.len() > 10 {
+            let to_remove = backups.len() - 10;
+            for i in 0..to_remove {
+                let _ = std::fs::remove_file(&backups[i].0);
+            }
+        }
+
         Ok(())
     }
 
@@ -748,5 +805,37 @@ mod tests {
         // Negative cases (Plain numbers are NOT versions)
         assert_eq!(extract_version("Test 100m"), None);
         assert_eq!(extract_version("Test 4000"), None);
+    }
+
+    #[test]
+    fn test_scenery_backup_retention() {
+        let dir = tempdir().unwrap();
+        let ini_path = dir.path().join("scenery_packs.ini");
+        let backup_dir = dir.path().join(".xad_oxide");
+
+        // 1. Initial save (no backup because no file yet)
+        let mut manager = SceneryManager::new(ini_path.clone());
+        manager.save().expect("Save failed");
+        assert!(ini_path.exists());
+        assert!(!backup_dir.exists());
+
+        // 2. Second save (should create .xam_backups and first backup)
+        manager.save().expect("Save failed");
+        assert!(backup_dir.exists());
+        let entries: Vec<_> = std::fs::read_dir(&backup_dir).unwrap().flatten().collect();
+        assert_eq!(entries.len(), 1);
+
+        // 3. Save 12 more times (total 14 saves, but only 13 backups since first save didn't backup)
+        // Retention is 10, so we should end up with exactly 10 backups.
+        for _ in 0..12 {
+            // Sleep briefly to ensure unique modification times if OS precision is low,
+            // though our code uses modification time and filesystem precision might vary.
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            manager.save().expect("Save failed");
+        }
+
+        let entries: Vec<_> = std::fs::read_dir(&backup_dir).unwrap().flatten().collect();
+
+        assert_eq!(entries.len(), 10);
     }
 }

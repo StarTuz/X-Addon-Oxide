@@ -4,8 +4,12 @@ set -e
 # This script is intended to be run inside the docker container
 export APPIMAGE_EXTRACT_AND_RUN=1
 
+# Extract version from Cargo.toml
+VERSION=$(grep '^version =' crates/x-adox-gui/Cargo.toml | cut -d '"' -f 2)
+export VERSION
+
 echo "Building Rust project..."
-cargo build --release --bin x-adox-gui
+cargo build --release -p x-adox-gui
 
 echo "Preparing AppDir..."
 mkdir -p AppDir/usr/bin

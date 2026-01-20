@@ -4020,27 +4020,7 @@ fn save_packs_task(root: Option<PathBuf>, packs: Arc<Vec<SceneryPack>>) -> Resul
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     let ini_path = xpm.get_scenery_packs_path();
 
-    // --- Safety Backup Logic (Timestamped) ---
-    if ini_path.exists() {
-        let parent = ini_path.parent().unwrap_or(&ini_path);
-        // 1. Rotate existing bak1_TIMESTAMP -> bak2_TIMESTAMP
-        if let Ok(entries) = std::fs::read_dir(parent) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(filename) = path.file_name().map(|f| f.to_string_lossy()) {
-                    if filename.starts_with("scenery_packs.ini.bak1_") {
-                        let new_name = filename.replace(".bak1_", ".bak2_");
-                        let _ = std::fs::rename(&path, parent.join(new_name));
-                    }
-                }
-            }
-        }
-
-        // 2. Create new bak1_CURRENT_TIMESTAMP
-        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
-        let bak1_path = parent.join(format!("scenery_packs.ini.bak1_{}", timestamp));
-        let _ = std::fs::copy(&ini_path, &bak1_path);
-    }
+    // Backups are now handled automatically by sm.save() in x-adox-core
 
     let mut sm = SceneryManager::new(ini_path);
     sm.packs = packs.as_ref().clone();
