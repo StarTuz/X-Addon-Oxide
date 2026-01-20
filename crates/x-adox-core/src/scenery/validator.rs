@@ -168,7 +168,7 @@ fn is_mesh(pack: &crate::scenery::SceneryPack) -> bool {
     )
 }
 
-fn is_subset(small: &[(i32, i32)], big: &[(i32, i32)]) -> bool {
+pub(crate) fn is_subset(small: &[(i32, i32)], big: &[(i32, i32)]) -> bool {
     // Both are sorted.
     // Check if every element of 'small' exists in 'big'.
     let mut big_iter = big.iter();

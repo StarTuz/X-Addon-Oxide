@@ -878,7 +878,7 @@ mod tests {
         let backup_dir = dir.path().join(".xad_oxide");
 
         // 1. Initial save (no backup because no file yet)
-        let mut manager = SceneryManager::new(ini_path.clone());
+        let manager = SceneryManager::new(ini_path.clone());
         manager.save().expect("Save failed");
         assert!(ini_path.exists());
         assert!(!backup_dir.exists());
