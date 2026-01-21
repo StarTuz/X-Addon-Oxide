@@ -283,7 +283,6 @@ impl SceneryManager {
             return Ok(());
         }
 
-        let parent = self.file_path.parent().unwrap_or(&self.file_path);
         let backup_dir = crate::get_config_root().join("backups");
 
         // 1. Ensure backup directory exists
