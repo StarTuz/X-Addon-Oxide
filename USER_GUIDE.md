@@ -1,6 +1,6 @@
 # X-Addon-Oxide User Guide
 
-Welcome to X-Addon-Oxide! This guide will help you get the most out of your new addon manager.
+Welcome to X-Addon-Oxide! This guide will help you get the most out of your new addon manager. The Map with the dots represent your custom airports. 
 
 ## Initial Setup
 
