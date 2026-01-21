@@ -74,6 +74,81 @@ We recommend using the official installers (NSIS for Windows, DMG for macOS) for
 <img width="1030" height="799" alt="image" src="https://github.com/user-attachments/assets/b0a2a56c-b10c-4e67-a695-182b0540ddf3" />
 
 <img width="1030" height="799" alt="image" src="https://github.com/user-attachments/assets/64b8b55b-5852-49d3-a3c6-907b5478593d" />
+
+## Screenshots V2
+
+Quite a few differences with V2 vs V1. First, if you  
+
+Set X-Plane directory:
+
+<img width="756" height="52" alt="image" src="https://github.com/user-attachments/assets/e61e931a-1fba-4282-8184-40ed8313a353" />
+
+
+# Aircraft 
+ Unchecking will move them to  X-Plane-12/Aircraft (Disabled) (or whereever you installed X-Plane)
+   
+   Folder view
+   
+<img width="1030" height="791" alt="image" src="https://github.com/user-attachments/assets/e3c82d58-fa43-405b-bc2c-787278029363" />
+
+  Smart View 
+
+<img width="1030" height="791" alt="image" src="https://github.com/user-attachments/assets/2269b2c5-71a2-4035-a9eb-dbb75341c7a5" />
+
+# Scenery
+
+Overall screenshot of Scenery
+
+<img width="1021" height="798" alt="image" src="https://github.com/user-attachments/assets/1a4bbeb7-7f5b-41c4-800f-b23a89639378" />
+
+<img width="994" height="98" alt="image" src="https://github.com/user-attachments/assets/436577cd-8065-40dd-8336-2a929b922119" />
+
+Install - Install a scenery package from Zip
+
+Delete - Delete a selected scenery package.
+
+Refresh - Refresh scenery packages
+
+Smart Sort - BitNet trained to sort your scenery.ini files, up to ten backups saved.
+
+Need to apply to have to effect.
+
+<img width="993" height="786" alt="image" src="https://github.com/user-attachments/assets/d3d6149d-0ab5-41b1-91cb-85ef278c962a" />
+
+Edit Sort - You have full control over the Heuristics with JSON editing if you're not satisfied. Share with others, and also import. Default will reset to shipped settings
+
+<img width="993" height="786" alt="image" src="https://github.com/user-attachments/assets/799a6d3e-b2f0-41e3-983b-adceaca68624" />
+
+# Plugins
+
+Overall picture
+
+<img width="1045" height="781" alt="image" src="https://github.com/user-attachments/assets/ff43f609-fdff-46e8-8d18-9828db99bd48" />
+
+Install - Install plugins from Zip.
+
+Delete - Remove any plugins
+
+Refresh - Refresh if you installed new ones and they aren't showing
+
+Profile:
+
+<img width="634" height="101" alt="image" src="https://github.com/user-attachments/assets/a1d3d922-186e-47f1-be8e-fff29f0913ff" />
+
+Multiple profile support if you want to load/unload certain plugins
+
+Mentioning disabling, unchecking any plugin will disable it (X-Plane-12/Resources/Plugins (disabled).
+
+<img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/348aaa85-336d-4e0d-89c2-54872c202051" />
+
+# CSL's (untested)
+
+<img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/93b7f7d9-7f8f-4b85-b33f-c8b32bc99c78" />
+
+# issues
+
+If X-Plane complains about missing scenery objects a scane will provide you with the list, so you can track/install them outside of the Sim
+
 ## Uninstallation
 
 If you ever need to remove X-Addon-Oxide, follow these simple steps:
