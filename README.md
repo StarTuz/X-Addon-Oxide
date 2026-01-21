@@ -28,7 +28,7 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ### 🧠 AI & Visuals
 
-* **AI Smart View**: Powered by our local **BitNet** neural heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging.
+* **AI Smart View**: Powered by our **offline** local **BitNet** heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging. **0% Network Usage, 100% Privacy.**
 * **World Map**: Visualize your entire scenery library on an interactive global map. See exactly where your coverage is.
 * **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, and smooth animations.
 
