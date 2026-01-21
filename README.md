@@ -1,20 +1,41 @@
 # X-Addon-Oxide
 
-The advanced addon manager for [X-Plane Flight Simulator](http://www.x-plane.com).
+The **Next-Gen** addon manager for [X-Plane Flight Simulator](http://www.x-plane.com).
 
-X-Addon-Oxide is a powerful, cross-platform tool designed for both flight sim enthusiasts and addon developers. It provides a modern, fast, and visually stunning interface to manage your Custom Scenery, Aircraft, Plugins, and CSLs.
+X-Addon-Oxide is a free, open-source tool that brings modern design and AI intelligence to your flight sim hangar. Unlike traditional managers that simply list files, we provide a rich, visual experience with a non-destructive philosophy—organizing your library without risking your installation.
 
-## Key Features
+## Why X-Addon-Oxide?
 
-- **🚀 Mod Management**: Effortlessly enable or disable Plugins and CSLs with a single click.
-- **🗺️ World Map**: View all your installed scenery packages on an interactive global map.
-- **✈️ AI Smart View**: Automatically categorizes aircraft using a built-in BitNet heuristic model (Airliners, Military, GA, etc.).
-- **🕵️ Shadow Mesh Detection**: Identification of redundant mesh scenery that negatively impacts load times.
-- **🔧 User Overrides**: Manually override AI aircraft categories and set **Custom Aircraft Icons** to perfectly organize your hangar.
-- **🛡️ Folder Exclusions**: Exclude specific aircraft folders from the scan to keep your library clean.
-- **✨ Premium UI**: A sleek, dark-themed interface with neon glow effects and reactive hover feedback.
-- **📦 Multi-Platform**: Native installers for Windows (NSIS), macOS (DMG), and Linux (AppImage/Binary).
-- **🛠️ Developer Friendly**: Quickly toggle addons for testing without manual file renaming.
+| Feature | X-Addon-Oxide | Standard Managers |
+| :--- | :---: | :---: |
+| **Native Installers** (.exe, .dmg, AppImage) | ✅ | ⚠️ (Varies) |
+| **Direct Zip Installation** | ✅ | ✅ |
+| **Non-Destructive Toggling** | ✅ | ✅ |
+| **Profile Management** | ✅ | ⚠️ (Varies) |
+| **AI Auto-Categorization** (BitNet) | ✅ | ❌ |
+| **Interactive World Map** | ✅ | ❌ |
+| **Shadow Mesh Detection** | ✅ | ❌ |
+| **Modern Dark GUI** | ✅ | ❌ |
+
+## Feature Highlights
+
+### 🚀 Core Management
+
+* **Non-Destructive Workflow**: Enable or disable Scenery, Aircraft, and Plugins with a single click. We never move your files destructively; we manage logical links to keep your simulator safe.
+* **Direct Zip Install**: Install Aircraft, Scenery, and Plugins directly from their archives (`.zip`)—no manual unzipping required.
+* **Shadow Mesh Detection**: Automatically identifies redundant mesh scenery that destroys load times, helping you optimize performance.
+* **Profiles**: Create and switch between different hangar configurations (e.g., "IFR Online", "VFR Scenery Heavy") instantly.
+
+### 🧠 AI & Visuals
+
+* **AI Smart View**: Powered by our local **BitNet** neural heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging.
+* **World Map**: Visualize your entire scenery library on an interactive global map. See exactly where your coverage is.
+* **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, and smooth animations.
+
+### 📦 Deployment
+
+* **Native Support**: We provide proper installers for **Windows** (MSI/EXE), **macOS** (DMG), and **Linux** (AppImage). No dependencies to hunt down.
+* **Developer Friendly**: Hot-swap addons while the sim is running (plugin dependent) for rapid testing.
 
 ## Getting Started
 
@@ -29,9 +50,9 @@ For more detailed instructions, see the [Full User Guide](USER_GUIDE.md).
 
 X-Addon-Oxide stores your profiles, tagged groups, and scenery backups in standard system locations:
 
-- **Linux**: `~/.config/x-adox/`
-- **Windows**: `%APPDATA%\X-Addon-Oxide\`
-- **macOS**: `~/Library/Application Support/X-Addon-Oxide/`
+* **Linux**: `~/.config/x-adox/`
+* **Windows**: `%APPDATA%\X-Addon-Oxide\`
+* **macOS**: `~/Library/Application Support/X-Addon-Oxide/`
 
 ## Installation
 
@@ -39,9 +60,9 @@ X-Addon-Oxide stores your profiles, tagged groups, and scenery backups in standa
 
 Grab the latest professional installers from the [Releases](https://github.com/StarTuz/X-Addon-Oxide/releases) page:
 
-- **Windows**: `.exe` (NSIS Installer)
-- **macOS**: `.dmg` (Disk Image)
-- **Linux**: `.tar.gz` (Binary tarball)
+* **Windows**: `.exe` (NSIS Installer)
+* **macOS**: `.dmg` (Disk Image)
+* **Linux**: `.tar.gz` (Binary tarball)
 
 ### Building from Source
 
