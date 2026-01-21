@@ -123,6 +123,11 @@ pub struct MapView<'a> {
 struct MapState {
     is_dragging: bool,
     last_cursor: Option<iced::Point>,
+    // Track values between prop updates to handle multiple events per frame
+    current_center: (f64, f64), // (lat, lon)
+    current_zoom: f64,
+    last_prop_center: Option<(f64, f64)>,
+    last_prop_zoom: Option<f64>,
 }
 
 impl<'a, Theme, Renderer> Widget<Message, Theme, Renderer> for MapView<'a>
@@ -363,12 +368,23 @@ where
     ) -> advanced::graphics::core::event::Status {
         let state = tree.state.downcast_mut::<MapState>();
         let bounds = layout.bounds();
-        let zoom = self.zoom;
-        let (center_lat, center_lon) = self.center;
+        let zoom_prop = self.zoom;
+        let center_prop = self.center;
+
+        // Initialize or sync internal state from props if props changed externally
+        if state.last_prop_center != Some(center_prop) || state.last_prop_zoom != Some(zoom_prop) {
+            state.current_center = center_prop;
+            state.current_zoom = zoom_prop;
+            state.last_prop_center = Some(center_prop);
+            state.last_prop_zoom = Some(zoom_prop);
+        }
+
+        let current_zoom = state.current_zoom;
+        let (center_lat, center_lon) = state.current_center;
 
         let camera_x = lon_to_x(center_lon, 0.0);
         let camera_y = lat_to_y(center_lat, 0.0);
-        let scale = 2.0f64.powf(zoom);
+        let scale = 2.0f64.powf(current_zoom);
 
         let cursor_point = cursor.position_in(bounds);
         let mouse_z0 = cursor_point.map(|p| {
@@ -396,9 +412,9 @@ where
                         iced::mouse::ScrollDelta::Pixels { y, .. } => (y as f64) / 100.0,
                     };
                     let min_zoom = (bounds.width as f64 / TILE_SIZE).log2();
-                    let new_zoom = (zoom + d * 0.2).clamp(min_zoom, 19.0);
+                    let new_zoom = (current_zoom + d * 0.2).clamp(min_zoom, 19.0);
 
-                    if (new_zoom - zoom).abs() > 0.001 {
+                    if (new_zoom - current_zoom).abs() > 0.001 {
                         let new_scale = 2.0f64.powf(new_zoom);
 
                         let mx = (p.x as f64) - (bounds.width as f64 / 2.0);
@@ -412,11 +428,17 @@ where
                             new_camera_x.clamp(new_half_w, TILE_SIZE - new_half_w);
                         let new_camera_y_clamped = new_camera_y.clamp(0.0, TILE_SIZE);
 
+                        let new_center = (
+                            y_to_lat(new_camera_y_clamped, 0.0),
+                            x_to_lon(new_camera_x_clamped, 0.0),
+                        );
+
+                        // Update internal state immediately for next event in same frame
+                        state.current_center = new_center;
+                        state.current_zoom = new_zoom;
+
                         shell.publish(Message::MapZoom {
-                            new_center: (
-                                y_to_lat(new_camera_y_clamped, 0.0),
-                                x_to_lon(new_camera_x_clamped, 0.0),
-                            ),
+                            new_center,
                             new_zoom,
                         });
                         return advanced::graphics::core::event::Status::Captured;
@@ -437,8 +459,8 @@ where
                             }
                         }
                         for airport in &pack.airports {
-                            if let (Some(lat), Some(lon), (wx, wy)) =
-                                (airport.lat, airport.lon, mouse_z0.unwrap())
+                            if let (Some(lat), Some(lon), Some((wx, wy))) =
+                                (airport.lat, airport.lon, mouse_z0)
                             {
                                 let tx = lon_to_x(lon as f64, 0.0);
                                 let ty = lat_to_y(lat as f64, 0.0);
@@ -502,9 +524,14 @@ where
                             new_wy.clamp(half_vh, TILE_SIZE - half_vh)
                         };
 
+                        let new_center = (y_to_lat(clamped_wy, 0.0), x_to_lon(clamped_wx, 0.0));
+
+                        // Update internal state immediately for next event (e.g. multiple moves in one frame)
+                        state.current_center = new_center;
+
                         shell.publish(Message::MapZoom {
-                            new_center: (y_to_lat(clamped_wy, 0.0), x_to_lon(clamped_wx, 0.0)),
-                            new_zoom: zoom,
+                            new_center,
+                            new_zoom: current_zoom,
                         });
                         return advanced::graphics::core::event::Status::Captured;
                     }
