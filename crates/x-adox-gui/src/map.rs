@@ -122,6 +122,7 @@ pub struct MapView<'a> {
 #[derive(Debug, Clone, Copy, Default)]
 struct MapState {
     is_dragging: bool,
+    press_position: Option<iced::Point>,
     last_cursor: Option<iced::Point>,
     // Track values between prop updates to handle multiple events per frame
     current_center: (f64, f64), // (lat, lon)
@@ -160,7 +161,7 @@ where
 
     fn draw(
         &self,
-        _tree: &widget::Tree,
+        tree: &widget::Tree,
         renderer: &mut Renderer,
         _theme: &Theme,
         _style: &renderer::Style,
@@ -168,9 +169,21 @@ where
         _cursor: mouse::Cursor,
         _viewport: &Rectangle,
     ) {
+        let state = tree.state.downcast_ref::<MapState>();
         let bounds = layout.bounds();
-        let zoom = self.zoom;
-        let (center_lat, center_lon) = self.center;
+
+        // Prefer internal state for zero-latency feedback during interactions
+        let zoom = if state.last_prop_zoom.is_some() {
+            state.current_zoom
+        } else {
+            self.zoom
+        };
+        let (center_lat, center_lon) = if state.last_prop_center.is_some() {
+            state.current_center
+        } else {
+            self.center
+        };
+
         let zoom_scale = 2.0f64.powf(zoom);
 
         let camera_center_x = lon_to_x(center_lon, 0.0);
@@ -446,50 +459,65 @@ where
                 }
             }
             Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)) => {
-                if let Some(coords) = coords {
-                    for pack in self.packs {
-                        if pack.airports.is_empty() {
-                            for &(lat, lon) in &pack.tiles {
-                                if (lat as f64 + 0.5 - coords.0).abs() < 0.5
-                                    && (lon as f64 + 0.5 - coords.1).abs() < 0.5
-                                {
-                                    shell.publish(Message::SelectScenery(pack.name.clone()));
-                                    return advanced::graphics::core::event::Status::Captured;
-                                }
-                            }
-                        }
-                        for airport in &pack.airports {
-                            if let (Some(lat), Some(lon), Some((wx, wy))) =
-                                (airport.lat, airport.lon, mouse_z0)
-                            {
-                                let tx = lon_to_x(lon as f64, 0.0);
-                                let ty = lat_to_y(lat as f64, 0.0);
-                                let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
-
-                                // Use a 10px hit radius in screen pixels
-                                if dist_sq < (10.0 / scale).powi(2) {
-                                    shell.publish(Message::SelectScenery(pack.name.clone()));
-                                    return advanced::graphics::core::event::Status::Captured;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Start dragging if no selection was made
-                // Use cursor.position() (global coords) to match CursorMoved event
+                // START DRAG if over bounds (even if over scenery)
                 if cursor.is_over(bounds) {
                     if let Some(position) = cursor.position() {
                         state.is_dragging = true;
+                        state.press_position = Some(position);
                         state.last_cursor = Some(position);
                         return advanced::graphics::core::event::Status::Captured;
                     }
                 }
             }
             Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
-                if state.is_dragging {
-                    state.is_dragging = false;
-                    state.last_cursor = None;
+                let was_dragging = state.is_dragging;
+                let press_pos = state.press_position;
+                let release_pos = cursor.position();
+
+                state.is_dragging = false;
+                state.press_position = None;
+                state.last_cursor = None;
+
+                if was_dragging {
+                    // Check if it was a "click" (minimal movement)
+                    if let (Some(p1), Some(p2)) = (press_pos, release_pos) {
+                        let dist = (p1.x - p2.x).hypot(p1.y - p2.y);
+                        if dist < 5.0 {
+                            // ACTUALLY A CLICK - Perform selection
+                            if let Some(coords) = coords {
+                                for pack in self.packs {
+                                    if pack.airports.is_empty() {
+                                        for &(lat, lon) in &pack.tiles {
+                                            if (lat as f64 + 0.5 - coords.0).abs() < 0.5
+                                                && (lon as f64 + 0.5 - coords.1).abs() < 0.5
+                                            {
+                                                shell.publish(Message::SelectScenery(
+                                                    pack.name.clone(),
+                                                ));
+                                                return advanced::graphics::core::event::Status::Captured;
+                                            }
+                                        }
+                                    }
+                                    for airport in &pack.airports {
+                                        if let (Some(lat), Some(lon), Some((wx, wy))) =
+                                            (airport.lat, airport.lon, mouse_z0)
+                                        {
+                                            let tx = lon_to_x(lon as f64, 0.0);
+                                            let ty = lat_to_y(lat as f64, 0.0);
+                                            let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
+
+                                            if dist_sq < (10.0 / scale).powi(2) {
+                                                shell.publish(Message::SelectScenery(
+                                                    pack.name.clone(),
+                                                ));
+                                                return advanced::graphics::core::event::Status::Captured;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     return advanced::graphics::core::event::Status::Captured;
                 }
             }
@@ -554,8 +582,8 @@ where
                             }
                         }
                         for airport in &pack.airports {
-                            if let (Some(lat), Some(lon), (wx, wy)) =
-                                (airport.lat, airport.lon, mouse_z0.unwrap())
+                            if let (Some(lat), Some(lon), Some((wx, wy))) =
+                                (airport.lat, airport.lon, mouse_z0)
                             {
                                 let tx = lon_to_x(lon as f64, 0.0);
                                 let ty = lat_to_y(lat as f64, 0.0);
@@ -581,6 +609,7 @@ where
             }
             _ => {}
         }
+
         advanced::graphics::core::event::Status::Ignored
     }
 
