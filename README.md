@@ -25,6 +25,14 @@ X-Addon-Oxide is a powerful, cross-platform tool designed for both flight sim en
 
 For more detailed instructions, see the [Full User Guide](USER_GUIDE.md).
 
+## Configuration
+
+X-Addon-Oxide stores your profiles, tagged groups, and scenery backups in standard system locations:
+
+- **Linux**: `~/.config/x-adox/`
+- **Windows**: `%APPDATA%\X-Addon-Oxide\`
+- **macOS**: `~/Library/Application Support/X-Addon-Oxide/`
+
 ## Installation
 
 ### Download Installers (Recommended)

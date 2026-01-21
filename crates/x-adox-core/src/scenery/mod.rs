@@ -284,7 +284,7 @@ impl SceneryManager {
         }
 
         let parent = self.file_path.parent().unwrap_or(&self.file_path);
-        let backup_dir = parent.join(".xad_oxide");
+        let backup_dir = crate::get_config_root().join("backups");
 
         // 1. Ensure backup directory exists
         if !backup_dir.exists() {
@@ -875,7 +875,7 @@ mod tests {
     fn test_scenery_backup_retention() {
         let dir = tempdir().unwrap();
         let ini_path = dir.path().join("scenery_packs.ini");
-        let backup_dir = dir.path().join(".xad_oxide");
+        let backup_dir = crate::get_config_root().join("backups");
 
         // 1. Initial save (no backup because no file yet)
         let manager = SceneryManager::new(ini_path.clone());

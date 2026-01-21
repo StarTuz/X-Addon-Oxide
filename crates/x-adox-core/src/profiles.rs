@@ -27,8 +27,8 @@ pub struct ProfileManager {
 }
 
 impl ProfileManager {
-    pub fn new(xplane_root: &Path) -> Self {
-        let config_path = xplane_root.join(".xad_oxide").join("profiles.json");
+    pub fn new(_xplane_root: &Path) -> Self {
+        let config_path = crate::get_config_root().join("profiles.json");
         Self { config_path }
     }
 

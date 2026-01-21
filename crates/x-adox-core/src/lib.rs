@@ -6,11 +6,26 @@ pub mod management;
 pub mod profiles;
 pub mod scenery;
 
+use directories::ProjectDirs;
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 use thiserror::Error;
+
+pub fn get_config_root() -> PathBuf {
+    let path = if let Some(proj_dirs) = ProjectDirs::from("org", "x-adox", "X-Addon-Oxide") {
+        proj_dirs.config_dir().to_path_buf()
+    } else {
+        // Fallback to a local hidden folder if ProjectDirs fails
+        PathBuf::from(".xad_oxide")
+    };
+
+    if !path.exists() {
+        let _ = fs::create_dir_all(&path);
+    }
+    path
+}
 
 #[derive(Error, Debug)]
 pub enum XamError {
