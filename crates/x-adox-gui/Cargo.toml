@@ -1,6 +1,6 @@
 [package]
 name = "x-adox-gui"
-version = "2.1.6"
+version = "2.1.7"
 edition = "2021"
 description = "A modern addon manager for X-Plane"
 authors = ["StarTuz"]
