@@ -2960,7 +2960,7 @@ impl App {
                             .on_press(Message::SelectFolder)
                             .style(style::button_secondary)
                             .padding([4, 8]),
-                        text_input("Launch args (e.g. --no_plugins)", &self.launch_args)
+                        text_input("Launch args (e.g. --safe_mode=PLG)", &self.launch_args)
                             .on_input(Message::LaunchArgsChanged)
                             .size(12)
                             .width(Length::Fixed(200.0))
