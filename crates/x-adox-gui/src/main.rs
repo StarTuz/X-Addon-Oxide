@@ -2943,7 +2943,7 @@ impl App {
 
                 col = col.push(btn);
             }
-            scrollable(col).height(Length::Fill).into()
+            container(col).into()
         };
 
         scrollable(
