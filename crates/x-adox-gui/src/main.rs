@@ -231,6 +231,21 @@ enum Message {
         Result<Arc<std::collections::HashMap<String, x_adox_core::apt_dat::Airport>>, String>,
     ),
     ToggleLogbook,
+    // Companion Apps
+    LaunchCompanionApp,
+    SelectCompanionApp(usize),
+    ToggleCompanionManager,
+    UpdateCompanionNameInput(String),
+    BrowseForCompanionPath,
+    CompanionPathSelected(Option<PathBuf>),
+    AddCompanionApp,
+    RemoveCompanionApp(usize),
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CompanionApp {
+    pub name: String,
+    pub path: std::path::PathBuf,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -367,6 +382,13 @@ struct App {
 
     // Launch X-Plane
     launch_args: String,
+
+    // Utilities - Companion Apps
+    companion_apps: Vec<CompanionApp>,
+    selected_companion_app: Option<usize>,
+    show_companion_manage: bool,
+    new_companion_name: String,
+    new_companion_path: Option<PathBuf>,
 }
 
 impl App {
@@ -375,7 +397,7 @@ impl App {
         let available_roots = XPlaneManager::find_all_xplane_roots();
 
         // Try to load persisted selection, fallback to first available or try_find_root
-        let saved_root = Self::load_app_config();
+        let (saved_root, companion_apps) = Self::load_app_config();
         let root = if let Some(ref saved) = saved_root {
             if available_roots.contains(saved) || saved.exists() {
                 Some(saved.clone())
@@ -502,6 +524,13 @@ impl App {
 
             // Launch X-Plane
             launch_args: String::new(),
+
+            // Companion Apps
+            companion_apps,
+            selected_companion_app: None,
+            show_companion_manage: false,
+            new_companion_name: String::new(),
+            new_companion_path: None,
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -738,6 +767,78 @@ impl App {
             }
             Message::ToggleLogbook => {
                 self.logbook_expanded = !self.logbook_expanded;
+                Task::none()
+            }
+            Message::LaunchCompanionApp => {
+                if let Some(idx) = self.selected_companion_app {
+                    if let Some(app) = self.companion_apps.get(idx) {
+                        let path = app.path.clone();
+                        let _ = std::process::Command::new(path).spawn();
+                        self.status = format!("Launched {}", app.name);
+                    }
+                }
+                Task::none()
+            }
+            Message::SelectCompanionApp(idx) => {
+                self.selected_companion_app = Some(idx);
+                Task::none()
+            }
+            Message::ToggleCompanionManager => {
+                self.show_companion_manage = !self.show_companion_manage;
+                Task::none()
+            }
+            Message::UpdateCompanionNameInput(name) => {
+                self.new_companion_name = name;
+                Task::none()
+            }
+            Message::BrowseForCompanionPath => Task::perform(
+                async {
+                    use native_dialog::FileDialog;
+                    FileDialog::new()
+                        .set_title("Select Companion Application Executable")
+                        .show_open_single_file()
+                        .ok()
+                        .flatten()
+                },
+                Message::CompanionPathSelected,
+            ),
+            Message::CompanionPathSelected(path) => {
+                if let Some(ref p) = path {
+                    if self.new_companion_name.is_empty() {
+                        if let Some(file_name) = p.file_stem() {
+                            self.new_companion_name = file_name.to_string_lossy().to_string();
+                        }
+                    }
+                }
+                self.new_companion_path = path;
+                Task::none()
+            }
+            Message::AddCompanionApp => {
+                if !self.new_companion_name.is_empty() && self.new_companion_path.is_some() {
+                    let app = CompanionApp {
+                        name: self.new_companion_name.clone(),
+                        path: self.new_companion_path.clone().unwrap(),
+                    };
+                    self.companion_apps.push(app);
+                    self.new_companion_name.clear();
+                    self.new_companion_path = None;
+                    self.save_app_config();
+                    self.selected_companion_app = Some(self.companion_apps.len() - 1);
+                }
+                Task::none()
+            }
+            Message::RemoveCompanionApp(idx) => {
+                if idx < self.companion_apps.len() {
+                    self.companion_apps.remove(idx);
+                    if self.selected_companion_app == Some(idx) {
+                        self.selected_companion_app = None;
+                    } else if let Some(s_idx) = self.selected_companion_app {
+                        if s_idx > idx {
+                            self.selected_companion_app = Some(s_idx - 1);
+                        }
+                    }
+                    self.save_app_config();
+                }
                 Task::none()
             }
             Message::PluginsLoaded(result) => {
@@ -2620,6 +2721,158 @@ impl App {
         .into()
     }
 
+    fn view_companion_apps(&self) -> Element<'_, Message> {
+        let title = text("Companion Apps").size(18);
+
+        let app_selector = if self.companion_apps.is_empty() {
+            container(
+                text("No apps added")
+                    .size(14)
+                    .color(style::palette::TEXT_SECONDARY),
+            )
+            .padding(10)
+        } else {
+            let selected = self
+                .selected_companion_app
+                .and_then(|idx| self.companion_apps.get(idx).map(|a| a.name.clone()));
+
+            container(
+                row![
+                    pick_list(
+                        self.companion_apps
+                            .iter()
+                            .map(|a| a.name.clone())
+                            .collect::<Vec<_>>(),
+                        selected,
+                        |name| {
+                            let idx = self
+                                .companion_apps
+                                .iter()
+                                .position(|a| a.name == name)
+                                .unwrap_or(0);
+                            Message::SelectCompanionApp(idx)
+                        }
+                    )
+                    .width(Length::Fill)
+                    .placeholder("Select App..."),
+                    button(text("Launch").size(14))
+                        .on_press(Message::LaunchCompanionApp)
+                        .style(style::button_primary)
+                        .padding([8, 20]),
+                ]
+                .spacing(10)
+                .align_y(iced::Alignment::Center),
+            )
+        };
+
+        let manage_button = button(
+            text(if self.show_companion_manage {
+                "Hide Manager"
+            } else {
+                "Manage Apps..."
+            })
+            .size(12),
+        )
+        .on_press(Message::ToggleCompanionManager)
+        .style(style::button_secondary)
+        .padding([5, 10]);
+
+        let mut content = Column::new()
+            .spacing(15)
+            .push(
+                row![title, iced::widget::horizontal_space(), manage_button]
+                    .align_y(iced::Alignment::Center),
+            )
+            .push(app_selector);
+
+        if self.show_companion_manage {
+            let mut apps_list = Column::new().spacing(10);
+            for (idx, app) in self.companion_apps.iter().enumerate() {
+                apps_list = apps_list.push(
+                    row![
+                        column![
+                            text(&app.name).size(14),
+                            text(app.path.to_string_lossy())
+                                .size(10)
+                                .color(style::palette::TEXT_SECONDARY),
+                        ]
+                        .width(Length::Fill),
+                        button(svg(self.icon_trash.clone()).width(14).height(14))
+                            .on_press(Message::RemoveCompanionApp(idx))
+                            .style(style::button_secondary)
+                            .padding(8),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Alignment::Center),
+                );
+            }
+
+            let add_form = container(
+                column![
+                    text("Add New Companion App").size(14),
+                    row![
+                        text_input("Application Name", &self.new_companion_name)
+                            .on_input(Message::UpdateCompanionNameInput)
+                            .padding(8),
+                        button(text("Browse...").size(12))
+                            .on_press(Message::BrowseForCompanionPath)
+                            .style(style::button_secondary)
+                            .padding([8, 15]),
+                    ]
+                    .spacing(10),
+                    if let Some(path) = &self.new_companion_path {
+                        text(format!("Selected: {}", path.display()))
+                            .size(10)
+                            .color(style::palette::ACCENT_GREEN)
+                    } else {
+                        text("No executable selected")
+                            .size(10)
+                            .color(style::palette::TEXT_SECONDARY)
+                    },
+                    container(
+                        button(
+                            text("Add Application")
+                                .size(14)
+                                .width(Length::Fill)
+                                .align_x(iced::alignment::Horizontal::Center)
+                                .color(Color::WHITE),
+                        )
+                        .on_press(Message::AddCompanionApp)
+                        .style(style::button_primary)
+                        .padding([10, 20])
+                        .width(Length::Fill),
+                    )
+                    .width(Length::Fill)
+                    .padding([10, 0]),
+                ]
+                .spacing(10),
+            )
+            .padding(20)
+            .style(style::container_sidebar);
+
+            content = content.push(
+                container(
+                    column![
+                        if !self.companion_apps.is_empty() {
+                            Element::from(container(apps_list).padding(10))
+                        } else {
+                            Element::from(iced::widget::Space::with_height(0.0))
+                        },
+                        add_form
+                    ]
+                    .spacing(15),
+                )
+                .padding(10)
+                .style(style::container_card),
+            );
+        }
+
+        container(content)
+            .padding(20)
+            .style(style::container_card)
+            .into()
+    }
+
     fn view_utilities(&self) -> Element<'_, Message> {
         let logbook_header = button(
             row![
@@ -2693,12 +2946,12 @@ impl App {
             scrollable(col).height(Length::Fill).into()
         };
 
-        container(column![logbook_header, log_list_content,].spacing(10))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .padding(10)
-            .style(style::container_card)
-            .into()
+        scrollable(
+            column![self.view_companion_apps(), logbook_header, log_list_content,].spacing(15),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     }
 
     fn view_navigator(&self) -> Element<'_, Message> {
@@ -4784,18 +5037,26 @@ impl App {
         Some(config_dir.join("app_config.json"))
     }
 
-    fn load_app_config() -> Option<PathBuf> {
-        let path = Self::get_app_config_path()?;
-        let file = std::fs::File::open(path).ok()?;
-        let reader = std::io::BufReader::new(file);
+    fn load_app_config() -> (Option<PathBuf>, Vec<CompanionApp>) {
+        if let Some(path) = Self::get_app_config_path() {
+            if let Ok(file) = std::fs::File::open(path) {
+                let reader = std::io::BufReader::new(file);
 
-        #[derive(serde::Deserialize)]
-        struct AppConfig {
-            selected_xplane_path: Option<PathBuf>,
+                #[derive(serde::Deserialize)]
+                struct AppConfig {
+                    selected_xplane_path: Option<PathBuf>,
+                    companion_apps: Option<Vec<CompanionApp>>,
+                }
+
+                if let Ok(config) = serde_json::from_reader::<_, AppConfig>(reader) {
+                    return (
+                        config.selected_xplane_path,
+                        config.companion_apps.unwrap_or_default(),
+                    );
+                }
+            }
         }
-
-        let config: AppConfig = serde_json::from_reader(reader).ok()?;
-        config.selected_xplane_path
+        (None, Vec::new())
     }
 
     fn save_app_config(&self) {
@@ -4804,9 +5065,11 @@ impl App {
                 #[derive(serde::Serialize)]
                 struct AppConfig<'a> {
                     selected_xplane_path: Option<&'a PathBuf>,
+                    companion_apps: &'a Vec<CompanionApp>,
                 }
                 let config = AppConfig {
                     selected_xplane_path: self.xplane_root.as_ref(),
+                    companion_apps: &self.companion_apps,
                 };
                 let writer = std::io::BufWriter::new(file);
                 let _ = serde_json::to_writer_pretty(writer, &config);
