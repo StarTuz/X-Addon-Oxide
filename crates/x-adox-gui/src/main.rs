@@ -233,7 +233,33 @@ enum Message {
     ToggleLogbook,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
+struct LoadingState {
+    is_loading: bool,
+    scenery: bool,
+    aircraft: bool,
+    aircraft_tree: bool,
+    plugins: bool,
+    csls: bool,
+    log_issues: bool,
+    airports: bool,
+    logbook: bool,
+}
+
+impl LoadingState {
+    fn is_fully_loaded(&self) -> bool {
+        self.scenery
+            && self.aircraft
+            && self.aircraft_tree
+            && self.plugins
+            && self.csls
+            && self.log_issues
+            && self.airports
+            && self.logbook
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MoveDirection {
     Up,
     Down,
@@ -300,6 +326,7 @@ struct App {
     // UI State for polish
     ignored_issues: std::collections::HashSet<(String, String)>, // (type, pack_name)
     expanded_issue_groups: std::collections::HashSet<String>,    // type
+    loading_state: LoadingState,
 
     // Sticky Sort Editing
     editing_priority: Option<(String, u8)>,
@@ -426,6 +453,7 @@ impl App {
             ignored_issues: std::collections::HashSet::new(),
             expanded_issue_groups: std::collections::HashSet::new(),
             editing_priority: None,
+            loading_state: LoadingState::default(),
             icon_arrow_up: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/arrow_up.svg").to_vec(),
             ),
@@ -486,17 +514,54 @@ impl App {
         app.load_scan_config();
 
         let tasks = if let Some(r) = root {
+            app.loading_state.is_loading = true;
+
             let r1 = r.clone();
             let r2 = r.clone();
+            let r3 = r.clone();
+            let r4 = r.clone();
+            let r5 = r.clone();
+            let r6 = r.clone();
+            let r7 = r.clone();
+            let r8 = r.clone();
+
+            let exclusions1 = app.scan_exclusions.clone();
+            let exclusions2 = app.scan_exclusions.clone();
+
             Task::batch(vec![
                 Task::perform(async move { load_packs(Some(r1)) }, Message::SceneryLoaded),
-                Task::perform(load_airports_data(Some(r2)), Message::AirportsLoaded),
+                Task::perform(
+                    async move { load_aircraft(Some(r2), exclusions1) },
+                    Message::AircraftLoaded,
+                ),
+                Task::perform(
+                    async move { load_aircraft_tree(Some(r3), exclusions2) },
+                    Message::AircraftTreeLoaded,
+                ),
+                Task::perform(
+                    async move { load_plugins(Some(r4)) },
+                    Message::PluginsLoaded,
+                ),
+                Task::perform(async move { load_csls(Some(r5)) }, Message::CSLsLoaded),
+                Task::perform(
+                    async move { load_log_issues(Some(r6)) },
+                    Message::LogIssuesLoaded,
+                ),
+                Task::perform(load_airports_data(Some(r7)), Message::AirportsLoaded),
+                Task::perform(load_logbook_data(Some(r8)), Message::LogbookLoaded),
             ])
         } else {
             Task::none()
         };
 
         (app, tasks)
+    }
+
+    fn check_loading_complete(&mut self) {
+        if self.loading_state.is_loading && self.loading_state.is_fully_loaded() {
+            self.loading_state.is_loading = false;
+            self.status = "X-Plane Ready".to_string();
+        }
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -536,16 +601,18 @@ impl App {
                 Task::none()
             }
             Message::LogIssuesLoaded(result) => {
+                self.loading_state.log_issues = true;
                 match result {
                     Ok(issues) => {
                         self.log_issues = issues;
-                        if !self.log_issues.is_empty() {
+                        if !self.log_issues.is_empty() && !self.loading_state.is_loading {
                             self.status =
                                 format!("Found {} issues in Log.txt", self.log_issues.len());
                         }
                     }
                     Err(e) => self.status = format!("Log analysis error: {}", e),
                 }
+                self.check_loading_complete();
                 Task::none()
             }
             Message::CheckLogIssues => {
@@ -556,88 +623,113 @@ impl App {
                 )
             }
             Message::SceneryLoaded(result) => {
+                self.loading_state.scenery = true;
                 match result {
                     Ok(packs) => {
                         self.packs = packs;
-                        self.status = format!("{} scenery packs", self.packs.len());
+                        if !self.loading_state.is_loading {
+                            self.status = format!("{} scenery packs", self.packs.len());
 
-                        // Pipeline: Trigger next scan
-                        let root = self.xplane_root.clone();
-                        let exclusions = self.scan_exclusions.clone();
-                        Task::perform(
-                            async move { load_aircraft(root, exclusions) },
-                            Message::AircraftLoaded,
-                        )
+                            // Pipeline: Trigger next scan (only if not doing global reload)
+                            let root = self.xplane_root.clone();
+                            let exclusions = self.scan_exclusions.clone();
+                            return Task::perform(
+                                async move { load_aircraft(root, exclusions) },
+                                Message::AircraftLoaded,
+                            );
+                        }
                     }
                     Err(e) => {
-                        self.status = format!("Scenery error: {}", e);
-                        Task::none()
+                        self.status = format!("Scenery load error: {}", e);
                     }
                 }
+                self.check_loading_complete();
+                Task::none()
             }
             Message::AircraftLoaded(result) => {
+                self.loading_state.aircraft = true;
                 match result {
                     Ok(aircraft) => {
                         self.aircraft = aircraft;
-                        if self.active_tab == Tab::Aircraft {
-                            self.status = format!("{} aircraft", self.aircraft.len());
-                        }
+                        if !self.loading_state.is_loading {
+                            if self.active_tab == Tab::Aircraft {
+                                self.status = format!("{} aircraft", self.aircraft.len());
+                            }
 
-                        // Pipeline: Trigger next scan
-                        let root = self.xplane_root.clone();
-                        let exclusions = self.scan_exclusions.clone();
-                        Task::perform(
-                            async move { load_aircraft_tree(root, exclusions) },
-                            Message::AircraftTreeLoaded,
-                        )
+                            // Pipeline: Trigger next scan
+                            let root = self.xplane_root.clone();
+                            let exclusions = self.scan_exclusions.clone();
+                            return Task::perform(
+                                async move { load_aircraft_tree(root, exclusions) },
+                                Message::AircraftTreeLoaded,
+                            );
+                        }
                     }
                     Err(e) => {
-                        if self.active_tab == Tab::Aircraft {
+                        if !self.loading_state.is_loading && self.active_tab == Tab::Aircraft {
                             self.status = format!("Aircraft error: {}", e);
                         }
-                        Task::none()
                     }
                 }
+                self.check_loading_complete();
+                Task::none()
             }
             Message::AircraftTreeLoaded(result) => {
+                self.loading_state.aircraft_tree = true;
                 match result {
                     Ok(tree) => {
                         self.aircraft_tree = Some(tree);
-                        if self.active_tab == Tab::Aircraft {
-                            self.status = "Aircraft tree loaded".to_string();
-                        }
+                        if !self.loading_state.is_loading {
+                            if self.active_tab == Tab::Aircraft {
+                                self.status = "Aircraft tree loaded".to_string();
+                            }
 
-                        // Pipeline: Trigger next scan
-                        let root = self.xplane_root.clone();
-                        Task::perform(async move { load_plugins(root) }, Message::PluginsLoaded)
+                            // Pipeline: Trigger next scan
+                            let root = self.xplane_root.clone();
+                            return Task::perform(
+                                async move { load_plugins(root) },
+                                Message::PluginsLoaded,
+                            );
+                        }
                     }
                     Err(e) => {
-                        if self.active_tab == Tab::Aircraft {
+                        if !self.loading_state.is_loading && self.active_tab == Tab::Aircraft {
                             self.status = format!("Aircraft tree error: {}", e);
                         }
-                        Task::none()
                     }
                 }
+                self.check_loading_complete();
+                Task::none()
             }
             Message::LogbookLoaded(result) => {
+                self.loading_state.logbook = true;
                 match result {
                     Ok(entries) => {
                         self.logbook = entries;
-                        self.status = format!("Loaded {} logbook entries", self.logbook.len());
+                        if !self.loading_state.is_loading {
+                            self.status = format!("Loaded {} logbook entries", self.logbook.len());
+                        }
                     }
                     Err(e) => self.status = format!("Logbook error: {}", e),
                 }
+                self.check_loading_complete();
                 Task::none()
             }
             Message::AirportsLoaded(result) => {
+                self.loading_state.airports = true;
                 match result {
                     Ok(airports) => {
                         self.airports = airports;
-                        self.status =
-                            format!("Airport database loaded: {} airports", self.airports.len());
+                        if !self.loading_state.is_loading {
+                            self.status = format!(
+                                "Airport database loaded: {} airports",
+                                self.airports.len()
+                            );
+                        }
                     }
                     Err(e) => self.status = format!("Airport database error: {}", e),
                 }
+                self.check_loading_complete();
                 Task::none()
             }
             Message::SelectFlight(index) => {
@@ -649,48 +741,60 @@ impl App {
                 Task::none()
             }
             Message::PluginsLoaded(result) => {
+                self.loading_state.plugins = true;
                 match result {
                     Ok(plugins) => {
                         self.plugins = plugins;
-                        if self.active_tab == Tab::Plugins {
-                            self.status = format!("{} plugins", self.plugins.len());
-                        }
+                        if !self.loading_state.is_loading {
+                            if self.active_tab == Tab::Plugins {
+                                self.status = format!("{} plugins", self.plugins.len());
+                            }
 
-                        // Pipeline: Trigger next scan
-                        let root = self.xplane_root.clone();
-                        Task::perform(async move { load_csls(root) }, Message::CSLsLoaded)
+                            // Pipeline: Trigger next scan
+                            let root = self.xplane_root.clone();
+                            return Task::perform(
+                                async move { load_csls(root) },
+                                Message::CSLsLoaded,
+                            );
+                        }
                     }
                     Err(e) => {
-                        if self.active_tab == Tab::Plugins {
+                        if !self.loading_state.is_loading && self.active_tab == Tab::Plugins {
                             self.status = format!("Plugins error: {}", e);
                         }
-                        Task::none()
                     }
                 }
+                self.check_loading_complete();
+                Task::none()
             }
             Message::CSLsLoaded(result) => {
+                self.loading_state.csls = true;
                 match result {
                     Ok(csls) => {
                         self.csls = csls;
                         self.show_csl_tab = !self.csls.is_empty();
-                        if self.active_tab == Tab::CSLs {
-                            self.status = format!("{} CSL packages", self.csls.len());
-                        }
 
-                        // Pipeline: Trigger next scan (Final: Log issues)
-                        let root = self.xplane_root.clone();
-                        Task::perform(
-                            async move { load_log_issues(root) },
-                            Message::LogIssuesLoaded,
-                        )
+                        if !self.loading_state.is_loading {
+                            if self.active_tab == Tab::CSLs {
+                                self.status = format!("{} CSL packages", self.csls.len());
+                            }
+
+                            // Pipeline: Trigger next scan (Final: Log issues)
+                            let root = self.xplane_root.clone();
+                            return Task::perform(
+                                async move { load_log_issues(root) },
+                                Message::LogIssuesLoaded,
+                            );
+                        }
                     }
                     Err(e) => {
-                        if self.active_tab == Tab::CSLs {
+                        if !self.loading_state.is_loading && self.active_tab == Tab::CSLs {
                             self.status = format!("CSL error: {}", e);
                         }
-                        Task::none()
                     }
                 }
+                self.check_loading_complete();
+                Task::none()
             }
             Message::ToggleCSL(path, enable) => {
                 let root = self.xplane_root.clone();
@@ -1465,12 +1569,21 @@ impl App {
                             self.profile_manager =
                                 self.xplane_root.as_ref().map(|r| ProfileManager::new(r));
                             self.status = "X-Plane folder set! Reloading...".to_string();
+
+                            // Reset loading state
+                            self.loading_state = LoadingState {
+                                is_loading: true,
+                                ..Default::default()
+                            };
+
                             let root1 = self.xplane_root.clone();
                             let root2 = self.xplane_root.clone();
                             let root3 = self.xplane_root.clone();
                             let root4 = self.xplane_root.clone();
                             let root5 = self.xplane_root.clone();
                             let root6 = self.xplane_root.clone();
+                            let root7 = self.xplane_root.clone();
+                            let root8 = self.xplane_root.clone();
 
                             let ex1 = self.scan_exclusions.clone();
                             let ex2 = self.scan_exclusions.clone();
@@ -1497,6 +1610,8 @@ impl App {
                                     async move { load_log_issues(root6) },
                                     Message::LogIssuesLoaded,
                                 ),
+                                Task::perform(load_airports_data(root7), Message::AirportsLoaded),
+                                Task::perform(load_logbook_data(root8), Message::LogbookLoaded),
                             ]);
                         }
                         Err(e) => {
@@ -1518,12 +1633,20 @@ impl App {
                 self.profile_manager = self.xplane_root.as_ref().map(|r| ProfileManager::new(r));
                 self.status = "Switching X-Plane installation...".to_string();
 
+                // Reset loading state
+                self.loading_state = LoadingState {
+                    is_loading: true,
+                    ..Default::default()
+                };
+
                 let root1 = self.xplane_root.clone();
                 let root2 = self.xplane_root.clone();
                 let root3 = self.xplane_root.clone();
                 let root4 = self.xplane_root.clone();
                 let root5 = self.xplane_root.clone();
                 let root6 = self.xplane_root.clone();
+                let root7 = self.xplane_root.clone();
+                let root8 = self.xplane_root.clone();
 
                 let ex1 = self.scan_exclusions.clone();
                 let ex2 = self.scan_exclusions.clone();
@@ -1544,6 +1667,8 @@ impl App {
                         async move { load_log_issues(root6) },
                         Message::LogIssuesLoaded,
                     ),
+                    Task::perform(load_airports_data(root7), Message::AirportsLoaded),
+                    Task::perform(load_logbook_data(root8), Message::LogbookLoaded),
                 ])
             }
             Message::ToggleAircraftFolder(path) => {
@@ -2042,7 +2167,9 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill);
 
-        if let Some((pack_name, score)) = &self.editing_priority {
+        if self.loading_state.is_loading {
+            self.view_loading_overlay()
+        } else if let Some((pack_name, score)) = &self.editing_priority {
             container(self.view_priority_editor(pack_name, *score))
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -2068,6 +2195,62 @@ impl App {
         } else {
             main_view.into()
         }
+    }
+
+    fn view_loading_overlay(&self) -> Element<'_, Message> {
+        let title = text("Switching X-Plane Installation")
+            .size(24)
+            .color(style::palette::TEXT_PRIMARY);
+
+        let subtitle = text("Synchronizing all data sources...")
+            .size(16)
+            .color(style::palette::TEXT_SECONDARY);
+
+        let items = [
+            ("Scenery Library", self.loading_state.scenery),
+            ("Aircraft Addons", self.loading_state.aircraft),
+            ("Aircraft Tree Structure", self.loading_state.aircraft_tree),
+            ("Plugins", self.loading_state.plugins),
+            ("CSL Packages", self.loading_state.csls),
+            ("Log Issues Analysis", self.loading_state.log_issues),
+            ("Airport Database", self.loading_state.airports),
+            ("Pilot Logbook", self.loading_state.logbook),
+        ];
+
+        let mut progress = Column::new().spacing(10);
+        for (label, done) in items {
+            progress = progress.push(
+                row![
+                    text(if done { "✅ " } else { "⏳ " }),
+                    text(label.to_string()).color(if done {
+                        style::palette::TEXT_PRIMARY
+                    } else {
+                        style::palette::TEXT_SECONDARY
+                    }),
+                ]
+                .spacing(10),
+            );
+        }
+
+        container(
+            container(
+                column![title, subtitle, progress]
+                    .spacing(20)
+                    .align_x(iced::Alignment::Center),
+            )
+            .style(style::container_modal)
+            .padding(40)
+            .width(Length::Shrink),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.85))),
+            ..Default::default()
+        })
+        .into()
     }
 
     fn view_priority_editor<'a>(
