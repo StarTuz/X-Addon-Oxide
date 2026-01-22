@@ -1106,23 +1106,41 @@ impl App {
                                 .position(|p| p.category == SceneryCategory::GlobalAirport)
                             {
                                 let mut to_move = Vec::new();
-                                // Collect all simheaven/x-world packs below GA
-                                let mut i = ga_idx + 1;
-                                while i < packs.len() {
-                                    let name = packs[i].name.to_lowercase();
-                                    if name.contains("simheaven") || name.contains("x-world") {
-                                        to_move.push(packs.remove(i));
+                                // Collect all simheaven/x-world packs ABOVE GA
+                                let mut i = 0;
+                                // Need to recalculate limit as we remove items
+                                loop {
+                                    let ga_current = packs
+                                        .iter()
+                                        .position(|p| p.category == SceneryCategory::GlobalAirport);
+                                    if let Some(ga_idx_now) = ga_current {
+                                        if i >= ga_idx_now {
+                                            break;
+                                        }
+                                        let name = packs[i].name.to_lowercase();
+                                        if name.contains("simheaven") || name.contains("x-world") {
+                                            to_move.push(packs.remove(i));
+                                        } else {
+                                            i += 1;
+                                        }
                                     } else {
-                                        i += 1;
+                                        break;
                                     }
                                 }
-                                // Move to just ABOVE ga_idx (which might have shifted)
-                                let new_ga_idx = packs
+
+                                // Move to just BELOW ga_idx
+                                if let Some(new_ga_idx) = packs
                                     .iter()
                                     .position(|p| p.category == SceneryCategory::GlobalAirport)
-                                    .unwrap_or(0);
-                                for pack in to_move.into_iter().rev() {
-                                    packs.insert(new_ga_idx, pack);
+                                {
+                                    let insert_pos = new_ga_idx + 1;
+                                    for pack in to_move.into_iter().rev() {
+                                        if insert_pos <= packs.len() {
+                                            packs.insert(insert_pos, pack);
+                                        } else {
+                                            packs.push(pack);
+                                        }
+                                    }
                                 }
 
                                 // PERSISTENCE: Update the BitNet rules so it stays fixed!

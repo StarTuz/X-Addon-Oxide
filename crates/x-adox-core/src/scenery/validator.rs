@@ -108,14 +108,14 @@ impl SceneryValidator {
 
         if let Some(ga_idx) = global_airport_idx {
             for &sh_idx in &simheaven_indices {
-                if sh_idx > ga_idx {
+                if sh_idx < ga_idx {
                     report.issues.push(ValidationIssue {
                         pack_name: packs[sh_idx].name.clone(),
                         severity: ValidationSeverity::Critical,
                         issue_type: "simheaven_below_global".to_string(),
-                        message: "simHeaven layer is below Global Airports".to_string(),
-                        fix_suggestion: "Move simHeaven layers above Global Airports to avoid missing buildings.".to_string(),
-                        details: "Global Airports can override custom scenery below it, flattening runways or hiding terminals. simHeaven layers contain buildings and VFR elements that must be visible above the airport flattened area.".to_string(),
+                        message: "simHeaven layer is above Global Airports".to_string(),
+                        fix_suggestion: "Move simHeaven layers below Global Airports to avoid visual artifacts.".to_string(),
+                        details: "In X-Plane 12, simHeaven X-World packages should be placed below the Global Airports entry for correct layering and to ensure libraries are properly referenced.".to_string(),
                     });
                 }
             }
