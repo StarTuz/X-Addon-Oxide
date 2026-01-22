@@ -1,5 +1,5 @@
 use crate::Message;
-use iced::advanced::{self, layout, renderer, widget, Layout, Widget};
+use iced::advanced::{self, graphics, layout, renderer, widget, Layout, Widget};
 use iced::widget::image;
 use iced::{mouse, Border, Color, Element, Event, Length, Radians, Rectangle};
 use lru::LruCache;
@@ -400,19 +400,31 @@ where
                         + (bounds.height / 2.0)
                         + ((wy2 - camera_center_y) * zoom_scale) as f32;
 
-                    // Draw the flight line
-                    renderer.fill_quad(
-                        renderer::Quad {
-                            bounds: Rectangle {
-                                x: sx1.min(sx2),
-                                y: sy1.min(sy2),
-                                width: (sx1 - sx2).abs().max(2.0),
-                                height: (sy1 - sy2).abs().max(2.0),
-                            },
-                            ..Default::default()
-                        },
-                        Color::from_rgba(1.0, 1.0, 0.0, 0.5),
-                    );
+                    // Draw the flight line as a rotated quad
+                    let dx = sx2 - sx1;
+                    let dy = sy2 - sy1;
+                    let distance = (dx * dx + dy * dy).sqrt();
+                    // Draw the flight line using point interpolation
+                    let steps = (distance / 2.0).ceil() as usize;
+                    renderer.with_layer(bounds, |renderer| {
+                        for i in 0..=steps {
+                            let t = i as f32 / steps as f32;
+                            let px = sx1 + dx * t;
+                            let py = sy1 + dy * t;
+                            renderer.fill_quad(
+                                renderer::Quad {
+                                    bounds: Rectangle {
+                                        x: px - 1.0,
+                                        y: py - 1.0,
+                                        width: 2.0,
+                                        height: 2.0,
+                                    },
+                                    ..Default::default()
+                                },
+                                Color::from_rgb(1.0, 0.0, 1.0), // Magenta
+                            );
+                        }
+                    });
 
                     // Markers for DEP and ARR
                     let dot_size = 6.0;
