@@ -1101,7 +1101,7 @@ impl App {
                     let packs = Arc::make_mut(packs_arc);
                     match issue_type.as_str() {
                         "simheaven_below_global" => {
-                            if let Some(ga_idx) = packs
+                            if let Some(_ga_idx) = packs
                                 .iter()
                                 .position(|p| p.category == SceneryCategory::GlobalAirport)
                             {
