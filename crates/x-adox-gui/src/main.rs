@@ -219,6 +219,10 @@ enum Message {
     AddTag,
     RemoveTag(String, String), // (PackName, Tag)
     TagOperationComplete,
+
+    // Launch X-Plane
+    LaunchXPlane,
+    LaunchArgsChanged(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -318,6 +322,9 @@ struct App {
 
     // Phase 3
     new_tag_input: String,
+
+    // Launch X-Plane
+    launch_args: String,
 }
 
 impl App {
@@ -440,6 +447,9 @@ impl App {
             // Phase 3
             new_tag_input: String::new(),
             validation_report: None,
+
+            // Launch X-Plane
+            launch_args: String::new(),
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -675,6 +685,7 @@ impl App {
                     .cloned()
                 {
                     self.profiles.active_profile = Some(name.clone());
+                    self.launch_args = profile.launch_args.clone(); // Load launch args from profile
                     let pm = self.profile_manager.clone();
                     let collection = self.profiles.clone();
                     let root = self.xplane_root.clone();
@@ -722,6 +733,7 @@ impl App {
                     scenery_states,
                     aircraft_states,
                     plugin_states,
+                    launch_args: self.launch_args.clone(),
                 };
 
                 // Add or update
@@ -835,6 +847,63 @@ impl App {
             }
             Message::RenameProfileNameChanged(name) => {
                 self.rename_profile_name = name;
+                Task::none()
+            }
+            Message::LaunchXPlane => {
+                if let Some(ref root) = self.xplane_root {
+                    match XPlaneManager::new(root) {
+                        Ok(manager) => {
+                            if let Some(exe) = manager.get_executable_path() {
+                                let args_vec: Vec<&str> = if self.launch_args.is_empty() {
+                                    vec![]
+                                } else {
+                                    self.launch_args.split_whitespace().collect()
+                                };
+
+                                match std::process::Command::new(&exe)
+                                    .args(&args_vec)
+                                    .current_dir(root)
+                                    .spawn()
+                                {
+                                    Ok(_) => {
+                                        self.status = "X-Plane launched!".to_string();
+                                    }
+                                    Err(e) => {
+                                        self.status = format!("Failed to launch X-Plane: {}", e);
+                                    }
+                                }
+                            } else {
+                                self.status = "X-Plane executable not found".to_string();
+                            }
+                        }
+                        Err(e) => {
+                            self.status = format!("Invalid X-Plane root: {}", e);
+                        }
+                    }
+                } else {
+                    self.status = "No X-Plane installation selected".to_string();
+                }
+                Task::none()
+            }
+            Message::LaunchArgsChanged(args) => {
+                self.launch_args = args.clone();
+
+                // Update current profile's launch_args if there's an active one
+                if let Some(ref active_name) = self.profiles.active_profile.clone() {
+                    if let Some(profile) = self
+                        .profiles
+                        .profiles
+                        .iter_mut()
+                        .find(|p| p.name == *active_name)
+                    {
+                        profile.launch_args = args;
+                    }
+
+                    // Save profiles
+                    if let Some(ref pm) = self.profile_manager {
+                        let _ = pm.save(&self.profiles);
+                    }
+                }
                 Task::none()
             }
             Message::TagOperationComplete => Task::none(),
@@ -1062,11 +1131,11 @@ impl App {
                                     &mut Arc::make_mut(&mut self.heuristics_model.config).rules
                                 {
                                     if rule.name.contains("SimHeaven") {
-                                        rule.score = 15;
+                                        rule.score = 30; // Matches lib.rs refined score
                                         rules_updated = true;
                                     }
                                     if rule.name.contains("Global Airports") {
-                                        rule.score = 20;
+                                        rule.score = 20; // Matches lib.rs refined score
                                         rules_updated = true;
                                     }
                                 }
@@ -1098,8 +1167,8 @@ impl App {
                                     rule.score = 60;
                                     rules_updated = true;
                                 }
-                                if rule.name.contains("Overlay") {
-                                    rule.score = 40;
+                                if rule.name.contains("Ortho") || rule.name.contains("Overlay") {
+                                    rule.score = 50; // Ortho baseline is 50, AutoOrtho Overlays is 48
                                     rules_updated = true;
                                 }
                             }
@@ -2520,6 +2589,15 @@ impl App {
                             .on_press(Message::SelectFolder)
                             .style(style::button_secondary)
                             .padding([4, 8]),
+                        text_input("Launch args (e.g. --no_plugins)", &self.launch_args)
+                            .on_input(Message::LaunchArgsChanged)
+                            .size(12)
+                            .width(Length::Fixed(200.0))
+                            .style(style::text_input_primary),
+                        button(text("🚀 Launch").size(12).color(Color::WHITE))
+                            .on_press(Message::LaunchXPlane)
+                            .style(style::button_success)
+                            .padding([4, 12]),
                         iced::widget::horizontal_space(),
                     ]
                     .spacing(10)

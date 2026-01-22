@@ -48,13 +48,13 @@ impl Default for HeuristicsConfig {
                         "x-world".to_string(),
                         "w2xp".to_string(),
                     ],
-                    score: 15, // Above Global Airports (20)
+                    score: 30, // Below Global Airports (20)
                     is_exclusion: false,
                 },
                 Rule {
                     name: "AutoOrtho Overlays".to_string(),
                     keywords: vec!["yautoortho".to_string(), "y_autoortho".to_string()],
-                    score: 42,
+                    score: 48, // Between Libraries (45) and Ortho (50)
                     is_exclusion: false,
                 },
                 Rule {
@@ -65,12 +65,7 @@ impl Default for HeuristicsConfig {
                 },
                 Rule {
                     name: "Exclusion Logic (Overlay/Mesh Tweaks)".to_string(),
-                    keywords: vec![
-                        "overlay".to_string(),
-                        "mesh".to_string(),
-                        "ktex".to_string(),
-                        "ortho".to_string(),
-                    ],
+                    keywords: vec!["exclude".to_string(), "exclusion".to_string()],
                     score: 61,
                     is_exclusion: true,
                 },
@@ -91,6 +86,7 @@ impl Default for HeuristicsConfig {
                         "ortho".to_string(),
                         "photoscenery".to_string(),
                         "yortho".to_string(),
+                        "zortho".to_string(),
                     ],
                     score: 50,
                     is_exclusion: false,
@@ -114,18 +110,18 @@ impl Default for HeuristicsConfig {
                 },
                 Rule {
                     name: "Landmarks".to_string(),
-                    keywords: vec![
-                        "landmarks".to_string(),
-                        "global_forests".to_string(),
-                        "landmark".to_string(),
-                    ],
+                    keywords: vec!["landmarks".to_string(), "landmark".to_string()],
                     score: 25,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Orbx B / TrueEarth".to_string(),
-                    keywords: vec!["orbx_b".to_string(), "trueearth_overlay".to_string()],
-                    score: 35,
+                    keywords: vec![
+                        "orbx_b".to_string(),
+                        "trueearth_overlay".to_string(),
+                        "orbx_c_".to_string(),
+                    ],
+                    score: 28, // Above SimHeaven (30) for UK dominance
                     is_exclusion: false,
                 },
                 Rule {
@@ -138,13 +134,19 @@ impl Default for HeuristicsConfig {
                         "pigeon".to_string(),
                         "seagulls".to_string(),
                     ],
-                    score: 31,
+                    score: 44, // With Libraries, above Ortho overlays
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Orbx A Custom".to_string(),
                     keywords: vec!["orbx_a".to_string()],
-                    score: 25,
+                    score: 12, // Top priority
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Global Forests".to_string(),
+                    keywords: vec!["global_forests".to_string()],
+                    score: 32, // Below SimHeaven (30)
                     is_exclusion: false,
                 },
                 Rule {
@@ -219,7 +221,8 @@ impl BitNetModel {
         let mut patterns = Vec::new();
         for rule in &config.rules {
             for keyword in &rule.keywords {
-                patterns.push(regex::escape(&keyword.to_lowercase()));
+                // Treat keywords as partial matches (substrings)
+                patterns.push(format!(r"(?i){}", regex::escape(&keyword)));
             }
         }
         if patterns.is_empty() {
@@ -1152,8 +1155,8 @@ mod tests {
             Path::new("test"),
             &PredictContext::default(),
         );
-        assert_eq!(score1, 15);
-        assert_eq!(score2, 15);
+        assert_eq!(score1, 30);
+        assert_eq!(score2, 30);
         assert_eq!(
             score1, score2,
             "SimHeaven layers should have the same score to allow alphabetical continent grouping"

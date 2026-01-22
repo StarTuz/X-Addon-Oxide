@@ -94,16 +94,19 @@ pub fn write_ini(file_path: &Path, packs: &[SceneryPack]) -> io::Result<()> {
             &x_adox_bitnet::PredictContext::default(),
         );
         let current_section = match score {
-            0..=10 => "# Payware & Custom Airports",
-            11..=21 => "# Global Airports & Landmarks",
-            22..=24 => "# X-Plane Default Airports",
-            25..=29 => "# Orbx Custom Landmarks",
+            0..=11 => "# Payware & Custom Airports",
+            12..=19 => "# Orbx Custom Landmarks",
+            20..=24 => "# Global Airports & Landmarks",
+            25..=27 => "# X-Plane Default Landmarks",
+            28..=29 => "# Orbx TrueEarth Overlays",
             30..=31 => "# simHeaven X-World",
-            32..=34 => "# Birds & Fauna",
-            35..=36 => "# Orbx TrueEarth Overlays",
-            37..=44 => "# Overlays & Landmarks",
+            32..=40 => "# Global Forests",
+            41..=44 => "# Birds & Fauna",
             45..=47 => "# Libraries",
-            _ => "# Meshes & Orthos",
+            48..=49 => "# AutoOrtho Overlays",
+            50..=59 => "# Ortho & Photo Scenery",
+            60..=94 => "# Meshes & Terrain",
+            _ => "# AutoOrtho Base & Mesh",
         };
 
         if current_section != last_section {

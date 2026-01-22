@@ -13,6 +13,9 @@ pub struct Profile {
     pub plugin_states: HashMap<String, bool>,
     /// Map of aircraft paths (relative to X-Plane root) to their enabled status
     pub aircraft_states: HashMap<String, bool>,
+    /// Command-line arguments for launching X-Plane
+    #[serde(default)]
+    pub launch_args: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

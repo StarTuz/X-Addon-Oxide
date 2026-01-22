@@ -205,6 +205,40 @@ impl XPlaneManager {
 
         results
     }
+
+    /// Returns the path to the X-Plane executable for the current platform.
+    pub fn get_executable_path(&self) -> Option<PathBuf> {
+        #[cfg(target_os = "linux")]
+        {
+            // Try x86_64 first, then arm64
+            let exe = self.root.join("X-Plane-x86_64");
+            if exe.exists() {
+                return Some(exe);
+            }
+            let exe = self.root.join("X-Plane-arm64");
+            if exe.exists() {
+                return Some(exe);
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let exe = self.root.join("X-Plane.exe");
+            if exe.exists() {
+                return Some(exe);
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let exe = self.root.join("X-Plane.app/Contents/MacOS/X-Plane");
+            if exe.exists() {
+                return Some(exe);
+            }
+        }
+
+        None
+    }
 }
 
 #[cfg(test)]
