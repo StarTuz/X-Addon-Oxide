@@ -188,14 +188,25 @@ impl XPlaneManager {
         for dir in candidate_dirs {
             for filename in &filenames {
                 let config_path = dir.join(filename);
-                if config_path.exists() {
-                    if let Ok(content) = fs::read_to_string(&config_path) {
-                        for line in content.lines() {
-                            let path = PathBuf::from(line.trim());
-                            if path.exists() && path.join("Resources").exists() {
-                                if !results.contains(&path) {
-                                    results.push(path);
+                if let Ok(content) = fs::read_to_string(&config_path) {
+                    for line in content.lines() {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty()
+                            || trimmed.starts_with('#')
+                            || trimmed.starts_with(';')
+                        {
+                            continue;
+                        }
+                        let path = PathBuf::from(trimmed);
+                        if path.exists() && path.join("Resources").exists() {
+                            // Normalize path to avoid duplicates (e.g. trailing slashes)
+                            if let Ok(canonical) = path.canonicalize() {
+                                if !results.contains(&canonical) {
+                                    results.push(canonical);
                                 }
+                            } else if !results.contains(&path) {
+                                // Fallback if canonicalization fails for some reason
+                                results.push(path);
                             }
                         }
                     }
