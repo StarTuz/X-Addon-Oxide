@@ -74,6 +74,7 @@ pub enum Tab {
     CSLs,
     Heuristics,
     Issues,
+    Utilities,
     Settings,
 }
 
@@ -223,6 +224,13 @@ enum Message {
     // Launch X-Plane
     LaunchXPlane,
     LaunchArgsChanged(String),
+    // Utilities
+    LogbookLoaded(Result<Vec<x_adox_core::logbook::LogbookEntry>, String>),
+    SelectFlight(Option<usize>),
+    AirportsLoaded(
+        Result<Arc<std::collections::HashMap<String, x_adox_core::apt_dat::Airport>>, String>,
+    ),
+    ToggleLogbook,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -276,6 +284,13 @@ struct App {
     icon_pin: svg::Handle,
     icon_pin_outline: svg::Handle,
     icon_settings: svg::Handle,
+    icon_utilities: svg::Handle,
+
+    // Utilities State
+    logbook: Vec<x_adox_core::logbook::LogbookEntry>,
+    selected_flight: Option<usize>,
+    airports: Arc<std::collections::HashMap<String, x_adox_core::apt_dat::Airport>>,
+    logbook_expanded: bool,
 
     // Pro Mode
     validation_report: Option<x_adox_core::scenery::validator::ValidationReport>,
@@ -403,6 +418,9 @@ impl App {
             icon_settings: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/settings.svg").to_vec(),
             ),
+            icon_utilities: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/utilities.svg").to_vec(),
+            ),
             simulated_packs: None,
             region_focus: None,
             ignored_issues: std::collections::HashSet::new(),
@@ -448,6 +466,12 @@ impl App {
             new_tag_input: String::new(),
             validation_report: None,
 
+            // Utilities
+            logbook: Vec::new(),
+            selected_flight: None,
+            airports: Arc::new(std::collections::HashMap::new()),
+            logbook_expanded: true,
+
             // Launch X-Plane
             launch_args: String::new(),
         };
@@ -463,7 +487,11 @@ impl App {
 
         let tasks = if let Some(r) = root {
             let r1 = r.clone();
-            Task::perform(async move { load_packs(Some(r1)) }, Message::SceneryLoaded)
+            let r2 = r.clone();
+            Task::batch(vec![
+                Task::perform(async move { load_packs(Some(r1)) }, Message::SceneryLoaded),
+                Task::perform(load_airports_data(Some(r2)), Message::AirportsLoaded),
+            ])
         } else {
             Task::none()
         };
@@ -496,8 +524,15 @@ impl App {
                     Tab::CSLs => format!("{} CSL packages", self.csls.len()),
                     Tab::Heuristics => "Sorting Heuristics Editor".to_string(),
                     Tab::Issues => "Known Issues & Log Analysis".to_string(),
+                    Tab::Utilities => "Utilities & Logbook Viewer".to_string(),
                     Tab::Settings => "Settings & Configuration".to_string(),
                 };
+
+                if tab == Tab::Utilities {
+                    let root = self.xplane_root.clone();
+                    return Task::perform(load_logbook_data(root), Message::LogbookLoaded);
+                }
+
                 Task::none()
             }
             Message::LogIssuesLoaded(result) => {
@@ -583,6 +618,35 @@ impl App {
                         Task::none()
                     }
                 }
+            }
+            Message::LogbookLoaded(result) => {
+                match result {
+                    Ok(entries) => {
+                        self.logbook = entries;
+                        self.status = format!("Loaded {} logbook entries", self.logbook.len());
+                    }
+                    Err(e) => self.status = format!("Logbook error: {}", e),
+                }
+                Task::none()
+            }
+            Message::AirportsLoaded(result) => {
+                match result {
+                    Ok(airports) => {
+                        self.airports = airports;
+                        self.status =
+                            format!("Airport database loaded: {} airports", self.airports.len());
+                    }
+                    Err(e) => self.status = format!("Airport database error: {}", e),
+                }
+                Task::none()
+            }
+            Message::SelectFlight(index) => {
+                self.selected_flight = index;
+                Task::none()
+            }
+            Message::ToggleLogbook => {
+                self.logbook_expanded = !self.logbook_expanded;
+                Task::none()
             }
             Message::PluginsLoaded(result) => {
                 match result {
@@ -1727,7 +1791,7 @@ impl App {
                         .selected_csl
                         .as_ref()
                         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
-                    Tab::Heuristics | Tab::Issues | Tab::Settings => None,
+                    Tab::Heuristics | Tab::Issues | Tab::Settings | Tab::Utilities => None,
                 };
 
                 if let Some(name) = name_opt {
@@ -1765,7 +1829,7 @@ impl App {
                         Tab::Aircraft => self.selected_aircraft.clone(),
                         Tab::Plugins => self.selected_plugin.clone(),
                         Tab::CSLs => self.selected_csl.clone(),
-                        Tab::Heuristics | Tab::Issues | Tab::Settings => None,
+                        Tab::Heuristics | Tab::Issues | Tab::Settings | Tab::Utilities => None,
                     };
 
                     if let Some(p) = path {
@@ -2346,9 +2410,83 @@ impl App {
             .width(Length::Fixed(700.0)) // Wider for buttons
             .height(Length::Fixed(600.0)),
         )
-        .padding(20)
         .style(style::container_card)
         .into()
+    }
+
+    fn view_utilities(&self) -> Element<'_, Message> {
+        let logbook_header = button(
+            row![
+                text(if self.logbook_expanded {
+                    "Logbook ⌵"
+                } else {
+                    "Logbook >"
+                })
+                .size(16),
+                iced::widget::horizontal_space(),
+                text(format!("{} entries", self.logbook.len()))
+                    .size(12)
+                    .color(style::palette::TEXT_SECONDARY),
+            ]
+            .padding([0, 10])
+            .align_y(iced::Alignment::Center),
+        )
+        .on_press(Message::ToggleLogbook)
+        .style(style::button_secondary)
+        .width(Length::Fill);
+
+        let log_list_content: Element<'_, Message> = if !self.logbook_expanded {
+            container(column![]).into()
+        } else if self.logbook.is_empty() {
+            container(text("No logbook entries found or logbook not loaded.").size(14))
+                .center_x(Length::Fill)
+                .padding(20)
+                .into()
+        } else {
+            let mut col = Column::new().spacing(5);
+            for (idx, entry) in self.logbook.iter().enumerate() {
+                let is_selected = self.selected_flight == Some(idx);
+
+                let date_str = entry
+                    .date
+                    .map(|d| d.format("%Y-%m-%d").to_string())
+                    .unwrap_or_else(|| "Unknown Date".to_string());
+                let row_content = row![
+                    text(date_str).width(Length::Fixed(100.0)).size(12),
+                    text(&entry.dep_airport).width(Length::Fixed(60.0)).size(12),
+                    text("→").width(Length::Fixed(20.0)).size(12),
+                    text(&entry.arr_airport).width(Length::Fixed(60.0)).size(12),
+                    text(&entry.aircraft_type)
+                        .width(Length::Fixed(80.0))
+                        .size(12),
+                    text(format!("{:.1}h", entry.total_duration))
+                        .width(Length::Fill)
+                        .size(12),
+                ]
+                .spacing(10)
+                .align_y(iced::Alignment::Center);
+
+                let btn = button(row_content)
+                    .on_press(Message::SelectFlight(Some(idx)))
+                    .padding(8)
+                    .width(Length::Fill)
+                    .style(if is_selected {
+                        style::button_primary
+                    } else {
+                        style::button_secondary
+                    });
+
+                col = col.push(btn);
+            }
+            scrollable(col).height(Length::Fill).into()
+        };
+
+        container(column![logbook_header, log_list_content,].spacing(10))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(10)
+            .style(style::container_card)
+            .into()
     }
 
     fn view_navigator(&self) -> Element<'_, Message> {
@@ -2358,6 +2496,7 @@ impl App {
                 .push(self.sidebar_button("Scenery", Tab::Scenery))
                 .push(self.sidebar_button("Plugins", Tab::Plugins))
                 .push(self.sidebar_button("CSLs", Tab::CSLs))
+                .push(self.sidebar_button("Utilities", Tab::Utilities))
                 .push(self.sidebar_button("Issues", Tab::Issues))
                 .spacing(25)
                 .padding([20, 0]),
@@ -2376,6 +2515,7 @@ impl App {
             Tab::CSLs => self.view_addon_list(&self.csls, "CSL Package"),
             Tab::Heuristics => self.view_heuristics_editor(),
             Tab::Issues => self.view_issues(),
+            Tab::Utilities => self.view_utilities(),
             Tab::Settings => self.view_settings(),
         };
 
@@ -2409,7 +2549,8 @@ impl App {
             ),
             Tab::Heuristics => (Message::SaveHeuristics, Message::ResetHeuristics, true),
             Tab::Issues => (Message::CheckLogIssues, Message::Refresh, false),
-            Tab::Settings => (Message::Refresh, Message::Refresh, false), // Settings tab doesn't have these actions
+            Tab::Utilities => (Message::Refresh, Message::Refresh, false),
+            Tab::Settings => (Message::Refresh, Message::Refresh, false),
         };
 
         let install_btn = button(
@@ -2781,6 +2922,8 @@ impl App {
                 tile_manager: &self.tile_manager,
                 zoom,
                 center: self.map_center,
+                airports: &self.airports,
+                selected_flight: self.selected_flight.and_then(|idx| self.logbook.get(idx)),
             };
 
             map_view.into()
@@ -2813,98 +2956,119 @@ impl App {
             } else {
                 column![
                     text("Inspector Panel").size(18),
-                    container(
-                        if let Some(target_name) = self
-                            .selected_scenery
-                            .as_ref()
-                            .or(self.hovered_scenery.as_ref())
-                        {
-                            if let Some(pack) = self.packs.iter().find(|p| &p.name == target_name) {
-                                let tags_ui: Element<'_, Message> = if !pack.tags.is_empty() {
-                                    let r = row(pack
-                                        .tags
-                                        .iter()
-                                        .map(|t| {
-                                            container(
-                                                row![
-                                                    text(t.clone()).size(12).color(Color::WHITE),
-                                                    button(text("×").size(12).color(Color::WHITE))
-                                                        .on_press(Message::RemoveTag(
-                                                            pack.name.clone(),
-                                                            t.clone()
-                                                        ))
-                                                        .style(style::button_ghost)
-                                                        .padding(0)
-                                                ]
-                                                .spacing(4)
-                                                .align_y(iced::Alignment::Center),
-                                            )
-                                            .padding([4, 8])
-                                            .style(|_| container::Style {
-                                                background: Some(iced::Background::Color(
-                                                    Color::from_rgb(0.3, 0.3, 0.3),
-                                                )),
-                                                border: iced::Border {
-                                                    radius: 10.0.into(),
-                                                    ..Default::default()
-                                                },
+                    container(if let Some(idx) = self.selected_flight {
+                        if let Some(entry) = self.logbook.get(idx) {
+                            column![
+                                text(format!(
+                                    "Flight: {} → {}",
+                                    entry.dep_airport, entry.arr_airport
+                                ))
+                                .size(16),
+                                text(format!(
+                                    "Date: {}",
+                                    entry.date.map(|d| d.to_string()).unwrap_or_default()
+                                )),
+                                text(format!(
+                                    "Aircraft: {} ({})",
+                                    entry.aircraft_type, entry.tail_number
+                                )),
+                                text(format!("Duration: {:.1} hours", entry.total_duration)),
+                                text(format!("Landings: {}", entry.landings)),
+                            ]
+                            .spacing(5)
+                        } else {
+                            column![text("None")]
+                        }
+                    } else if let Some(target_name) = self
+                        .selected_scenery
+                        .as_ref()
+                        .or(self.hovered_scenery.as_ref())
+                    {
+                        if let Some(pack) = self.packs.iter().find(|p| &p.name == target_name) {
+                            let tags_ui: Element<'_, Message> = if !pack.tags.is_empty() {
+                                let r = row(pack
+                                    .tags
+                                    .iter()
+                                    .map(|t| {
+                                        container(
+                                            row![
+                                                text(t.clone()).size(12).color(Color::WHITE),
+                                                button(text("×").size(12).color(Color::WHITE))
+                                                    .on_press(Message::RemoveTag(
+                                                        pack.name.clone(),
+                                                        t.clone()
+                                                    ))
+                                                    .style(style::button_ghost)
+                                                    .padding(0)
+                                            ]
+                                            .spacing(4)
+                                            .align_y(iced::Alignment::Center),
+                                        )
+                                        .padding([4, 8])
+                                        .style(|_| container::Style {
+                                            background: Some(iced::Background::Color(
+                                                Color::from_rgb(0.3, 0.3, 0.3),
+                                            )),
+                                            border: iced::Border {
+                                                radius: 10.0.into(),
                                                 ..Default::default()
-                                            })
-                                            .into()
+                                            },
+                                            ..Default::default()
                                         })
-                                        .collect::<Vec<Element<'_, Message>>>())
-                                    .spacing(5)
-                                    .wrap();
+                                        .into()
+                                    })
+                                    .collect::<Vec<Element<'_, Message>>>())
+                                .spacing(5)
+                                .wrap();
+                                Element::from(r)
+                            } else {
+                                text("No tags").size(10).into()
+                            };
+
+                            let add_ui: Element<'_, Message> =
+                                if self.selected_scenery.as_ref() == Some(&pack.name) {
+                                    let r = row![
+                                        text_input("New Tag...", &self.new_tag_input)
+                                            .on_input(Message::UpdateTagInput)
+                                            .on_submit(Message::AddTag)
+                                            .padding(6)
+                                            .size(12)
+                                            .width(Length::Fill),
+                                        button(text("+").size(14))
+                                            .on_press(Message::AddTag)
+                                            .style(style::button_primary)
+                                            .padding([6, 12])
+                                    ]
+                                    .spacing(5);
                                     Element::from(r)
                                 } else {
-                                    text("No tags").size(10).into()
+                                    text("Select to edit")
+                                        .size(10)
+                                        .color(style::palette::TEXT_SECONDARY)
+                                        .into()
                                 };
 
-                                let add_ui: Element<'_, Message> =
-                                    if self.selected_scenery.as_ref() == Some(&pack.name) {
-                                        let r = row![
-                                            text_input("New Tag...", &self.new_tag_input)
-                                                .on_input(Message::UpdateTagInput)
-                                                .on_submit(Message::AddTag)
-                                                .padding(6)
-                                                .size(12)
-                                                .width(Length::Fill),
-                                            button(text("+").size(14))
-                                                .on_press(Message::AddTag)
-                                                .style(style::button_primary)
-                                                .padding([6, 12])
-                                        ]
-                                        .spacing(5);
-                                        Element::from(r)
-                                    } else {
-                                        text("Select to edit")
-                                            .size(10)
-                                            .color(style::palette::TEXT_SECONDARY)
-                                            .into()
-                                    };
-
-                                column![
-                                    text(target_name).size(12).font(iced::Font::MONOSPACE),
-                                    text(format!(
-                                        "CATEGORY: {:?} | TILES: {} | AIRPORTS: {}",
-                                        pack.category,
-                                        pack.tiles.len(),
-                                        pack.airports.len()
-                                    ))
-                                    .size(10),
-                                    iced::widget::horizontal_rule(1.0),
-                                    text("TAGS").size(10).color(style::palette::TEXT_SECONDARY),
-                                    tags_ui,
-                                    add_ui
-                                ]
-                                .spacing(10)
-                            } else {
-                                column![text("Pack not found").size(12)].spacing(10)
-                            }
+                            column![
+                                text(target_name).size(12).font(iced::Font::MONOSPACE),
+                                text(format!(
+                                    "CATEGORY: {:?} | TILES: {} | AIRPORTS: {}",
+                                    pack.category,
+                                    pack.tiles.len(),
+                                    pack.airports.len()
+                                ))
+                                .size(10),
+                                iced::widget::horizontal_rule(1.0),
+                                text("TAGS").size(10).color(style::palette::TEXT_SECONDARY),
+                                tags_ui,
+                                add_ui
+                            ]
+                            .spacing(10)
                         } else {
-                            column![text("None").size(12)].spacing(10)
+                            column![text("Pack not found").size(12)].spacing(10)
                         }
-                    )
+                    } else {
+                        column![text("None").size(12)].spacing(10)
+                    })
                     .style(|_| container::Style::default())
                 ]
                 .spacing(10)
@@ -2940,6 +3104,7 @@ impl App {
             Tab::Scenery => (&self.icon_scenery, Color::from_rgb(0.4, 0.8, 0.4)), // Green
             Tab::Plugins => (&self.icon_plugins, Color::from_rgb(0.4, 0.6, 1.0)), // Blue
             Tab::CSLs => (&self.icon_csls, Color::from_rgb(1.0, 0.6, 0.2)),       // Orange
+            Tab::Utilities => (&self.icon_utilities, Color::from_rgb(0.8, 0.5, 1.0)), // Purple
             Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
             Tab::Issues => (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)), // Always red for Issues
             Tab::Settings => (&self.icon_settings, Color::from_rgb(0.7, 0.7, 0.7)), // Light gray for settings
@@ -4808,7 +4973,9 @@ fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), St
             Tab::Scenery => root.join("Custom Scenery"),
             Tab::Aircraft => root.join("Aircraft"),
             Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::CSLs | Tab::Heuristics | Tab::Issues | Tab::Settings => unreachable!(),
+            Tab::CSLs | Tab::Heuristics | Tab::Issues | Tab::Settings | Tab::Utilities => {
+                unreachable!()
+            }
         };
 
         if !full_path.starts_with(&allowed_dir) {
@@ -4842,6 +5009,43 @@ fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), St
     }
 
     Ok(())
+}
+
+async fn load_logbook_data(
+    root: Option<PathBuf>,
+) -> Result<Vec<x_adox_core::logbook::LogbookEntry>, String> {
+    let root = root.ok_or("X-Plane root not found")?;
+    let path = root
+        .join("Output")
+        .join("logbooks")
+        .join("X-Plane Pilot.txt");
+
+    if !path.exists() {
+        return Err("X-Plane Pilot.txt not found in Output/logbooks".to_string());
+    }
+
+    x_adox_core::logbook::LogbookParser::parse_file(path).map_err(|e| e.to_string())
+}
+
+async fn load_airports_data(
+    root: Option<PathBuf>,
+) -> Result<Arc<std::collections::HashMap<String, x_adox_core::apt_dat::Airport>>, String> {
+    let root = root.ok_or("X-Plane root not found")?;
+    let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+    let path = xpm.get_default_apt_dat_path();
+
+    if !path.exists() {
+        return Err("apt.dat not found in default scenery".to_string());
+    }
+
+    let airports =
+        x_adox_core::apt_dat::AptDatParser::parse_file(path).map_err(|e| e.to_string())?;
+
+    let mut map = std::collections::HashMap::new();
+    for apt in airports {
+        map.insert(apt.id.clone(), apt);
+    }
+    Ok(Arc::new(map))
 }
 
 async fn pick_zip(label: &str) -> Option<PathBuf> {

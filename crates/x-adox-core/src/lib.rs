@@ -2,6 +2,7 @@ pub mod apt_dat;
 pub mod cache;
 pub mod discovery;
 pub mod groups;
+pub mod logbook;
 pub mod management;
 pub mod profiles;
 pub mod scenery;
@@ -74,6 +75,15 @@ impl XPlaneManager {
 
     pub fn get_log_path(&self) -> PathBuf {
         self.root.join("Log.txt")
+    }
+
+    pub fn get_default_apt_dat_path(&self) -> PathBuf {
+        self.root
+            .join("Resources")
+            .join("default scenery")
+            .join("default airports")
+            .join("Earth nav data")
+            .join("apt.dat")
     }
 
     pub fn check_log(&self) -> Result<Vec<LogIssue>, XamError> {
