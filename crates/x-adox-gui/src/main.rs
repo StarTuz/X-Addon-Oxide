@@ -498,7 +498,7 @@ impl App {
             logbook: Vec::new(),
             selected_flight: None,
             airports: Arc::new(std::collections::HashMap::new()),
-            logbook_expanded: true,
+            logbook_expanded: false,
 
             // Launch X-Plane
             launch_args: String::new(),
