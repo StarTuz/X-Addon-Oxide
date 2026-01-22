@@ -52,51 +52,60 @@ impl AptDatParser {
         Self::parse(reader)
     }
 
-    pub fn parse<R: BufRead>(reader: R) -> Result<Vec<Airport>, AptDatError> {
-        let mut airports = Vec::new();
-
+    pub fn parse<R: BufRead>(mut reader: R) -> Result<Vec<Airport>, AptDatError> {
+        let mut airports = Vec::with_capacity(1000); // Pre-allocate some space
+        let mut line_buf = String::with_capacity(256);
         let mut current_airport: Option<AirportBuilder> = None;
 
-        for line in reader.lines() {
-            let line = line?;
-            let line = line.trim();
+        loop {
+            line_buf.clear();
+            let bytes_read = reader.read_line(&mut line_buf)?;
+            if bytes_read == 0 {
+                break;
+            }
 
+            let line = line_buf.trim();
             if line.is_empty() {
                 continue;
             }
 
-            let code_str = line.split_whitespace().next();
+            let mut parts = line.split_whitespace();
+            let code_str = match parts.next() {
+                Some(s) => s,
+                None => continue,
+            };
 
             match code_str {
-                Some("1") | Some("16") | Some("17") => {
+                "1" | "16" | "17" => {
                     // Start of new airport. Push previous if exists.
                     if let Some(builder) = current_airport.take() {
                         airports.push(builder.build());
                     }
 
                     let apt_type = match code_str {
-                        Some("1") => AirportType::Land,
-                        Some("16") => AirportType::Seaplane,
-                        Some("17") => AirportType::Heliport,
+                        "1" => AirportType::Land,
+                        "16" => AirportType::Seaplane,
+                        "17" => AirportType::Heliport,
                         _ => AirportType::Land,
                     };
 
                     current_airport = parse_airport_header(line, apt_type);
                 }
-                Some("100") => {
+                "100" => {
                     // Runway
                     if let Some(ref mut builder) = current_airport {
                         parse_runway(line, builder);
                     }
                 }
-                Some("102") => {
+                "102" => {
                     // Helipad
                     if let Some(ref mut builder) = current_airport {
                         parse_helipad(line, builder);
                     }
                 }
-                Some("99") => {
-                    // Explicit end of file usually, but we handle via stream end too.
+                "99" => {
+                    // Explicit end of file
+                    break;
                 }
                 _ => {}
             }
@@ -152,71 +161,50 @@ fn parse_airport_header(line: &str, apt_type: AirportType) -> Option<AirportBuil
         id,
         name,
         airport_type: apt_type,
-        lats: Vec::new(),
-        lons: Vec::new(),
+        lats: Vec::with_capacity(4),
+        lons: Vec::with_capacity(4),
     })
 }
 
 fn parse_runway(line: &str, builder: &mut AirportBuilder) {
-    // 100 width surf shoulder smooth center_lights edge_lights dist_remaining
-    // lat1 lon1 lat2 lon2 ...
-    // Indices in parts (0-based):
-    // 0=100, 1..7 (properties)
-    // 8=lat1, 9=lon1, 10=lat2, 11=lon2 (approx, depending on format version 1000)
-    // Specifically 1000 spec:
-    // 0:100, 1:width, 2:surf, 3:shoulder, 4:smooth, 5:center, 6:edge, 7:dist
-    // 8:REIL1, 9:VASI1, 10:REIL2, 11:VASI2
-    // 12:H1, 13:H2, 14:HE1, 15:HE2 (Threshold displacements?)
-    // WAIT. 850 spec vs 1000 spec.
-    // Row 100 in 1000 spec:
-    // ...
-    // 9: lat1, 10: lon1, 18: lat2, 19: lon2 ? No.
-
-    // Let's assume standard modern apt.dat (1000/1050/1100).
-    // The columns are:
-    // 0: 100
-    // ...
-    // 8: Runway 1 Number (e.g. 35L)
-    // 9: Latitude 1
-    // 10: Longitude 1
-    // ...
-    // 17: Runway 2 Number (e.g. 17R)
-    // 18: Latitude 2
-    // 19: Longitude 2
-
-    let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.len() < 20 {
-        return;
-    } // Safety check
-
-    // End 1
-    if let (Ok(lat), Ok(lon)) = (parts[9].parse::<f64>(), parts[10].parse::<f64>()) {
-        builder.lats.push(lat);
-        builder.lons.push(lon);
+    let mut parts = line.split_whitespace();
+    // Skip first 9 parts to get to lat/lon 1
+    // 0:100, 1:width, 2:surf, 3:shoulder, 4:smooth, 5:center, 6:edge, 7:dist, 8:rwy1
+    for _ in 0..9 {
+        parts.next();
     }
 
-    // End 2
-    if let (Ok(lat), Ok(lon)) = (parts[18].parse::<f64>(), parts[19].parse::<f64>()) {
-        builder.lats.push(lat);
-        builder.lons.push(lon);
+    if let (Some(lat_s), Some(lon_s)) = (parts.next(), parts.next()) {
+        if let (Ok(lat), Ok(lon)) = (lat_s.parse::<f64>(), lon_s.parse::<f64>()) {
+            builder.lats.push(lat);
+            builder.lons.push(lon);
+        }
+    }
+
+    // Skip to next lat/lon
+    // 11: rwy2_thld, 12: rwy2_vasi, 13: rwy2_reil, 14: rwy2_mark, 15: rwy2_stop, 16: rwy2_blast, 17: rwy2_nm
+    for _ in 0..7 {
+        parts.next();
+    }
+
+    if let (Some(lat_s), Some(lon_s)) = (parts.next(), parts.next()) {
+        if let (Ok(lat), Ok(lon)) = (lat_s.parse::<f64>(), lon_s.parse::<f64>()) {
+            builder.lats.push(lat);
+            builder.lons.push(lon);
+        }
     }
 }
 
 fn parse_helipad(line: &str, builder: &mut AirportBuilder) {
-    // 102 implementation
-    // 102 H1 47.44166200 -122.31219600 0.00 30.48 30.48 1 0 0 0.00 0 0 2
-    // 0: 102
-    // 1: Designator
-    // 2: Lat
-    // 3: Lon
-    let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.len() < 4 {
-        return;
-    }
+    let mut parts = line.split_whitespace();
+    parts.next(); // 102
+    parts.next(); // Designator
 
-    if let (Ok(lat), Ok(lon)) = (parts[2].parse::<f64>(), parts[3].parse::<f64>()) {
-        builder.lats.push(lat);
-        builder.lons.push(lon);
+    if let (Some(lat_s), Some(lon_s)) = (parts.next(), parts.next()) {
+        if let (Ok(lat), Ok(lon)) = (lat_s.parse::<f64>(), lon_s.parse::<f64>()) {
+            builder.lats.push(lat);
+            builder.lons.push(lon);
+        }
     }
 }
 

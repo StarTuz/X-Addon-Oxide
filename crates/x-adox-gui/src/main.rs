@@ -338,6 +338,11 @@ struct App {
     simulated_packs: Option<Arc<Vec<SceneryPack>>>,
     region_focus: Option<String>,
 
+    // Smart View Cache
+    smart_groups: std::collections::BTreeMap<String, Vec<AircraftNode>>,
+    smart_model_groups:
+        std::collections::BTreeMap<String, std::collections::BTreeMap<String, Vec<AircraftNode>>>,
+
     // UI State for polish
     ignored_issues: std::collections::HashSet<(String, String)>, // (type, pack_name)
     expanded_issue_groups: std::collections::HashSet<String>,    // type
@@ -531,6 +536,8 @@ impl App {
             show_companion_manage: false,
             new_companion_name: String::new(),
             new_companion_path: None,
+            smart_groups: std::collections::BTreeMap::new(),
+            smart_model_groups: std::collections::BTreeMap::new(),
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -708,6 +715,7 @@ impl App {
                 match result {
                     Ok(tree) => {
                         self.aircraft_tree = Some(tree);
+                        self.update_smart_view_cache();
                         if !self.loading_state.is_loading {
                             if self.active_tab == Tab::Aircraft {
                                 self.status = "Aircraft tree loaded".to_string();
@@ -3700,7 +3708,7 @@ impl App {
 
         let packs = self.packs.clone();
         let selected = self.selected_scenery.clone();
-        let hovered = self.hovered_scenery.clone();
+        let _hovered = self.hovered_scenery.clone();
         let overrides = self.heuristics_model.config.overrides.clone();
 
         // Icons needed for cards
@@ -3712,8 +3720,8 @@ impl App {
         );
 
         let list_container = scrollable(lazy(
-            (packs, selected, hovered, overrides),
-            move |(packs, selected, _hovered, overrides)| {
+            (packs, selected, overrides),
+            move |(packs, selected, overrides)| {
                 let cards: Vec<Element<'static, Message, Theme, Renderer>> = packs
                     .iter()
                     .map(|pack| {
@@ -4445,21 +4453,11 @@ impl App {
         .style(style::button_secondary)
         .padding([4, 8]);
 
-        let items = if self.use_smart_view {
-            Self::collect_smart_nodes(
-                &self.aircraft_tree,
-                &self.selected_aircraft,
-                &self.smart_view_expanded,
-            )
-        } else {
-            match &self.aircraft_tree {
-                Some(tree) => Self::collect_tree_nodes(tree, 0, &self.selected_aircraft),
-                None => vec![Element::from(text("Loading aircraft...").size(14))],
-            }
-        };
-
         use iced::widget::lazy;
-        let tree_content = if items.is_empty() && self.aircraft_tree.is_some() {
+
+        let tree_content = if self.aircraft_tree.is_none() {
+            Element::from(text("Loading aircraft...").size(14))
+        } else if self.use_smart_view && self.smart_groups.is_empty() {
             Element::from(text("No aircraft found.").size(14))
         } else {
             let use_smart = self.use_smart_view;
@@ -4473,9 +4471,9 @@ impl App {
                     selected.clone(),
                     self.smart_view_expanded.clone(),
                 ),
-                move |(use_smart, tree, selected, expanded)| {
-                    let items: Vec<Element<'_, Message, Theme, Renderer>> = if *use_smart {
-                        Self::collect_smart_nodes(&tree, &selected, &expanded)
+                move |(_use_smart, tree, selected, expanded)| {
+                    let items: Vec<Element<'_, Message, Theme, Renderer>> = if self.use_smart_view {
+                        self.collect_smart_nodes(&selected, &expanded)
                     } else {
                         match tree {
                             Some(t) => Self::collect_tree_nodes(t, 0, selected),
@@ -4725,37 +4723,13 @@ impl App {
     }
 
     fn collect_smart_nodes(
-        tree: &Option<Arc<AircraftNode>>,
+        &self,
         selected_aircraft: &Option<std::path::PathBuf>,
         expanded_smart: &std::collections::BTreeSet<String>,
     ) -> Vec<Element<'static, Message>> {
-        use std::collections::BTreeMap;
-        let Some(tree) = tree else {
-            return Vec::new();
-        };
-        let all_aircraft = Self::flatten_aircraft_tree(tree);
-
-        let mut groups: BTreeMap<String, Vec<AircraftNode>> = BTreeMap::new();
-        for ac in all_aircraft {
-            let mut tags = ac.tags.clone();
-
-            // Redundancy Reduction: If manufacturer present, remove "Airliner"
-            let has_manufacturer = tags.iter().any(|t| MANUFACTURERS.contains(&t.as_str()));
-            if has_manufacturer {
-                tags.retain(|t| t != "Airliner");
-            }
-
-            if tags.is_empty() {
-                groups.entry("Other".to_string()).or_default().push(ac);
-            } else {
-                for tag in &tags {
-                    groups.entry(tag.clone()).or_default().push(ac.clone());
-                }
-            }
-        }
-
         let mut result = Vec::new();
-        for (tag, aircraft) in groups {
+
+        for (tag, aircraft) in &self.smart_groups {
             let tag_id = format!("tag:{}", tag);
             let is_expanded = expanded_smart.contains(&tag_id);
             let icon = if is_expanded { "v" } else { ">" };
@@ -4784,71 +4758,60 @@ impl App {
             let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
 
             if is_manufacturer {
-                // Group by model
-                let mut model_groups: BTreeMap<String, Vec<AircraftNode>> = BTreeMap::new();
-                for ac in aircraft {
-                    let raw_model = ac
-                        .acf_file
-                        .as_ref()
-                        .map(|f| f.strip_suffix(".acf").unwrap_or(f).to_string())
-                        .unwrap_or_else(|| ac.name.clone());
-                    let model = Self::normalize_model_name(&raw_model);
-                    model_groups.entry(model).or_default().push(ac);
-                }
+                if let Some(model_groups) = self.smart_model_groups.get(tag) {
+                    for (model, acs) in model_groups {
+                        let model_id = format!("model:{}:{}", tag, model);
+                        let model_expanded = expanded_smart.contains(&model_id);
 
-                for (model, acs) in model_groups {
-                    let model_id = format!("model:{}:{}", tag, model);
-                    let model_expanded = expanded_smart.contains(&model_id);
+                        let folder = AircraftNode {
+                            name: model.clone(),
+                            path: PathBuf::new(), // dummy path
+                            is_folder: true,
+                            is_expanded: model_expanded,
+                            children: Vec::new(),
+                            acf_file: None,
+                            is_enabled: acs.iter().any(|ac| ac.is_enabled),
+                            tags: Vec::new(),
+                        };
 
-                    // Multiple entries or single entry: ALWAYS folder for Model
-                    let folder = AircraftNode {
-                        name: model.clone(),
-                        path: PathBuf::new(), // dummy path
-                        is_folder: true,
-                        is_expanded: model_expanded,
-                        children: Vec::new(),
-                        acf_file: None,
-                        is_enabled: acs.iter().any(|ac| ac.is_enabled),
-                        tags: Vec::new(),
-                    };
+                        // Use a custom row for virtual folder to support ToggleSmartFolder
+                        let indent = 20.0;
+                        let icon = if model_expanded { "v" } else { ">" };
+                        let label_color = if folder.is_enabled {
+                            style::palette::TEXT_PRIMARY
+                        } else {
+                            style::palette::TEXT_SECONDARY
+                        };
 
-                    // Use a custom row for virtual folder to support ToggleSmartFolder
-                    let indent = 20.0;
-                    let icon = if model_expanded { "v" } else { ">" };
-                    let label_color = if folder.is_enabled {
-                        style::palette::TEXT_PRIMARY
-                    } else {
-                        style::palette::TEXT_SECONDARY
-                    };
-
-                    result.push(
-                        row![
-                            container(text("")).width(Length::Fixed(indent)),
+                        result.push(
                             row![
-                                button(text(icon).size(14))
-                                    .on_press(Message::ToggleSmartFolder(model_id))
-                                    .padding([4, 8])
-                                    .style(style::button_ghost),
-                                button(text(folder.name).size(14).color(label_color))
-                                    .style(style::button_ghost)
-                                    .padding([4, 8])
+                                container(text("")).width(Length::Fixed(indent)),
+                                row![
+                                    button(text(icon).size(14))
+                                        .on_press(Message::ToggleSmartFolder(model_id))
+                                        .padding([4, 8])
+                                        .style(style::button_ghost),
+                                    button(text(folder.name).size(14).color(label_color))
+                                        .style(style::button_ghost)
+                                        .padding([4, 8])
+                                ]
+                                .spacing(5)
                             ]
-                            .spacing(5)
-                        ]
-                        .into(),
-                    );
+                            .into(),
+                        );
 
-                    if model_expanded {
-                        for mut ac in acs {
-                            // In the folder, show the identifier (usually airline)
-                            ac.acf_file = None; // Hide (acf) because it's in the folder
-                            result.push(Self::render_aircraft_row(&ac, 2, selected_aircraft));
+                        if model_expanded {
+                            for ac in acs {
+                                let mut ac = ac.clone();
+                                ac.acf_file = None;
+                                result.push(Self::render_aircraft_row(&ac, 2, selected_aircraft));
+                            }
                         }
                     }
                 }
             } else {
                 for ac in aircraft {
-                    result.push(Self::render_aircraft_row(&ac, 1, selected_aircraft));
+                    result.push(Self::render_aircraft_row(ac, 1, selected_aircraft));
                 }
             }
         }
@@ -4865,6 +4828,52 @@ impl App {
             }
         }
         None
+    }
+
+    fn update_smart_view_cache(&mut self) {
+        use std::collections::BTreeMap;
+        let Some(tree) = &self.aircraft_tree else {
+            self.smart_groups.clear();
+            self.smart_model_groups.clear();
+            return;
+        };
+
+        let all_aircraft = Self::flatten_aircraft_tree(tree);
+        let mut groups: BTreeMap<String, Vec<AircraftNode>> = BTreeMap::new();
+        for ac in all_aircraft {
+            let mut tags = ac.tags.clone();
+            let has_manufacturer = tags.iter().any(|t| MANUFACTURERS.contains(&t.as_str()));
+            if has_manufacturer {
+                tags.retain(|t| t != "Airliner");
+            }
+            if tags.is_empty() {
+                groups.entry("Other".to_string()).or_default().push(ac);
+            } else {
+                for tag in &tags {
+                    groups.entry(tag.clone()).or_default().push(ac.clone());
+                }
+            }
+        }
+
+        let mut smart_model_groups = BTreeMap::new();
+        for (tag, aircraft) in &groups {
+            if MANUFACTURERS.contains(&tag.as_str()) {
+                let mut model_groups: BTreeMap<String, Vec<AircraftNode>> = BTreeMap::new();
+                for ac in aircraft {
+                    let raw_model = ac
+                        .acf_file
+                        .as_ref()
+                        .map(|f| f.strip_suffix(".acf").unwrap_or(f).to_string())
+                        .unwrap_or_else(|| ac.name.clone());
+                    let model = Self::normalize_model_name(&raw_model);
+                    model_groups.entry(model).or_default().push(ac.clone());
+                }
+                smart_model_groups.insert(tag.clone(), model_groups);
+            }
+        }
+
+        self.smart_groups = groups;
+        self.smart_model_groups = smart_model_groups;
     }
 
     fn normalize_model_name(raw_name: &str) -> String {
