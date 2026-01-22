@@ -2612,7 +2612,7 @@ impl App {
                             .size(12)
                             .width(Length::Fixed(200.0))
                             .style(style::text_input_primary),
-                        button(text("🚀 Launch").size(12).color(Color::WHITE))
+                        button(text("Launch").size(12).color(Color::WHITE))
                             .on_press(Message::LaunchXPlane)
                             .style(style::button_success)
                             .padding([4, 12]),
