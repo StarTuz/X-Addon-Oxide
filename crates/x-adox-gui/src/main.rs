@@ -2417,12 +2417,18 @@ impl App {
     fn view_utilities(&self) -> Element<'_, Message> {
         let logbook_header = button(
             row![
-                text(if self.logbook_expanded {
-                    "Logbook ⌵"
-                } else {
-                    "Logbook >"
-                })
-                .size(16),
+                text("Logbook").size(16),
+                svg(self.icon_arrow_down.clone())
+                    .width(14)
+                    .height(14)
+                    .style(move |_, _| svg::Style {
+                        color: Some(Color::WHITE),
+                    })
+                    .rotation(iced::Radians(if self.logbook_expanded {
+                        0.0
+                    } else {
+                        -std::f32::consts::PI / 2.0
+                    })),
                 iced::widget::horizontal_space(),
                 text(format!("{} entries", self.logbook.len()))
                     .size(12)
