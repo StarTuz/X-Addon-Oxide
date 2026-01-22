@@ -2217,18 +2217,41 @@ impl App {
             ("Pilot Logbook", self.loading_state.logbook),
         ];
 
-        let mut progress = Column::new().spacing(10);
+        let mut progress = Column::new().spacing(12);
         for (label, done) in items {
+            let status_indicator =
+                container("")
+                    .width(10)
+                    .height(10)
+                    .style(move |_| container::Style {
+                        background: Some(Background::Color(if done {
+                            style::palette::ACCENT_GREEN
+                        } else {
+                            Color::from_rgba(0.5, 0.5, 0.5, 0.2)
+                        })),
+                        border: Border {
+                            color: if done {
+                                style::palette::ACCENT_GREEN
+                            } else {
+                                style::palette::BORDER
+                            },
+                            width: 1.0,
+                            radius: 5.0.into(),
+                        },
+                        ..Default::default()
+                    });
+
             progress = progress.push(
                 row![
-                    text(if done { "✅ " } else { "⏳ " }),
+                    status_indicator,
                     text(label.to_string()).color(if done {
                         style::palette::TEXT_PRIMARY
                     } else {
                         style::palette::TEXT_SECONDARY
                     }),
                 ]
-                .spacing(10),
+                .spacing(15)
+                .align_y(iced::Alignment::Center),
             );
         }
 
