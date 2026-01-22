@@ -3409,10 +3409,10 @@ impl App {
                 iced::widget::Space::new(Length::Fixed(4.0), Length::Fill), // Balancing spacer
                 btn,
                 column![
-                    iced::widget::Space::new(Length::Fill, Length::Fixed(25.0)), // Explicit top offset
+                    iced::widget::Space::new(Length::Fill, Length::Fixed(23.0)),
                     container(iced::widget::Space::new(
                         Length::Fixed(4.0),
-                        Length::Fixed(48.0)
+                        Length::Fixed(32.0)
                     ))
                     .style(move |_| container::Style {
                         background: Some(iced::Background::Color(active_color)),
