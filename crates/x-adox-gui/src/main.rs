@@ -2460,7 +2460,7 @@ impl App {
                 let row_content = row![
                     text(date_str).width(Length::Fixed(100.0)).size(12),
                     text(&entry.dep_airport).width(Length::Fixed(60.0)).size(12),
-                    text("→").width(Length::Fixed(20.0)).size(12),
+                    text("->").width(Length::Fixed(20.0)).size(12),
                     text(&entry.arr_airport).width(Length::Fixed(60.0)).size(12),
                     text(&entry.aircraft_type)
                         .width(Length::Fixed(80.0))
@@ -2966,7 +2966,7 @@ impl App {
                         if let Some(entry) = self.logbook.get(idx) {
                             column![
                                 text(format!(
-                                    "Flight: {} → {}",
+                                    "Flight: {} -> {}",
                                     entry.dep_airport, entry.arr_airport
                                 ))
                                 .size(16),
