@@ -1631,7 +1631,7 @@ impl App {
                 self.xplane_root = Some(path);
                 self.save_app_config();
                 self.profile_manager = self.xplane_root.as_ref().map(|r| ProfileManager::new(r));
-                self.status = "Switching X-Plane installation...".to_string();
+                self.status = "Loading X-Plane Profile...".to_string();
 
                 // Reset loading state
                 self.loading_state = LoadingState {
@@ -2198,7 +2198,7 @@ impl App {
     }
 
     fn view_loading_overlay(&self) -> Element<'_, Message> {
-        let title = text("Switching X-Plane Installation")
+        let title = text("Loading X-Plane Profile")
             .size(24)
             .color(style::palette::TEXT_PRIMARY);
 
