@@ -155,6 +155,56 @@ impl XPlaneManager {
 
         None
     }
+
+    /// Returns all valid X-Plane installations found in the system config files.
+    /// Parses `x-plane_install_12.txt` and `x-plane_install_11.txt` completely.
+    pub fn find_all_xplane_roots() -> Vec<PathBuf> {
+        let filenames = ["x-plane_install_12.txt", "x-plane_install_11.txt"];
+        let mut candidate_dirs = Vec::new();
+        let mut results = Vec::new();
+
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(home) = env::var("HOME") {
+                candidate_dirs.push(PathBuf::from(home).join(".x-plane"));
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(home) = env::var("HOME") {
+                candidate_dirs.push(PathBuf::from(&home).join("Library/Preferences"));
+                candidate_dirs.push(PathBuf::from(&home).join(".x-plane"));
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
+                candidate_dirs.push(PathBuf::from(local_appdata));
+            }
+        }
+
+        for dir in candidate_dirs {
+            for filename in &filenames {
+                let config_path = dir.join(filename);
+                if config_path.exists() {
+                    if let Ok(content) = fs::read_to_string(&config_path) {
+                        for line in content.lines() {
+                            let path = PathBuf::from(line.trim());
+                            if path.exists() && path.join("Resources").exists() {
+                                if !results.contains(&path) {
+                                    results.push(path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        results
+    }
 }
 
 #[cfg(test)]

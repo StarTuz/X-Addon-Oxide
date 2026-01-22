@@ -113,6 +113,7 @@ enum Message {
     Refresh,
     SelectFolder,
     FolderSelected(Option<PathBuf>),
+    SelectXPlaneRoot(PathBuf),
 
     // Aircraft tree
     ToggleAircraftFolder(PathBuf),
@@ -235,6 +236,7 @@ struct App {
     csls: Arc<Vec<DiscoveredAddon>>,
     status: String,
     xplane_root: Option<PathBuf>,
+    available_xplane_roots: Vec<PathBuf>,
     selected_scenery: Option<String>,
     selected_aircraft: Option<PathBuf>,
     selected_aircraft_name: Option<String>,
@@ -320,7 +322,23 @@ struct App {
 
 impl App {
     fn new() -> (Self, Task<Message>) {
-        let root = XPlaneManager::try_find_root();
+        // Discover all X-Plane installations
+        let available_roots = XPlaneManager::find_all_xplane_roots();
+
+        // Try to load persisted selection, fallback to first available or try_find_root
+        let saved_root = Self::load_app_config();
+        let root = if let Some(ref saved) = saved_root {
+            if available_roots.contains(saved) || saved.exists() {
+                Some(saved.clone())
+            } else {
+                available_roots.first().cloned()
+            }
+        } else {
+            available_roots
+                .first()
+                .cloned()
+                .or_else(XPlaneManager::try_find_root)
+        };
 
         let mut app = Self {
             active_tab: Tab::Scenery,
@@ -332,6 +350,7 @@ impl App {
             csls: Arc::new(Vec::new()),
             status: "Loading...".to_string(),
             xplane_root: root.clone(),
+            available_xplane_roots: available_roots,
             selected_scenery: None,
             selected_aircraft: None,
             selected_aircraft_name: None,
@@ -1286,7 +1305,14 @@ impl App {
                     // Validate it's an X-Plane folder
                     match XPlaneManager::new(&path) {
                         Ok(_) => {
+                            // Add to available roots if not already present
+                            if !self.available_xplane_roots.contains(&path) {
+                                self.available_xplane_roots.push(path.clone());
+                            }
                             self.xplane_root = Some(path);
+                            self.save_app_config();
+                            self.profile_manager =
+                                self.xplane_root.as_ref().map(|r| ProfileManager::new(r));
                             self.status = "X-Plane folder set! Reloading...".to_string();
                             let root1 = self.xplane_root.clone();
                             let root2 = self.xplane_root.clone();
@@ -1330,6 +1356,44 @@ impl App {
                     self.status = "Folder selection cancelled".to_string();
                 }
                 Task::none()
+            }
+            Message::SelectXPlaneRoot(path) => {
+                if self.xplane_root.as_ref() == Some(&path) {
+                    return Task::none(); // Already selected
+                }
+
+                self.xplane_root = Some(path);
+                self.save_app_config();
+                self.profile_manager = self.xplane_root.as_ref().map(|r| ProfileManager::new(r));
+                self.status = "Switching X-Plane installation...".to_string();
+
+                let root1 = self.xplane_root.clone();
+                let root2 = self.xplane_root.clone();
+                let root3 = self.xplane_root.clone();
+                let root4 = self.xplane_root.clone();
+                let root5 = self.xplane_root.clone();
+                let root6 = self.xplane_root.clone();
+
+                let ex1 = self.scan_exclusions.clone();
+                let ex2 = self.scan_exclusions.clone();
+
+                Task::batch([
+                    Task::perform(async move { load_packs(root1) }, Message::SceneryLoaded),
+                    Task::perform(
+                        async move { load_aircraft(root2, ex1) },
+                        Message::AircraftLoaded,
+                    ),
+                    Task::perform(
+                        async move { load_aircraft_tree(root3, ex2) },
+                        Message::AircraftTreeLoaded,
+                    ),
+                    Task::perform(async move { load_plugins(root4) }, Message::PluginsLoaded),
+                    Task::perform(async move { load_csls(root5) }, Message::CSLsLoaded),
+                    Task::perform(
+                        async move { load_log_issues(root6) },
+                        Message::LogIssuesLoaded,
+                    ),
+                ])
             }
             Message::ToggleAircraftFolder(path) => {
                 if let Some(ref mut tree) = self.aircraft_tree {
@@ -2421,19 +2485,46 @@ impl App {
                 ]
                 .spacing(10)
                 .align_y(iced::Alignment::Center),
-                // Path Selector Row (Bottom)
-                row![
-                    text(path_text)
-                        .size(12)
-                        .color(style::palette::TEXT_SECONDARY),
-                    button(text("Set").size(12).color(Color::WHITE))
-                        .on_press(Message::SelectFolder)
-                        .style(style::button_secondary)
-                        .padding([4, 8]),
-                    iced::widget::horizontal_space(),
-                ]
-                .spacing(10)
-                .align_y(iced::Alignment::Center),
+                // Path Selector Row (Bottom) - Dropdown for multiple installations
+                {
+                    let path_selector: Element<'_, Message, Theme, Renderer> =
+                        if self.available_xplane_roots.is_empty() {
+                            // No installations found, show placeholder text
+                            text(path_text)
+                                .size(12)
+                                .color(style::palette::TEXT_SECONDARY)
+                                .into()
+                        } else {
+                            // Show dropdown with all available installations
+                            let options: Vec<String> = self
+                                .available_xplane_roots
+                                .iter()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .collect();
+                            let selected = self
+                                .xplane_root
+                                .as_ref()
+                                .map(|p| p.to_string_lossy().to_string());
+                            pick_list(options, selected, |s| {
+                                Message::SelectXPlaneRoot(PathBuf::from(s))
+                            })
+                            .text_size(12)
+                            .placeholder("Select X-Plane Installation")
+                            .style(style::pick_list_primary)
+                            .into()
+                        };
+
+                    row![
+                        path_selector,
+                        button(text("Browse...").size(12).color(Color::WHITE))
+                            .on_press(Message::SelectFolder)
+                            .style(style::button_secondary)
+                            .padding([4, 8]),
+                        iced::widget::horizontal_space(),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Alignment::Center)
+                },
                 if let Some(p) = self.install_progress {
                     let progress_col: Column<'_, Message, Theme, _> = column![
                         text(format!("Extracting... {:.0}%", p))
@@ -4204,6 +4295,45 @@ impl App {
                 let config = ScanConfig {
                     exclusions: &self.scan_exclusions,
                     inclusions: &self.scan_inclusions,
+                };
+                let writer = std::io::BufWriter::new(file);
+                let _ = serde_json::to_writer_pretty(writer, &config);
+            }
+        }
+    }
+
+    fn get_app_config_path() -> Option<PathBuf> {
+        let proj_dirs = directories::ProjectDirs::from("com", "startux", "x-adox")?;
+        let config_dir = proj_dirs.config_dir();
+        if !config_dir.exists() {
+            let _ = std::fs::create_dir_all(config_dir);
+        }
+        Some(config_dir.join("app_config.json"))
+    }
+
+    fn load_app_config() -> Option<PathBuf> {
+        let path = Self::get_app_config_path()?;
+        let file = std::fs::File::open(path).ok()?;
+        let reader = std::io::BufReader::new(file);
+
+        #[derive(serde::Deserialize)]
+        struct AppConfig {
+            selected_xplane_path: Option<PathBuf>,
+        }
+
+        let config: AppConfig = serde_json::from_reader(reader).ok()?;
+        config.selected_xplane_path
+    }
+
+    fn save_app_config(&self) {
+        if let Some(path) = Self::get_app_config_path() {
+            if let Ok(file) = std::fs::File::create(path) {
+                #[derive(serde::Serialize)]
+                struct AppConfig<'a> {
+                    selected_xplane_path: Option<&'a PathBuf>,
+                }
+                let config = AppConfig {
+                    selected_xplane_path: self.xplane_root.as_ref(),
                 };
                 let writer = std::io::BufWriter::new(file);
                 let _ = serde_json::to_writer_pretty(writer, &config);
