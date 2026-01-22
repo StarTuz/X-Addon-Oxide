@@ -400,46 +400,64 @@ where
                         + (bounds.height / 2.0)
                         + ((wy2 - camera_center_y) * zoom_scale) as f32;
 
-                    // Draw the flight line as a rotated quad
+                    // Draw the flight line using point interpolation
                     let dx = sx2 - sx1;
                     let dy = sy2 - sy1;
                     let distance = (dx * dx + dy * dy).sqrt();
-                    // Draw the flight line using point interpolation
-                    let steps = (distance / 2.0).ceil() as usize;
-                    renderer.with_layer(bounds, |renderer| {
-                        for i in 0..=steps {
-                            let t = i as f32 / steps as f32;
-                            let px = sx1 + dx * t;
-                            let py = sy1 + dy * t;
-                            renderer.fill_quad(
-                                renderer::Quad {
-                                    bounds: Rectangle {
-                                        x: px - 1.0,
-                                        y: py - 1.0,
-                                        width: 2.0,
-                                        height: 2.0,
-                                    },
-                                    ..Default::default()
+                    let steps = (distance / 4.0).ceil() as usize; // More efficient stepping
+                    for i in 0..=steps {
+                        let t = i as f32 / steps as f32;
+                        let px = sx1 + dx * t;
+                        let py = sy1 + dy * t;
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds: Rectangle {
+                                    x: px - 1.0,
+                                    y: py - 1.0,
+                                    width: 2.0,
+                                    height: 2.0,
                                 },
-                                Color::from_rgb(1.0, 0.0, 1.0), // Magenta
-                            );
-                        }
-                    });
+                                ..Default::default()
+                            },
+                            Color::from_rgb(1.0, 0.0, 1.0), // Magenta
+                        );
+                    }
 
-                    // Markers for DEP and ARR
-                    let dot_size = 6.0;
+                    // Special case: If distance is 0 (same airport), draw a larger indicator
+                    if distance < 1.0 {
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds: Rectangle {
+                                    x: sx1 - 4.0,
+                                    y: sy1 - 4.0,
+                                    width: 8.0,
+                                    height: 8.0,
+                                },
+                                border: Border {
+                                    color: Color::from_rgb(1.0, 0.0, 1.0),
+                                    width: 2.0,
+                                    radius: 4.0.into(),
+                                },
+                                ..Default::default()
+                            },
+                            Color::TRANSPARENT,
+                        );
+                    }
+
+                    // Markers for DEP and ARR (drawn after the line for visibility)
+                    let dot_size = 8.0;
                     renderer.fill_quad(
                         renderer::Quad {
                             bounds: Rectangle {
-                                x: sx1 - 3.0,
-                                y: sy1 - 3.0,
+                                x: sx1 - 4.0,
+                                y: sy1 - 4.0,
                                 width: dot_size,
                                 height: dot_size,
                             },
                             border: Border {
                                 color: Color::BLACK,
                                 width: 1.0,
-                                radius: 3.0.into(),
+                                radius: 4.0.into(),
                             },
                             ..Default::default()
                         },
@@ -448,15 +466,15 @@ where
                     renderer.fill_quad(
                         renderer::Quad {
                             bounds: Rectangle {
-                                x: sx2 - 3.0,
-                                y: sy2 - 3.0,
+                                x: sx2 - 4.0,
+                                y: sy2 - 4.0,
                                 width: dot_size,
                                 height: dot_size,
                             },
                             border: Border {
                                 color: Color::BLACK,
                                 width: 1.0,
-                                radius: 3.0.into(),
+                                radius: 4.0.into(),
                             },
                             ..Default::default()
                         },

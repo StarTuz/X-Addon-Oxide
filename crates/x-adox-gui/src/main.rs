@@ -5045,7 +5045,7 @@ async fn load_airports_data(
     }
 
     let airports =
-        x_adox_core::apt_dat::AptDatParser::parse_file(path).map_err(|e| e.to_string())?;
+        x_adox_core::apt_dat::AptDatParser::parse_file(&path).map_err(|e| e.to_string())?;
 
     let mut map = std::collections::HashMap::new();
     for apt in airports {

@@ -79,9 +79,8 @@ impl XPlaneManager {
 
     pub fn get_default_apt_dat_path(&self) -> PathBuf {
         self.root
-            .join("Resources")
-            .join("default scenery")
-            .join("default airports")
+            .join("Global Scenery")
+            .join("Global Airports")
             .join("Earth nav data")
             .join("apt.dat")
     }
