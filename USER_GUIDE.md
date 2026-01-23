@@ -133,6 +133,39 @@ Edit Sort - You have full control over the Heuristics with JSON editing if you'r
 
 <img width="993" height="786" alt="image" src="https://github.com/user-attachments/assets/799a6d3e-b2f0-41e3-983b-adceaca68624" />
 
+
+### Plugins
+
+Overall picture
+
+<img width="1045" height="781" alt="image" src="https://github.com/user-attachments/assets/ff43f609-fdff-46e8-8d18-9828db99bd48" />
+
+Install - Install plugins from Zip.
+
+Delete - Remove any plugins
+
+Refresh - Refresh if you installed new ones and they aren't showing
+
+Profile:
+
+<img width="634" height="101" alt="image" src="https://github.com/user-attachments/assets/a1d3d922-186e-47f1-be8e-fff29f0913ff" />
+
+Multiple profile support if you want to load/unload certain plugins
+
+Mentioning disabling, unchecking any plugin will disable it (X-Plane-12/Resources/Plugins (disabled).
+
+<img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/348aaa85-336d-4e0d-89c2-54872c202051" />
+
+### CSLs (untested)
+
+<img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/93b7f7d9-7f8f-4b85-b33f-c8b32bc99c78" />
+
+
+### Issues
+
+If X-Plane complains about missing scenery objects a scane will provide you with the list, so you can track/install them outside of the Sim
+
+
 ### V2.2.0 -> Added a Utlities section and some UI enhancements.
 
 Loading screen when first starting or switching installed X-Plane's.
@@ -169,35 +202,7 @@ Afer selecting and zoomed in.
 <img width="1091" height="873" alt="image" src="https://github.com/user-attachments/assets/c6b81c2e-224c-4ca7-9de3-1969fecffd37" />
 
 
-### Plugins
 
-Overall picture
-
-<img width="1045" height="781" alt="image" src="https://github.com/user-attachments/assets/ff43f609-fdff-46e8-8d18-9828db99bd48" />
-
-Install - Install plugins from Zip.
-
-Delete - Remove any plugins
-
-Refresh - Refresh if you installed new ones and they aren't showing
-
-Profile:
-
-<img width="634" height="101" alt="image" src="https://github.com/user-attachments/assets/a1d3d922-186e-47f1-be8e-fff29f0913ff" />
-
-Multiple profile support if you want to load/unload certain plugins
-
-Mentioning disabling, unchecking any plugin will disable it (X-Plane-12/Resources/Plugins (disabled).
-
-<img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/348aaa85-336d-4e0d-89c2-54872c202051" />
-
-### CSLs (untested)
-
-<img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/93b7f7d9-7f8f-4b85-b33f-c8b32bc99c78" />
-
-### Issues
-
-If X-Plane complains about missing scenery objects a scane will provide you with the list, so you can track/install them outside of the Sim
 
 ## Uninstallation
 
