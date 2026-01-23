@@ -53,12 +53,12 @@ Artifacts are collected to `dist/{platform}/` and uploaded to GitHub Releases.
 
 The project is a Rust workspace with 4 crates:
 
-```
+```text
 crates/
 ├── x-adox-core/     # Core business logic: addon discovery, scenery management, plugin toggling
 ├── x-adox-gui/      # Iced-based GUI with tab navigation, world map, and dark theme
 ├── x-adox-cli/      # CLI interface: list, enable, disable, smart-sort commands
-└── x-adox-bitnet/   # Heuristics engine for scenery priority scoring and aircraft classification
+└── x-adox-bitnet/   # Heuristics engine for scenery priority scoring, aircraft classification, and parsing
 ```
 
 **Data Flow**: GUI/CLI → Core (discovery, management) → BitNet (scoring/classification)
@@ -82,11 +82,13 @@ Rules-based heuristics engine that:
 
 Iced framework with Elm-like message-driven architecture:
 
-- Tab navigation: Scenery, Aircraft, Plugins, CSLs, Heuristics, Issues, Settings (Aircraft context)
-- `map.rs` - Interactive world map showing scenery locations
+- Tab navigation: Scenery, Aircraft, Plugins (includes Companion Manager), Utilities (Logbook/Map), Heuristics, Issues, Settings
+- `map.rs` - Interactive world map showing scenery locations and live flight tracking
 - `style.rs` - Dark theme with neon glow effects
 - **Folder Exclusions**: Manage scanning scope via Settings (gear icon in Aircraft tab)
 - **Aircraft Icon Overrides**: Manually set high-res icons for specific aircraft
+- **Companion Manager**: Add and launch external simulator tools from the Plugins tab
+- **Pilot Utilities**: Live Logbook monitoring and interactive flight path mapping
 
 ## X-Plane Path Conventions
 

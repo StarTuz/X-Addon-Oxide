@@ -16,6 +16,8 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 | **Interactive World Map** | ✅ | ❌ |
 | **Shadow Mesh Detection** | ✅ | ❌ |
 | **Modern Dark GUI** | ✅ | ❌ |
+| **Companion App Launcher** | ✅ | ❌ |
+| **Automatic Logbook Sync** | ✅ | ❌ |
 
 ## Feature Highlights
 
@@ -25,11 +27,14 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 * **Direct Zip Install**: Install Aircraft, Scenery, and Plugins directly from their archives (`.zip`)—no manual unzipping required.
 * **Shadow Mesh Detection**: Automatically identifies redundant mesh scenery that destroys load times, helping you optimize performance.
 * **Profiles**: Create and switch between different hangar configurations (e.g., "IFR Online", "VFR Scenery Heavy") instantly.
+* **Companion App Launcher**: Manage and launch external tools like SimBrief, Navigraph, or VATSIM clients directly from the Plugins tab.
+* **Logbook & Utilities**: Automatically synced pilot logbook and live aircraft tracking in the Utilities tab.
 
 ### 🧠 AI & Visuals
 
-* **AI Smart View**: Powered by our **offline** local **BitNet** heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging. **0% Network Usage, 100% Privacy.**
+* **AI Smart View**: Powered by our **offline** local **BitNet** heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging. **0% Network Usage, 100% Privacy.** Now with cached grouping for instant switching.
 * **World Map**: Visualize your entire scenery library on an interactive global map. See exactly where your coverage is.
+* **Buttery Smooth UI**: Decoupled rendering and optimized parsers ensure the interface remains responsive even with thousands of scenery packs and aircraft.
 * **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, and smooth animations.
 
 ### 📦 Deployment

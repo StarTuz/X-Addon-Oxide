@@ -1,6 +1,6 @@
 # X-Addon-Oxide User Guide
 
-Welcome to X-Addon-Oxide! This guide will help you get the most out of your new addon manager. The Map with the dots represent your custom airports. 
+Welcome to X-Addon-Oxide! This guide will help you get the most out of your new addon manager. The Map with the dots represent your custom airports.
 
 ## Initial Setup
 
@@ -42,6 +42,7 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 - **Interactive Sorting**: Hover over a scenery card to reveal **Move Up** and **Move Down** arrows. Manual reorders instantly create a **Pin** (Red Icon) which the AI will honor forever.
 - **Smart Pinning**: Any manual adjustment "teaches" the AI your preferred order. Pinned items are highlighted with a red glow and icon.
 - **Clear All Pins**: If you want to undo your manual reorders, use the button at the top of the Scenery list to revert to the default AI logic.
+- **Stable Sort**: When using "Smart Sort", the application preserves your manual reorders (pins) for items with tied scores. This means your manual efforts are never overwritten by alphabetical tie-breaking.
 
 > [!IMPORTANT]
 > **Applying Changes**: Manual reorders and pins update the AI's internal logic immediately. However, to write the new order to your actual X-Plane `scenery_packs.ini` file, you must click the **Smart Sort** button and then **Apply Changes** in the Simulation Report.
@@ -51,9 +52,19 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 - **Enabling/Disabling**: Use the checkbox next to each plugin name.
 - **How it works**: Disabled plugins are moved to a `plugins (disabled)` folder, preventing X-Plane from loading them without deleting your files.
 
-### 👥 CSLs (Common Shape Library)
-
 - Works identically to Plugins. Toggle checkboxes to manage which CSLs are active for your online flying sessions (VATSIM/IVAO).
+
+### 🛠️ Utilities
+
+- **Pilot Logbook**: Automatically syncs your X-Plane `Log.txt` entries into a searchable list.
+- **Live Map**: Track your aircraft's latest position and historical flight paths on the global interactive map.
+- **Performance**: The Utilities engine is optimized to handle large log files without affecting simulator performance.
+
+### 🚀 Companion Apps (managed in Plugins tab)
+
+- **One-Click Launch**: Store and launch your favorite external flight sim tools (SimBrief, Navigraph, VATSIM clients) directly from within X-Addon-Oxide.
+- **Auto-Naming**: The manager will attempt to suggest a name based on the executable you select.
+- **Centralized**: No more hunting through your desktop for different flight planning or online tools.
 
 ## UI Features
 
@@ -83,19 +94,19 @@ Set X-Plane directory:
 
 <img width="756" height="52" alt="image" src="https://github.com/user-attachments/assets/e61e931a-1fba-4282-8184-40ed8313a353" />
 
+### Aircraft
 
-# Aircraft 
  Unchecking will move them to  X-Plane-12/Aircraft (Disabled) (or whereever you installed X-Plane)
-   
+
    Folder view
-   
+
 <img width="1030" height="791" alt="image" src="https://github.com/user-attachments/assets/e3c82d58-fa43-405b-bc2c-787278029363" />
 
-  Smart View 
+  Smart View
 
 <img width="1030" height="791" alt="image" src="https://github.com/user-attachments/assets/2269b2c5-71a2-4035-a9eb-dbb75341c7a5" />
 
-# Scenery
+### Scenery
 
 Overall screenshot of Scenery
 
@@ -119,7 +130,7 @@ Edit Sort - You have full control over the Heuristics with JSON editing if you'r
 
 <img width="993" height="786" alt="image" src="https://github.com/user-attachments/assets/799a6d3e-b2f0-41e3-983b-adceaca68624" />
 
-# Plugins
+### Plugins
 
 Overall picture
 
@@ -141,11 +152,11 @@ Mentioning disabling, unchecking any plugin will disable it (X-Plane-12/Resource
 
 <img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/348aaa85-336d-4e0d-89c2-54872c202051" />
 
-# CSL's (untested)
+### CSLs (untested)
 
 <img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/93b7f7d9-7f8f-4b85-b33f-c8b32bc99c78" />
 
-# issues
+### Issues
 
 If X-Plane complains about missing scenery objects a scane will provide you with the list, so you can track/install them outside of the Sim
 
