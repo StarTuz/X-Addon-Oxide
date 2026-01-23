@@ -1,10 +1,10 @@
-# CLAUDE.md
+# Development Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This document provides guidance for contributors working on this repository.
 
 ## Project Overview
 
-X-Addon-Oxide is a cross-platform addon manager for X-Plane Flight Simulator (versions 11/12). It manages Custom Scenery, Aircraft, Plugins, and CSLs with an interactive world map and AI-powered categorization.
+X-Addon-Oxide is a cross-platform addon manager for X-Plane Flight Simulator (versions 11/12). It manages Custom Scenery, Aircraft, Plugins, and CSLs with an interactive world map and smart categorization.
 
 ## Build Commands
 
@@ -43,8 +43,8 @@ GitHub Actions builds on push to main and on tags:
 Releases are created automatically when pushing a version tag:
 
 ```bash
-git tag v2.1.5
-git push origin v2.1.5
+git tag v2.2.0
+git push origin v2.2.0
 ```
 
 Artifacts are collected to `dist/{platform}/` and uploaded to GitHub Releases.
@@ -58,7 +58,7 @@ crates/
 ├── x-adox-core/     # Core business logic: addon discovery, scenery management, plugin toggling
 ├── x-adox-gui/      # Iced-based GUI with tab navigation, world map, and dark theme
 ├── x-adox-cli/      # CLI interface: list, enable, disable, smart-sort commands
-└── x-adox-bitnet/   # Heuristics engine for scenery priority scoring, aircraft classification, and parsing
+└── x-adox-bitnet/   # Heuristics engine for scenery priority scoring and aircraft classification
 ```
 
 **Data Flow**: GUI/CLI → Core (discovery, management) → BitNet (scoring/classification)
@@ -95,7 +95,7 @@ Iced framework with Elm-like message-driven architecture:
 - Scenery config: `$XPLANE_ROOT/Custom Scenery/scenery_packs.ini`
 - Disabled addons use suffix: `Aircraft (Disabled)/`, `plugins (disabled)/`
 - Config storage (`~/.config/x-adox/X-Addon-Oxide/`):
-  - `heuristics.json`: AI sorting rules and tags
+  - `heuristics.json`: Sorting rules and tags
   - `scan_config.json`: Folder exclusions/inclusions
   - `icon_overrides.json`: Manual aircraft icon paths
 
