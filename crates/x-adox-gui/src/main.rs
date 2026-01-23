@@ -3,7 +3,7 @@ use iced::widget::{
     scrollable, slider, stack, svg, text, text_editor, text_input, tooltip, Column, Row,
 };
 use iced::window::icon;
-use iced::{Background, Border, Color, Element, Length, Renderer, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Renderer, Shadow, Task, Theme};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
@@ -60,7 +60,7 @@ fn main() -> iced::Result {
     iced::application("X-Addon-Oxide", App::update, App::view)
         .theme(|_| Theme::Dark)
         .window(iced::window::Settings {
-            size: [1100.0, 850.0].into(),
+            size: [1100.0, 900.0].into(),
             icon: window_icon,
             ..Default::default()
         })
@@ -244,6 +244,21 @@ enum Message {
     ToggleCompanionAutoLaunch(usize),
     RemoveCompanionApp(usize),
     ToggleOrtho,
+    ToggleMapFilterSettings,
+    ToggleMapFilter(MapFilterType),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MapFilterType {
+    CustomAirports,
+    Enhancements,
+    GlobalAirports,
+    OrthoCoverage,
+    OrthoMarkers,
+    RegionalOverlays,
+    MeshTerrain,
+    FlightPaths,
+    Libraries,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -265,6 +280,36 @@ struct LoadingState {
     log_issues: bool,
     airports: bool,
     logbook: bool,
+    scenery_category: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MapFilters {
+    pub show_custom_airports: bool,
+    pub show_enhancements: bool,
+    pub show_global_airports: bool,
+    pub show_ortho_coverage: bool,
+    pub show_ortho_markers: bool,
+    pub show_regional_overlays: bool,
+    pub show_mesh_terrain: bool,
+    pub show_flight_paths: bool,
+    pub show_libraries: bool,
+}
+
+impl Default for MapFilters {
+    fn default() -> Self {
+        Self {
+            show_custom_airports: true,
+            show_enhancements: true,
+            show_global_airports: true,
+            show_ortho_coverage: false,
+            show_ortho_markers: false,
+            show_regional_overlays: false,
+            show_mesh_terrain: true,
+            show_flight_paths: true,
+            show_libraries: false,
+        }
+    }
 }
 
 impl LoadingState {
@@ -401,6 +446,8 @@ struct App {
     show_companion_manage: bool,
     new_companion_name: String,
     new_companion_path: Option<PathBuf>,
+    show_map_filter_settings: bool,
+    map_filters: MapFilters,
 }
 
 impl App {
@@ -544,6 +591,8 @@ impl App {
             show_companion_manage: false,
             new_companion_name: String::new(),
             new_companion_path: None,
+            show_map_filter_settings: false,
+            map_filters: MapFilters::default(),
             smart_groups: std::collections::BTreeMap::new(),
             smart_model_groups: std::collections::BTreeMap::new(),
         };
@@ -816,6 +865,46 @@ impl App {
             }
             Message::ToggleOrtho => {
                 self.show_ortho = !self.show_ortho;
+                Task::none()
+            }
+            Message::ToggleMapFilterSettings => {
+                self.show_map_filter_settings = !self.show_map_filter_settings;
+                Task::none()
+            }
+            Message::ToggleMapFilter(filter_type) => {
+                match filter_type {
+                    MapFilterType::CustomAirports => {
+                        self.map_filters.show_custom_airports =
+                            !self.map_filters.show_custom_airports;
+                    }
+                    MapFilterType::Enhancements => {
+                        self.map_filters.show_enhancements = !self.map_filters.show_enhancements;
+                    }
+                    MapFilterType::GlobalAirports => {
+                        self.map_filters.show_global_airports =
+                            !self.map_filters.show_global_airports;
+                    }
+                    MapFilterType::OrthoCoverage => {
+                        self.map_filters.show_ortho_coverage =
+                            !self.map_filters.show_ortho_coverage;
+                    }
+                    MapFilterType::OrthoMarkers => {
+                        self.map_filters.show_ortho_markers = !self.map_filters.show_ortho_markers;
+                    }
+                    MapFilterType::RegionalOverlays => {
+                        self.map_filters.show_regional_overlays =
+                            !self.map_filters.show_regional_overlays;
+                    }
+                    MapFilterType::MeshTerrain => {
+                        self.map_filters.show_mesh_terrain = !self.map_filters.show_mesh_terrain;
+                    }
+                    MapFilterType::FlightPaths => {
+                        self.map_filters.show_flight_paths = !self.map_filters.show_flight_paths;
+                    }
+                    MapFilterType::Libraries => {
+                        self.map_filters.show_libraries = !self.map_filters.show_libraries;
+                    }
+                }
                 Task::none()
             }
             Message::BrowseForCompanionPath => Task::perform(
@@ -3357,7 +3446,7 @@ impl App {
                 center: self.map_center,
                 airports: &self.airports,
                 selected_flight: self.selected_flight.and_then(|idx| self.logbook.get(idx)),
-                show_ortho: self.show_ortho,
+                filters: &self.map_filters,
             };
 
             map_view.into()
@@ -3871,46 +3960,136 @@ impl App {
         .padding(10)
         .style(style::button_primary);
 
-        column![
-            row![
-                button(text("Back").size(12))
-                    .on_press(Message::SwitchTab(Tab::Aircraft))
-                    .style(style::button_secondary)
-                    .padding([5, 10]),
-                title
+        let mut filter_content = Column::<'_, Message, Theme, Renderer>::new().spacing(5);
+
+        filter_content = filter_content.push(
+            button(
+                row![text(if self.show_map_filter_settings {
+                    "Map Filter v"
+                } else {
+                    "Map Filter >"
+                })
+                .size(18)]
+                .spacing(10)
+                .align_y(iced::Alignment::Center),
+            )
+            .on_press(Message::ToggleMapFilterSettings)
+            .style(style::button_secondary)
+            .padding(0),
+        );
+
+        if self.show_map_filter_settings {
+            let filter_row = |label: &str, filter_type: MapFilterType, active: bool| {
+                checkbox(label, active)
+                    .on_toggle(move |_| Message::ToggleMapFilter(filter_type))
+                    .size(18)
+                    .text_size(14)
+            };
+
+            filter_content = filter_content.push(
+                container(
+                    column![
+                        text("Airports & Landmarks")
+                            .size(14)
+                            .color(style::palette::ACCENT_MAGENTA),
+                        filter_row(
+                            "Custom Airports",
+                            MapFilterType::CustomAirports,
+                            self.map_filters.show_custom_airports
+                        ),
+                        filter_row(
+                            "Enhancements (Small)",
+                            MapFilterType::Enhancements,
+                            self.map_filters.show_enhancements
+                        ),
+                        filter_row(
+                            "Global Airports",
+                            MapFilterType::GlobalAirports,
+                            self.map_filters.show_global_airports
+                        ),
+                        iced::widget::vertical_space().height(5),
+                        text("Terrain & Regions")
+                            .size(14)
+                            .color(style::palette::ACCENT_MAGENTA),
+                        filter_row(
+                            "Show Ortho Coverage",
+                            MapFilterType::OrthoCoverage,
+                            self.map_filters.show_ortho_coverage
+                        ),
+                        filter_row(
+                            "Ortho Markers (Dot)",
+                            MapFilterType::OrthoMarkers,
+                            self.map_filters.show_ortho_markers
+                        ),
+                        filter_row(
+                            "Regional Overlays",
+                            MapFilterType::RegionalOverlays,
+                            self.map_filters.show_regional_overlays
+                        ),
+                        filter_row(
+                            "Mesh & Terrain",
+                            MapFilterType::MeshTerrain,
+                            self.map_filters.show_mesh_terrain
+                        ),
+                        iced::widget::vertical_space().height(5),
+                        text("Utilities")
+                            .size(14)
+                            .color(style::palette::ACCENT_MAGENTA),
+                        filter_row(
+                            "Flight Paths",
+                            MapFilterType::FlightPaths,
+                            self.map_filters.show_flight_paths
+                        ),
+                        filter_row(
+                            "Scenery Libraries",
+                            MapFilterType::Libraries,
+                            self.map_filters.show_libraries
+                        ),
+                    ]
+                    .spacing(8),
+                )
+                .padding(Padding {
+                    top: 10.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                    left: 20.0,
+                }),
+            );
+        }
+
+        scrollable(
+            column![
+                row![
+                    button(text("Back").size(12))
+                        .on_press(Message::SwitchTab(Tab::Aircraft))
+                        .style(style::button_secondary)
+                        .padding([5, 10]),
+                    title
+                ]
+                .spacing(20)
+                .align_y(iced::Alignment::Center),
+                container(
+                    column![
+                        exclusions_title,
+                        text("Changes require a refresh to take effect.")
+                            .size(12)
+                            .color(style::palette::TEXT_SECONDARY),
+                        add_btn,
+                        exclusions_list
+                    ]
+                    .spacing(20)
+                )
+                .padding(20)
+                .style(style::container_card)
+                .width(Length::Fill),
+                container(filter_content)
+                    .padding(20)
+                    .style(style::container_card)
+                    .width(Length::Fill)
             ]
             .spacing(20)
-            .align_y(iced::Alignment::Center),
-            container(
-                column![
-                    exclusions_title,
-                    text("Changes require a refresh to take effect.")
-                        .size(12)
-                        .color(style::palette::TEXT_SECONDARY),
-                    add_btn,
-                    exclusions_list
-                ]
-                .spacing(20)
-            )
-            .padding(20)
-            .style(style::container_card)
-            .width(Length::Fill),
-            container(
-                column![
-                    text("Map Settings").size(18),
-                    checkbox("Show Ortho Coverage on Map", self.show_ortho)
-                        .on_toggle(|_| Message::ToggleOrtho)
-                        .size(20)
-                        .text_size(14),
-                ]
-                .spacing(20)
-            )
-            .padding(20)
-            .style(style::container_card)
-            .width(Length::Fill)
-        ]
-        .spacing(20)
-        .padding(20)
+            .padding(20),
+        )
         .into()
     }
 

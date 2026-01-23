@@ -119,7 +119,7 @@ pub struct MapView<'a> {
     pub center: (f64, f64), // (Lat, Lon)
     pub airports: &'a std::collections::HashMap<String, x_adox_core::apt_dat::Airport>,
     pub selected_flight: Option<&'a x_adox_core::logbook::LogbookEntry>,
-    pub show_ortho: bool,
+    pub filters: &'a crate::MapFilters,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -305,23 +305,48 @@ where
                 };
                 let half_size = size / 2.0;
 
-                if pack.airports.is_empty() {
-                    let is_ortho_like = match pack.category {
-                        x_adox_core::scenery::SceneryCategory::Ortho
-                        | x_adox_core::scenery::SceneryCategory::Mesh
-                        | x_adox_core::scenery::SceneryCategory::Overlay
-                        | x_adox_core::scenery::SceneryCategory::EarthScenery
-                        | x_adox_core::scenery::SceneryCategory::Library => true,
-                        _ => false,
-                    };
+                // --- Decision Logic for DRAWING ---
+                let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::Ortho;
+                let is_mesh = pack.category == x_adox_core::scenery::SceneryCategory::Mesh;
+                let is_library = pack.category == x_adox_core::scenery::SceneryCategory::Library;
+                let is_overlay = pack.category == x_adox_core::scenery::SceneryCategory::Overlay;
+                let is_earth = pack.category == x_adox_core::scenery::SceneryCategory::EarthScenery;
+                let is_global_apt =
+                    pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
+                let is_custom_apt = !pack.airports.is_empty();
 
-                    let should_draw_dots = if is_ortho_like {
-                        self.show_ortho || is_selected || is_hovered
+                let tile_count = pack.tiles.len();
+                let is_small_enhancement =
+                    !is_custom_apt && tile_count < 5 && (is_overlay || is_earth);
+                let is_massive_pack = tile_count >= 10 && (is_overlay || is_earth);
+
+                // 1. Should we draw "DOT" markers for this pack?
+                let mut should_draw_dots = is_selected || is_hovered;
+
+                if !should_draw_dots {
+                    if is_custom_apt {
+                        should_draw_dots = self.filters.show_custom_airports;
+                    } else if is_small_enhancement {
+                        should_draw_dots = self.filters.show_enhancements;
+                    } else if is_global_apt {
+                        should_draw_dots = self.filters.show_global_airports;
+                    } else if is_ortho {
+                        should_draw_dots = self.filters.show_ortho_markers;
+                    } else if is_mesh {
+                        should_draw_dots = self.filters.show_mesh_terrain;
+                    } else if is_library {
+                        should_draw_dots = self.filters.show_libraries;
+                    } else if is_massive_pack {
+                        should_draw_dots = self.filters.show_regional_overlays;
                     } else {
-                        true
-                    };
+                        // Default to show generic things unless they are really big
+                        should_draw_dots = true;
+                    }
+                }
 
-                    if should_draw_dots {
+                if should_draw_dots {
+                    // Draw Tile-based dots (for ortho/mesh/enhancements)
+                    if pack.airports.is_empty() {
                         for &(lat, lon) in &pack.tiles {
                             let wx = lon_to_x(lon as f64 + 0.5, 0.0);
                             let wy = lat_to_y(lat as f64 + 0.5, 0.0);
@@ -352,11 +377,43 @@ where
                             );
                         }
                     }
+
+                    // Draw Airport-based markers
+                    for airport in &pack.airports {
+                        if let (Some(lat), Some(lon)) = (airport.lat, airport.lon) {
+                            let wx = lon_to_x(lon as f64, 0.0);
+                            let wy = lat_to_y(lat as f64, 0.0);
+
+                            let sx = bounds.x
+                                + (bounds.width / 2.0)
+                                + ((wx - camera_center_x) * zoom_scale) as f32;
+                            let sy = bounds.y
+                                + (bounds.height / 2.0)
+                                + ((wy - camera_center_y) * zoom_scale) as f32;
+
+                            renderer.fill_quad(
+                                renderer::Quad {
+                                    bounds: Rectangle {
+                                        x: sx - half_size,
+                                        y: sy - half_size,
+                                        width: size,
+                                        height: size,
+                                    },
+                                    border: iced::Border {
+                                        color: Color::BLACK,
+                                        width: 1.0,
+                                        radius: (size / 4.0).into(),
+                                    },
+                                    ..Default::default()
+                                },
+                                fill_color,
+                            );
+                        }
+                    }
                 }
 
-                // --- Ortho Coverage Pass ---
-                if self.show_ortho && pack.category == x_adox_core::scenery::SceneryCategory::Ortho
-                {
+                // 2. Should we draw "ORTHO COVERAGE" rectangles?
+                if is_ortho && self.filters.show_ortho_coverage {
                     let ortho_color = Color::from_rgba(0.0, 0.5, 1.0, 0.3); // Transparent Blue
                     for &(lat, lon) in &pack.tiles {
                         let wx1 = lon_to_x(lon as f64, 0.0);
@@ -396,153 +453,123 @@ where
                         );
                     }
                 }
-
-                for airport in &pack.airports {
-                    if let (Some(lat), Some(lon)) = (airport.lat, airport.lon) {
-                        let wx = lon_to_x(lon as f64, 0.0);
-                        let wy = lat_to_y(lat as f64, 0.0);
-
-                        let sx = bounds.x
-                            + (bounds.width / 2.0)
-                            + ((wx - camera_center_x) * zoom_scale) as f32;
-                        let sy = bounds.y
-                            + (bounds.height / 2.0)
-                            + ((wy - camera_center_y) * zoom_scale) as f32;
-
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: Rectangle {
-                                    x: sx - half_size,
-                                    y: sy - half_size,
-                                    width: size,
-                                    height: size,
-                                },
-                                border: iced::Border {
-                                    color: Color::BLACK,
-                                    width: 1.0,
-                                    radius: (size / 4.0).into(),
-                                },
-                                ..Default::default()
-                            },
-                            fill_color,
-                        );
-                    }
-                }
             }
         });
 
         // --- Flight Path Layer ---
-        if let Some(flight) = self.selected_flight {
-            let dep_coords = self
-                .airports
-                .get(&flight.dep_airport)
-                .and_then(|a| a.lat.zip(a.lon));
-            let arr_coords = self
-                .airports
-                .get(&flight.arr_airport)
-                .and_then(|a| a.lat.zip(a.lon));
+        if self.filters.show_flight_paths {
+            if let Some(flight) = self.selected_flight {
+                let dep_coords = self
+                    .airports
+                    .get(&flight.dep_airport)
+                    .and_then(|a| a.lat.zip(a.lon));
+                let arr_coords = self
+                    .airports
+                    .get(&flight.arr_airport)
+                    .and_then(|a| a.lat.zip(a.lon));
 
-            if let (Some((lat1, lon1)), Some((lat2, lon2))) = (dep_coords, arr_coords) {
-                renderer.with_layer(bounds, |renderer| {
-                    let wx1 = lon_to_x(lon1, 0.0);
-                    let wy1 = lat_to_y(lat1, 0.0);
-                    let wx2 = lon_to_x(lon2, 0.0);
-                    let wy2 = lat_to_y(lat2, 0.0);
+                if let (Some((lat1, lon1)), Some((lat2, lon2))) = (dep_coords, arr_coords) {
+                    renderer.with_layer(bounds, |renderer| {
+                        let wx1 = lon_to_x(lon1, 0.0);
+                        let wy1 = lat_to_y(lat1, 0.0);
+                        let wx2 = lon_to_x(lon2, 0.0);
+                        let wy2 = lat_to_y(lat2, 0.0);
 
-                    let sx1 = bounds.x
-                        + (bounds.width / 2.0)
-                        + ((wx1 - camera_center_x) * zoom_scale) as f32;
-                    let sy1 = bounds.y
-                        + (bounds.height / 2.0)
-                        + ((wy1 - camera_center_y) * zoom_scale) as f32;
-                    let sx2 = bounds.x
-                        + (bounds.width / 2.0)
-                        + ((wx2 - camera_center_x) * zoom_scale) as f32;
-                    let sy2 = bounds.y
-                        + (bounds.height / 2.0)
-                        + ((wy2 - camera_center_y) * zoom_scale) as f32;
+                        let sx1 = bounds.x
+                            + (bounds.width / 2.0)
+                            + ((wx1 - camera_center_x) * zoom_scale) as f32;
+                        let sy1 = bounds.y
+                            + (bounds.height / 2.0)
+                            + ((wy1 - camera_center_y) * zoom_scale) as f32;
+                        let sx2 = bounds.x
+                            + (bounds.width / 2.0)
+                            + ((wx2 - camera_center_x) * zoom_scale) as f32;
+                        let sy2 = bounds.y
+                            + (bounds.height / 2.0)
+                            + ((wy2 - camera_center_y) * zoom_scale) as f32;
 
-                    // Draw the flight line using point interpolation
-                    let dx = sx2 - sx1;
-                    let dy = sy2 - sy1;
-                    let distance = (dx * dx + dy * dy).sqrt();
-                    let steps = (distance / 4.0).ceil() as usize; // More efficient stepping
-                    for i in 0..=steps {
-                        let t = i as f32 / steps as f32;
-                        let px = sx1 + dx * t;
-                        let py = sy1 + dy * t;
-                        renderer.fill_quad(
-                            renderer::Quad {
-                                bounds: Rectangle {
-                                    x: px - 1.0,
-                                    y: py - 1.0,
-                                    width: 2.0,
-                                    height: 2.0,
+                        // Draw the flight line using point interpolation
+                        let dx = sx2 - sx1;
+                        let dy = sy2 - sy1;
+                        let distance = (dx * dx + dy * dy).sqrt();
+                        let steps = (distance / 4.0).ceil() as usize; // More efficient stepping
+                        for i in 0..=steps {
+                            let t = i as f32 / steps as f32;
+                            let px = sx1 + dx * t;
+                            let py = sy1 + dy * t;
+                            renderer.fill_quad(
+                                renderer::Quad {
+                                    bounds: Rectangle {
+                                        x: px - 1.0,
+                                        y: py - 1.0,
+                                        width: 2.0,
+                                        height: 2.0,
+                                    },
+                                    ..Default::default()
                                 },
-                                ..Default::default()
-                            },
-                            Color::from_rgb(1.0, 0.0, 1.0), // Magenta
-                        );
-                    }
+                                Color::from_rgb(1.0, 0.0, 1.0), // Magenta
+                            );
+                        }
 
-                    // Special case: If distance is 0 (same airport), draw a larger indicator
-                    if distance < 1.0 {
+                        // Special case: If distance is 0 (same airport), draw a larger indicator
+                        if distance < 1.0 {
+                            renderer.fill_quad(
+                                renderer::Quad {
+                                    bounds: Rectangle {
+                                        x: sx1 - 4.0,
+                                        y: sy1 - 4.0,
+                                        width: 8.0,
+                                        height: 8.0,
+                                    },
+                                    border: Border {
+                                        color: Color::from_rgb(1.0, 0.0, 1.0),
+                                        width: 2.0,
+                                        radius: 4.0.into(),
+                                    },
+                                    ..Default::default()
+                                },
+                                Color::TRANSPARENT,
+                            );
+                        }
+
+                        // Markers for DEP and ARR (drawn after the line for visibility)
+                        let dot_size = 8.0;
                         renderer.fill_quad(
                             renderer::Quad {
                                 bounds: Rectangle {
                                     x: sx1 - 4.0,
                                     y: sy1 - 4.0,
-                                    width: 8.0,
-                                    height: 8.0,
+                                    width: dot_size,
+                                    height: dot_size,
                                 },
                                 border: Border {
-                                    color: Color::from_rgb(1.0, 0.0, 1.0),
-                                    width: 2.0,
+                                    color: Color::BLACK,
+                                    width: 1.0,
                                     radius: 4.0.into(),
                                 },
                                 ..Default::default()
                             },
-                            Color::TRANSPARENT,
+                            Color::from_rgb(0.0, 1.0, 1.0), // Cyan DEP
                         );
-                    }
-
-                    // Markers for DEP and ARR (drawn after the line for visibility)
-                    let dot_size = 8.0;
-                    renderer.fill_quad(
-                        renderer::Quad {
-                            bounds: Rectangle {
-                                x: sx1 - 4.0,
-                                y: sy1 - 4.0,
-                                width: dot_size,
-                                height: dot_size,
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds: Rectangle {
+                                    x: sx2 - 4.0,
+                                    y: sy2 - 4.0,
+                                    width: dot_size,
+                                    height: dot_size,
+                                },
+                                border: Border {
+                                    color: Color::BLACK,
+                                    width: 1.0,
+                                    radius: 4.0.into(),
+                                },
+                                ..Default::default()
                             },
-                            border: Border {
-                                color: Color::BLACK,
-                                width: 1.0,
-                                radius: 4.0.into(),
-                            },
-                            ..Default::default()
-                        },
-                        Color::from_rgb(0.0, 1.0, 1.0), // Cyan DEP
-                    );
-                    renderer.fill_quad(
-                        renderer::Quad {
-                            bounds: Rectangle {
-                                x: sx2 - 4.0,
-                                y: sy2 - 4.0,
-                                width: dot_size,
-                                height: dot_size,
-                            },
-                            border: Border {
-                                color: Color::BLACK,
-                                width: 1.0,
-                                radius: 4.0.into(),
-                            },
-                            ..Default::default()
-                        },
-                        Color::from_rgb(1.0, 0.5, 0.0), // Orange ARR
-                    );
-                });
+                            Color::from_rgb(1.0, 0.5, 0.0), // Orange ARR
+                        );
+                    });
+                }
             }
         }
     }

@@ -11,6 +11,7 @@ pub mod palette {
     pub const ACCENT_RED: Color = Color::from_rgb(0.93, 0.25, 0.25); // #ef4444 (Red 500)
     pub const ACCENT_GREEN: Color = Color::from_rgb(0.2, 0.7, 0.3); // #33b34d
     pub const ACCENT_PURPLE: Color = Color::from_rgb(0.66, 0.33, 0.97); // #a855f7 (Electric Violet)
+    pub const ACCENT_MAGENTA: Color = Color::from_rgb(0.8, 0.2, 0.8);
     pub const TEXT_PRIMARY: Color = Color::from_rgb(0.9, 0.9, 0.9);
     pub const TEXT_SECONDARY: Color = Color::from_rgb(0.6, 0.6, 0.6);
     pub const BORDER: Color = Color::from_rgb(0.25, 0.25, 0.25);
