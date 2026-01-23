@@ -47,6 +47,9 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 > [!IMPORTANT]
 > **Applying Changes**: Manual reorders and pins update the AI's internal logic immediately. However, to write the new order to your actual X-Plane `scenery_packs.ini` file, you must click the **Smart Sort** button and then **Apply Changes** in the Simulation Report.
 
+> [!NOTE]
+> **Dynamic Section Headers**: The comment headers in `scenery_packs.ini` (like `# Airports`, `# Libraries`) are generated dynamically based on your rule names in Edit Sort. Packs that don't match any specific rule get generic fallback headers. X-Plane ignores these comments - only the order matters.
+
 ### 🧩 Plugins
 
 - **Enabling/Disabling**: Use the checkbox next to each plugin name.
