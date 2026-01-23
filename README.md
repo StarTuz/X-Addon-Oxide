@@ -20,6 +20,10 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 | **Automatic Logbook Sync** | ✅ | ❌ |
 
 ## Feature Highlights
+- New for 2.2.0
+- Launch X-Plane directly, arguments supported along with multiple install support.
+- New Utility section, Launch any companion app such as Little Navmap directly from the addon-on manager. Multiple applications supported.
+- Logbook support, select a previous flight and see its dotted magenta line on the from departure to destination.
 
 ### 🚀 Core Management
 
@@ -28,7 +32,7 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 * **Shadow Mesh Detection**: Automatically identifies redundant mesh scenery that destroys load times, helping you optimize performance.
 * **Profiles**: Create and switch between different hangar configurations (e.g., "IFR Online", "VFR Scenery Heavy") instantly.
 * **Companion App Launcher**: Manage and launch external tools like SimBrief, Navigraph, or VATSIM clients directly from the Plugins tab.
-* **Logbook & Utilities**: Automatically synced pilot logbook and live aircraft tracking in the Utilities tab.
+* **Logbook & Utilities**: Automatically synced pilot logbook and live aircraft tracking in the Utilities tab
 
 ### 🧠 AI & Visuals
 
