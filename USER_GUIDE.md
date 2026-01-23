@@ -133,6 +133,42 @@ Edit Sort - You have full control over the Heuristics with JSON editing if you'r
 
 <img width="993" height="786" alt="image" src="https://github.com/user-attachments/assets/799a6d3e-b2f0-41e3-983b-adceaca68624" />
 
+### V2.2.0 -> Added a Utlities section and some UI enhancements.
+
+Loading screen when first starting or switching installed X-Plane's.
+
+<img width="1026" height="794" alt="image" src="https://github.com/user-attachments/assets/102ec509-e264-4b54-9e75-9ee492de293a" />
+
+Launch X-Plane, arguments supported along with multiple copy supported:
+
+<img width="936" height="179" alt="image" src="https://github.com/user-attachments/assets/56e13715-5fd7-4b39-90dc-cf486fd64a1e" />
+
+Utilities Section:
+
+<img width="1080" height="804" alt="image" src="https://github.com/user-attachments/assets/20d39048-3796-478c-88d4-23ab1a7b0483" />
+
+Companion App 
+
+Show Manager brings up a sub menu:
+
+<img width="909" height="207" alt="image" src="https://github.com/user-attachments/assets/2e2ca034-7297-4caf-aa2e-f7f5bd56441e" />
+
+Added Little Navmap earlier and launched it:
+
+<img width="2362" height="859" alt="image" src="https://github.com/user-attachments/assets/6b5aac57-3b19-4bae-ad7a-ce62ee7844f9" />
+
+Logbook:
+
+Before selecting a flight.
+
+<img width="1091" height="873" alt="image" src="https://github.com/user-attachments/assets/f7e382aa-9934-4e87-824c-f62a74872192" />
+
+Afer selecting and zoomed in.
+
+
+<img width="1091" height="873" alt="image" src="https://github.com/user-attachments/assets/c6b81c2e-224c-4ca7-9de3-1969fecffd37" />
+
+
 ### Plugins
 
 Overall picture
