@@ -271,9 +271,9 @@ impl SceneryManager {
         (simulated_packs, report)
     }
 
-    pub fn save(&self) -> Result<(), SceneryError> {
+    pub fn save(&self, model: Option<&x_adox_bitnet::BitNetModel>) -> Result<(), SceneryError> {
         self.perform_backup()?;
-        ini_handler::write_ini(&self.file_path, &self.packs)?;
+        ini_handler::write_ini(&self.file_path, &self.packs, model)?;
         Ok(())
     }
 
@@ -779,7 +779,7 @@ mod tests {
             tags: Vec::new(),
         });
 
-        manager.save().expect("Failed to save");
+        manager.save(None).expect("Failed to save");
 
         let mut verify_manager = SceneryManager::new(manager.file_path.clone());
         verify_manager.load().expect("Failed to reload");
@@ -878,12 +878,12 @@ mod tests {
 
         // 1. Initial save (no backup because no file yet)
         let manager = SceneryManager::new(ini_path.clone());
-        manager.save().expect("Save failed");
+        manager.save(None).expect("Save failed");
         assert!(ini_path.exists());
         assert!(!backup_dir.exists());
 
         // 2. Second save (should create .xam_backups and first backup)
-        manager.save().expect("Save failed");
+        manager.save(None).expect("Save failed");
         assert!(backup_dir.exists());
         let entries: Vec<_> = std::fs::read_dir(&backup_dir).unwrap().flatten().collect();
         assert_eq!(entries.len(), 1);
@@ -894,7 +894,7 @@ mod tests {
             // Sleep briefly to ensure unique modification times if OS precision is low,
             // though our code uses modification time and filesystem precision might vary.
             std::thread::sleep(std::time::Duration::from_millis(10));
-            manager.save().expect("Save failed");
+            manager.save(None).expect("Save failed");
         }
 
         let entries: Vec<_> = std::fs::read_dir(&backup_dir).unwrap().flatten().collect();

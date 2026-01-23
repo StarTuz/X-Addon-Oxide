@@ -1358,8 +1358,9 @@ impl App {
                 self.simulated_packs = None;
                 self.validation_report = None;
                 self.status = "Applying changes...".to_string();
+                let model = self.heuristics_model.clone();
                 Task::perform(
-                    async move { save_packs_task(root, packs_to_save) },
+                    async move { save_packs_task(root, packs_to_save, model) },
                     Message::PackToggled,
                 )
             }
@@ -1378,67 +1379,12 @@ impl App {
                     let packs = Arc::make_mut(packs_arc);
                     match issue_type.as_str() {
                         "simheaven_below_global" => {
-                            if let Some(_ga_idx) = packs
-                                .iter()
-                                .position(|p| p.category == SceneryCategory::GlobalAirport)
-                            {
-                                let mut to_move = Vec::new();
-                                // Collect all simheaven/x-world packs ABOVE GA
-                                let mut i = 0;
-                                // Need to recalculate limit as we remove items
-                                loop {
-                                    let ga_current = packs
-                                        .iter()
-                                        .position(|p| p.category == SceneryCategory::GlobalAirport);
-                                    if let Some(ga_idx_now) = ga_current {
-                                        if i >= ga_idx_now {
-                                            break;
-                                        }
-                                        let name = packs[i].name.to_lowercase();
-                                        if name.contains("simheaven") || name.contains("x-world") {
-                                            to_move.push(packs.remove(i));
-                                        } else {
-                                            i += 1;
-                                        }
-                                    } else {
-                                        break;
-                                    }
-                                }
-
-                                // Move to just BELOW ga_idx
-                                if let Some(new_ga_idx) = packs
-                                    .iter()
-                                    .position(|p| p.category == SceneryCategory::GlobalAirport)
-                                {
-                                    let insert_pos = new_ga_idx + 1;
-                                    for pack in to_move.into_iter().rev() {
-                                        if insert_pos <= packs.len() {
-                                            packs.insert(insert_pos, pack);
-                                        } else {
-                                            packs.push(pack);
-                                        }
-                                    }
-                                }
-
-                                // PERSISTENCE: Update the BitNet rules so it stays fixed!
-                                let mut rules_updated = false;
-                                for rule in
-                                    &mut Arc::make_mut(&mut self.heuristics_model.config).rules
-                                {
-                                    if rule.name.contains("SimHeaven") {
-                                        rule.score = 30; // Matches lib.rs refined score
-                                        rules_updated = true;
-                                    }
-                                    if rule.name.contains("Global Airports") {
-                                        rule.score = 20; // Matches lib.rs refined score
-                                        rules_updated = true;
-                                    }
-                                }
-
-                                if rules_updated {
-                                    let _ = self.heuristics_model.save();
-                                }
-                            }
+                            // NOTE: This AutoFix has been disabled because it conflicts with custom sort rules.
+                            // If the user has customized the SimHeaven score to be lower (higher priority),
+                            // they WANT SimHeaven above Global Airports. The Smart Sort already handles
+                            // the ordering based on the user's custom rules.
+                            // The old code would forcibly move SimHeaven BELOW Global Airports,
+                            // which is incorrect when the user has customized their sorting preferences.
                         }
                         "mesh_above_overlay" => {
                             let mut meshes = Vec::new();
@@ -1453,24 +1399,6 @@ impl App {
                                 }
                             }
                             packs.extend(meshes);
-
-                            // PERSISTENCE: Update the BitNet rules for Mesh ordering
-                            let mut rules_updated = false;
-                            for rule in &mut Arc::make_mut(&mut self.heuristics_model.config).rules
-                            {
-                                if rule.name.contains("Mesh") {
-                                    rule.score = 60;
-                                    rules_updated = true;
-                                }
-                                if rule.name.contains("Ortho") || rule.name.contains("Overlay") {
-                                    rule.score = 50; // Ortho baseline is 50, AutoOrtho Overlays is 48
-                                    rules_updated = true;
-                                }
-                            }
-
-                            if rules_updated {
-                                let _ = self.heuristics_model.save();
-                            }
                         }
                         "shadowed_mesh" => {
                             if let Some(report) = &self.validation_report {
@@ -5179,7 +5107,7 @@ fn toggle_pack(root: Option<PathBuf>, name: String, enable: bool) -> Result<(), 
         sm.disable_pack(&name);
     }
 
-    sm.save().map_err(|e| e.to_string())
+    sm.save(None).map_err(|e| e.to_string())
 }
 
 fn load_aircraft_tree(
@@ -5404,7 +5332,7 @@ fn extract_zip_task(
         let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
         let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
         sm.load().map_err(|e| e.to_string())?;
-        sm.save().map_err(|e| e.to_string())?;
+        sm.save(None).map_err(|e| e.to_string())?;
     }
 
     Ok(top_folder)
@@ -5489,7 +5417,7 @@ fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), St
         let _ = sm.load();
 
         sm.packs.retain(|p| p.path != path);
-        sm.save().map_err(|e| e.to_string())?;
+        sm.save(None).map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -5579,7 +5507,11 @@ fn simulate_sort_task(
     Ok((Arc::new(packs), report))
 }
 
-fn save_packs_task(root: Option<PathBuf>, packs: Arc<Vec<SceneryPack>>) -> Result<(), String> {
+fn save_packs_task(
+    root: Option<PathBuf>,
+    packs: Arc<Vec<SceneryPack>>,
+    model: BitNetModel,
+) -> Result<(), String> {
     let root = root.ok_or("X-Plane root not found")?;
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     let ini_path = xpm.get_scenery_packs_path();
@@ -5588,7 +5520,7 @@ fn save_packs_task(root: Option<PathBuf>, packs: Arc<Vec<SceneryPack>>) -> Resul
 
     let mut sm = SceneryManager::new(ini_path);
     sm.packs = packs.as_ref().clone();
-    sm.save().map_err(|e| e.to_string())
+    sm.save(Some(&model)).map_err(|e| e.to_string())
 }
 
 async fn apply_profile_task(root: Option<PathBuf>, profile: Profile) -> Result<(), String> {

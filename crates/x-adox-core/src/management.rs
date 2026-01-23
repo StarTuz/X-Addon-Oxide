@@ -49,7 +49,7 @@ impl ModManager {
             manager.disable_pack(scenery_name);
         }
 
-        manager.save()?;
+        manager.save(None)?;
         Ok(())
     }
 
@@ -61,7 +61,7 @@ impl ModManager {
         let mut manager = SceneryManager::new(scenery_ini_path);
         manager.load()?;
         manager.set_bulk_states(states);
-        manager.save()?;
+        manager.save(None)?;
         Ok(())
     }
 

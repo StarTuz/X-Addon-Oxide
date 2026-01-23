@@ -74,9 +74,11 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
     Ok(packs)
 }
 
-pub fn write_ini(file_path: &Path, packs: &[SceneryPack]) -> io::Result<()> {
-    use x_adox_bitnet::BitNetModel;
-    let model = BitNetModel::new().unwrap_or_default();
+pub fn write_ini(
+    file_path: &Path,
+    packs: &[SceneryPack],
+    model: Option<&x_adox_bitnet::BitNetModel>,
+) -> io::Result<()> {
     let mut file = File::create(file_path)?;
 
     writeln!(file, "I")?;
@@ -84,29 +86,29 @@ pub fn write_ini(file_path: &Path, packs: &[SceneryPack]) -> io::Result<()> {
     writeln!(file, "SCENERY")?;
     writeln!(file)?;
 
-    let mut last_section = "";
+    let mut last_section = String::new();
 
     for pack in packs {
-        // Determine section header based on BitNet score
-        let score = model.predict(
-            &pack.name,
-            &pack.path,
-            &x_adox_bitnet::PredictContext::default(),
-        );
-        let current_section = match score {
-            0..=11 => "# Payware & Custom Airports",
-            12..=19 => "# Orbx Custom Landmarks",
-            20..=24 => "# Global Airports & Landmarks",
-            25..=27 => "# X-Plane Default Landmarks",
-            28..=29 => "# Orbx TrueEarth Overlays",
-            30..=31 => "# simHeaven X-World",
-            32..=40 => "# Global Forests",
-            41..=44 => "# Birds & Fauna",
-            45..=47 => "# Libraries",
-            48..=49 => "# AutoOrtho Overlays",
-            50..=59 => "# Ortho & Photo Scenery",
-            60..=94 => "# Meshes & Terrain",
-            _ => "# AutoOrtho Base & Mesh",
+        // Determine section header based on matched rule name (dynamic!)
+        let current_section = if let Some(m) = model {
+            let (_score, rule_name) = m.predict_with_rule_name(
+                &pack.name,
+                &pack.path,
+                &x_adox_bitnet::PredictContext::default(),
+            );
+            format!("# {}", rule_name)
+        } else {
+            // Fallback to category-based headers if no model
+            match pack.category {
+                crate::scenery::SceneryCategory::EarthAirports
+                | crate::scenery::SceneryCategory::MarsAirports => "# Airports".to_string(),
+                crate::scenery::SceneryCategory::GlobalAirport => "# Global Airports".to_string(),
+                crate::scenery::SceneryCategory::Library => "# Libraries".to_string(),
+                crate::scenery::SceneryCategory::Overlay => "# Overlays".to_string(),
+                crate::scenery::SceneryCategory::Ortho => "# Ortho Scenery".to_string(),
+                crate::scenery::SceneryCategory::Mesh => "# Meshes".to_string(),
+                _ => "# Other Scenery".to_string(),
+            }
         };
 
         if current_section != last_section {

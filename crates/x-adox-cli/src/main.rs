@@ -63,7 +63,7 @@ fn main() -> Result<()> {
                 }
             }
             if found {
-                scenery.save()?;
+                scenery.save(None)?;
             } else {
                 println!("No package found matching '{}'", name);
             }
@@ -78,7 +78,7 @@ fn main() -> Result<()> {
                 }
             }
             if found {
-                scenery.save()?;
+                scenery.save(None)?;
             } else {
                 println!("No package found matching '{}'", name);
             }
@@ -88,7 +88,7 @@ fn main() -> Result<()> {
             let model = x_adox_bitnet::BitNetModel::new().unwrap_or_default();
             let context = x_adox_bitnet::PredictContext::default();
             scenery.sort(Some(&model), &context);
-            scenery.save()?;
+            scenery.save(Some(&model))?;
             println!("Smart Sort complete. Duplicates disabled and file reordered.");
         }
     }

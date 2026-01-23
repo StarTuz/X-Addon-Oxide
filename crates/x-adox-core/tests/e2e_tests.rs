@@ -74,7 +74,7 @@ fn test_e2e_workflow() {
     );
 
     // Save and Reload
-    scenery_mgr.save().expect("Failed to save");
+    scenery_mgr.save(None).expect("Failed to save");
 
     let mut verify_mgr = SceneryManager::new(xpm.get_scenery_packs_path());
     verify_mgr.load().expect("Failed to reload");

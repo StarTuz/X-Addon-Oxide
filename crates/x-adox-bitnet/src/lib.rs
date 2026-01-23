@@ -202,7 +202,8 @@ impl BitNetModel {
     }
 
     fn get_config_path() -> PathBuf {
-        ProjectDirs::from("com", "x-adox", "X-Addon-Oxide")
+        // Use the same qualifier as the GUI to ensure heuristics.json is in the same config folder
+        ProjectDirs::from("com", "startux", "x-adox")
             .map(|dirs| dirs.config_dir().join("heuristics.json"))
             .unwrap_or_else(|| PathBuf::from("heuristics.json"))
     }
@@ -256,15 +257,6 @@ impl BitNetModel {
         }
 
         let name_lower = name.to_lowercase();
-
-        // DEBUG: Print current rules count
-        if name.contains("autoortho") {
-            println!(
-                "[BitNet] Debug: {} rules loaded. First rule: {}",
-                self.config.rules.len(),
-                self.config.rules[0].name
-            );
-        }
 
         // Detection for common airport patterns (still somewhat hardcoded as a base logic)
         let has_airport_keyword = name_lower.contains("airport")
@@ -356,6 +348,124 @@ impl BitNetModel {
 
         final_score
     }
+
+    /// Returns the score and the name of the matched rule (for dynamic section headers).
+    /// If no rule matched, returns one of the fallback category names.
+    pub fn predict_with_rule_name(
+        &self,
+        name: &str,
+        _path: &Path,
+        context: &PredictContext,
+    ) -> (u8, String) {
+        // 1. Check for manual overrides first (Sticky Sort)
+        if let Some(&score) = self.config.overrides.get(name) {
+            return (score, "Pinned / Manual Override".to_string());
+        }
+
+        let name_lower = name.to_lowercase();
+
+        // Detection for common airport patterns
+        let has_airport_keyword = name_lower.contains("airport")
+            || name_lower.contains("apt")
+            || name_lower.contains("airfield")
+            || name_lower.contains("heliport")
+            || name_lower.contains("seaplane")
+            || name_lower.contains("anchorage")
+            || name_lower.contains("panc");
+
+        let is_major_dev = name_lower.contains("aerosoft")
+            || name_lower.contains("justsim")
+            || name_lower.contains("flytampa")
+            || name_lower.contains("boundless")
+            || name_lower.contains("taimodels")
+            || name_lower.contains("nimbus")
+            || name_lower.contains("axonos")
+            || name_lower.contains("skyline")
+            || name_lower.contains("fly2high")
+            || name_lower.contains("skyhigh")
+            || name_lower.contains("orbx")
+            || name_lower.contains("x-scenery");
+
+        let has_icao = name.split(|c: char| !c.is_alphanumeric()).any(|word| {
+            word.len() == 4
+                && word.chars().all(|c| c.is_alphabetic())
+                && (word.chars().all(|c| c.is_uppercase()) || name_lower.starts_with(word))
+        });
+
+        let is_airport = has_airport_keyword || is_major_dev || has_icao;
+
+        let mut matched_rule_name: Option<String> = None;
+        let mut score = None;
+
+        if let Some(set) = &self.regex_set {
+            if set.is_match(&name_lower) {
+                let matches = set.matches(&name_lower);
+                let mut current_idx = 0;
+                for rule in &self.config.rules {
+                    let end_idx = current_idx + rule.keywords.len();
+                    if (current_idx..end_idx).any(|i| matches.matched(i)) {
+                        if rule.is_exclusion {
+                            if !is_airport {
+                                score = Some(rule.score);
+                                matched_rule_name = Some(rule.name.clone());
+                                break;
+                            }
+                        } else {
+                            score = Some(rule.score);
+                            matched_rule_name = Some(rule.name.clone());
+                            break;
+                        }
+                    }
+                    current_idx = end_idx;
+                }
+            }
+        } else {
+            // Fallback to iterative matching
+            for rule in &self.config.rules {
+                let matches = rule.keywords.iter().any(|k| name_lower.contains(k));
+                if matches {
+                    if rule.is_exclusion {
+                        if !is_airport {
+                            score = Some(rule.score);
+                            matched_rule_name = Some(rule.name.clone());
+                            break;
+                        }
+                    } else {
+                        score = Some(rule.score);
+                        matched_rule_name = Some(rule.name.clone());
+                        break;
+                    }
+                }
+            }
+        }
+
+        let (final_score, rule_name) = if let Some(s) = score {
+            (
+                s,
+                matched_rule_name.unwrap_or_else(|| "Unknown".to_string()),
+            )
+        } else if is_airport && !name_lower.contains("overlay") {
+            (10, "Airports".to_string())
+        } else if name_lower.starts_with('z') || name_lower.starts_with('y') {
+            (50, "Y/Z Prefix Scenery".to_string())
+        } else {
+            (self.config.fallback_score, "Other Scenery".to_string())
+        };
+
+        // Pro Mode: Region Biasing
+        let final_score = if let Some(focus) = &context.region_focus {
+            if name_lower.contains(&focus.to_lowercase()) {
+                final_score.saturating_sub(1)
+            } else {
+                final_score
+            }
+        } else {
+            final_score
+        };
+
+        (final_score, rule_name)
+    }
+
     /// Predicts aircraft tags based on name and path.
     pub fn predict_aircraft_tags(&self, name: &str, path: &Path) -> Vec<String> {
         // 1. Check for manual overrides first
