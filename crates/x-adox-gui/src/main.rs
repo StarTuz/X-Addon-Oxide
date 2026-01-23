@@ -60,6 +60,7 @@ fn main() -> iced::Result {
     iced::application("X-Addon-Oxide", App::update, App::view)
         .theme(|_| Theme::Dark)
         .window(iced::window::Settings {
+            size: [1100.0, 850.0].into(),
             icon: window_icon,
             ..Default::default()
         })
@@ -239,13 +240,18 @@ enum Message {
     BrowseForCompanionPath,
     CompanionPathSelected(Option<PathBuf>),
     AddCompanionApp,
+    // Utilities - Companion Apps
+    ToggleCompanionAutoLaunch(usize),
     RemoveCompanionApp(usize),
+    ToggleOrtho,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompanionApp {
     pub name: String,
     pub path: std::path::PathBuf,
+    #[serde(default)]
+    pub auto_launch: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -300,6 +306,7 @@ struct App {
     show_delete_confirm: bool,
     show_csl_tab: bool,
     use_smart_view: bool,
+    show_ortho: bool,
     // Assets
     tile_manager: TileManager,
     icon_aircraft: svg::Handle,
@@ -436,6 +443,7 @@ impl App {
             selected_csl: None,
             show_delete_confirm: false,
             show_csl_tab: false,
+            show_ortho: false,
             tile_manager: TileManager::new(),
             icon_aircraft: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/aircraft.svg").to_vec(),
@@ -799,6 +807,17 @@ impl App {
                 self.new_companion_name = name;
                 Task::none()
             }
+            Message::ToggleCompanionAutoLaunch(idx) => {
+                if let Some(app) = self.companion_apps.get_mut(idx) {
+                    app.auto_launch = !app.auto_launch;
+                    let _ = self.save_app_config();
+                }
+                Task::none()
+            }
+            Message::ToggleOrtho => {
+                self.show_ortho = !self.show_ortho;
+                Task::none()
+            }
             Message::BrowseForCompanionPath => Task::perform(
                 async {
                     use native_dialog::FileDialog;
@@ -826,6 +845,7 @@ impl App {
                     let app = CompanionApp {
                         name: self.new_companion_name.clone(),
                         path: self.new_companion_path.clone().unwrap(),
+                        auto_launch: false,
                     };
                     self.companion_apps.push(app);
                     self.new_companion_name.clear();
@@ -1144,6 +1164,14 @@ impl App {
                                 {
                                     Ok(_) => {
                                         self.status = "X-Plane launched!".to_string();
+
+                                        // Auto-launch companion apps
+                                        for app in &self.companion_apps {
+                                            if app.auto_launch {
+                                                let path = app.path.clone();
+                                                let _ = std::process::Command::new(path).spawn();
+                                            }
+                                        }
                                     }
                                     Err(e) => {
                                         self.status = format!("Failed to launch X-Plane: {}", e);
@@ -2726,6 +2754,9 @@ impl App {
             for (idx, app) in self.companion_apps.iter().enumerate() {
                 apps_list = apps_list.push(
                     row![
+                        checkbox("", app.auto_launch)
+                            .on_toggle(move |_| Message::ToggleCompanionAutoLaunch(idx))
+                            .size(16),
                         column![
                             text(&app.name).size(14),
                             text(app.path.to_string_lossy())
@@ -2738,7 +2769,7 @@ impl App {
                             .style(style::button_secondary)
                             .padding(8),
                     ]
-                    .spacing(10)
+                    .spacing(15)
                     .align_y(iced::Alignment::Center),
                 );
             }
@@ -2899,6 +2930,7 @@ impl App {
                 .push(self.sidebar_button("CSLs", Tab::CSLs))
                 .push(self.sidebar_button("Utilities", Tab::Utilities))
                 .push(self.sidebar_button("Issues", Tab::Issues))
+                .push(self.sidebar_button("Settings", Tab::Settings))
                 .spacing(25)
                 .padding([20, 0]),
         )
@@ -3325,6 +3357,7 @@ impl App {
                 center: self.map_center,
                 airports: &self.airports,
                 selected_flight: self.selected_flight.and_then(|idx| self.logbook.get(idx)),
+                show_ortho: self.show_ortho,
             };
 
             map_view.into()
@@ -3856,6 +3889,19 @@ impl App {
                         .color(style::palette::TEXT_SECONDARY),
                     add_btn,
                     exclusions_list
+                ]
+                .spacing(20)
+            )
+            .padding(20)
+            .style(style::container_card)
+            .width(Length::Fill),
+            container(
+                column![
+                    text("Map Settings").size(18),
+                    checkbox("Show Ortho Coverage on Map", self.show_ortho)
+                        .on_toggle(|_| Message::ToggleOrtho)
+                        .size(20)
+                        .text_size(14),
                 ]
                 .spacing(20)
             )

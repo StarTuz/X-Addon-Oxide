@@ -119,6 +119,7 @@ pub struct MapView<'a> {
     pub center: (f64, f64), // (Lat, Lon)
     pub airports: &'a std::collections::HashMap<String, x_adox_core::apt_dat::Airport>,
     pub selected_flight: Option<&'a x_adox_core::logbook::LogbookEntry>,
+    pub show_ortho: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -280,16 +281,16 @@ where
         // --- Marker Layer ---
         // Draw markers in a separate layer on top to ensure visibility
         renderer.with_layer(bounds, |renderer| {
-            let square_size = 4.0;
-            let selected_size = 8.0;
+            let square_size = 6.0;
+            let selected_size = 10.0;
 
             for pack in self.packs {
                 let is_selected = self.selected_scenery == Some(&pack.name);
                 let is_hovered = self.hovered_scenery == Some(&pack.name);
                 let base_color = match pack.status {
-                    SceneryPackType::Active => Color::from_rgb(0.0, 1.0, 0.0),
+                    SceneryPackType::Active => Color::from_rgb(0.0, 1.0, 0.0), // Classic Green
                     SceneryPackType::Disabled | SceneryPackType::DuplicateHidden => {
-                        Color::from_rgb(1.0, 0.0, 0.0)
+                        Color::from_rgb(1.0, 0.2, 0.2) // keeping the brighter red for better contrast
                     }
                 };
                 let fill_color = if is_selected || is_hovered {
@@ -305,36 +306,97 @@ where
                 let half_size = size / 2.0;
 
                 if pack.airports.is_empty() {
-                    for &(lat, lon) in &pack.tiles {
-                        let wx = lon_to_x(lon as f64 + 0.5, 0.0);
-                        let wy = lat_to_y(lat as f64 + 0.5, 0.0);
+                    let is_ortho_like = match pack.category {
+                        x_adox_core::scenery::SceneryCategory::Ortho
+                        | x_adox_core::scenery::SceneryCategory::Mesh
+                        | x_adox_core::scenery::SceneryCategory::Overlay
+                        | x_adox_core::scenery::SceneryCategory::EarthScenery
+                        | x_adox_core::scenery::SceneryCategory::Library => true,
+                        _ => false,
+                    };
 
-                        let sx = bounds.x
+                    let should_draw_dots = if is_ortho_like {
+                        self.show_ortho || is_selected || is_hovered
+                    } else {
+                        true
+                    };
+
+                    if should_draw_dots {
+                        for &(lat, lon) in &pack.tiles {
+                            let wx = lon_to_x(lon as f64 + 0.5, 0.0);
+                            let wy = lat_to_y(lat as f64 + 0.5, 0.0);
+
+                            let sx = bounds.x
+                                + (bounds.width / 2.0)
+                                + ((wx - camera_center_x) * zoom_scale) as f32;
+                            let sy = bounds.y
+                                + (bounds.height / 2.0)
+                                + ((wy - camera_center_y) * zoom_scale) as f32;
+
+                            renderer.fill_quad(
+                                renderer::Quad {
+                                    bounds: Rectangle {
+                                        x: sx - half_size,
+                                        y: sy - half_size,
+                                        width: size,
+                                        height: size,
+                                    },
+                                    border: iced::Border {
+                                        color: Color::BLACK,
+                                        width: 1.0,
+                                        radius: (size / 4.0).into(),
+                                    },
+                                    ..Default::default()
+                                },
+                                fill_color,
+                            );
+                        }
+                    }
+                }
+
+                // --- Ortho Coverage Pass ---
+                if self.show_ortho && pack.category == x_adox_core::scenery::SceneryCategory::Ortho
+                {
+                    let ortho_color = Color::from_rgba(0.0, 0.5, 1.0, 0.3); // Transparent Blue
+                    for &(lat, lon) in &pack.tiles {
+                        let wx1 = lon_to_x(lon as f64, 0.0);
+                        let wy1 = lat_to_y(lat as f64 + 1.0, 0.0);
+                        let wx2 = lon_to_x(lon as f64 + 1.0, 0.0);
+                        let wy2 = lat_to_y(lat as f64, 0.0);
+
+                        let sx1 = bounds.x
                             + (bounds.width / 2.0)
-                            + ((wx - camera_center_x) * zoom_scale) as f32;
-                        let sy = bounds.y
+                            + ((wx1 - camera_center_x) * zoom_scale) as f32;
+                        let sy1 = bounds.y
                             + (bounds.height / 2.0)
-                            + ((wy - camera_center_y) * zoom_scale) as f32;
+                            + ((wy1 - camera_center_y) * zoom_scale) as f32;
+                        let sx2 = bounds.x
+                            + (bounds.width / 2.0)
+                            + ((wx2 - camera_center_x) * zoom_scale) as f32;
+                        let sy2 = bounds.y
+                            + (bounds.height / 2.0)
+                            + ((wy2 - camera_center_y) * zoom_scale) as f32;
 
                         renderer.fill_quad(
                             renderer::Quad {
                                 bounds: Rectangle {
-                                    x: sx - half_size,
-                                    y: sy - half_size,
-                                    width: size,
-                                    height: size,
+                                    x: sx1,
+                                    y: sy1,
+                                    width: sx2 - sx1,
+                                    height: sy2 - sy1,
                                 },
                                 border: iced::Border {
-                                    color: Color::BLACK,
+                                    color: Color::from_rgba(0.0, 0.5, 1.0, 0.8),
                                     width: 1.0,
-                                    radius: (size / 4.0).into(),
+                                    radius: 0.0.into(),
                                 },
                                 ..Default::default()
                             },
-                            fill_color,
+                            ortho_color,
                         );
                     }
                 }
+
                 for airport in &pack.airports {
                     if let (Some(lat), Some(lon)) = (airport.lat, airport.lon) {
                         let wx = lon_to_x(lon as f64, 0.0);
