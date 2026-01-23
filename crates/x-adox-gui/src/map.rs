@@ -109,7 +109,6 @@ impl TileManager {
         });
     }
 }
-
 pub struct MapView<'a> {
     pub packs: &'a [SceneryPack],
     pub selected_scenery: Option<&'a String>,
@@ -120,6 +119,42 @@ pub struct MapView<'a> {
     pub airports: &'a std::collections::HashMap<String, x_adox_core::apt_dat::Airport>,
     pub selected_flight: Option<&'a x_adox_core::logbook::LogbookEntry>,
     pub filters: &'a crate::MapFilters,
+}
+
+impl<'a> MapView<'a> {
+    pub fn is_pack_visible(&self, pack: &SceneryPack) -> bool {
+        use x_adox_core::scenery::SceneryCategory;
+
+        let is_ortho = pack.category == SceneryCategory::Ortho;
+        let is_mesh = pack.category == SceneryCategory::Mesh;
+        let is_library = pack.category == SceneryCategory::Library;
+        let is_overlay = pack.category == SceneryCategory::Overlay;
+        let is_earth = pack.category == SceneryCategory::EarthScenery;
+        let is_global_apt = pack.category == SceneryCategory::GlobalAirport;
+        let is_custom_apt = !pack.airports.is_empty();
+
+        let tile_count = pack.tiles.len();
+        let is_small_enhancement = !is_custom_apt && tile_count < 5 && (is_overlay || is_earth);
+        let is_massive_pack = tile_count >= 10 && (is_overlay || is_earth);
+
+        if is_custom_apt {
+            self.filters.show_custom_airports
+        } else if is_small_enhancement {
+            self.filters.show_enhancements
+        } else if is_global_apt {
+            self.filters.show_global_airports
+        } else if is_ortho {
+            self.filters.show_ortho_markers
+        } else if is_mesh {
+            self.filters.show_mesh_terrain
+        } else if is_library {
+            self.filters.show_libraries
+        } else if is_massive_pack {
+            self.filters.show_regional_overlays
+        } else {
+            true
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -306,43 +341,14 @@ where
                 let half_size = size / 2.0;
 
                 // --- Decision Logic for DRAWING ---
+                let is_visible = self.is_pack_visible(pack);
                 let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::Ortho;
-                let is_mesh = pack.category == x_adox_core::scenery::SceneryCategory::Mesh;
-                let is_library = pack.category == x_adox_core::scenery::SceneryCategory::Library;
-                let is_overlay = pack.category == x_adox_core::scenery::SceneryCategory::Overlay;
-                let is_earth = pack.category == x_adox_core::scenery::SceneryCategory::EarthScenery;
-                let is_global_apt =
-                    pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
-                let is_custom_apt = !pack.airports.is_empty();
 
-                let tile_count = pack.tiles.len();
-                let is_small_enhancement =
-                    !is_custom_apt && tile_count < 5 && (is_overlay || is_earth);
-                let is_massive_pack = tile_count >= 10 && (is_overlay || is_earth);
-
-                // 1. Should we draw "DOT" markers for this pack?
-                let mut should_draw_dots = is_selected || is_hovered;
-
-                if !should_draw_dots {
-                    if is_custom_apt {
-                        should_draw_dots = self.filters.show_custom_airports;
-                    } else if is_small_enhancement {
-                        should_draw_dots = self.filters.show_enhancements;
-                    } else if is_global_apt {
-                        should_draw_dots = self.filters.show_global_airports;
-                    } else if is_ortho {
-                        should_draw_dots = self.filters.show_ortho_markers;
-                    } else if is_mesh {
-                        should_draw_dots = self.filters.show_mesh_terrain;
-                    } else if is_library {
-                        should_draw_dots = self.filters.show_libraries;
-                    } else if is_massive_pack {
-                        should_draw_dots = self.filters.show_regional_overlays;
-                    } else {
-                        // Default to show generic things unless they are really big
-                        should_draw_dots = true;
-                    }
-                }
+                // Markers are drawn if:
+                // 1. They are visible per filters
+                // 2. OR they are explicitly selected (for user feedback)
+                // 3. (REMOVED) is_hovered - we don't want to show things just by hovering if they are filtered out
+                let should_draw_dots = is_selected || is_visible;
 
                 if should_draw_dots {
                     // Draw Tile-based dots (for ortho/mesh/enhancements)
@@ -773,6 +779,12 @@ where
 
                 if let Some(coords) = coords {
                     for pack in self.packs {
+                        // Ignore packs that are filtered out unless they are selected
+                        if !self.is_pack_visible(pack) && self.selected_scenery != Some(&pack.name)
+                        {
+                            continue;
+                        }
+
                         if pack.airports.is_empty() {
                             for &(lat, lon) in &pack.tiles {
                                 if (lat as f64 + 0.5 - coords.0).abs() < 0.5

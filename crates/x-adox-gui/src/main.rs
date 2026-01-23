@@ -243,7 +243,6 @@ enum Message {
     // Utilities - Companion Apps
     ToggleCompanionAutoLaunch(usize),
     RemoveCompanionApp(usize),
-    ToggleOrtho,
     ToggleMapFilterSettings,
     ToggleMapFilter(MapFilterType),
 }
@@ -280,7 +279,6 @@ struct LoadingState {
     log_issues: bool,
     airports: bool,
     logbook: bool,
-    scenery_category: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -351,7 +349,6 @@ struct App {
     show_delete_confirm: bool,
     show_csl_tab: bool,
     use_smart_view: bool,
-    show_ortho: bool,
     // Assets
     tile_manager: TileManager,
     icon_aircraft: svg::Handle,
@@ -490,7 +487,6 @@ impl App {
             selected_csl: None,
             show_delete_confirm: false,
             show_csl_tab: false,
-            show_ortho: false,
             tile_manager: TileManager::new(),
             icon_aircraft: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/aircraft.svg").to_vec(),
@@ -861,10 +857,6 @@ impl App {
                     app.auto_launch = !app.auto_launch;
                     let _ = self.save_app_config();
                 }
-                Task::none()
-            }
-            Message::ToggleOrtho => {
-                self.show_ortho = !self.show_ortho;
                 Task::none()
             }
             Message::ToggleMapFilterSettings => {
