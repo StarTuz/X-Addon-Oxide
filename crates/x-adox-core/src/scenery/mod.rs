@@ -127,17 +127,32 @@ impl SceneryManager {
             );
         }
 
-        // 2. Scan the directory for new packs not yet in the INI
+        // 2. Scan Custom Scenery for new packs not yet in the INI
         let mut cache = crate::cache::DiscoveryCache::load();
         let discovered =
             crate::discovery::DiscoveryManager::scan_scenery(custom_scenery_dir, &mut cache);
-        let _ = cache.save();
         println!(
-            "[SceneryManager] Discovered {} folders on disk",
+            "[SceneryManager] Discovered {} folders in Custom Scenery",
             discovered.len()
         );
 
-        for disc in discovered {
+        // 2b. Also scan Global Scenery for system packs (Global Airports, etc.)
+        let xplane_root = custom_scenery_dir.parent().unwrap_or(custom_scenery_dir);
+        let global_scenery_dir = xplane_root.join("Global Scenery");
+        let global_discovered = if global_scenery_dir.exists() {
+            crate::discovery::DiscoveryManager::scan_scenery(&global_scenery_dir, &mut cache)
+        } else {
+            Vec::new()
+        };
+        println!(
+            "[SceneryManager] Discovered {} folders in Global Scenery",
+            global_discovered.len()
+        );
+
+        // Merge both discovery results
+        let all_discovered: Vec<_> = discovered.into_iter().chain(global_discovered).collect();
+
+        for disc in all_discovered {
             // Check if this path is already in the packs list
             let already_present = packs.iter().any(|p| p.path == disc.path);
 
@@ -161,9 +176,30 @@ impl SceneryManager {
             // Apply heuristic classification
             pack.category = classifier::Classifier::classify_heuristic(&pack.path, &pack.name);
 
-            // Discover details
-            pack.airports = discover_airports_in_pack(&pack.path);
-            pack.tiles = discover_tiles_in_pack(&pack.path);
+            // Discover details with cache
+            if let Some(entry) = cache.get(&pack.path) {
+                pack.airports = entry.airports.clone();
+                pack.tiles = entry.tiles.clone();
+            } else {
+                pack.airports = discover_airports_in_pack(&pack.path);
+                pack.tiles = discover_tiles_in_pack(&pack.path);
+
+                if !pack.airports.is_empty() {
+                    println!(
+                        "[SceneryManager] Pack '{}' initialized with {} airports",
+                        pack.name,
+                        pack.airports.len()
+                    );
+                }
+
+                // Cache it for next time
+                cache.insert(
+                    pack.path.clone(),
+                    Vec::new(),
+                    pack.airports.clone(),
+                    pack.tiles.clone(),
+                );
+            }
 
             if !pack.tiles.is_empty() || !pack.airports.is_empty() {
                 println!(
@@ -188,6 +224,10 @@ impl SceneryManager {
 
         self.group_manager = Some(group_mgr);
         self.packs = packs;
+
+        // 4. Save cache AFTER all discovery (prevents partial/missing saves)
+        let _ = cache.save();
+
         Ok(())
     }
 
@@ -567,7 +607,6 @@ fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
     // Clutter filter
     let excluded_keywords = [
         "global scenery",
-        "global_airports",
         "resources",
         "default scenery",
         "landmark",
@@ -581,9 +620,14 @@ fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
         "alpilotx",
     ];
 
-    for keyword in excluded_keywords {
-        if pack_path_str.contains(keyword) {
-            return tiles;
+    let is_global_airports =
+        pack_path_str.contains("global airports") || pack_path_str.contains("global_airports");
+
+    if !is_global_airports {
+        for keyword in excluded_keywords {
+            if pack_path_str.contains(keyword) {
+                return tiles;
+            }
         }
     }
 
@@ -696,7 +740,13 @@ fn discover_airports_in_pack(pack_path: &Path) -> Vec<Airport> {
             if let Some(apt_path) = real_apt_path {
                 match AptDatParser::parse_file(&apt_path) {
                     Ok(airports) => all_airports.extend(airports),
-                    Err(_) => {}
+                    Err(e) => {
+                        println!(
+                            "[SceneryManager] ERROR parsing {}: {}",
+                            apt_path.display(),
+                            e
+                        );
+                    }
                 }
             }
         }

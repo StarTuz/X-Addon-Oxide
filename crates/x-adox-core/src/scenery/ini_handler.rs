@@ -33,8 +33,11 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
             let parts: Vec<&str> = trim_line.split_whitespace().collect();
             if parts.len() >= 2 {
                 let relative_path_str = parts[1..].join(" ");
+                // Normalize backslashes (Windows) to forward slashes
+                let normalized_path = relative_path_str.replace('\\', "/");
+
                 // Remove trailing slash and extra whitespace
-                let clean_path = relative_path_str
+                let clean_path = normalized_path
                     .trim()
                     .trim_end_matches('/')
                     .trim()
@@ -51,11 +54,14 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
                 // Resolve full path
                 let full_path = if pack_path.is_absolute() {
                     pack_path
-                } else if pack_path.starts_with("Custom Scenery") {
-                    // Usually "Custom Scenery/PackName/"
+                } else if clean_path.starts_with("Custom Scenery") {
+                    // Custom Scenery/PackName
                     scenery_root.join(&name)
                 } else {
-                    scenery_root.join(&pack_path)
+                    // System packs like "Global Scenery/Global Airports"
+                    // These are root-relative. scenery_root is "<root>/Custom Scenery"
+                    let xplane_root = scenery_root.parent().unwrap_or(scenery_root);
+                    xplane_root.join(&pack_path)
                 };
 
                 packs.push(SceneryPack {
@@ -117,10 +123,24 @@ pub fn write_ini(
             last_section = current_section;
         }
 
+        // Determine the correct relative path for the INI file
+        // System packs (Global Scenery, etc.) should stay as-is
+        // Custom packs should use "Custom Scenery/<name>/" format
         let pack_path_str = if pack.name.starts_with('*') {
             pack.name.clone()
         } else {
-            format!("Custom Scenery/{}/", pack.name)
+            let path_str = pack.path.to_string_lossy();
+            if path_str.contains("Global Scenery") {
+                // Preserve system pack paths relative to X-Plane root
+                if let Some(idx) = path_str.find("Global Scenery") {
+                    format!("{}/", &path_str[idx..])
+                } else {
+                    format!("Custom Scenery/{}/", pack.name)
+                }
+            } else {
+                // Standard Custom Scenery pack
+                format!("Custom Scenery/{}/", pack.name)
+            }
         };
 
         match pack.status {

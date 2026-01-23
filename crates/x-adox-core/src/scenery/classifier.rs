@@ -8,12 +8,9 @@ impl Classifier {
     pub fn classify_heuristic(path: &Path, name: &str) -> SceneryCategory {
         // Normalize name
         let name_lower = name.to_lowercase();
-        let name_clean = name.trim_matches(|c| c == '*' || c == ' ');
 
         // 2. Explicit System Packs (Global Airports)
-        if name_clean.eq_ignore_ascii_case("global airports")
-            || name_clean.eq_ignore_ascii_case("global_airports")
-        {
+        if name_lower.contains("global airports") || name_lower.contains("global_airports") {
             return SceneryCategory::GlobalAirport;
         }
 

@@ -1,15 +1,18 @@
-use anyhow::Result;
 use crate::discovery::DiscoveredAddon;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheEntry {
-    pub mtime: SystemTime,
+    pub mtime: chrono::DateTime<chrono::Utc>,
     pub addons: Vec<DiscoveredAddon>,
+    #[serde(default)]
+    pub airports: Vec<crate::apt_dat::Airport>,
+    #[serde(default)]
+    pub tiles: Vec<(i32, i32)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -51,12 +54,13 @@ impl DiscoveryCache {
             .unwrap_or_else(|| PathBuf::from("discovery_cache.json"))
     }
 
-    pub fn get(&self, path: &Path) -> Option<&Vec<DiscoveredAddon>> {
+    pub fn get(&self, path: &Path) -> Option<&CacheEntry> {
         if let Some(entry) = self.entries.get(path) {
             if let Ok(metadata) = std::fs::metadata(path) {
                 if let Ok(mtime) = metadata.modified() {
+                    let mtime: chrono::DateTime<chrono::Utc> = mtime.into();
                     if mtime == entry.mtime {
-                        return Some(&entry.addons);
+                        return Some(entry);
                     }
                 }
             }
@@ -64,10 +68,25 @@ impl DiscoveryCache {
         None
     }
 
-    pub fn insert(&mut self, path: PathBuf, addons: Vec<DiscoveredAddon>) {
+    pub fn insert(
+        &mut self,
+        path: PathBuf,
+        addons: Vec<DiscoveredAddon>,
+        airports: Vec<crate::apt_dat::Airport>,
+        tiles: Vec<(i32, i32)>,
+    ) {
         if let Ok(metadata) = std::fs::metadata(&path) {
             if let Ok(mtime) = metadata.modified() {
-                self.entries.insert(path, CacheEntry { mtime, addons });
+                let mtime: chrono::DateTime<chrono::Utc> = mtime.into();
+                self.entries.insert(
+                    path,
+                    CacheEntry {
+                        mtime,
+                        addons,
+                        airports,
+                        tiles,
+                    },
+                );
             }
         }
     }

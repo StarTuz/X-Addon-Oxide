@@ -137,12 +137,12 @@ impl<'a> MapView<'a> {
         let is_small_enhancement = !is_custom_apt && tile_count < 5 && (is_overlay || is_earth);
         let is_massive_pack = tile_count >= 10 && (is_overlay || is_earth);
 
-        if is_custom_apt {
+        if is_global_apt {
+            self.filters.show_global_airports
+        } else if is_custom_apt {
             self.filters.show_custom_airports
         } else if is_small_enhancement {
             self.filters.show_enhancements
-        } else if is_global_apt {
-            self.filters.show_global_airports
         } else if is_ortho {
             self.filters.show_ortho_markers
         } else if is_mesh {
@@ -227,6 +227,18 @@ where
         let camera_center_x = lon_to_x(center_lon, 0.0);
         let camera_center_y = lat_to_y(center_lat, 0.0);
 
+        let half_w = (bounds.width as f64 / 2.0) / zoom_scale;
+        let half_h = (bounds.height as f64 / 2.0) / zoom_scale;
+
+        let view_left = camera_center_x - half_w;
+        let view_right = camera_center_x + half_w;
+        let view_top = camera_center_y - half_h;
+        let view_bottom = camera_center_y + half_h;
+
+        let center_offset_x = (bounds.x + bounds.width / 2.0) as f64 - camera_center_x * zoom_scale;
+        let center_offset_y =
+            (bounds.y + bounds.height / 2.0) as f64 - camera_center_y * zoom_scale;
+
         renderer.with_layer(bounds, |renderer| {
             // Background fill
             renderer.fill_quad(
@@ -242,14 +254,6 @@ where
             let z = zoom.floor().clamp(0.0, 19.0) as u32;
             let num_tiles = 2u32.pow(z);
             let tile_size_z0 = TILE_SIZE / 2.0f64.powf(z as f64);
-
-            let half_w = (bounds.width as f64 / 2.0) / zoom_scale;
-            let half_h = (bounds.height as f64 / 2.0) / zoom_scale;
-
-            let view_left = camera_center_x - half_w;
-            let view_right = camera_center_x + half_w;
-            let view_top = camera_center_y - half_h;
-            let view_bottom = camera_center_y + half_h;
 
             let min_tx = (view_left / tile_size_z0).floor() as i32;
             let max_tx = (view_right / tile_size_z0).ceil() as i32;
@@ -351,18 +355,37 @@ where
                 let should_draw_dots = is_selected || is_visible;
 
                 if should_draw_dots {
+                    // Optimization: Thin Global Airports at low zoom to prevent overdraw lag
+                    let is_global =
+                        pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
+                    let skip_step = if is_global && zoom < 4.0 {
+                        10
+                    } else if is_global && zoom < 6.0 {
+                        4
+                    } else {
+                        1
+                    };
+
                     // Draw Tile-based dots (for ortho/mesh/enhancements)
                     if pack.airports.is_empty() {
-                        for &(lat, lon) in &pack.tiles {
+                        for (i, &(lat, lon)) in pack.tiles.iter().enumerate() {
+                            if i % skip_step != 0 {
+                                continue;
+                            }
+                            // Quick viewport check in z0 pixels
                             let wx = lon_to_x(lon as f64 + 0.5, 0.0);
                             let wy = lat_to_y(lat as f64 + 0.5, 0.0);
 
-                            let sx = bounds.x
-                                + (bounds.width / 2.0)
-                                + ((wx - camera_center_x) * zoom_scale) as f32;
-                            let sy = bounds.y
-                                + (bounds.height / 2.0)
-                                + ((wy - camera_center_y) * zoom_scale) as f32;
+                            if wx < view_left
+                                || wx > view_right
+                                || wy < view_top
+                                || wy > view_bottom
+                            {
+                                continue;
+                            }
+
+                            let sx = (center_offset_x + wx * zoom_scale) as f32;
+                            let sy = (center_offset_y + wy * zoom_scale) as f32;
 
                             renderer.fill_quad(
                                 renderer::Quad {
@@ -385,17 +408,25 @@ where
                     }
 
                     // Draw Airport-based markers
-                    for airport in &pack.airports {
-                        if let (Some(lat), Some(lon)) = (airport.lat, airport.lon) {
-                            let wx = lon_to_x(lon as f64, 0.0);
-                            let wy = lat_to_y(lat as f64, 0.0);
+                    for (i, airport) in pack.airports.iter().enumerate() {
+                        if i % skip_step != 0 {
+                            continue;
+                        }
+                        if let (Some(px), Some(py)) = (airport.proj_x, airport.proj_y) {
+                            // Quick viewport check in z0 pixels
+                            let wx = px as f64 * TILE_SIZE;
+                            let wy = py as f64 * TILE_SIZE;
 
-                            let sx = bounds.x
-                                + (bounds.width / 2.0)
-                                + ((wx - camera_center_x) * zoom_scale) as f32;
-                            let sy = bounds.y
-                                + (bounds.height / 2.0)
-                                + ((wy - camera_center_y) * zoom_scale) as f32;
+                            if wx < view_left
+                                || wx > view_right
+                                || wy < view_top
+                                || wy > view_bottom
+                            {
+                                continue;
+                            }
+
+                            let sx = (center_offset_x + wx * zoom_scale) as f32;
+                            let sy = (center_offset_y + wy * zoom_scale) as f32;
 
                             renderer.fill_quad(
                                 renderer::Quad {

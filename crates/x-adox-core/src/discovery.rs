@@ -59,9 +59,10 @@ impl DiscoveryManager {
             return;
         }
 
-        if let Some(cached) = cache.get(dir) {
+        if let Some(entry) = cache.get(dir) {
             // Filter cached results based on current exclusions
-            let filtered: Vec<_> = cached
+            let filtered: Vec<_> = entry
+                .addons
                 .iter()
                 .filter(|addon| !is_path_excluded(&addon.path, exclusions))
                 .cloned()
@@ -129,7 +130,12 @@ impl DiscoveryManager {
                 }
             }
         }
-        cache.insert(dir.to_path_buf(), folder_results.clone());
+        cache.insert(
+            dir.to_path_buf(),
+            folder_results.clone(),
+            Vec::new(),
+            Vec::new(),
+        );
         results.extend(folder_results);
     }
 
@@ -170,8 +176,8 @@ impl DiscoveryManager {
         root: &Path,
         cache: &mut crate::cache::DiscoveryCache,
     ) -> Vec<DiscoveredAddon> {
-        if let Some(cached) = cache.get(root).cloned() {
-            return cached;
+        if let Some(entry) = cache.get(root) {
+            return entry.addons.clone();
         }
         let mut results = Vec::new();
 
@@ -205,7 +211,7 @@ impl DiscoveryManager {
                 });
             }
         }
-        cache.insert(root.to_path_buf(), results.clone());
+        cache.insert(root.to_path_buf(), results.clone(), Vec::new(), Vec::new());
         results
     }
 
@@ -221,8 +227,8 @@ impl DiscoveryManager {
             return;
         }
 
-        if let Some(cached) = cache.get(dir) {
-            results.extend(cached.clone());
+        if let Some(entry) = cache.get(dir) {
+            results.extend(entry.addons.clone());
             return;
         }
 
@@ -277,7 +283,12 @@ impl DiscoveryManager {
                 }
             }
         }
-        cache.insert(dir.to_path_buf(), dir_results.clone());
+        cache.insert(
+            dir.to_path_buf(),
+            dir_results.clone(),
+            Vec::new(),
+            Vec::new(),
+        );
         results.extend(dir_results);
     }
 
@@ -318,8 +329,8 @@ impl DiscoveryManager {
                 continue;
             }
 
-            if let Some(cached) = cache.get(&csl_root) {
-                results.extend(cached.clone());
+            if let Some(entry) = cache.get(&csl_root) {
+                results.extend(entry.addons.clone());
                 continue;
             }
 
@@ -370,7 +381,12 @@ impl DiscoveryManager {
                     }
                 }
             }
-            cache.insert(csl_root.clone(), csl_results.clone());
+            cache.insert(
+                csl_root.clone(),
+                csl_results.clone(),
+                Vec::new(),
+                Vec::new(),
+            );
             results.extend(csl_results);
         }
 

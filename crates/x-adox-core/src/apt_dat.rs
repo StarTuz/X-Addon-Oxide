@@ -18,6 +18,8 @@ pub struct Airport {
     pub airport_type: AirportType,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
+    pub proj_x: Option<f32>, // Normalized Mercator X (0.0 to 1.0)
+    pub proj_y: Option<f32>, // Normalized Mercator Y (0.0 to 1.0)
 }
 
 impl std::hash::Hash for Airport {
@@ -61,6 +63,10 @@ impl AptDatParser {
             line_buf.clear();
             let bytes_read = reader.read_line(&mut line_buf)?;
             if bytes_read == 0 {
+                // End of file: Push last airport
+                if let Some(builder) = current_airport.take() {
+                    airports.push(builder.build());
+                }
                 break;
             }
 
@@ -74,7 +80,6 @@ impl AptDatParser {
                 Some(s) => s,
                 None => continue,
             };
-
             match code_str {
                 "1" | "16" | "17" => {
                     // Start of new airport. Push previous if exists.
@@ -91,8 +96,8 @@ impl AptDatParser {
 
                     current_airport = parse_airport_header(line, apt_type);
                 }
-                "100" => {
-                    // Runway
+                "100" | "101" => {
+                    // Runway or Water Runway
                     if let Some(ref mut builder) = current_airport {
                         parse_runway(line, builder);
                     }
@@ -111,11 +116,6 @@ impl AptDatParser {
             }
         }
 
-        // Push last one
-        if let Some(builder) = current_airport {
-            airports.push(builder.build());
-        }
-
         Ok(airports)
     }
 }
@@ -130,12 +130,24 @@ struct AirportBuilder {
 
 impl AirportBuilder {
     fn build(self) -> Airport {
-        let (lat, lon) = if !self.lats.is_empty() {
+        let (lat, lon, proj_x, proj_y) = if !self.lats.is_empty() {
             let avg_lat: f64 = self.lats.iter().sum::<f64>() / self.lats.len() as f64;
             let avg_lon: f64 = self.lons.iter().sum::<f64>() / self.lons.len() as f64;
-            (Some(avg_lat), Some(avg_lon))
+
+            // Calculate normalized Mercator coordinates (0.0 to 1.0)
+            let px = (avg_lon + 180.0) / 360.0;
+            let lat_rad = avg_lat.to_radians();
+            let py =
+                (1.0 - (lat_rad.tan() + 1.0 / lat_rad.cos()).ln() / std::f64::consts::PI) / 2.0;
+
+            (
+                Some(avg_lat),
+                Some(avg_lon),
+                Some(px as f32),
+                Some(py as f32),
+            )
         } else {
-            (None, None)
+            (None, None, None, None)
         };
 
         Airport {
@@ -144,6 +156,8 @@ impl AirportBuilder {
             airport_type: self.airport_type,
             lat,
             lon,
+            proj_x,
+            proj_y,
         }
     }
 }
