@@ -3778,106 +3778,75 @@ impl App {
             (
                 "General Options",
                 vec![
-                    (
-                        "--help, -h",
-                        "Prints listing of all command-line options, then quits.",
-                    ),
-                    ("--no_sound", "Runs without initializing sound."),
-                    (
-                        "--no_joysticks",
-                        "Runs without initializing joysticks, yokes, or pedals.",
-                    ),
-                    (
-                        "--lang=<lang code>",
-                        "Runs the sim in a specific language (e.g. --lang=fr).",
-                    ),
-                    (
-                        "--disable_networking",
-                        "Prevents X-Plane from sending/receiving data over the network.",
-                    ),
+                    ("--help, -h", "Prints listing of all command-line options, then quits."),
+                    ("--no_sound", "Runs without initializing sound - can help identify a problem with sound hardware."),
+                    ("--no_joysticks", "Runs without initializing joysticks, yokes, pedals, or other USB hardware."),
+                    ("--missing_strings", "Output missing localizations to the log file (English native)."),
+                    ("--lang=<lang code>", "Runs the sim in a specific language (bypasses system detection)."),
+                    ("--disable_networking", "Prevents X-Plane from sending or receiving data over the network."),
+                    ("--allow_rosetta", "Allow PPC emulation on x86 machines (Mac, discouraged)."),
                 ],
             ),
             (
-                "Auto-Configuration",
+                "Auto-Configure X-Plane",
                 vec![
-                    (
-                        "--pref:<key>=<value>",
-                        "Sets an individual preference value at startup.",
-                    ),
-                    ("--dref:<ref>=<value>", "Sets a dataref value at startup."),
+                    ("--pref:<key>=<value>", "Sets an individual preference to an overloaded value."),
+                    ("--dref:<ref>=<value>", "Sets a dataref to a value at startup (sim-created only)."),
                 ],
             ),
             (
-                "Hardware Acceleration (Disable)",
+                "Disable Hardware Acceleration",
                 vec![
                     ("--no_vbos", "Disables the use of vertex buffer objects."),
                     ("--no_fbos", "Disable the use of framebuffer objects."),
-                    ("--no_glsl", "Disable the use of GLSL shaders."),
-                    ("--no_vshaders", "Disable the use of vertex shaders."),
+                    ("--no_pbos", "Disable the use of pixelbuffer objects."),
+                    ("--no_sprites", "Disables the use of point sprites (accelerates runway lights)."),
+                    ("--no_pixel_counters", "Disables pixel counters (used for sun glare)."),
+                    ("--no_aniso_filtering", "Disables anisotropic filtering of textures."),
+                    ("--no_hw_mipmap", "Disables hardware accelerated mipmap-creation (CPU instead)."),
                     ("--no_fshaders", "Disable the use of fragment shaders."),
-                    (
-                        "--no_threaded_ogl",
-                        "Disable the use of OpenGL via multiple threads.",
-                    ),
-                    ("--fake_vr", "Enable VR mode on a normal 2D monitor."),
+                    ("--no_vshaders", "Disable the use of vertex shaders."),
+                    ("--no_glsl", "Disable the use of GLSL shaders."),
+                    ("--limited_glsl", "Force shaders to act as if graphics hardware is limited."),
+                    ("--unlimited_glsl", "Override detection to run advanced shaders on old machines (can crash)."),
+                    ("--no_threaded_ogl", "Disable the use of OpenGL via multiple threads."),
                 ],
             ),
             (
-                "Hardware Acceleration (Enable)",
+                "Enable Incompatible Hardware Acceleration",
                 vec![
-                    (
-                        "--use_vbos",
-                        "Forces the use of VBOs even on unstable drivers.",
-                    ),
-                    ("--use_glsl", "Force the use of GLSL even on buggy drivers."),
-                    (
-                        "--force_run",
-                        "Forces X-Plane to run even if missing minimum requirements.",
-                    ),
+                    ("--use_vbos", "Forces the use of VBOs."),
+                    ("--use_sprites", "Forces the use of point sprites."),
+                    ("--use_fshaders", "Force the use of fragment shaders."),
+                    ("--use_vshaders", "Force the use of vertex shaders."),
+                    ("--use_glsl", "Force the use of GLSL."),
+                    ("--use_fbos", "Force the use of FBOs."),
+                    ("--force_run", "Allow X-Plane to run even if minimum requirements aren't met."),
+                    ("--fake_vr", "Enable VR from settings and see 2D representation on monitor."),
                 ],
             ),
             (
-                "Safe Mode",
+                "Windowing Options",
                 vec![
-                    (
-                        "--safe_mode",
-                        "Runs X-Plane in safe mode (disables GFX, PLG, SCN, ART, UI as needed).",
-                    ),
-                    (
-                        "--safe_mode=PLG,SCN",
-                        "Run with specific safe modes enabled (separated by commas).",
-                    ),
+                    ("--full=<width>x<height>", "Launches in full-screen mode at specific resolution."),
+                    ("--window=<width>x<height>", "Launches in a window with specified width & height."),
                 ],
             ),
             (
-                "Windowing",
+                "Improving Reproducibility",
                 vec![
-                    (
-                        "--full=WxH",
-                        "Launches in full-screen mode at specific resolution.",
-                    ),
-                    (
-                        "--window=WxH",
-                        "Launches in a window with specified width and height.",
-                    ),
+                    ("--weather_seed=<number>", "Seeds the weather system random number generator."),
+                    ("--time_seed=<number>", "Seeds the non-weather systems random number generator."),
+                    ("--safe_mode=[...]", "Runs in safe mode: GFX, PLG, SCN, ART, UI (comma separated)."),
                 ],
             ),
             (
-                "Performance & Reproducibility",
+                "Framerate Test",
                 vec![
-                    ("--fps_test=n", "Runs a 90-second framerate test."),
-                    (
-                        "--weather_seed=n",
-                        "Seeds the random generator for reproducible weather.",
-                    ),
-                    (
-                        "--time_seed=n",
-                        "Seeds the random generator for non-weather systems.",
-                    ),
-                    (
-                        "--qa_script=<file>",
-                        "Runs performance monitoring using a text script.",
-                    ),
+                    ("--fps_test=n", "Runs a frame-rate test (3 digits: angle, complexity, weather)."),
+                    ("--verbose", "Include detailed timing information for every frame in FPS test."),
+                    ("--require_fps=n", "Fail/pass mode: sim exits with 0 if FPS > N, else 1."),
+                    ("--qa_script=<file>", "Use text file to run time-based performance monitoring."),
                 ],
             ),
         ];
