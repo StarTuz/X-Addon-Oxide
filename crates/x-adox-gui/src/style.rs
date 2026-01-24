@@ -71,6 +71,19 @@ pub fn container_modal(_theme: &Theme) -> container::Style {
     }
 }
 
+pub fn container_tooltip(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgb(0.95, 0.95, 0.95))),
+        text_color: Some(Color::BLACK),
+        border: Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: palette::BORDER,
+        },
+        ..Default::default()
+    }
+}
+
 // Button Styles
 pub fn button_primary(_theme: &Theme, status: button::Status) -> button::Style {
     let base = button::Style {

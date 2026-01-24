@@ -1004,10 +1004,11 @@ impl App {
             }
             Message::LaunchCompanionApp => {
                 if let Some(idx) = self.selected_companion_app {
-                    if let Some(app) = self.companion_apps.get(idx) {
-                        let path = app.path.clone();
-                        let _ = std::process::Command::new(path).spawn();
-                        self.status = format!("Launched {}", app.name);
+                    if let Some(app) = self.companion_apps.get(idx).cloned() {
+                        self.spawn_companion_app(&app);
+                        if self.status != format!("Failed to launch {}", app.name) {
+                            self.status = format!("Launched {}", app.name);
+                        }
                     }
                 }
                 Task::none()
@@ -1420,10 +1421,9 @@ impl App {
                                         self.status = "X-Plane launched!".to_string();
 
                                         // Auto-launch companion apps
-                                        for app in &self.companion_apps {
+                                        for app in self.companion_apps.clone() {
                                             if app.auto_launch {
-                                                let path = app.path.clone();
-                                                let _ = std::process::Command::new(path).spawn();
+                                                self.spawn_companion_app(&app);
                                             }
                                         }
                                     }
@@ -3021,12 +3021,43 @@ impl App {
 
         if self.show_companion_manage {
             let mut apps_list = Column::new().spacing(10);
+
+            if !self.companion_apps.is_empty() {
+                apps_list = apps_list.push(
+                    row![
+                        text("Launch with X-Plane")
+                            .size(10)
+                            .color(style::palette::TEXT_SECONDARY)
+                            .width(Length::Fixed(120.0)),
+                        text("Application")
+                            .size(10)
+                            .color(style::palette::TEXT_SECONDARY),
+                    ]
+                    .spacing(15)
+                    .padding(Padding {
+                        top: 0.0,
+                        right: 0.0,
+                        bottom: 5.0,
+                        left: 0.0,
+                    }),
+                );
+            }
+
             for (idx, app) in self.companion_apps.iter().enumerate() {
                 apps_list = apps_list.push(
                     row![
-                        checkbox("", app.auto_launch)
-                            .on_toggle(move |_| Message::ToggleCompanionAutoLaunch(idx))
-                            .size(16),
+                        container(
+                            tooltip(
+                                checkbox("", app.auto_launch)
+                                    .on_toggle(move |_| Message::ToggleCompanionAutoLaunch(idx))
+                                    .size(16),
+                                "Automatically launch this application when X-Plane starts",
+                                tooltip::Position::Top,
+                            )
+                            .style(style::container_tooltip)
+                        )
+                        .width(Length::Fixed(120.0))
+                        .center_x(Length::Fixed(60.0)),
                         column![
                             text(&app.name).size(14),
                             text(app.path.to_string_lossy())
@@ -5778,6 +5809,30 @@ impl App {
                 let writer = std::io::BufWriter::new(file);
                 let _ = serde_json::to_writer_pretty(writer, &config);
             }
+        }
+    }
+
+    fn spawn_companion_app(&mut self, app: &CompanionApp) {
+        let path = &app.path;
+        let parent_dir = path.parent().unwrap_or(path);
+
+        let mut command = if path.extension().map_or(false, |ext| ext == "sh") {
+            let mut cmd = std::process::Command::new("sh");
+            cmd.arg("-c").arg(format!("\"{}\"", path.display()));
+            cmd
+        } else {
+            std::process::Command::new(path)
+        };
+
+        command.current_dir(parent_dir);
+
+        // Escape AppImage sandbox if necessary
+        command.env_remove("LD_LIBRARY_PATH");
+        command.env_remove("APPDIR");
+        command.env_remove("APPIMAGE");
+
+        if let Err(e) = command.spawn() {
+            self.status = format!("Failed to launch {}: {}", app.name, e);
         }
     }
 }
