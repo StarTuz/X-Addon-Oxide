@@ -110,6 +110,9 @@ impl AptDatParser {
                 }
                 "99" => {
                     // Explicit end of file
+                    if let Some(builder) = current_airport.take() {
+                        airports.push(builder.build());
+                    }
                     break;
                 }
                 _ => {}

@@ -3575,8 +3575,19 @@ impl App {
                                         .into()
                                 };
 
+                            let name_display = if target_name == "Global Airports"
+                                && self.hovered_airport_id.is_some()
+                            {
+                                format!(
+                                    "Global Airport: {}",
+                                    self.hovered_airport_id.as_ref().unwrap()
+                                )
+                            } else {
+                                target_name.clone()
+                            };
+
                             column![
-                                text(target_name).size(12).font(iced::Font::MONOSPACE),
+                                text(name_display).size(12).font(iced::Font::MONOSPACE),
                                 text(format!(
                                     "CATEGORY: {:?} | TILES: {} | AIRPORTS: {}",
                                     pack.category,

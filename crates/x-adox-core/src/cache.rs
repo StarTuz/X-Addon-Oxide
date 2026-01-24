@@ -15,9 +15,22 @@ pub struct CacheEntry {
     pub tiles: Vec<(i32, i32)>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+const CURRENT_CACHE_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveryCache {
+    #[serde(default)]
+    pub version: u32,
     pub entries: HashMap<PathBuf, CacheEntry>,
+}
+
+impl Default for DiscoveryCache {
+    fn default() -> Self {
+        Self {
+            version: CURRENT_CACHE_VERSION,
+            entries: HashMap::new(),
+        }
+    }
 }
 
 impl DiscoveryCache {
@@ -29,8 +42,15 @@ impl DiscoveryCache {
         let path = Self::get_cache_path();
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(path) {
-                if let Ok(cache) = serde_json::from_str(&content) {
-                    return cache;
+                if let Ok(cache) = serde_json::from_str::<DiscoveryCache>(&content) {
+                    if cache.version == CURRENT_CACHE_VERSION {
+                        return cache;
+                    } else {
+                        println!(
+                            "[DiscoveryCache] Outdated cache version ({} vs {}), re-scanning...",
+                            cache.version, CURRENT_CACHE_VERSION
+                        );
+                    }
                 }
             }
         }

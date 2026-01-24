@@ -324,6 +324,22 @@ where
             let square_size = 6.0;
             let selected_size = 10.0;
 
+            // --- Conflict Detection ---
+            // If both Global and Custom Airports are enabled, we build a set of Custom ICAOs
+            // to suppress Global dots that are redundant.
+            let mut custom_icaos = std::collections::HashSet::new();
+            if self.filters.show_custom_airports && self.filters.show_global_airports {
+                for pack in self.packs {
+                    if pack.category != x_adox_core::scenery::SceneryCategory::GlobalAirport
+                        && self.is_pack_visible(pack)
+                    {
+                        for apt in &pack.airports {
+                            custom_icaos.insert(&apt.id);
+                        }
+                    }
+                }
+            }
+
             for pack in self.packs.iter().rev() {
                 let is_selected = self.selected_scenery == Some(&pack.name);
                 let is_hovered = self.hovered_scenery == Some(&pack.name);
@@ -410,6 +426,12 @@ where
 
                     // Draw Airport-based markers
                     for (i, airport) in pack.airports.iter().enumerate() {
+                        // --- Conflict Resolution ---
+                        // Skip global markers if a higher-priority custom pack covers it
+                        if is_global && custom_icaos.contains(&airport.id) {
+                            continue;
+                        }
+
                         if i % skip_step != 0 {
                             continue;
                         }
@@ -834,6 +856,20 @@ where
                 }
 
                 if let Some(coords) = coords {
+                    // --- Conflict Detection ---
+                    let mut custom_icaos = std::collections::HashSet::new();
+                    if self.filters.show_custom_airports && self.filters.show_global_airports {
+                        for pack in self.packs {
+                            if pack.category != x_adox_core::scenery::SceneryCategory::GlobalAirport
+                                && self.is_pack_visible(pack)
+                            {
+                                for apt in &pack.airports {
+                                    custom_icaos.insert(&apt.id);
+                                }
+                            }
+                        }
+                    }
+
                     for pack in self.packs {
                         // Ignore packs that are filtered out unless they are selected
                         if !self.is_pack_visible(pack) && self.selected_scenery != Some(&pack.name)
@@ -860,6 +896,11 @@ where
                             pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
 
                         for airport in &pack.airports {
+                            // --- Conflict Resolution ---
+                            if is_global && custom_icaos.contains(&airport.id) {
+                                continue;
+                            }
+
                             if let (Some(lat), Some(lon), Some((wx, wy))) =
                                 (airport.lat, airport.lon, mouse_z0)
                             {

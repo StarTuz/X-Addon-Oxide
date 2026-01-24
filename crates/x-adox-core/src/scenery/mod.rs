@@ -584,6 +584,7 @@ fn is_scenery_root(path: &Path) -> bool {
     let signals = [
         "earth nav data",
         "library.txt",
+        "apt.dat",
         "earth.wed.xml",
         "earth.wed.bak.xml",
         "mars nav data",
@@ -722,31 +723,46 @@ fn discover_airports_in_pack(pack_path: &Path) -> Vec<Airport> {
             None
         };
 
+        let mut apt_path = None;
+
         if let Some(nav_path) = real_nav_path {
-            // 2. Find "apt.dat" case-insensitively
-            let real_apt_path = if let Ok(entries) = std::fs::read_dir(&nav_path) {
-                entries.flatten().find_map(|e| {
+            // 2. Find "apt.dat" case-insensitively inside "Earth nav data"
+            if let Ok(entries) = std::fs::read_dir(&nav_path) {
+                apt_path = entries.flatten().find_map(|e| {
                     let name = e.file_name().to_string_lossy().to_lowercase();
                     if name == "apt.dat" {
                         Some(e.path())
                     } else {
                         None
                     }
-                })
-            } else {
-                None
-            };
+                });
+            }
+        }
 
-            if let Some(apt_path) = real_apt_path {
-                match AptDatParser::parse_file(&apt_path) {
-                    Ok(airports) => all_airports.extend(airports),
-                    Err(e) => {
-                        println!(
-                            "[SceneryManager] ERROR parsing {}: {}",
-                            apt_path.display(),
-                            e
-                        );
+        // 3. Fallback: Search for "apt.dat" in the ROOT of the pack
+        // (Common for some custom scenery packs)
+        if apt_path.is_none() {
+            if let Ok(entries) = std::fs::read_dir(&root) {
+                apt_path = entries.flatten().find_map(|e| {
+                    let name = e.file_name().to_string_lossy().to_lowercase();
+                    if name == "apt.dat" {
+                        Some(e.path())
+                    } else {
+                        None
                     }
+                });
+            }
+        }
+
+        if let Some(apt_path) = apt_path {
+            match AptDatParser::parse_file(&apt_path) {
+                Ok(airports) => all_airports.extend(airports),
+                Err(e) => {
+                    println!(
+                        "[SceneryManager] ERROR parsing {}: {}",
+                        apt_path.display(),
+                        e
+                    );
                 }
             }
         }
@@ -760,6 +776,7 @@ fn discover_airports_in_pack(pack_path: &Path) -> Vec<Airport> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use std::io::Write;
     use tempfile::tempdir;
 
