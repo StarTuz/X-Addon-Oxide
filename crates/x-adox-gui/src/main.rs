@@ -253,6 +253,11 @@ enum Message {
     LogbookFilterDurationMinChanged(String),
     LogbookFilterDurationMaxChanged(String),
     DeleteLogbookEntry(usize),
+    ToggleLogbookEntrySelection(usize),
+    ToggleAllLogbookSelection(bool),
+    RequestLogbookBulkDelete,
+    ConfirmLogbookBulkDelete,
+    CancelLogbookBulkDelete,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -460,6 +465,8 @@ struct App {
     logbook_filter_circular: bool,
     logbook_filter_duration_min: String,
     logbook_filter_duration_max: String,
+    logbook_selection: std::collections::HashSet<usize>,
+    show_logbook_bulk_delete_confirm: bool,
 }
 
 impl App {
@@ -609,6 +616,8 @@ impl App {
             logbook_filter_circular: false,
             logbook_filter_duration_min: String::new(),
             logbook_filter_duration_max: String::new(),
+            logbook_selection: std::collections::HashSet::new(),
+            show_logbook_bulk_delete_confirm: false,
             smart_groups: std::collections::BTreeMap::new(),
             smart_model_groups: std::collections::BTreeMap::new(),
         };
@@ -878,6 +887,8 @@ impl App {
                         .join("X-Plane Pilot.txt");
                     if idx < self.logbook.len() {
                         self.logbook.remove(idx);
+                        // Clear selection when individual deletion happens to avoid index mismatch
+                        self.logbook_selection.clear();
                         let entries = self.logbook.clone();
                         return Task::perform(
                             async move {
@@ -893,6 +904,97 @@ impl App {
                             },
                         );
                     }
+                }
+                Task::none()
+            }
+            Message::ToggleLogbookEntrySelection(idx) => {
+                if self.logbook_selection.contains(&idx) {
+                    self.logbook_selection.remove(&idx);
+                } else {
+                    self.logbook_selection.insert(idx);
+                }
+                Task::none()
+            }
+            Message::ToggleAllLogbookSelection(select) => {
+                if select {
+                    let filtered_indices: Vec<usize> = self
+                        .logbook
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, entry)| {
+                            if !self.logbook_filter_aircraft.is_empty() {
+                                let filter = self.logbook_filter_aircraft.to_lowercase();
+                                if !entry.tail_number.to_lowercase().contains(&filter)
+                                    && !entry.aircraft_type.to_lowercase().contains(&filter)
+                                {
+                                    return false;
+                                }
+                            }
+                            if self.logbook_filter_circular
+                                && entry.dep_airport != entry.arr_airport
+                            {
+                                return false;
+                            }
+                            if let Ok(min) = self.logbook_filter_duration_min.parse::<f64>() {
+                                if entry.total_duration < min {
+                                    return false;
+                                }
+                            }
+                            if let Ok(max) = self.logbook_filter_duration_max.parse::<f64>() {
+                                if entry.total_duration > max {
+                                    return false;
+                                }
+                            }
+                            true
+                        })
+                        .map(|(idx, _)| idx)
+                        .collect();
+
+                    for idx in filtered_indices {
+                        self.logbook_selection.insert(idx);
+                    }
+                } else {
+                    self.logbook_selection.clear();
+                }
+                Task::none()
+            }
+            Message::RequestLogbookBulkDelete => {
+                self.show_logbook_bulk_delete_confirm = true;
+                Task::none()
+            }
+            Message::CancelLogbookBulkDelete => {
+                self.show_logbook_bulk_delete_confirm = false;
+                Task::none()
+            }
+            Message::ConfirmLogbookBulkDelete => {
+                self.show_logbook_bulk_delete_confirm = false;
+                if let Some(root) = &self.xplane_root {
+                    let path = root
+                        .join("Output")
+                        .join("logbooks")
+                        .join("X-Plane Pilot.txt");
+
+                    let mut indices: Vec<usize> = self.logbook_selection.iter().cloned().collect();
+                    indices.sort_by(|a, b| b.cmp(a)); // Sort descending to maintain relative indices while removing
+
+                    for idx in indices {
+                        if idx < self.logbook.len() {
+                            self.logbook.remove(idx);
+                        }
+                    }
+
+                    self.logbook_selection.clear();
+                    let entries = self.logbook.clone();
+                    return Task::perform(
+                        async move {
+                            x_adox_core::logbook::LogbookParser::save_file(path, &entries)
+                                .map_err(|e| e.to_string())
+                        },
+                        |res| match res {
+                            Ok(_) => Message::Refresh,
+                            Err(_e) => Message::Refresh,
+                        },
+                    );
                 }
                 Task::none()
             }
@@ -3065,6 +3167,33 @@ impl App {
                     ]
                     .spacing(15)
                     .align_y(iced::Alignment::Center),
+                    row![
+                        text("Bulk Actions:")
+                            .size(14)
+                            .color(style::palette::TEXT_SECONDARY),
+                        checkbox("Select All (filtered)", false)
+                            .on_toggle(Message::ToggleAllLogbookSelection)
+                            .size(16),
+                        iced::widget::horizontal_space(),
+                        if !self.logbook_selection.is_empty() {
+                            Element::from(
+                                button(
+                                    text(format!(
+                                        "Delete Selected ({})",
+                                        self.logbook_selection.len()
+                                    ))
+                                    .size(12),
+                                )
+                                .on_press(Message::RequestLogbookBulkDelete)
+                                .style(style::button_danger)
+                                .padding([5, 15]),
+                            )
+                        } else {
+                            Element::from(iced::widget::Space::with_height(0.0))
+                        },
+                    ]
+                    .spacing(20)
+                    .align_y(iced::Alignment::Center),
                 ]
                 .spacing(10),
             )
@@ -3127,7 +3256,11 @@ impl App {
                         .map(|d: chrono::NaiveDate| d.format("%Y-%m-%d").to_string())
                         .unwrap_or_else(|| "Unknown Date".to_string());
 
+                    let is_checked = self.logbook_selection.contains(&idx);
                     let row_content = row![
+                        checkbox("", is_checked)
+                            .on_toggle(move |_| Message::ToggleLogbookEntrySelection(idx))
+                            .size(16),
                         text(date_str).width(Length::Fixed(90.0)).size(12),
                         text(&entry.dep_airport).width(Length::Fixed(50.0)).size(12),
                         text("->").width(Length::Fixed(20.0)).size(12),
@@ -3513,6 +3646,20 @@ impl App {
                     })
             ]
             .into()
+        } else if self.show_logbook_bulk_delete_confirm {
+            stack![
+                main_content,
+                container(self.view_logbook_bulk_delete_dialog())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .center_x(iced::Length::Fill)
+                    .center_y(iced::Length::Fill)
+                    .style(|_theme: &Theme| container::Style {
+                        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.6))),
+                        ..Default::default()
+                    })
+            ]
+            .into()
         } else {
             main_content.into()
         }
@@ -3588,6 +3735,42 @@ impl App {
         .spacing(20)
         .padding(30)
         .width(Length::Fixed(400.0));
+
+        container(content)
+            .style(style::container_modal)
+            .padding(20)
+            .into()
+    }
+
+    fn view_logbook_bulk_delete_dialog(&self) -> Element<'_, Message> {
+        let count = self.logbook_selection.len();
+        let content = column![
+            text("Confirm Bulk Deletion").size(24).color(Color::WHITE),
+            text(format!(
+                "Are you sure you want to delete {} selected logbook entries?",
+                count
+            ))
+            .size(16)
+            .color(style::palette::TEXT_PRIMARY),
+            text("This action cannot be undone. A backup of your logbook will be created.")
+                .size(14)
+                .color(style::palette::TEXT_SECONDARY),
+            row![
+                button(text("Cancel").size(14))
+                    .on_press(Message::CancelLogbookBulkDelete)
+                    .style(style::button_secondary)
+                    .padding([10, 20]),
+                button(text(format!("Delete {} Entries", count)).size(14))
+                    .on_press(Message::ConfirmLogbookBulkDelete)
+                    .style(style::button_danger)
+                    .padding([10, 30]),
+            ]
+            .spacing(20)
+            .align_y(iced::Alignment::Center),
+        ]
+        .spacing(20)
+        .padding(30)
+        .width(Length::Fixed(500.0));
 
         container(content)
             .style(style::container_modal)
@@ -3820,7 +4003,7 @@ impl App {
             Tab::Utilities => (&self.icon_utilities, Color::from_rgb(0.8, 0.5, 1.0)), // Purple
             Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
             Tab::Issues => (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)), // Always red for Issues
-            Tab::Settings => (&self.icon_settings, Color::from_rgb(0.7, 0.7, 0.7)), // Light gray for settings
+            Tab::Settings => (&self.icon_settings, style::palette::ACCENT_PURPLE), // Violet for settings
         };
 
         let icon = svg(icon_handle.clone())
