@@ -246,6 +246,13 @@ enum Message {
     RemoveCompanionApp(usize),
     ToggleMapFilterSettings,
     ToggleMapFilter(MapFilterType),
+
+    // Logbook Filters
+    LogbookFilterAircraftChanged(String),
+    LogbookFilterCircularToggled(bool),
+    LogbookFilterDurationMinChanged(String),
+    LogbookFilterDurationMaxChanged(String),
+    DeleteLogbookEntry(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -447,6 +454,12 @@ struct App {
     new_companion_path: Option<PathBuf>,
     show_map_filter_settings: bool,
     map_filters: MapFilters,
+
+    // Logbook Filtering
+    logbook_filter_aircraft: String,
+    logbook_filter_circular: bool,
+    logbook_filter_duration_min: String,
+    logbook_filter_duration_max: String,
 }
 
 impl App {
@@ -592,6 +605,10 @@ impl App {
             new_companion_path: None,
             show_map_filter_settings: false,
             map_filters: MapFilters::default(),
+            logbook_filter_aircraft: String::new(),
+            logbook_filter_circular: false,
+            logbook_filter_duration_min: String::new(),
+            logbook_filter_duration_max: String::new(),
             smart_groups: std::collections::BTreeMap::new(),
             smart_model_groups: std::collections::BTreeMap::new(),
         };
@@ -835,6 +852,48 @@ impl App {
             }
             Message::ToggleLogbook => {
                 self.logbook_expanded = !self.logbook_expanded;
+                Task::none()
+            }
+            Message::LogbookFilterAircraftChanged(val) => {
+                self.logbook_filter_aircraft = val;
+                Task::none()
+            }
+            Message::LogbookFilterCircularToggled(val) => {
+                self.logbook_filter_circular = val;
+                Task::none()
+            }
+            Message::LogbookFilterDurationMinChanged(val) => {
+                self.logbook_filter_duration_min = val;
+                Task::none()
+            }
+            Message::LogbookFilterDurationMaxChanged(val) => {
+                self.logbook_filter_duration_max = val;
+                Task::none()
+            }
+            Message::DeleteLogbookEntry(idx) => {
+                if let Some(root) = &self.xplane_root {
+                    let path = root
+                        .join("Output")
+                        .join("logbooks")
+                        .join("X-Plane Pilot.txt");
+                    if idx < self.logbook.len() {
+                        self.logbook.remove(idx);
+                        let entries = self.logbook.clone();
+                        return Task::perform(
+                            async move {
+                                x_adox_core::logbook::LogbookParser::save_file(path, &entries)
+                                    .map_err(|e| e.to_string())
+                            },
+                            |res| match res {
+                                Ok(_) => Message::Refresh,
+                                Err(_e) => {
+                                    // In a real app we'd dispatch a SetStatus message
+                                    Message::Refresh
+                                }
+                            },
+                        );
+                    }
+                }
                 Task::none()
             }
             Message::LaunchCompanionApp => {
@@ -2963,6 +3022,58 @@ impl App {
         .style(style::button_secondary)
         .width(Length::Fill);
 
+        let filter_bar = if self.logbook_expanded {
+            container(
+                column![
+                    row![
+                        text_input(
+                            "Filter Aircraft (Tail/Type)...",
+                            &self.logbook_filter_aircraft
+                        )
+                        .on_input(Message::LogbookFilterAircraftChanged)
+                        .padding(8)
+                        .size(14)
+                        .style(style::text_input_primary),
+                        checkbox("Circular Only", self.logbook_filter_circular)
+                            .on_toggle(Message::LogbookFilterCircularToggled)
+                            .size(16),
+                    ]
+                    .spacing(20)
+                    .align_y(iced::Alignment::Center),
+                    row![
+                        text("Duration (h):")
+                            .size(14)
+                            .color(style::palette::TEXT_SECONDARY),
+                        text_input("Min", &self.logbook_filter_duration_min)
+                            .on_input(Message::LogbookFilterDurationMinChanged)
+                            .padding(6)
+                            .width(Length::Fixed(60.0))
+                            .size(12)
+                            .style(style::text_input_primary),
+                        text("to").size(12).color(style::palette::TEXT_SECONDARY),
+                        text_input("Max", &self.logbook_filter_duration_max)
+                            .on_input(Message::LogbookFilterDurationMaxChanged)
+                            .padding(6)
+                            .width(Length::Fixed(60.0))
+                            .size(12)
+                            .style(style::text_input_primary),
+                        iced::widget::horizontal_space(),
+                        button(text("Clear Filters").size(12))
+                            .on_press(Message::LogbookFilterAircraftChanged(String::new())) // Hacky clear
+                            .style(style::button_secondary)
+                            .padding([5, 10]),
+                    ]
+                    .spacing(15)
+                    .align_y(iced::Alignment::Center),
+                ]
+                .spacing(10),
+            )
+            .padding(10)
+            .style(style::container_sidebar)
+        } else {
+            container(column![])
+        };
+
         let log_list_content: Element<'_, Message> = if !self.logbook_expanded {
             container(column![]).into()
         } else if self.logbook.is_empty() {
@@ -2971,46 +3082,95 @@ impl App {
                 .padding(20)
                 .into()
         } else {
-            let mut col = Column::new().spacing(5);
-            for (idx, entry) in self.logbook.iter().enumerate() {
-                let is_selected = self.selected_flight == Some(idx);
+            let filtered_entries: Vec<(usize, &x_adox_core::logbook::LogbookEntry)> = self
+                .logbook
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| {
+                    if !self.logbook_filter_aircraft.is_empty() {
+                        let filter = self.logbook_filter_aircraft.to_lowercase();
+                        if !entry.tail_number.to_lowercase().contains(&filter)
+                            && !entry.aircraft_type.to_lowercase().contains(&filter)
+                        {
+                            return false;
+                        }
+                    }
+                    if self.logbook_filter_circular && entry.dep_airport != entry.arr_airport {
+                        return false;
+                    }
+                    if let Ok(min) = self.logbook_filter_duration_min.parse::<f64>() {
+                        if entry.total_duration < min {
+                            return false;
+                        }
+                    }
+                    if let Ok(max) = self.logbook_filter_duration_max.parse::<f64>() {
+                        if entry.total_duration > max {
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .collect();
 
-                let date_str = entry
-                    .date
-                    .map(|d| d.format("%Y-%m-%d").to_string())
-                    .unwrap_or_else(|| "Unknown Date".to_string());
-                let row_content = row![
-                    text(date_str).width(Length::Fixed(100.0)).size(12),
-                    text(&entry.dep_airport).width(Length::Fixed(60.0)).size(12),
-                    text("->").width(Length::Fixed(20.0)).size(12),
-                    text(&entry.arr_airport).width(Length::Fixed(60.0)).size(12),
-                    text(&entry.aircraft_type)
-                        .width(Length::Fixed(80.0))
-                        .size(12),
-                    text(format!("{:.1}h", entry.total_duration))
+            if filtered_entries.is_empty() {
+                container(text("No entries match filters.").size(14))
+                    .center_x(Length::Fill)
+                    .padding(20)
+                    .into()
+            } else {
+                let mut col = Column::new().spacing(5);
+                for (idx, entry) in filtered_entries {
+                    let is_selected = self.selected_flight == Some(idx);
+
+                    let date_str = entry
+                        .date
+                        .map(|d: chrono::NaiveDate| d.format("%Y-%m-%d").to_string())
+                        .unwrap_or_else(|| "Unknown Date".to_string());
+
+                    let row_content = row![
+                        text(date_str).width(Length::Fixed(90.0)).size(12),
+                        text(&entry.dep_airport).width(Length::Fixed(50.0)).size(12),
+                        text("->").width(Length::Fixed(20.0)).size(12),
+                        text(&entry.arr_airport).width(Length::Fixed(50.0)).size(12),
+                        text(&entry.aircraft_type)
+                            .width(Length::Fixed(70.0))
+                            .size(12),
+                        text(format!("{:.1}h", entry.total_duration))
+                            .width(Length::Fixed(40.0))
+                            .size(12),
+                        iced::widget::horizontal_space(),
+                        button(svg(self.icon_trash.clone()).width(12).height(12))
+                            .on_press(Message::DeleteLogbookEntry(idx))
+                            .style(style::button_danger)
+                            .padding(6),
+                    ]
+                    .spacing(8)
+                    .align_y(iced::Alignment::Center);
+
+                    let btn = button(row_content)
+                        .on_press(Message::SelectFlight(Some(idx)))
+                        .padding(8)
                         .width(Length::Fill)
-                        .size(12),
-                ]
-                .spacing(10)
-                .align_y(iced::Alignment::Center);
+                        .style(if is_selected {
+                            style::button_primary
+                        } else {
+                            style::button_secondary
+                        });
 
-                let btn = button(row_content)
-                    .on_press(Message::SelectFlight(Some(idx)))
-                    .padding(8)
-                    .width(Length::Fill)
-                    .style(if is_selected {
-                        style::button_primary
-                    } else {
-                        style::button_secondary
-                    });
-
-                col = col.push(btn);
+                    col = col.push(btn);
+                }
+                container(col).into()
             }
-            container(col).into()
         };
 
         scrollable(
-            column![self.view_companion_apps(), logbook_header, log_list_content,].spacing(15),
+            column![
+                self.view_companion_apps(),
+                logbook_header,
+                filter_bar,
+                log_list_content,
+            ]
+            .spacing(15),
         )
         .width(Length::Fill)
         .height(Length::Fill)

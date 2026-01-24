@@ -19,6 +19,28 @@ pub struct LogbookEntry {
     pub aircraft_type: String,
 }
 
+impl LogbookEntry {
+    pub fn to_log_line(&self) -> String {
+        let date_str = self
+            .date
+            .map(|d| d.format("%y%m%d").to_string())
+            .unwrap_or_else(|| "000000".to_string());
+        format!(
+            "2 {} {} {} {} {} {} {} {} {} {}",
+            date_str,
+            self.dep_airport,
+            self.arr_airport,
+            self.landings,
+            self.total_duration,
+            self.cross_country,
+            self.ifr_time,
+            self.night_time,
+            self.tail_number,
+            self.aircraft_type
+        )
+    }
+}
+
 pub struct LogbookParser;
 
 impl LogbookParser {
@@ -26,6 +48,28 @@ impl LogbookParser {
         let file = File::open(path).context("Failed to open logbook file")?;
         let reader = BufReader::new(file);
         Self::parse(reader)
+    }
+
+    pub fn save_file<P: AsRef<Path>>(path: P, entries: &[LogbookEntry]) -> Result<()> {
+        use std::io::Write;
+
+        // Always create a backup first
+        let bak_path = path.as_ref().with_extension("bak");
+        if path.as_ref().exists() {
+            std::fs::copy(&path, &bak_path).context("Failed to create logbook backup")?;
+        }
+
+        let mut file = File::create(path).context("Failed to create logbook file")?;
+
+        // Write header
+        writeln!(file, "I")?;
+        writeln!(file, "1100 version")?; // Standard version
+
+        for entry in entries {
+            writeln!(file, "{}", entry.to_log_line())?;
+        }
+
+        Ok(())
     }
 
     pub fn parse<R: BufRead>(reader: R) -> Result<Vec<LogbookEntry>> {
@@ -122,5 +166,34 @@ mod tests {
         assert_eq!(entries[0].date.unwrap().year(), 2024);
         assert_eq!(entries[0].date.unwrap().month(), 4);
         assert_eq!(entries[0].date.unwrap().day(), 1);
+    }
+
+    #[test]
+    fn test_roundtrip() {
+        let entry = LogbookEntry {
+            date: NaiveDate::from_ymd_opt(2024, 4, 1),
+            dep_airport: "KBOS".to_string(),
+            arr_airport: "KJFK".to_string(),
+            landings: 1,
+            total_duration: 1.25,
+            cross_country: 1.25,
+            ifr_time: 0.0,
+            night_time: 0.0,
+            tail_number: "N123AB".to_string(),
+            aircraft_type: "B738".to_string(),
+        };
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("log.txt");
+
+        LogbookParser::save_file(&file_path, &[entry.clone()]).unwrap();
+        let loaded = LogbookParser::parse_file(&file_path).unwrap();
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].dep_airport, entry.dep_airport);
+        assert_eq!(loaded[0].arr_airport, entry.arr_airport);
+        assert_eq!(loaded[0].total_duration, entry.total_duration);
+        assert_eq!(loaded[0].tail_number, entry.tail_number);
+        assert_eq!(loaded[0].aircraft_type, entry.aircraft_type);
     }
 }
