@@ -108,6 +108,12 @@ impl AptDatParser {
                         parse_helipad(line, builder);
                     }
                 }
+                "1302" => {
+                    // Metadata (Datum, city, etc.)
+                    if let Some(ref mut builder) = current_airport {
+                        parse_metadata(line, builder);
+                    }
+                }
                 "99" => {
                     // Explicit end of file
                     if let Some(builder) = current_airport.take() {
@@ -129,29 +135,41 @@ struct AirportBuilder {
     airport_type: AirportType,
     lats: Vec<f64>,
     lons: Vec<f64>,
+    datum_lat: Option<f64>,
+    datum_lon: Option<f64>,
 }
 
 impl AirportBuilder {
     fn build(self) -> Airport {
-        let (lat, lon, proj_x, proj_y) = if !self.lats.is_empty() {
-            let avg_lat: f64 = self.lats.iter().sum::<f64>() / self.lats.len() as f64;
-            let avg_lon: f64 = self.lons.iter().sum::<f64>() / self.lons.len() as f64;
+        let (lat, lon, proj_x, proj_y) =
+            if let (Some(d_lat), Some(d_lon)) = (self.datum_lat, self.datum_lon) {
+                // Priority 1: Use the explicit datum coordinates (most precise)
+                let px = (d_lon + 180.0) / 360.0;
+                let lat_rad = d_lat.to_radians();
+                let py =
+                    (1.0 - (lat_rad.tan() + 1.0 / lat_rad.cos()).ln() / std::f64::consts::PI) / 2.0;
 
-            // Calculate normalized Mercator coordinates (0.0 to 1.0)
-            let px = (avg_lon + 180.0) / 360.0;
-            let lat_rad = avg_lat.to_radians();
-            let py =
-                (1.0 - (lat_rad.tan() + 1.0 / lat_rad.cos()).ln() / std::f64::consts::PI) / 2.0;
+                (Some(d_lat), Some(d_lon), Some(px as f32), Some(py as f32))
+            } else if !self.lats.is_empty() {
+                // Priority 2: Standard averaging of runways
+                let avg_lat: f64 = self.lats.iter().sum::<f64>() / self.lats.len() as f64;
+                let avg_lon: f64 = self.lons.iter().sum::<f64>() / self.lons.len() as f64;
 
-            (
-                Some(avg_lat),
-                Some(avg_lon),
-                Some(px as f32),
-                Some(py as f32),
-            )
-        } else {
-            (None, None, None, None)
-        };
+                // Calculate normalized Mercator coordinates (0.0 to 1.0)
+                let px = (avg_lon + 180.0) / 360.0;
+                let lat_rad = avg_lat.to_radians();
+                let py =
+                    (1.0 - (lat_rad.tan() + 1.0 / lat_rad.cos()).ln() / std::f64::consts::PI) / 2.0;
+
+                (
+                    Some(avg_lat),
+                    Some(avg_lon),
+                    Some(px as f32),
+                    Some(py as f32),
+                )
+            } else {
+                (None, None, None, None)
+            };
 
         Airport {
             id: self.id,
@@ -180,7 +198,29 @@ fn parse_airport_header(line: &str, apt_type: AirportType) -> Option<AirportBuil
         airport_type: apt_type,
         lats: Vec::with_capacity(4),
         lons: Vec::with_capacity(4),
+        datum_lat: None,
+        datum_lon: None,
     })
+}
+
+fn parse_metadata(line: &str, builder: &mut AirportBuilder) {
+    let mut parts = line.split_whitespace();
+    parts.next(); // 1302
+    if let (Some(key), Some(val)) = (parts.next(), parts.next()) {
+        match key {
+            "datum_lat" => {
+                if let Ok(lat) = val.parse::<f64>() {
+                    builder.datum_lat = Some(lat);
+                }
+            }
+            "datum_lon" => {
+                if let Ok(lon) = val.parse::<f64>() {
+                    builder.datum_lon = Some(lon);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn parse_runway(line: &str, builder: &mut AirportBuilder) {
