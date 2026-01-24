@@ -343,22 +343,40 @@ where
             for pack in self.packs.iter().rev() {
                 let is_selected = self.selected_scenery == Some(&pack.name);
                 let is_hovered = self.hovered_scenery == Some(&pack.name);
+                let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::Ortho;
+                let is_library = pack.category == x_adox_core::scenery::SceneryCategory::Library;
+                let is_overlay = pack.category == x_adox_core::scenery::SceneryCategory::Overlay;
+                let is_earth = pack.category == x_adox_core::scenery::SceneryCategory::EarthScenery;
+
+                let tile_count = pack.tiles.len();
+                let is_massive_pack = tile_count >= 10 && (is_overlay || is_earth);
+
                 let base_color = match pack.status {
                     SceneryPackType::Active => Color::from_rgb(0.0, 1.0, 0.0), // Classic Green
                     SceneryPackType::Disabled | SceneryPackType::DuplicateHidden => {
                         Color::from_rgb(1.0, 0.2, 0.2) // keeping the brighter red for better contrast
                     }
                 };
-                let fill_color = if is_selected || is_hovered {
-                    Color::from_rgb(1.0, 1.0, 0.0)
-                } else {
-                    base_color
-                };
+
                 let size = if is_selected || is_hovered {
                     selected_size
                 } else {
                     square_size
                 };
+
+                // Visual Styling Determination
+                let (fill_color, radius) = if is_selected || is_hovered {
+                    (Color::from_rgb(1.0, 1.0, 0.0), (size / 4.0).into())
+                } else if is_ortho {
+                    (Color::from_rgb(0.0, 1.0, 1.0), 0.0.into()) // Cyan Sharp Square
+                } else if is_library {
+                    (Color::from_rgb(1.0, 0.0, 1.0), (size / 2.0).into()) // Purple Circle
+                } else if is_massive_pack {
+                    (Color::from_rgb(0.5, 1.0, 0.0), (size / 2.0).into()) // Lime "Diamond" (Circle)
+                } else {
+                    (base_color, (size / 4.0).into()) // Standard rounded square
+                };
+
                 let half_size = size / 2.0;
 
                 // --- Decision Logic for DRAWING ---
@@ -415,7 +433,7 @@ where
                                     border: iced::Border {
                                         color: Color::BLACK,
                                         width: 1.0,
-                                        radius: (size / 4.0).into(),
+                                        radius,
                                     },
                                     ..Default::default()
                                 },
@@ -458,21 +476,19 @@ where
                             // For Global Airports, ONLY highlight the hovered one. Pack selection is ignored to avoid "Yellow Ocean".
                             let highlight_this = (is_selected && !is_global) || is_airport_hovered;
 
-                            let airport_fill_color = if highlight_this {
-                                Color::from_rgb(1.0, 1.0, 0.0)
-                            } else if is_hovered && !is_global {
-                                Color::from_rgb(1.0, 1.0, 0.0)
-                            } else {
-                                base_color
-                            };
-
                             let airport_size = if highlight_this {
-                                selected_size
-                            } else if is_hovered && !is_global {
                                 selected_size
                             } else {
                                 square_size
                             };
+
+                            let (airport_fill_color, airport_radius) =
+                                if highlight_this || (is_hovered && !is_global) {
+                                    (Color::from_rgb(1.0, 1.0, 0.0), (airport_size / 4.0).into())
+                                } else {
+                                    (base_color, (airport_size / 4.0).into())
+                                };
+
                             let airport_half_size = airport_size / 2.0;
 
                             renderer.fill_quad(
@@ -486,7 +502,7 @@ where
                                     border: iced::Border {
                                         color: Color::BLACK,
                                         width: 1.0,
-                                        radius: (airport_size / 4.0).into(),
+                                        radius: airport_radius,
                                     },
                                     ..Default::default()
                                 },
