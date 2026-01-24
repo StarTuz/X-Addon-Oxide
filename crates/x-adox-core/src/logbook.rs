@@ -24,9 +24,9 @@ impl LogbookEntry {
         let date_str = self
             .date
             .map(|d| d.format("%y%m%d").to_string())
-            .unwrap_or_else(|| "000000".to_string());
+            .unwrap_or_else(|| "     0".to_string());
         format!(
-            "2 {} {} {} {} {} {} {} {} {} {}",
+            "2 {:>6} {:>7} {:>7}   {:>1}   {:>3.1}   {:>3.1}   {:>3.1}   {:>3.1}  {:>6}  {}",
             date_str,
             self.dep_airport,
             self.arr_airport,
@@ -63,11 +63,14 @@ impl LogbookParser {
 
         // Write header
         writeln!(file, "I")?;
-        writeln!(file, "1100 version")?; // Standard version
+        writeln!(file, "1 Version")?;
 
         for entry in entries {
             writeln!(file, "{}", entry.to_log_line())?;
         }
+
+        // Write EOF marker
+        writeln!(file, "99")?;
 
         Ok(())
     }
@@ -79,7 +82,12 @@ impl LogbookParser {
             let line = line?;
             let trimmed = line.trim();
 
-            if trimmed.is_empty() || trimmed.starts_with('I') {
+            if trimmed.is_empty() || trimmed.starts_with('I') || trimmed == "99" {
+                continue;
+            }
+
+            // Version line often starts with a version number like "1 Version" or "1100 version"
+            if trimmed.contains("Version") || trimmed.contains("version") {
                 continue;
             }
 

@@ -20,31 +20,35 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 | **Automatic Logbook Sync** | ✅ | ❌ |
 
 ## Feature Highlights
-- New for 2.2.0
-- Launch X-Plane directly, arguments supported along with multiple install support.
-- New Utility section, Launch any companion app such as Little Navmap directly from the addon-on manager. Multiple applications supported.
-- Logbook support, select a previous flight and see its dotted magenta line on the from departure to destination.
+
+- **New for 2.2.0**:
+  - **Enhanced Logbook**: Not just a viewer—now includes robust filtering (Tail #, Aircraft Type, Circular flights, Duration) and character-perfect deletion that maintains strict X-Plane 12 formatting.
+  - **Dynamic CSL Detection**: Automatically scans all installed plugins for CSL packages, supporting IVAO, xPilot, and more without hardcoded paths.
+  - **Persistent Settings**: Your Map Filter selections (Global Airports, Ortho Coverage, etc.) are now saved and restored across sessions.
+  - **Direct Launcher**: Launch X-Plane directly with custom arguments and support for multiple installations.
+  - **Companion Apps**: Launch tools like Little Navmap directly from the manager.
+- **Logbook Support**: Select a previous flight to visualize its magenta path on the global map. Now with bulk cleanup tools.
 
 ### 🚀 Core Management
 
-* **Non-Destructive Workflow**: Enable or disable Scenery, Aircraft, and Plugins with a single click. We never move your files destructively; we manage logical links to keep your simulator safe.
-* **Direct Zip Install**: Install Aircraft, Scenery, and Plugins directly from their archives (`.zip`)—no manual unzipping required.
-* **Shadow Mesh Detection**: Automatically identifies redundant mesh scenery that destroys load times, helping you optimize performance.
-* **Profiles**: Create and switch between different hangar configurations (e.g., "IFR Online", "VFR Scenery Heavy") instantly.
-* **Companion App Launcher**: Manage and launch external tools like SimBrief, Navigraph, or VATSIM clients directly from the Plugins tab.
-* **Logbook & Utilities**: Automatically synced pilot logbook and live aircraft tracking in the Utilities tab
+- **Non-Destructive Workflow**: Enable or disable Scenery, Aircraft, and Plugins with a single click. We never move your files destructively; we manage logical links to keep your simulator safe.
+- **Direct Zip Install**: Install Aircraft, Scenery, and Plugins directly from their archives (`.zip`)—no manual unzipping required.
+- **Shadow Mesh Detection**: Automatically identifies redundant mesh scenery that destroys load times, helping you optimize performance.
+- **Profiles**: Create and switch between different hangar configurations (e.g., "IFR Online", "VFR Scenery Heavy") instantly.
+- **Companion App Launcher**: Manage and launch external tools like SimBrief, Navigraph, or VATSIM clients directly from the Plugins tab.
+- **Logbook & Utilities**: Automatically synced pilot logbook and live aircraft tracking in the Utilities tab
 
 ### 🧠 AI & Visuals
 
-* **AI Smart View**: Powered by our **offline** local **BitNet** heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging. **0% Network Usage, 100% Privacy.** Now with cached grouping for instant switching.
-* **World Map**: Visualize your entire scenery library on an interactive global map. See exactly where your coverage is.
-* **Buttery Smooth UI**: Decoupled rendering and optimized parsers ensure the interface remains responsive even with thousands of scenery packs and aircraft.
-* **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, and smooth animations.
+- **AI Smart View**: Powered by our **offline** local **BitNet** heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging. **0% Network Usage, 100% Privacy.** Now with cached grouping for instant switching.
+- **World Map**: Visualize your entire scenery library on an interactive global map. See exactly where your coverage is.
+- **Buttery Smooth UI**: Decoupled rendering and optimized parsers ensure the interface remains responsive even with thousands of scenery packs and aircraft.
+- **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, and smooth animations.
 
 ### 📦 Deployment
 
-* **Native Support**: We provide proper installers for **Windows** (MSI/EXE), **macOS** (DMG), and **Linux** (AppImage). No dependencies to hunt down.
-* **Developer Friendly**: Hot-swap addons while the sim is running (plugin dependent) for rapid testing.
+- **Native Support**: We provide proper installers for **Windows** (MSI/EXE), **macOS** (DMG), and **Linux** (AppImage). No dependencies to hunt down.
+- **Developer Friendly**: Hot-swap addons while the sim is running (plugin dependent) for rapid testing.
 
 ## Getting Started
 
@@ -59,9 +63,9 @@ For more detailed instructions, see the [Full User Guide](USER_GUIDE.md).
 
 X-Addon-Oxide stores your profiles, tagged groups, and scenery backups in standard system locations:
 
-* **Linux**: `~/.config/x-adox/`
-* **Windows**: `%APPDATA%\X-Addon-Oxide\`
-* **macOS**: `~/Library/Application Support/X-Addon-Oxide/`
+- **Linux**: `~/.config/x-adox/`
+- **Windows**: `%APPDATA%\X-Addon-Oxide\`
+- **macOS**: `~/Library/Application Support/X-Addon-Oxide/`
 
 ## Installation
 
@@ -69,9 +73,9 @@ X-Addon-Oxide stores your profiles, tagged groups, and scenery backups in standa
 
 Grab the latest professional installers from the [Releases](https://github.com/StarTuz/X-Addon-Oxide/releases) page:
 
-* **Windows**: `.exe` (NSIS Installer)
-* **macOS**: `.dmg` (Disk Image)
-* **Linux**: `.tar.gz` (Binary tarball)
+- **Windows**: `.exe` (NSIS Installer)
+- **macOS**: `.dmg` (Disk Image)
+- **Linux**: `.tar.gz` (Binary tarball)
 
 ### Building from Source
 

@@ -37,6 +37,8 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 ### 🏔️ Scenery
 
 - **Map View**: Scenery packages are plotted as green dots on the world map.
+- **Map Filter Settings**: Use the "Map Filter" collapsible menu to toggle specific data layers (Custom Airports, Global Airports, Mesh & Terrain, etc.).
+- **Persistence**: Your map filter selections are automatically saved and will be restored every time you launch the application.
 - **Toggling**: Use the **Enable/Disable** buttons on scenery cards. This modifies your `scenery_packs.ini` instantly.
 - **Inspector**: Hover over a card to see details in the Inspector Panel, including tile coordinates and airport counts.
 - **Interactive Sorting**: Hover over a scenery card to reveal **Move Up** and **Move Down** arrows. Manual reorders instantly create a **Pin** (Red Icon) which the AI will honor forever.
@@ -46,7 +48,6 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 
 > [!IMPORTANT]
 > **Applying Changes**: Manual reorders and pins update the AI's internal logic immediately. However, to write the new order to your actual X-Plane `scenery_packs.ini` file, you must click the **Smart Sort** button and then **Apply Changes** in the Simulation Report.
-
 > [!NOTE]
 > **Dynamic Section Headers**: The comment headers in `scenery_packs.ini` (like `# Airports`, `# Libraries`) are generated dynamically based on your rule names in Edit Sort. Packs that don't match any specific rule get generic fallback headers. X-Plane ignores these comments - only the order matters.
 
@@ -55,11 +56,18 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 - **Enabling/Disabling**: Use the checkbox next to each plugin name.
 - **How it works**: Disabled plugins are moved to a `plugins (disabled)` folder, preventing X-Plane from loading them without deleting your files.
 
-- Works identically to Plugins. Toggle checkboxes to manage which CSLs are active for your online flying sessions (VATSIM/IVAO).
+### ✈️ CSLs (Common Shape Library)
+
+- **Dynamic Scanning**: X-Addon-Oxide automatically scans all your installed plugins (like IVAO_CSL, xPilot, or LiveTraffic) for CSL packages. No manual path configuration required.
+- **Toggling**: Enable or disable specific CSL libraries to manage visibility during online operations. Disabled libraries are moved to a protected `CSL (disabled)` subfolder.
 
 ### 🛠️ Utilities
 
-- **Pilot Logbook**: Automatically syncs your X-Plane `Log.txt` entries into a searchable list.
+- **Pilot Logbook**: Automatically syncs your `X-Plane Pilot.txt` entries into a searchable list.
+  - **Filtering**: Use the search bar to filter by Tail Number or Aircraft Type. Toggle "Circular Flights" to find flights that returned to the same airport.
+  - **Cleanup & Deletion**: Delete individual entries or use bulk selection to clean your logbook.
+  - **Formatting Safety**: Deletions are "character-perfect"—the application meticulously preserves X-Plane's strict fixed-width formatting, including headers, column alignment, and the `99` EOF marker.
+  - **Backups**: Every edit automatically creates a `.bak` backup of your original logbook file for safety.
 - **Live Map**: Track your aircraft's latest position and historical flight paths on the global interactive map.
 - **Performance**: The Utilities engine is optimized to handle large log files without affecting simulator performance.
 
@@ -133,7 +141,6 @@ Edit Sort - You have full control over the Heuristics with JSON editing if you'r
 
 <img width="993" height="786" alt="image" src="https://github.com/user-attachments/assets/799a6d3e-b2f0-41e3-983b-adceaca68624" />
 
-
 ### Plugins
 
 Overall picture
@@ -160,13 +167,11 @@ Mentioning disabling, unchecking any plugin will disable it (X-Plane-12/Resource
 
 <img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/93b7f7d9-7f8f-4b85-b33f-c8b32bc99c78" />
 
-
 ### Issues
 
 If X-Plane complains about missing scenery objects a scane will provide you with the list, so you can track/install them outside of the Sim
 
-
-### V2.2.0 -> Added a Utlities section and some UI enhancements.
+### V2.2.0 -> Added a Utlities section and some UI enhancements
 
 Loading screen when first starting or switching installed X-Plane's.
 
@@ -180,7 +185,7 @@ Utilities Section:
 
 <img width="1080" height="804" alt="image" src="https://github.com/user-attachments/assets/20d39048-3796-478c-88d4-23ab1a7b0483" />
 
-Companion App 
+Companion App
 
 Show Manager brings up a sub menu:
 
@@ -198,11 +203,7 @@ Before selecting a flight.
 
 Afer selecting and zoomed in.
 
-
 <img width="1091" height="873" alt="image" src="https://github.com/user-attachments/assets/c6b81c2e-224c-4ca7-9de3-1969fecffd37" />
-
-
-
 
 ## Uninstallation
 
