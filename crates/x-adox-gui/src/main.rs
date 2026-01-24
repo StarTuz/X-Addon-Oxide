@@ -3854,9 +3854,9 @@ impl App {
         let mut content_col = column![row![
             text("Launch Arguments Reference").size(24),
             iced::widget::horizontal_space(),
-            button(text("✕").size(18))
+            button(text("X").size(18).color(Color::WHITE))
                 .on_press(Message::CloseLaunchHelp)
-                .style(style::button_secondary)
+                .style(style::button_danger)
                 .padding([5, 10]),
         ]
         .align_y(iced::Alignment::Center),]
@@ -3895,7 +3895,7 @@ impl App {
                 scrollable_content,
                 button(text("Close").size(14))
                     .on_press(Message::CloseLaunchHelp)
-                    .style(style::button_secondary)
+                    .style(style::button_premium_glow)
                     .padding([10, 20]),
             ]
             .spacing(20)
