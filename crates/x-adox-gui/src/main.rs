@@ -826,7 +826,11 @@ impl App {
                 Task::none()
             }
             Message::SelectFlight(index) => {
-                self.selected_flight = index;
+                if self.selected_flight == index {
+                    self.selected_flight = None;
+                } else {
+                    self.selected_flight = index;
+                }
                 Task::none()
             }
             Message::ToggleLogbook => {
