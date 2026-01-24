@@ -226,6 +226,8 @@ enum Message {
     // Launch X-Plane
     LaunchXPlane,
     LaunchArgsChanged(String),
+    OpenLaunchHelp,
+    CloseLaunchHelp,
     // Utilities
     LogbookLoaded(Result<Vec<x_adox_core::logbook::LogbookEntry>, String>),
     SelectFlight(Option<usize>),
@@ -444,6 +446,7 @@ struct App {
     show_profile_dialog: bool,
     show_rename_dialog: bool,
     rename_profile_name: String,
+    show_launch_help: bool,
 
     // Phase 3
     new_tag_input: String,
@@ -590,6 +593,7 @@ impl App {
             show_profile_dialog: false,
             show_rename_dialog: false,
             rename_profile_name: String::new(),
+            show_launch_help: false,
 
             // Phase 3
             new_tag_input: String::new(),
@@ -1462,6 +1466,14 @@ impl App {
                 Task::none()
             }
             Message::TagOperationComplete => Task::none(),
+            Message::OpenLaunchHelp => {
+                self.show_launch_help = true;
+                Task::none()
+            }
+            Message::CloseLaunchHelp => {
+                self.show_launch_help = false;
+                Task::none()
+            }
             Message::UpdateTagInput(txt) => {
                 self.new_tag_input = txt;
                 Task::none()
@@ -3576,6 +3588,10 @@ impl App {
                             .size(12)
                             .width(Length::Fixed(200.0))
                             .style(style::text_input_primary),
+                        button(text("?").size(12).color(Color::WHITE))
+                            .on_press(Message::OpenLaunchHelp)
+                            .style(style::button_secondary)
+                            .padding([4, 8]),
                         button(text("Launch").size(12).color(Color::WHITE))
                             .on_press(Message::LaunchXPlane)
                             .style(style::button_success)
@@ -3637,6 +3653,20 @@ impl App {
             stack![
                 main_content,
                 container(self.view_rename_dialog())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .center_x(iced::Length::Fill)
+                    .center_y(iced::Length::Fill)
+                    .style(|_theme: &Theme| container::Style {
+                        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.6))),
+                        ..Default::default()
+                    })
+            ]
+            .into()
+        } else if self.show_launch_help {
+            stack![
+                main_content,
+                container(self.view_launch_help())
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .center_x(iced::Length::Fill)
@@ -3741,6 +3771,171 @@ impl App {
             .style(style::container_modal)
             .padding(20)
             .into()
+    }
+
+    fn view_launch_help(&self) -> Element<'_, Message> {
+        let help_text = vec![
+            (
+                "General Options",
+                vec![
+                    (
+                        "--help, -h",
+                        "Prints listing of all command-line options, then quits.",
+                    ),
+                    ("--no_sound", "Runs without initializing sound."),
+                    (
+                        "--no_joysticks",
+                        "Runs without initializing joysticks, yokes, or pedals.",
+                    ),
+                    (
+                        "--lang=<lang code>",
+                        "Runs the sim in a specific language (e.g. --lang=fr).",
+                    ),
+                    (
+                        "--disable_networking",
+                        "Prevents X-Plane from sending/receiving data over the network.",
+                    ),
+                ],
+            ),
+            (
+                "Auto-Configuration",
+                vec![
+                    (
+                        "--pref:<key>=<value>",
+                        "Sets an individual preference value at startup.",
+                    ),
+                    ("--dref:<ref>=<value>", "Sets a dataref value at startup."),
+                ],
+            ),
+            (
+                "Hardware Acceleration (Disable)",
+                vec![
+                    ("--no_vbos", "Disables the use of vertex buffer objects."),
+                    ("--no_fbos", "Disable the use of framebuffer objects."),
+                    ("--no_glsl", "Disable the use of GLSL shaders."),
+                    ("--no_vshaders", "Disable the use of vertex shaders."),
+                    ("--no_fshaders", "Disable the use of fragment shaders."),
+                    (
+                        "--no_threaded_ogl",
+                        "Disable the use of OpenGL via multiple threads.",
+                    ),
+                    ("--fake_vr", "Enable VR mode on a normal 2D monitor."),
+                ],
+            ),
+            (
+                "Hardware Acceleration (Enable)",
+                vec![
+                    (
+                        "--use_vbos",
+                        "Forces the use of VBOs even on unstable drivers.",
+                    ),
+                    ("--use_glsl", "Force the use of GLSL even on buggy drivers."),
+                    (
+                        "--force_run",
+                        "Forces X-Plane to run even if missing minimum requirements.",
+                    ),
+                ],
+            ),
+            (
+                "Safe Mode",
+                vec![
+                    (
+                        "--safe_mode",
+                        "Runs X-Plane in safe mode (disables GFX, PLG, SCN, ART, UI as needed).",
+                    ),
+                    (
+                        "--safe_mode=PLG,SCN",
+                        "Run with specific safe modes enabled (separated by commas).",
+                    ),
+                ],
+            ),
+            (
+                "Windowing",
+                vec![
+                    (
+                        "--full=WxH",
+                        "Launches in full-screen mode at specific resolution.",
+                    ),
+                    (
+                        "--window=WxH",
+                        "Launches in a window with specified width and height.",
+                    ),
+                ],
+            ),
+            (
+                "Performance & Reproducibility",
+                vec![
+                    ("--fps_test=n", "Runs a 90-second framerate test."),
+                    (
+                        "--weather_seed=n",
+                        "Seeds the random generator for reproducible weather.",
+                    ),
+                    (
+                        "--time_seed=n",
+                        "Seeds the random generator for non-weather systems.",
+                    ),
+                    (
+                        "--qa_script=<file>",
+                        "Runs performance monitoring using a text script.",
+                    ),
+                ],
+            ),
+        ];
+
+        let mut content_col = column![row![
+            text("Launch Arguments Reference").size(24),
+            iced::widget::horizontal_space(),
+            button(text("✕").size(18))
+                .on_press(Message::CloseLaunchHelp)
+                .style(style::button_secondary)
+                .padding([5, 10]),
+        ]
+        .align_y(iced::Alignment::Center),]
+        .spacing(20);
+
+        for (section_title, options) in help_text {
+            content_col = content_col.push(
+                text(section_title)
+                    .size(18)
+                    .color(style::palette::ACCENT_BLUE),
+            );
+
+            let mut options_col = column![].spacing(8).padding(Padding {
+                left: 10.0,
+                ..Padding::ZERO
+            });
+            for (flag, desc) in options {
+                options_col = options_col.push(
+                    row![
+                        text(flag)
+                            .width(Length::Fixed(180.0))
+                            .color(style::palette::ACCENT_PURPLE)
+                            .size(12),
+                        text(desc).width(Length::Fill).size(12),
+                    ]
+                    .spacing(10),
+                );
+            }
+            content_col = content_col.push(options_col);
+        }
+
+        let scrollable_content = scrollable(content_col).height(Length::Fixed(500.0));
+
+        container(
+            column![
+                scrollable_content,
+                button(text("Close").size(14))
+                    .on_press(Message::CloseLaunchHelp)
+                    .style(style::button_secondary)
+                    .padding([10, 20]),
+            ]
+            .spacing(20)
+            .align_x(iced::Alignment::Center),
+        )
+        .style(style::container_modal)
+        .padding(30)
+        .width(Length::Fixed(720.0))
+        .into()
     }
 
     fn view_logbook_bulk_delete_dialog(&self) -> Element<'_, Message> {
