@@ -125,6 +125,7 @@ enum Message {
     // Install/Delete
     SelectScenery(String),
     HoverScenery(Option<String>),
+    HoverAirport(Option<String>),
     SelectAircraft(PathBuf),
     SelectPlugin(PathBuf),
     SelectCSL(PathBuf),
@@ -358,6 +359,7 @@ struct App {
     refresh_icon: svg::Handle,
     // Map state
     hovered_scenery: Option<String>,
+    hovered_airport_id: Option<String>,
     map_zoom: f64,
     map_center: (f64, f64), // (lat, lon)
     map_initialized: bool,
@@ -504,6 +506,7 @@ impl App {
                 include_bytes!("../assets/icons/refresh.svg").to_vec(),
             ),
             hovered_scenery: None,
+            hovered_airport_id: None,
             map_zoom: 0.0,
             map_center: (0.0, 0.0),
             map_initialized: false,
@@ -1838,6 +1841,14 @@ impl App {
             Message::HoverScenery(name_opt) => {
                 if self.hovered_scenery != name_opt {
                     self.hovered_scenery = name_opt;
+                    // Reset airport hover when switching scenery packs
+                    self.hovered_airport_id = None;
+                }
+                Task::none()
+            }
+            Message::HoverAirport(id_opt) => {
+                if self.hovered_airport_id != id_opt {
+                    self.hovered_airport_id = id_opt;
                 }
                 Task::none()
             }
@@ -3433,6 +3444,7 @@ impl App {
                 packs: &self.packs,
                 selected_scenery: self.selected_scenery.as_ref(),
                 hovered_scenery: self.hovered_scenery.as_ref(),
+                hovered_airport_id: self.hovered_airport_id.as_ref(),
                 tile_manager: &self.tile_manager,
                 zoom,
                 center: self.map_center,

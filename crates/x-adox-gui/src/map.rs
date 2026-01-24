@@ -113,6 +113,7 @@ pub struct MapView<'a> {
     pub packs: &'a [SceneryPack],
     pub selected_scenery: Option<&'a String>,
     pub hovered_scenery: Option<&'a String>,
+    pub hovered_airport_id: Option<&'a String>,
     pub tile_manager: &'a TileManager,
     pub zoom: f64,          // Fractional zoom (e.g., 2.5)
     pub center: (f64, f64), // (Lat, Lon)
@@ -323,7 +324,7 @@ where
             let square_size = 6.0;
             let selected_size = 10.0;
 
-            for pack in self.packs {
+            for pack in self.packs.iter().rev() {
                 let is_selected = self.selected_scenery == Some(&pack.name);
                 let is_hovered = self.hovered_scenery == Some(&pack.name);
                 let base_color = match pack.status {
@@ -348,16 +349,16 @@ where
                 let is_visible = self.is_pack_visible(pack);
                 let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::Ortho;
 
+                let is_global =
+                    pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
+
                 // Markers are drawn if:
                 // 1. They are visible per filters
-                // 2. OR they are explicitly selected (for user feedback)
-                // 3. (REMOVED) is_hovered - we don't want to show things just by hovering if they are filtered out
-                let should_draw_dots = is_selected || is_visible;
+                // 2. OR they are explicitly selected (for user feedback) - BUT NOT for Global Airports (too many dots)
+                let should_draw_dots = (is_selected && !is_global) || is_visible;
 
                 if should_draw_dots {
                     // Optimization: Thin Global Airports at low zoom to prevent overdraw lag
-                    let is_global =
-                        pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
                     let skip_step = if is_global && zoom < 4.0 {
                         10
                     } else if is_global && zoom < 6.0 {
@@ -428,22 +429,46 @@ where
                             let sx = (center_offset_x + wx * zoom_scale) as f32;
                             let sy = (center_offset_y + wy * zoom_scale) as f32;
 
+                            // For Global Airports, check individual airport hover
+                            let is_airport_hovered =
+                                is_global && self.hovered_airport_id == Some(&airport.id);
+
+                            // For Global Airports, ONLY highlight the hovered one. Pack selection is ignored to avoid "Yellow Ocean".
+                            let highlight_this = (is_selected && !is_global) || is_airport_hovered;
+
+                            let airport_fill_color = if highlight_this {
+                                Color::from_rgb(1.0, 1.0, 0.0)
+                            } else if is_hovered && !is_global {
+                                Color::from_rgb(1.0, 1.0, 0.0)
+                            } else {
+                                base_color
+                            };
+
+                            let airport_size = if highlight_this {
+                                selected_size
+                            } else if is_hovered && !is_global {
+                                selected_size
+                            } else {
+                                square_size
+                            };
+                            let airport_half_size = airport_size / 2.0;
+
                             renderer.fill_quad(
                                 renderer::Quad {
                                     bounds: Rectangle {
-                                        x: sx - half_size,
-                                        y: sy - half_size,
-                                        width: size,
-                                        height: size,
+                                        x: sx - airport_half_size,
+                                        y: sy - airport_half_size,
+                                        width: airport_size,
+                                        height: airport_size,
                                     },
                                     border: iced::Border {
                                         color: Color::BLACK,
                                         width: 1.0,
-                                        radius: (size / 4.0).into(),
+                                        radius: (airport_size / 4.0).into(),
                                     },
                                     ..Default::default()
                                 },
-                                fill_color,
+                                airport_fill_color,
                             );
                         }
                     }
@@ -830,6 +855,10 @@ where
                                 }
                             }
                         }
+
+                        let is_global =
+                            pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
+
                         for airport in &pack.airports {
                             if let (Some(lat), Some(lon), Some((wx, wy))) =
                                 (airport.lat, airport.lon, mouse_z0)
@@ -840,19 +869,38 @@ where
 
                                 // Use a 10px hit radius in screen pixels
                                 if dist_sq < (10.0 / scale).powi(2) {
-                                    if self.hovered_scenery != Some(&pack.name) {
-                                        shell.publish(Message::HoverScenery(Some(
-                                            pack.name.clone(),
-                                        )));
+                                    if is_global {
+                                        // For Global Airports, emit individual airport hover
+                                        if self.hovered_airport_id != Some(&airport.id) {
+                                            shell.publish(Message::HoverAirport(Some(
+                                                airport.id.clone(),
+                                            )));
+                                        }
+                                        // ALSO emit pack hover so the UI Inspector knows which pack we are on
+                                        if self.hovered_scenery != Some(&pack.name) {
+                                            shell.publish(Message::HoverScenery(Some(
+                                                pack.name.clone(),
+                                            )));
+                                        }
+                                    } else {
+                                        // For other packs, emit pack-level hover
+                                        if self.hovered_scenery != Some(&pack.name) {
+                                            shell.publish(Message::HoverScenery(Some(
+                                                pack.name.clone(),
+                                            )));
+                                        }
                                     }
                                     return advanced::graphics::core::event::Status::Captured;
                                 }
                             }
                         }
                     }
+                    // Clear hover state when cursor is not over any airport/tile
                     if self.hovered_scenery.is_some() {
                         shell.publish(Message::HoverScenery(None));
-                        return advanced::graphics::core::event::Status::Captured;
+                    }
+                    if self.hovered_airport_id.is_some() {
+                        shell.publish(Message::HoverAirport(None));
                     }
                 }
             }
