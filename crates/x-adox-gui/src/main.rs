@@ -294,7 +294,7 @@ struct LoadingState {
     logbook: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MapFilters {
     pub show_custom_airports: bool,
     pub show_enhancements: bool,
@@ -475,7 +475,7 @@ impl App {
         let available_roots = XPlaneManager::find_all_xplane_roots();
 
         // Try to load persisted selection, fallback to first available or try_find_root
-        let (saved_root, companion_apps) = Self::load_app_config();
+        let (saved_root, companion_apps, map_filters) = Self::load_app_config();
         let root = if let Some(ref saved) = saved_root {
             if available_roots.contains(saved) || saved.exists() {
                 Some(saved.clone())
@@ -611,7 +611,7 @@ impl App {
             new_companion_name: String::new(),
             new_companion_path: None,
             show_map_filter_settings: false,
-            map_filters: MapFilters::default(),
+            map_filters,
             logbook_filter_aircraft: String::new(),
             logbook_filter_circular: false,
             logbook_filter_duration_min: String::new(),
@@ -1065,6 +1065,7 @@ impl App {
                         self.map_filters.show_libraries = !self.map_filters.show_libraries;
                     }
                 }
+                self.save_app_config();
                 Task::none()
             }
             Message::BrowseForCompanionPath => Task::perform(
@@ -5572,7 +5573,7 @@ impl App {
         Some(config_dir.join("app_config.json"))
     }
 
-    fn load_app_config() -> (Option<PathBuf>, Vec<CompanionApp>) {
+    fn load_app_config() -> (Option<PathBuf>, Vec<CompanionApp>, MapFilters) {
         if let Some(path) = Self::get_app_config_path() {
             if let Ok(file) = std::fs::File::open(path) {
                 let reader = std::io::BufReader::new(file);
@@ -5581,17 +5582,19 @@ impl App {
                 struct AppConfig {
                     selected_xplane_path: Option<PathBuf>,
                     companion_apps: Option<Vec<CompanionApp>>,
+                    map_filters: Option<MapFilters>,
                 }
 
                 if let Ok(config) = serde_json::from_reader::<_, AppConfig>(reader) {
                     return (
                         config.selected_xplane_path,
                         config.companion_apps.unwrap_or_default(),
+                        config.map_filters.unwrap_or_default(),
                     );
                 }
             }
         }
-        (None, Vec::new())
+        (None, Vec::new(), MapFilters::default())
     }
 
     fn save_app_config(&self) {
@@ -5601,10 +5604,12 @@ impl App {
                 struct AppConfig<'a> {
                     selected_xplane_path: Option<&'a PathBuf>,
                     companion_apps: &'a Vec<CompanionApp>,
+                    map_filters: &'a MapFilters,
                 }
                 let config = AppConfig {
                     selected_xplane_path: self.xplane_root.as_ref(),
                     companion_apps: &self.companion_apps,
+                    map_filters: &self.map_filters,
                 };
                 let writer = std::io::BufWriter::new(file);
                 let _ = serde_json::to_writer_pretty(writer, &config);
