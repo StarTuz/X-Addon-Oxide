@@ -3575,19 +3575,30 @@ impl App {
                                         .into()
                                 };
 
-                            let name_display = if target_name == "Global Airports"
+                            let (name_display, sub_display) = if target_name == "Global Airports"
                                 && self.hovered_airport_id.is_some()
                             {
-                                format!(
-                                    "Global Airport: {}",
-                                    self.hovered_airport_id.as_ref().unwrap()
+                                let id = self.hovered_airport_id.as_ref().unwrap();
+                                let apt_name = self
+                                    .airports
+                                    .get(id)
+                                    .map(|a| a.name.as_str())
+                                    .unwrap_or("Unknown");
+                                (
+                                    format!("Global Airport: {}", id),
+                                    Some(apt_name.to_string()),
                                 )
                             } else {
-                                target_name.clone()
+                                (target_name.clone(), None)
                             };
 
                             column![
                                 text(name_display).size(12).font(iced::Font::MONOSPACE),
+                                if let Some(n) = sub_display {
+                                    text(n).size(14).color(style::palette::ACCENT_BLUE)
+                                } else {
+                                    text("")
+                                },
                                 text(format!(
                                     "CATEGORY: {:?} | TILES: {} | AIRPORTS: {}",
                                     pack.category,
