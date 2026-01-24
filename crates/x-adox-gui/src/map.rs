@@ -776,6 +776,11 @@ where
                             // ACTUALLY A CLICK - Perform selection
                             if let Some(coords) = coords {
                                 for pack in self.packs {
+                                    // Strictly ignore packs that are filtered out
+                                    if !self.is_pack_visible(pack) {
+                                        continue;
+                                    }
+
                                     if pack.airports.is_empty() {
                                         for &(lat, lon) in &pack.tiles {
                                             if (lat as f64 + 0.5 - coords.0).abs() < 0.5
