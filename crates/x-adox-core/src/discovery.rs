@@ -313,18 +313,43 @@ impl DiscoveryManager {
         cache: &mut crate::cache::DiscoveryCache,
     ) -> Vec<DiscoveredAddon> {
         let mut results = Vec::new();
-        let csl_roots = [
-            root.join("Resources")
-                .join("plugins")
-                .join("X-Ivap Resources"),
-            root.join("Resources")
-                .join("plugins")
-                .join("xPilot")
-                .join("Resources"),
-            root.join("Custom Data"),
-        ];
+        let mut csl_roots = Vec::new();
 
-        for csl_root in csl_roots {
+        // 1. Standard roots
+        csl_roots.push(root.join("Custom Data"));
+
+        // 2. Dynamic Plugin Scan
+        let plugins_dir = root.join("Resources").join("plugins");
+        if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+
+                    if name.starts_with('.') {
+                        continue;
+                    }
+
+                    // Check direct CSL folder (e.g. IVAO_CSL/CSL)
+                    csl_roots.push(path.clone());
+                    // Check nested Resources/CSL folder (e.g. xPilot/Resources/CSL)
+                    csl_roots.push(path.join("Resources"));
+                }
+            }
+        }
+
+        // Deduplicate and filter non-existent roots
+        let mut unique_roots = std::collections::HashSet::new();
+        let filtered_roots: Vec<_> = csl_roots
+            .into_iter()
+            .filter(|p| p.exists() && unique_roots.insert(p.clone()))
+            .collect();
+
+        for csl_root in filtered_roots {
             if !csl_root.exists() {
                 continue;
             }
