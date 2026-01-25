@@ -59,6 +59,7 @@ fn main() -> iced::Result {
 
     iced::application("X-Addon-Oxide", App::update, App::view)
         .theme(|_| Theme::Dark)
+        .subscription(App::subscription)
         .window(iced::window::Settings {
             size: [1100.0, 900.0].into(),
             icon: window_icon,
@@ -261,6 +262,7 @@ enum Message {
     RequestLogbookBulkDelete,
     ConfirmLogbookBulkDelete,
     CancelLogbookBulkDelete,
+    Tick(std::time::Instant),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -423,6 +425,8 @@ struct App {
     validation_report: Option<x_adox_core::scenery::validator::ValidationReport>,
     simulated_packs: Option<Arc<Vec<SceneryPack>>>,
     region_focus: Option<String>,
+
+    animation_time: f32, // Pulsing/Animation state
 
     // Smart View Cache
     smart_groups: std::collections::BTreeMap<String, Vec<AircraftNode>>,
@@ -601,6 +605,7 @@ impl App {
             fallback_military: image::Handle::from_bytes(
                 include_bytes!("../assets/fallback_military.png").to_vec(),
             ),
+            animation_time: 0.0,
             fallback_helicopter: image::Handle::from_bytes(
                 include_bytes!("../assets/fallback_helicopter.png").to_vec(),
             ),
@@ -2506,6 +2511,23 @@ impl App {
                 }
                 Task::none()
             }
+            Message::Tick(_now) => {
+                if self.loading_state.is_loading {
+                    self.animation_time += 0.05;
+                    if self.animation_time > 1000.0 {
+                        self.animation_time = 0.0;
+                    }
+                }
+                Task::none()
+            }
+        }
+    }
+
+    fn subscription(&self) -> iced::Subscription<Message> {
+        if self.loading_state.is_loading {
+            iced::time::every(std::time::Duration::from_millis(30)).map(Message::Tick)
+        } else {
+            iced::Subscription::none()
         }
     }
 
@@ -2566,6 +2588,16 @@ impl App {
             .size(32)
             .color(style::palette::TEXT_PRIMARY);
 
+        // Pulsing glow for the title
+        let pulse = (self.animation_time.sin() * 0.5 + 0.5) * 0.5 + 0.5;
+        let title_color = Color {
+            a: pulse,
+            ..style::palette::TEXT_PRIMARY
+        };
+        // Floating animation for the title
+        let float_offset = (self.animation_time * 0.5).sin() * 5.0;
+        let title = title.color(title_color);
+
         let subtitle = text("Synchronizing Simulation Environment...")
             .size(14)
             .color(style::palette::TEXT_SECONDARY);
@@ -2596,9 +2628,11 @@ impl App {
                             .size(10)
                             .color(style::palette::ACCENT_GREEN)
                     } else {
+                        // Pulse the "LOADING..." text
+                        let alpha = (self.animation_time * 3.0).sin() * 0.3 + 0.7;
                         text("LOADING...")
                             .size(10)
-                            .color(style::palette::ACCENT_BLUE)
+                            .color(Color { a: alpha, ..style::palette::ACCENT_BLUE })
                     }
                 ]
                 .align_y(iced::Alignment::Center),
@@ -2607,9 +2641,25 @@ impl App {
 
         container(
             column![
-                column![title, subtitle]
-                    .align_x(iced::Alignment::Center)
-                    .spacing(5),
+                // Large pulsing logo with glow
+                container(
+                    svg(self.icon_aircraft.clone())
+                        .width(80)
+                        .height(80)
+                        .style(move |_, _| svg::Style {
+                            color: Some(Color {
+                                a: (self.animation_time * 2.0).sin() * 0.2 + 0.6,
+                                ..style::palette::ACCENT_BLUE
+                            }),
+                        })
+                )
+                .padding(30),
+                column![
+                    container(title).padding(Padding { top: float_offset, bottom: -float_offset, ..Default::default() }),
+                    subtitle
+                ]
+                .align_x(iced::Alignment::Center)
+                .spacing(5),
                 iced::widget::vertical_space().height(40),
                 container(
                     column![
@@ -2623,17 +2673,33 @@ impl App {
                                 .color(style::palette::TEXT_PRIMARY),
                         ],
                         progress_bar(0.0..=1.0, p)
-                            .height(8)
-                            .style(|_theme: &Theme| progress_bar::Style {
-                                background: Background::Color(style::palette::SURFACE_VARIANT),
-                                bar: Background::Color(style::palette::ACCENT_BLUE),
-                                border: Border {
-                                    radius: 4.0.into(),
-                                    ..Default::default()
-                                },
+                            .height(10)
+                            .style(move |_theme: &Theme| {
+                                // Moving shimmer effect
+                                let shimmer = ((self.animation_time * 4.0).sin() * 0.5 + 0.5) * 0.3;
+                                let bar_color = if p < 0.01 {
+                                    // Pulse the empty bar to show it's "alive"
+                                    Color {
+                                        r: style::palette::ACCENT_BLUE.r + shimmer,
+                                        g: style::palette::ACCENT_BLUE.g + shimmer,
+                                        b: style::palette::ACCENT_BLUE.b + shimmer,
+                                        a: 0.2 + shimmer,
+                                    }
+                                } else {
+                                    style::palette::ACCENT_BLUE
+                                };
+
+                                progress_bar::Style {
+                                    background: Background::Color(style::palette::SURFACE_VARIANT),
+                                    bar: Background::Color(bar_color),
+                                    border: Border {
+                                        radius: 5.0.into(),
+                                        ..Default::default()
+                                    },
+                                }
                             }),
                     ]
-                    .spacing(10)
+                    .spacing(12)
                 )
                 .width(Length::Fixed(400.0)),
                 iced::widget::vertical_space().height(40),
@@ -2646,9 +2712,13 @@ impl App {
         .height(Length::Fill)
         .center_x(Length::Fill)
         .center_y(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(Background::Color(style::palette::BACKGROUND)),
-            ..Default::default()
+        .style(move |_| {
+            // Subtle breathing background with slightly deeper tones
+            let depth = (self.animation_time * 0.15).sin() * 0.005 + 0.1;
+            container::Style {
+                background: Some(Background::Color(Color::from_rgb(depth, depth, depth))),
+                ..Default::default()
+            }
         })
         .into()
     }
