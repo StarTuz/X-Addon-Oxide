@@ -1640,9 +1640,10 @@ impl App {
                     region_focus: self.region_focus.clone(),
                 };
                 let model = self.heuristics_model.clone();
+                let packs = self.packs.clone();
                 self.status = "Simulating sort...".to_string();
                 Task::perform(
-                    async move { simulate_sort_task(root, model, context) },
+                    async move { simulate_sort_task(root, model, context, packs) },
                     Message::SimulationReportLoaded,
                 )
             }
@@ -1820,11 +1821,9 @@ impl App {
                             },
                         );
 
-                        // Calculate new score for our target
-                        let new_score = match direction {
-                            MoveDirection::Up => neighbor_score.saturating_sub(1),
-                            MoveDirection::Down => neighbor_score.saturating_add(1),
-                        };
+                        // Match neighbor's score exactly.
+                        // Stable sort will preserve our new relative order.
+                        let new_score = neighbor_score;
 
                         // Pin it!
                         Arc::make_mut(&mut self.heuristics_model.config)
@@ -6462,6 +6461,7 @@ fn simulate_sort_task(
     root: Option<PathBuf>,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
+    current_packs: Arc<Vec<SceneryPack>>,
 ) -> Result<
     (
         Arc<Vec<SceneryPack>>,
@@ -6472,7 +6472,10 @@ fn simulate_sort_task(
     let root = root.ok_or("X-Plane root not found")?;
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
-    sm.load().map_err(|e| e.to_string())?;
+    
+    // Instead of loading from disk (which has old order), use the current GUI order
+    sm.packs = (*current_packs).clone();
+    
     let (packs, report) = sm.simulate_sort(&model, &context);
     Ok((Arc::new(packs), report))
 }

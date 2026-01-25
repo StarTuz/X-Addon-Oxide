@@ -68,8 +68,8 @@ pub fn sort_packs(
                     }
                 }
 
-                // 2. Alphabetical (Ascending) for ties
-                a.name.to_lowercase().cmp(&b.name.to_lowercase())
+                // 2. Stable Sort: Preserve original order for ties
+                std::cmp::Ordering::Equal
             }
             ord => ord,
         }
@@ -274,5 +274,27 @@ mod tests {
         assert_eq!(packs[0].name, "Some_Unknown_Regional_Airport");
         assert_eq!(packs[0].category, SceneryCategory::CustomAirport);
         assert_eq!(packs[1].name, "Global Airports");
+    }
+
+    #[test]
+    fn test_stable_sort_preserves_order() {
+        // Create packs that will have the same score
+        // CustomAirport score is 100
+        let mut packs = vec![
+            make_pack("aaa_Airport_B"), // Originally first
+            make_pack("aaa_Airport_A"), // Originally second
+        ];
+
+        // Ensure they are both classified as CustomAirport (or at least same category)
+        packs[0].category = SceneryCategory::CustomAirport;
+        packs[1].category = SceneryCategory::CustomAirport;
+
+        // Sort them
+        sort_packs(&mut packs, None, &x_adox_bitnet::PredictContext::default());
+
+        // Because we use stable sort and removed alphabetical tie-breaker,
+        // B should still be before A despite A coming first alphabetically.
+        assert_eq!(packs[0].name, "aaa_Airport_B");
+        assert_eq!(packs[1].name, "aaa_Airport_A");
     }
 }
