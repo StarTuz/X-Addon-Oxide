@@ -13,8 +13,10 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 | **Non-Destructive Toggling** | ✅ | ✅ |
 | **Profile Management** | ✅ | ⚠️ (Varies) |
 | **AI Auto-Categorization** (BitNet) | ✅ | ❌ |
+| **Scenery Health Diagnostics** | ✅ | ❌ |
 | **Interactive World Map** | ✅ | ❌ |
 | **Shadow Mesh Detection** | ✅ | ❌ |
+| **Premium Animated Splash** | ✅ | ❌ |
 | **Modern Dark GUI** | ✅ | ❌ |
 | **Companion App Launcher** | ✅ | ❌ |
 | **Automatic Logbook Sync** | ✅ | ❌ |
@@ -22,9 +24,11 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 ## Feature Highlights
 
 - **New for 2.2.0**:
+  - **Scenery Health Scores**: Diagnostic engine that analyzes metadata and folder structure to ensure your scenery is healthy. High scores (90-100%) indicate stable installations.
+  - **Premium Loading Experience**: A completely overhauled splash screen with smooth pulsing animations and shimmer effects.
   - **Enhanced Logbook**: Not just a viewer—now includes robust filtering (Tail #, Aircraft Type, Circular flights, Duration) and character-perfect deletion that maintains strict X-Plane 12 formatting.
   - **Dynamic CSL Detection**: Automatically scans all installed plugins for CSL packages, supporting IVAO, xPilot, and more without hardcoded paths.
-  - **Persistent Settings**: Your Map Filter selections (Global Airports, Ortho Coverage, etc.) are now saved and restored across sessions.
+  - **Persistent Settings**: Your Map Filter selections (Health Scores, Global Airports, Ortho Coverage, etc.) are now saved and restored across sessions.
   - **Direct Launcher**: Launch X-Plane directly with custom arguments and support for multiple installations.
   - **Companion Apps**: Launch tools like Little Navmap directly from the manager.
 - **Logbook Support**: Select a previous flight to visualize its magenta path on the global map. Now with bulk cleanup tools.
@@ -43,7 +47,8 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 - **AI Smart View**: Powered by our **offline** local **BitNet** heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging. **0% Network Usage, 100% Privacy.** Now with cached grouping for instant switching.
 - **World Map**: Visualize your entire scenery library on an interactive global map. See exactly where your coverage is.
 - **Buttery Smooth UI**: Decoupled rendering and optimized parsers ensure the interface remains responsive even with thousands of scenery packs and aircraft.
-- **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, and smooth animations.
+- **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, and smooth animations. Now featuring an **Animated Splash Screen** with shimmering progress indicators.
+- **Diagnostic Intelligence**: Built-in health checks that alert you to missing metadata or improper scenery classifications. See [HEALTH_SCORE.md](HEALTH_SCORE.md) for details.
 
 ### 📦 Deployment
 

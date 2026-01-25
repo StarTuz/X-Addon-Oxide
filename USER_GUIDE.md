@@ -44,7 +44,12 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 - **Interactive Sorting**: Hover over a scenery card to reveal **Move Up** and **Move Down** arrows. Manual reorders instantly create a **Pin** (Red Icon) which the AI will honor forever.
 - **Smart Pinning**: Any manual adjustment "teaches" the AI your preferred order. Pinned items are highlighted with a red glow and icon.
 - **Clear All Pins**: If you want to undo your manual reorders, use the button at the top of the Scenery list to revert to the default AI logic.
-- **Stable Sort**: When using "Smart Sort", the application preserves your manual reorders (pins) for items with tied scores. This means your manual efforts are never overwritten by alphabetical tie-breaking.
+- **Stable Sort**: When using "Smart Sort", the application preserves your manual reorders (pins) for items with tied scores. This ensures that your manual efforts (Pinning) are respected 1:1 and never overwritten by alphabetical tie-breaking.
+- **Scenery Health Diagnostics**: A diagnostic score is calculated for every pack based on its contents and metadata.
+  - **Scores**: Range from **EXCELLENT (90-100%)** to **CRITICAL (<40%)**.
+  - **CEILING**: Note that 90% is the practical "Perfect" ceiling for standard custom addons, as 100% is reserved for system/internal library files.
+  - **Visibility**: Display can be toggled via the **Map Filter** menu under the "Utilities" section. Hover over an airport dot to see the parent package's health status instantly.
+  - **Details**: See the technical breakdown in `HEALTH_SCORE.md`.
 
 > [!IMPORTANT]
 > **Applying Changes**: Manual reorders and pins update the AI's internal logic immediately. However, to write the new order to your actual X-Plane `scenery_packs.ini` file, you must click the **Smart Sort** button and then **Apply Changes** in the Simulation Report.
@@ -173,7 +178,11 @@ If X-Plane complains about missing scenery objects a scane will provide you with
 
 ### V2.2.0 -> Added a Utlities section and some UI enhancements
 
-Loading screen when first starting or switching installed X-Plane's.
+**Premium Animated Loading Screen**: When starting up or switching installations, you will see a dynamic splash screen.
+
+- **Pulsing Logo**: Shows the app is active and processing.
+- **Shimmer Progress**: The progress bar shimmers even if scanning is just starting, providing immediate feedback.
+- **Breathing Background**: A subtle depth-shifting background for a more modern experience.
 
 <img width="1026" height="794" alt="image" src="https://github.com/user-attachments/assets/102ec509-e264-4b54-9e75-9ee492de293a" />
 
