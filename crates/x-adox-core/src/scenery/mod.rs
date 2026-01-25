@@ -152,7 +152,15 @@ impl SceneryPack {
                 if has_airports {
                     score += 60;
                 } else if has_tiles {
-                    score += 40;
+                    // Orbx 'Custom' or 'POI' packs are often just POI buildings (tiles), not airports.
+                    // Give them more credit if they have tiles but no airports.
+                    if self.name.to_lowercase().contains("custom")
+                        || self.name.to_lowercase().contains("poi")
+                    {
+                        score += 60;
+                    } else {
+                        score += 40;
+                    }
                 }
             }
             // Unknown / Group / Other

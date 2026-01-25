@@ -4199,7 +4199,7 @@ impl App {
                                     iced::widget::horizontal_space().width(Length::Fixed(40.0)),
                                     column![
                                         text("Category").size(10).color(style::palette::TEXT_SECONDARY),
-                                        text(format!("{:?}", pack.category)).size(16).color(style::palette::ACCENT_BLUE),
+                                         text(format!("{:?}", pack.category)).size(14).color(style::palette::TEXT_PRIMARY).width(Length::Fill),
                                     ].spacing(2),
                                 ].align_y(iced::Alignment::Center),
                                 
