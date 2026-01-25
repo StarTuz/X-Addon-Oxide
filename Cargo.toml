@@ -20,6 +20,7 @@ clap = { version = "4.4", features = ["derive", "env"] }
 tempfile = "3.8"
 nom = "7.1"
 chrono = { version = "0.4", features = ["serde"] }
+rayon = "1.8"
 
 [profile.release]
 lto = "fat"

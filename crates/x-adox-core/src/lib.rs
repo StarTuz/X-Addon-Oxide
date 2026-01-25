@@ -15,6 +15,11 @@ use std::{env, fs};
 use thiserror::Error;
 
 pub fn get_config_root() -> PathBuf {
+    // Allow overriding via environment variable for tests
+    if let Ok(env_path) = env::var("X_ADOX_CONFIG_DIR") {
+        return PathBuf::from(env_path);
+    }
+
     let path = if let Some(proj_dirs) = ProjectDirs::from("org", "x-adox", "X-Addon-Oxide") {
         proj_dirs.config_dir().to_path_buf()
     } else {

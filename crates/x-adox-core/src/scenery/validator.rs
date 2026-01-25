@@ -127,14 +127,19 @@ impl SceneryValidator {
         let mut last_overlay_idx = None;
 
         for (i, pack) in packs.iter().enumerate() {
-            if pack.category == SceneryCategory::Mesh || pack.category == SceneryCategory::Ortho {
+            if pack.category == SceneryCategory::Mesh
+                || pack.category == SceneryCategory::SpecificMesh
+                || pack.category == SceneryCategory::OrthoBase
+            {
                 if first_mesh_idx.is_none() {
                     first_mesh_idx = Some(i);
                 }
             }
-            if pack.category == SceneryCategory::Overlay
-                || pack.category == SceneryCategory::EarthAirports
+            if pack.category == SceneryCategory::RegionalOverlay
+                || pack.category == SceneryCategory::AirportOverlay
+                || pack.category == SceneryCategory::CustomAirport
                 || pack.category == SceneryCategory::GlobalAirport
+                || pack.category == SceneryCategory::Landmark
             {
                 last_overlay_idx = Some(i);
             }
@@ -142,21 +147,21 @@ impl SceneryValidator {
 
         if let (Some(m_idx), Some(o_idx)) = (first_mesh_idx, last_overlay_idx) {
             if m_idx < o_idx {
-                // If a mesh is above an overlay (which includes airports/simheaven)
+                // If a mesh/ortho is above an overlay
                 report.issues.push(ValidationIssue {
                     pack_name: packs[m_idx].name.clone(),
                     severity: ValidationSeverity::Warning,
                     issue_type: "mesh_above_overlay".to_string(),
-                    message: "Mesh/Terrain pack is above an Overlay/Airport".to_string(),
-                    fix_suggestion: "Move Mesh and Terrain packs to the bottom of the list for correct layering.".to_string(),
-                    details: "X-Plane draws scenery from bottom to top. Terrain meshes should be at the very bottom so that airports and overlays can be 'draped' over them. If a mesh is above an overlay, the overlay might be hidden.".to_string(),
+                    message: "Mesh/Ortho pack is above an Overlay/Airport".to_string(),
+                    fix_suggestion: "Move Mesh and Ortho packs to the bottom of the list.".to_string(),
+                    details: "X-Plane draws scenery from bottom to top. Terrain meshes and orthophotos should be at the bottom.".to_string(),
                 });
             }
         }
     }
 
     fn check_library_placement(_packs: &[SceneryPack], _report: &mut ValidationReport) {
-        // Libraries are flexible but usually should not be at the very bottom
+        // Libraries are flexible
     }
 }
 
@@ -164,7 +169,7 @@ fn is_mesh(pack: &crate::scenery::SceneryPack) -> bool {
     use crate::scenery::SceneryCategory;
     matches!(
         pack.category,
-        SceneryCategory::Mesh | SceneryCategory::EarthScenery
+        SceneryCategory::Mesh | SceneryCategory::SpecificMesh
     )
 }
 

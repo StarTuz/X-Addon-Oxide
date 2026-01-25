@@ -82,8 +82,36 @@ impl TileManager {
         let tiles_arc = Arc::clone(&self.tiles);
         let pending_arc = Arc::clone(&self.pending);
 
-        // Simple background fetcher using std::thread
+        // Persistent Disk Cache Path
+        let cache_path = directories::ProjectDirs::from("com", "x-adox", "X-Addon-Oxide")
+            .map(|dirs| {
+                dirs.cache_dir()
+                    .join("tiles")
+                    .join(coords.z.to_string())
+                    .join(coords.x.to_string())
+                    .join(format!("{}.png", coords.y))
+            })
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from("tiles")
+                    .join(coords.z.to_string())
+                    .join(coords.x.to_string())
+                    .join(format!("{}.png", coords.y))
+            });
+
         std::thread::spawn(move || {
+            // 1. Check disk cache first
+            if cache_path.exists() {
+                if let Ok(bytes) = std::fs::read(&cache_path) {
+                    let handle = image::Handle::from_bytes(bytes);
+                    let mut tiles = tiles_arc.lock().unwrap();
+                    tiles.put(coords, handle);
+                    let mut pending = pending_arc.lock().unwrap();
+                    pending.remove(&coords);
+                    return;
+                }
+            }
+
+            // 2. Fetch from network if not on disk
             let resp = ureq::get(&coords.url())
                 .set("User-Agent", "X-Addon-Oxide/0.1.0")
                 .timeout(std::time::Duration::from_secs(10))
@@ -95,9 +123,15 @@ impl TileManager {
                     if let Ok(_) =
                         std::io::Read::read_to_end(&mut response.into_reader(), &mut bytes)
                     {
-                        let handle = image::Handle::from_bytes(bytes);
+                        let handle = image::Handle::from_bytes(bytes.clone());
                         let mut tiles = tiles_arc.lock().unwrap();
                         tiles.put(coords, handle);
+
+                        // 3. Save to disk cache
+                        if let Some(parent) = cache_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::write(&cache_path, bytes);
                     }
                 }
                 Err(e) => {
@@ -126,13 +160,24 @@ impl<'a> MapView<'a> {
     pub fn is_pack_visible(&self, pack: &SceneryPack) -> bool {
         use x_adox_core::scenery::SceneryCategory;
 
-        let is_ortho = pack.category == SceneryCategory::Ortho;
-        let is_mesh = pack.category == SceneryCategory::Mesh;
+        let is_ortho = pack.category == SceneryCategory::OrthoBase;
+        let is_mesh = pack.category == SceneryCategory::Mesh
+            || pack.category == SceneryCategory::SpecificMesh;
         let is_library = pack.category == SceneryCategory::Library;
-        let is_overlay = pack.category == SceneryCategory::Overlay;
-        let is_earth = pack.category == SceneryCategory::EarthScenery;
+        let is_overlay = matches!(
+            pack.category,
+            SceneryCategory::RegionalOverlay
+                | SceneryCategory::AirportOverlay
+                | SceneryCategory::LowImpactOverlay
+                | SceneryCategory::AutoOrthoOverlay
+                | SceneryCategory::RegionalFluff
+                | SceneryCategory::OrbxAirport
+        );
+        let is_earth = false; // "EarthScenery" concept removed, merged into Mesh
         let is_global_apt = pack.category == SceneryCategory::GlobalAirport;
-        let is_custom_apt = !pack.airports.is_empty();
+        // Exclude OrbxAirport from "Custom Airports" filter because it contains mass regional data
+        let is_custom_apt =
+            !pack.airports.is_empty() && pack.category != SceneryCategory::OrbxAirport;
 
         let tile_count = pack.tiles.len();
         let is_small_enhancement = !is_custom_apt && tile_count < 5 && (is_overlay || is_earth);
@@ -343,10 +388,19 @@ where
             for pack in self.packs.iter().rev() {
                 let is_selected = self.selected_scenery == Some(&pack.name);
                 let is_hovered = self.hovered_scenery == Some(&pack.name);
-                let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::Ortho;
+                let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::OrthoBase;
                 let is_library = pack.category == x_adox_core::scenery::SceneryCategory::Library;
-                let is_overlay = pack.category == x_adox_core::scenery::SceneryCategory::Overlay;
-                let is_earth = pack.category == x_adox_core::scenery::SceneryCategory::EarthScenery;
+                let is_overlay = matches!(
+                    pack.category,
+                    x_adox_core::scenery::SceneryCategory::RegionalOverlay
+                        | x_adox_core::scenery::SceneryCategory::AirportOverlay
+                        | x_adox_core::scenery::SceneryCategory::AutoOrthoOverlay
+                        | x_adox_core::scenery::SceneryCategory::LowImpactOverlay
+                        | x_adox_core::scenery::SceneryCategory::RegionalFluff
+                        | x_adox_core::scenery::SceneryCategory::OrbxAirport
+                );
+                let is_earth = pack.category == x_adox_core::scenery::SceneryCategory::Mesh
+                    || pack.category == x_adox_core::scenery::SceneryCategory::SpecificMesh;
 
                 let tile_count = pack.tiles.len();
                 let is_massive_pack = tile_count >= 10 && (is_overlay || is_earth);
@@ -381,7 +435,7 @@ where
 
                 // --- Decision Logic for DRAWING ---
                 let is_visible = self.is_pack_visible(pack);
-                let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::Ortho;
+                let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::OrthoBase;
 
                 let is_global =
                     pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;

@@ -15,6 +15,7 @@ pub mod palette {
     pub const TEXT_PRIMARY: Color = Color::from_rgb(0.9, 0.9, 0.9);
     pub const TEXT_SECONDARY: Color = Color::from_rgb(0.6, 0.6, 0.6);
     pub const BORDER: Color = Color::from_rgb(0.25, 0.25, 0.25);
+    pub const SURFACE_VARIANT: Color = Color::from_rgb(0.25, 0.25, 0.25);
 }
 
 // Container Styles

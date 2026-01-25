@@ -106,13 +106,23 @@ pub fn write_ini(
         } else {
             // Fallback to category-based headers if no model
             match pack.category {
-                crate::scenery::SceneryCategory::EarthAirports
-                | crate::scenery::SceneryCategory::MarsAirports => "# Airports".to_string(),
+                crate::scenery::SceneryCategory::CustomAirport
+                | crate::scenery::SceneryCategory::OrbxAirport => "# Airports".to_string(),
                 crate::scenery::SceneryCategory::GlobalAirport => "# Global Airports".to_string(),
+                crate::scenery::SceneryCategory::Landmark => "# Landmarks".to_string(),
+                crate::scenery::SceneryCategory::RegionalOverlay
+                | crate::scenery::SceneryCategory::AirportOverlay
+                | crate::scenery::SceneryCategory::LowImpactOverlay
+                | crate::scenery::SceneryCategory::RegionalFluff => {
+                    "# Regional & Overlays".to_string()
+                }
+                crate::scenery::SceneryCategory::AutoOrthoOverlay => {
+                    "# AutoOrtho Overlays".to_string()
+                }
                 crate::scenery::SceneryCategory::Library => "# Libraries".to_string(),
-                crate::scenery::SceneryCategory::Overlay => "# Overlays".to_string(),
-                crate::scenery::SceneryCategory::Ortho => "# Ortho Scenery".to_string(),
-                crate::scenery::SceneryCategory::Mesh => "# Meshes".to_string(),
+                crate::scenery::SceneryCategory::OrthoBase => "# Ortho Scenery".to_string(),
+                crate::scenery::SceneryCategory::Mesh
+                | crate::scenery::SceneryCategory::SpecificMesh => "# Meshes".to_string(),
                 _ => "# Other Scenery".to_string(),
             }
         };

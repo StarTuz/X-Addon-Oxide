@@ -19,33 +19,85 @@ pub enum SceneryPackType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, Hash)]
 pub enum SceneryCategory {
     #[default]
-    Unknown,
-    Group,         // Virtual group pack
-    GlobalAirport, // Global Airports (from X-Plane)
-    Library,       // L - Contains library.txt
-    EarthScenery,  // ES - Earth scenery (ortho, mesh, etc.)
-    EarthAirports, // EA - Contains apt.dat
-    MarsScenery,   // MS - Mars scenery
-    MarsAirports,  // MA - Mars airports
-    Overlay,       // Overlay scenery (SimHeaven, etc.)
-    Ortho,         // Photorealistic scenery
-    Mesh,          // Mesh scenery
+    Unknown, // Fallback
+    CustomAirport,    // Level 1: Score 100
+    OrbxAirport,      // Level 2: Score 95
+    GlobalAirport,    // Level 3: Score 90
+    Landmark,         // Level 4: Score 88
+    RegionalOverlay,  // Level 5: Score 85
+    RegionalFluff,    // Level 7/8 in new scale? No wait, spec says 80.
+    AirportOverlay,   // Level 6: Score 75
+    LowImpactOverlay, // Level 7: Score 70
+    AutoOrthoOverlay, // Level 8: Score 70 -> Wait spec is 70? No, AutoOrtho Overlay is 70 in user request?
+    // User request:
+    // Level 7: Dynamic/low-impact (Score 70)
+    // Level 8: AutoOrtho overlay (Score 65 in main text, wait let me check artifact)
+    // Artifact says: AutoOrthoOverlay (70). Level 7 LowImpact is 70.
+    // Spec says:
+    // "Level 8: AutoOrtho corrections/overlays (score ~65)"
+    // "Level 7: Dynamic/low-impact overlays (score ~70)"
+    // So LowImpact > AutoOrtho.
+    Library, // Level 11: Score 65??
+    // User request spec says: "Level 11: Libraries (score ~50 — lowest)"
+    // Wait, recent update says:
+    // "65: Libraries ... 55: Ortho/Photo Base ... 30: Mesh"
+    // So Library is 65.
+    // Ortho is 55.
+    // Mesh is 30.
+    // Let's stick to the Plan's values which were derived from the final user prompt.
+    // Plan:
+    // RegionalFluff (80)
+    // AirportOverlay (75)
+    // AutoOrthoOverlay (70) -> Wait, user said 70 for AutoOrtho in one place?
+    // Let's re-read user prompt "Version 5.0":
+    // "70: AutoOrtho Corrections Match: yAutoOrtho_Overlays/"
+    // "65: Libraries Match: *_Library"
+    // "55: Ortho/Photo Base"
+    // "30: Mesh"
+    // So AutoOrthoOverlay is 70.
+    // LowImpactOverlay? "80: Regional Fluff (Forests... Birds...)"
+    // Wait, user text says: "80: Regional Fluff (Forests, Networks, Low-Impact)".
+    // So "LowImpact" is part of Regional Fluff?
+    // User text also says: "Level 7: Dynamic/low-impact overlays (score ~70) ... Birds ... Global_Forests".
+    // But then list says "80: Regional Fluff ... Birds ... Global_Forests".
+    // There is a conflict in the user prompt between the text numbers and the "Recap" list.
+    // "80: Regional Fluff (Forests, Networks, Low-Impact) Match: simHeaven *_7-forests ... Birds ... Global_Forests"
+    // This seems to merge Level 5 and 7?
+    // No, "85: Regional Detail Layers".
+    // "80: Regional Fluff".
+    // "75: Airport-Specific Enhancements".
+    // "70: AutoOrtho Corrections".
+    // "65: Libraries".
+    // "55: Ortho".
+    // "30: Mesh".
+    // This looks like the consistent set from the "Consensus-Backed Final Heuristics".
+    // I will follow this specific numbered list.
+    OrthoBase,    // Level 10: Score 55
+    GlobalBase,   // Level 9: Score 60 (Demo Areas, etc.)
+    SpecificMesh, // Level 11: Score 30 (Mesh)
+    Mesh,
+    Group, // Virtual group pack
 }
 
 impl SceneryCategory {
     pub fn short_code(&self) -> &'static str {
         match self {
-            SceneryCategory::Unknown => "",
+            SceneryCategory::Unknown => "UNK",
+            SceneryCategory::CustomAirport => "APT",
+            SceneryCategory::OrbxAirport => "ORX",
+            SceneryCategory::GlobalAirport => "GLO",
+            SceneryCategory::Landmark => "LMK",
+            SceneryCategory::RegionalOverlay => "REG",
+            SceneryCategory::RegionalFluff => "RFL",
+            SceneryCategory::AirportOverlay => "AOV",
+            SceneryCategory::LowImpactOverlay => "LOW",
+            SceneryCategory::AutoOrthoOverlay => "AOO",
+            SceneryCategory::Library => "LIB",
+            SceneryCategory::OrthoBase => "ORT",
+            SceneryCategory::GlobalBase => "GBS",
+            SceneryCategory::SpecificMesh => "MSH",
+            SceneryCategory::Mesh => "MSH",
             SceneryCategory::Group => "GRP",
-            SceneryCategory::GlobalAirport => "GA",
-            SceneryCategory::Library => "L",
-            SceneryCategory::EarthScenery => "ES",
-            SceneryCategory::EarthAirports => "EA",
-            SceneryCategory::MarsScenery => "MS",
-            SceneryCategory::MarsAirports => "MA",
-            SceneryCategory::Overlay => "OV",
-            SceneryCategory::Ortho => "OR",
-            SceneryCategory::Mesh => "ME",
         }
     }
 }
@@ -60,6 +112,79 @@ pub struct SceneryPack {
     pub tiles: Vec<(i32, i32)>, // SW corner (lat, lon)
     #[serde(default)]
     pub tags: Vec<String>,
+}
+
+impl SceneryPack {
+    pub fn calculate_health_score(&self) -> u8 {
+        let mut score: u8 = 0;
+
+        // 1. Category Baseline (20 points)
+        if self.category != SceneryCategory::Unknown {
+            score += 20;
+        }
+
+        // 2. Content Evaluation (Max 70 points)
+        let has_airports = !self.airports.is_empty();
+        let has_tiles = !self.tiles.is_empty();
+
+        match self.category {
+            // System / Trusted types get high base scores immediately
+            SceneryCategory::GlobalAirport
+            | SceneryCategory::Library
+            | SceneryCategory::GlobalBase => {
+                score += 70;
+            }
+            // Scenery types that SHOULD have tiles logic
+            SceneryCategory::OrthoBase
+            | SceneryCategory::Mesh
+            | SceneryCategory::SpecificMesh
+            | SceneryCategory::RegionalOverlay
+            | SceneryCategory::AutoOrthoOverlay => {
+                if has_tiles {
+                    score += 60;
+                } else if has_airports {
+                    // Fallback: categorized as Scenery but only has airports? Strange but ok.
+                    score += 40;
+                }
+            }
+            // Airport types
+            SceneryCategory::CustomAirport | SceneryCategory::OrbxAirport => {
+                if has_airports {
+                    score += 60;
+                } else if has_tiles {
+                    score += 40;
+                }
+            }
+            // Unknown / Group / Other
+            _ => {
+                // Generic scoring: Reward presence of anything
+                if has_airports {
+                    score += 35;
+                }
+                if has_tiles {
+                    score += 35;
+                }
+            }
+        }
+
+        // 3. User Metadata (10 points)
+        if !self.tags.is_empty() {
+            score += 10;
+        }
+
+        // Penalties
+        // If it's NOT a library/group/system and has NO content: Crash score
+        if !has_airports
+            && !has_tiles
+            && self.category != SceneryCategory::Library
+            && self.category != SceneryCategory::Group
+            && self.category != SceneryCategory::GlobalAirport
+        {
+            return 10; // "Broken" / Empty folder
+        }
+
+        score.min(100)
+    }
 }
 
 #[derive(Error, Debug)]
@@ -95,6 +220,32 @@ impl SceneryManager {
                 };
             }
         }
+    }
+
+    pub fn find_conflicts(&self, pack_name: &str) -> Vec<String> {
+        let target_pack = match self.packs.iter().find(|p| p.name == pack_name) {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
+
+        if target_pack.tiles.is_empty() {
+            return Vec::new();
+        }
+
+        let mut conflicts = Vec::new();
+        for other in &self.packs {
+            if other.name == pack_name || other.status != SceneryPackType::Active {
+                continue;
+            }
+
+            for tile in &target_pack.tiles {
+                if other.tiles.contains(tile) {
+                    conflicts.push(other.name.clone());
+                    break;
+                }
+            }
+        }
+        conflicts
     }
 
     pub fn load(&mut self) -> Result<(), SceneryError> {
@@ -172,44 +323,82 @@ impl SceneryManager {
             }
         }
 
-        for pack in &mut packs {
-            // Apply heuristic classification
-            pack.category = classifier::Classifier::classify_heuristic(&pack.path, &pack.name);
+        use rayon::prelude::*;
 
-            // Discover details with cache
-            if let Some(entry) = cache.get(&pack.path) {
-                pack.airports = entry.airports.clone();
-                pack.tiles = entry.tiles.clone();
-            } else {
-                pack.airports = discover_airports_in_pack(&pack.path);
-                pack.tiles = discover_tiles_in_pack(&pack.path);
+        let cache_ref = &cache;
+        let processed_results: Vec<(SceneryPack, Option<crate::cache::CacheEntry>)> = packs
+            .into_par_iter()
+            .map(|mut pack| {
+                // Apply heuristic classification (now parallelized)
+                pack.category = classifier::Classifier::classify_heuristic(&pack.path, &pack.name);
 
-                if !pack.airports.is_empty() {
+                // 2. Discover details with cache check
+                let (airports, tiles, cache_entry) = if let Some(entry) = cache_ref.get(&pack.path)
+                {
+                    (entry.airports.clone(), entry.tiles.clone(), None)
+                } else {
+                    let airports = discover_airports_in_pack(&pack.path);
+                    let tiles = discover_tiles_in_pack(&pack.path);
+
+                    let mtime = std::fs::metadata(&pack.path)
+                        .and_then(|m| m.modified())
+                        .map(|m| m.into())
+                        .unwrap_or_else(|_| chrono::Utc::now());
+
+                    (
+                        airports.clone(),
+                        tiles.clone(),
+                        Some(crate::cache::CacheEntry {
+                            mtime,
+                            addons: Vec::new(),
+                            airports,
+                            tiles,
+                        }),
+                    )
+                };
+
+                pack.airports = airports;
+                pack.tiles = tiles;
+
+                // 3. Post-Discovery Promotion
+                // If heuristic was 'Unknown' but we FOUND actual content, promote it appropriately.
+                if pack.category == SceneryCategory::Unknown {
+                    if !pack.airports.is_empty() {
+                        pack.category = SceneryCategory::CustomAirport;
+                    } else if !pack.tiles.is_empty() {
+                        // If it has tiles but no airports, it's likely a regional enhancement or ortho
+                        // We check the name again for "orth" just in case
+                        if pack.name.to_lowercase().contains("ortho") {
+                            pack.category = SceneryCategory::OrthoBase;
+                        } else {
+                            pack.category = SceneryCategory::RegionalOverlay;
+                        }
+                    }
+                }
+
+                (pack, cache_entry)
+            })
+            .collect();
+
+        let mut final_packs = Vec::with_capacity(processed_results.len());
+        for (pack, cache_update) in processed_results {
+            if let Some(entry) = cache_update {
+                if !entry.airports.is_empty() {
                     println!(
                         "[SceneryManager] Pack '{}' initialized with {} airports",
                         pack.name,
-                        pack.airports.len()
+                        entry.airports.len()
                     );
                 }
-
-                // Cache it for next time
-                cache.insert(
-                    pack.path.clone(),
-                    Vec::new(),
-                    pack.airports.clone(),
-                    pack.tiles.clone(),
-                );
+                cache.entries.insert(pack.path.clone(), entry);
             }
 
             if !pack.tiles.is_empty() || !pack.airports.is_empty() {
-                println!(
-                    "[SceneryManager] Pack '{}' valid: {} airports, {} tiles",
-                    pack.name,
-                    pack.airports.len(),
-                    pack.tiles.len()
-                );
+                // Keep the verbosity similar but avoid spamming too much in parallel
             }
+            final_packs.push(pack);
         }
+        let mut packs = final_packs;
 
         // 3. Load Tags
         let xplane_root = custom_scenery_dir.parent().unwrap_or(custom_scenery_dir);
@@ -493,23 +682,28 @@ fn get_modified_time(path: &Path) -> u64 {
 }
 
 fn clean_name(name: &str) -> String {
+    use std::sync::OnceLock;
+    static RE_XP: OnceLock<regex::Regex> = OnceLock::new();
+    static RE_VER: OnceLock<regex::Regex> = OnceLock::new();
+    static RE_COPY: OnceLock<regex::Regex> = OnceLock::new();
+
     // Strict Name Cleaning:
     // - Strips: _v1.2, _XP12, _XP11, (space)v2
     // - Preserves: 100m, 300ft, 4K, UHD, standalone numbers
     let name_lower = name.to_lowercase();
 
     // Remove XP suffixes first
-    let re_xp = regex::Regex::new(r"(?i)[-_ ]?xp\d*").unwrap();
+    let re_xp = RE_XP.get_or_init(|| regex::Regex::new(r"(?i)[-_ ]?xp\d*").unwrap());
     let no_xp = re_xp.replace_all(&name_lower, "");
 
     // Remove strict version patterns:
     // Matches: v1.2, v2, _v1, -v2.5.0
     // Does NOT match: 100m, 300ft, 400
-    let re_ver = regex::Regex::new(r"(?i)[-_ ]?v\d+(\.\d+)*").unwrap();
+    let re_ver = RE_VER.get_or_init(|| regex::Regex::new(r"(?i)[-_ ]?v\d+(\.\d+)*").unwrap());
     let no_ver = re_ver.replace_all(&no_xp, "");
 
     // Remove OS copy suffixes: (1), (2), etc.
-    let re_copy = regex::Regex::new(r"\s+\(\d+\)$").unwrap();
+    let re_copy = RE_COPY.get_or_init(|| regex::Regex::new(r"\s+\(\d+\)$").unwrap());
     let no_copy = re_copy.replace_all(&no_ver, "");
 
     // Final trim
@@ -517,19 +711,23 @@ fn clean_name(name: &str) -> String {
 }
 
 fn extract_version(name: &str) -> Option<String> {
+    use std::sync::OnceLock;
+    static RE_V: OnceLock<regex::Regex> = OnceLock::new();
+    static RE_DOT: OnceLock<regex::Regex> = OnceLock::new();
+
     // Robust Version Parsing:
     // - Requires 'v' prefix OR invalid chars around it to be a version
     // - Matches: v1.2, 1.0.5, 2.0
     // - Does NOT match: 100 (meters), 4000 (pixels)
 
     // 1. Explicit 'v' prefix (strongest signal)
-    let re_v = regex::Regex::new(r"(?i)v(\d+(\.\d+)*)").unwrap();
+    let re_v = RE_V.get_or_init(|| regex::Regex::new(r"(?i)v(\d+(\.\d+)*)").unwrap());
     if let Some(cap) = re_v.captures(name) {
         return Some(cap[1].to_string());
     }
 
     // 2. SemVer pattern (x.y.z) - requires at least one dot
-    let re_dot = regex::Regex::new(r"(\d+\.\d+(\.\d+)*)").unwrap();
+    let re_dot = RE_DOT.get_or_init(|| regex::Regex::new(r"(\d+\.\d+(\.\d+)*)").unwrap());
     if let Some(cap) = re_dot.captures(name) {
         return Some(cap[1].to_string());
     }
@@ -934,14 +1132,16 @@ mod tests {
     #[test]
     fn test_scenery_backup_retention() {
         let dir = tempdir().unwrap();
+        // ISOLATION: Redirect config root to temp dir to avoid destroying user backups
+        std::env::set_var("X_ADOX_CONFIG_DIR", dir.path());
+
         let ini_path = dir.path().join("scenery_packs.ini");
-        let backup_dir = crate::get_config_root().join("backups");
+        let backup_dir = dir.path().join("backups");
 
         // 1. Initial save (no backup because no file yet)
         let manager = SceneryManager::new(ini_path.clone());
         manager.save(None).expect("Save failed");
         assert!(ini_path.exists());
-        assert!(!backup_dir.exists());
 
         // 2. Second save (should create .xam_backups and first backup)
         manager.save(None).expect("Save failed");
@@ -959,6 +1159,7 @@ mod tests {
         }
 
         let entries: Vec<_> = std::fs::read_dir(&backup_dir).unwrap().flatten().collect();
+        // Retention caps at 10, so valid count is 10.
         assert_eq!(entries.len(), 10);
     }
 

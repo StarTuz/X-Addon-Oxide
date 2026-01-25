@@ -1,18 +1,23 @@
 use crate::scenery::{SceneryCategory, SceneryPack};
 
 impl SceneryCategory {
-    // Lower value = Higher priority (loads first)
-    // Priority: Airport > GlobalAirport > Library > Overlay > Ortho > Mesh
-    pub fn priority(&self) -> u8 {
+    // Higher value = Higher priority (loads first/top)
+    pub fn score(&self) -> i32 {
         match self {
-            SceneryCategory::EarthAirports | SceneryCategory::MarsAirports => 10,
-            SceneryCategory::GlobalAirport => 20,
-            SceneryCategory::Overlay | SceneryCategory::MarsScenery => 30,
-            SceneryCategory::EarthScenery => 40,
-            SceneryCategory::Library => 45,
-            SceneryCategory::Ortho => 50,
-            SceneryCategory::Mesh => 60,
-            SceneryCategory::Group | SceneryCategory::Unknown => 100,
+            SceneryCategory::CustomAirport => 100,
+            SceneryCategory::OrbxAirport => 95,
+            SceneryCategory::GlobalAirport => 90,
+            SceneryCategory::Landmark => 88,
+            SceneryCategory::RegionalOverlay => 85,
+            SceneryCategory::RegionalFluff => 80,
+            SceneryCategory::AirportOverlay => 75,
+            SceneryCategory::AutoOrthoOverlay => 70, // Keep for now
+            SceneryCategory::Library => 65,
+            SceneryCategory::GlobalBase => 60,
+            SceneryCategory::OrthoBase => 55,
+            SceneryCategory::Mesh | SceneryCategory::SpecificMesh => 30,
+            SceneryCategory::Unknown => 0, // Fallback safety net: sink to bottom
+            _ => 0,
         }
     }
 }
@@ -20,30 +25,178 @@ impl SceneryCategory {
 // Custom sort implementation
 pub fn sort_packs(
     packs: &mut [SceneryPack],
-    model: Option<&x_adox_bitnet::BitNetModel>,
-    context: &x_adox_bitnet::PredictContext,
+    _model: Option<&x_adox_bitnet::BitNetModel>,
+    _context: &x_adox_bitnet::PredictContext,
 ) {
     packs.sort_by(|a, b| {
-        // 1. BitNet Smart Sort (if available)
-        if let Some(model) = &model {
-            let score_a = model.predict(&a.name, &a.path, context);
-            let score_b = model.predict(&b.name, &b.path, context);
+        // Calculate Version 5.0 Scores
+        let score_a = calculate_score(a);
+        let score_b = calculate_score(b);
 
-            // If the model is confident in a difference, use it
-            if score_a != score_b {
-                return score_a.cmp(&score_b);
+        // Sorting is DESCENDING (Higher Score = Top of file)
+        match score_b.cmp(&score_a) {
+            std::cmp::Ordering::Equal => {
+                // Secondary Sort Rules
+
+                // 1. SimHeaven Internal Order
+                // Group by Continent (America, Europe, etc.), then by numeric layer (1-8).
+                if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
+                    if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
+                        match cont_a.cmp(&cont_b) {
+                            std::cmp::Ordering::Equal => {
+                                // Within same continent, sort by layer 1 -> 8
+                                return layer_a
+                                    .partial_cmp(&layer_b)
+                                    .unwrap_or(std::cmp::Ordering::Equal);
+                            }
+                            ord => return ord,
+                        }
+                    }
+                }
+
+                // 2. Alphabetical (Ascending) for ties
+                a.name.to_lowercase().cmp(&b.name.to_lowercase())
             }
+            ord => ord,
         }
-
-        // 2. Fallback to Category Priority
-        let prio_a = a.category.priority();
-        let prio_b = b.category.priority();
-
-        if prio_a != prio_b {
-            return prio_a.cmp(&prio_b);
-        }
-
-        // 3. Alphabetical tie-breaker
-        a.name.cmp(&b.name)
     });
+}
+
+fn calculate_score(pack: &SceneryPack) -> i32 {
+    let mut score = pack.category.score();
+    let name_lower = pack.name.to_lowercase();
+
+    // VFR Boost check (+5)
+    // "If name contains '_vfr' or 'VFR' -> +5 points"
+    if name_lower.contains("_vfr") || name_lower.contains("vfr") {
+        score += 5;
+    }
+
+    // y/z Prefix Penalty (-20)
+    // "Exception: Airport matches (CustomAirport OR AirportOverlay) OR System blocks (Library, GlobalBase) ignore this"
+    if pack.category != SceneryCategory::CustomAirport
+        && pack.category != SceneryCategory::AirportOverlay
+        && pack.category != SceneryCategory::Library
+        && pack.category != SceneryCategory::GlobalBase
+    {
+        if name_lower.starts_with('y') || name_lower.starts_with('z') {
+            score -= 20;
+        }
+    }
+
+    // Mesh Protection (Cap at 30)
+    // "Any 'Mesh' in name -> cap/force <=30"
+    if name_lower.contains("mesh") {
+        score = 30; // Force exact 30 per spec
+    }
+
+    score
+}
+
+fn extract_simheaven_info(name: &str) -> Option<(String, f32)> {
+    let lower = name.to_lowercase();
+    if !lower.contains("x-world") && !lower.contains("simheaven") {
+        return None;
+    }
+
+    // Extract continent: "simHeaven_X-World_Europe-1-vfr" -> "europe"
+    let continent = if lower.contains("america") {
+        "america"
+    } else if lower.contains("europe") {
+        "europe"
+    } else if lower.contains("australia") {
+        "australia"
+    } else if lower.contains("africa") {
+        "africa"
+    } else if lower.contains("asia") {
+        "asia"
+    } else if lower.contains("antarctica") {
+        "antarctica"
+    } else {
+        "other"
+    }
+    .to_string();
+
+    let layer = if lower.contains("-1-") || lower.contains("1-vfr") {
+        1.0
+    } else if lower.contains("-2-") || lower.contains("2-region") {
+        2.0
+    } else if lower.contains("-3-") || lower.contains("3-detail") {
+        3.0
+    } else if lower.contains("-4-") || lower.contains("4-extra") {
+        4.0
+    } else if lower.contains("-5-") || lower.contains("5-footprint") {
+        5.0
+    } else if lower.contains("-6-") || lower.contains("6-scenery") {
+        6.0
+    } else if lower.contains("vegetation_library") {
+        6.5 // Just before forests (7)
+    } else if lower.contains("-7-") || lower.contains("7-forest") {
+        7.0
+    } else if lower.contains("-8-") || lower.contains("8-network") {
+        8.0
+    } else {
+        9.0 // Unknown layer
+    };
+
+    Some((continent, layer))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scenery::{SceneryCategory, SceneryPack, SceneryPackType};
+    use std::path::PathBuf;
+
+    fn make_pack(name: &str) -> SceneryPack {
+        let mut pack = SceneryPack {
+            name: name.to_string(),
+            path: PathBuf::from(name),
+            status: SceneryPackType::Active,
+            category: SceneryCategory::Unknown,
+            airports: Vec::new(),
+            tiles: Vec::new(),
+            tags: Vec::new(),
+        };
+        // Re-classify using the same heuristic as the manager
+        pack.category =
+            crate::scenery::classifier::Classifier::classify_heuristic(&pack.path, &pack.name);
+        pack
+    }
+
+    #[test]
+    fn test_vfr_boost() {
+        let mut packs = vec![
+            make_pack("simHeaven_X-World_Europe-1-vfr"), // Score 85 + 5 = 90
+            make_pack("simHeaven_X-World_Europe-2-regions"), // Score 85
+        ];
+        sort_packs(&mut packs, None, &x_adox_bitnet::PredictContext::default());
+        assert_eq!(packs[0].name, "simHeaven_X-World_Europe-1-vfr");
+    }
+
+    #[test]
+    fn test_unusual_airport_names() {
+        let mut packs = vec![
+            make_pack("X-Plane 12 Global Scenery"), // Global Base (Score 60)
+            make_pack("KPSP_Palm_Springs_xp12_Axonos"), // Matches ICAO Regex -> Score 100
+            make_pack("X-scenery_UKOO_XP12"),       // Unknown by name -> Score 0 -> promoted below
+            make_pack("z_ao_na"),                   // Ortho (Score 35)
+        ];
+
+        // Force UKOO to be an airport manually to simulate post-discovery promotion
+        packs[2].category = SceneryCategory::CustomAirport;
+
+        sort_packs(&mut packs, None, &x_adox_bitnet::PredictContext::default());
+
+        // Expected Order:
+        // 1. KPSP_Palm_Springs_xp12_Axonos (Score 100)
+        // 2. X-scenery_UKOO_XP12 (Score 100)
+        // 3. X-Plane 12 Global Scenery (Score 60)
+        // 4. z_ao_na (Score 35)
+
+        assert_eq!(packs[0].name, "KPSP_Palm_Springs_xp12_Axonos");
+        assert_eq!(packs[1].name, "X-scenery_UKOO_XP12");
+        assert_eq!(packs[2].name, "X-Plane 12 Global Scenery");
+        assert_eq!(packs[3].name, "z_ao_na");
+    }
 }

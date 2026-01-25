@@ -26,7 +26,7 @@ impl LogbookEntry {
             .map(|d| d.format("%y%m%d").to_string())
             .unwrap_or_else(|| "     0".to_string());
         format!(
-            "2 {:>6} {:>7} {:>7}   {:>1}   {:>3.1}   {:>3.1}   {:>3.1}   {:>3.1}  {:>6}  {}",
+            "2 {:>6} {:>7} {:>7}   {:>1}   {:>3.2}   {:>3.2}   {:>3.2}   {:>3.2}  {:>6}  {}",
             date_str,
             self.dep_airport,
             self.arr_airport,

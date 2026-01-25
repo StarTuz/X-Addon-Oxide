@@ -30,15 +30,7 @@ pub struct DiscoveredAddon {
 pub struct DiscoveryManager;
 
 fn is_path_excluded(path: &Path, exclusions: &[PathBuf]) -> bool {
-    let p = path.to_string_lossy().to_string();
-    let p_clean = p.trim_end_matches('/').to_string();
-
-    exclusions.iter().any(|ex| {
-        let e = ex.to_string_lossy().to_string();
-        let e_clean = e.trim_end_matches('/').to_string();
-
-        p_clean == e_clean || p_clean.starts_with(&(e_clean.clone() + "/"))
-    })
+    exclusions.iter().any(|ex| path.starts_with(ex))
 }
 
 impl DiscoveryManager {

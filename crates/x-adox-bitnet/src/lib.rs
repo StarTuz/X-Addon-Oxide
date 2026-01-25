@@ -475,14 +475,18 @@ impl BitNetModel {
 
         let mut tags = Vec::new();
         let mut text_to_check = name.to_lowercase();
+        let mut primary_acf = None;
 
-        // Scan folder for .acf files to get more context
+        // Scan folder for .acf files to get more context - use a single pass
         if let Ok(entries) = std::fs::read_dir(path) {
             for entry in entries.flatten() {
                 let filename = entry.file_name().to_string_lossy().to_lowercase();
                 if filename.ends_with(".acf") {
                     text_to_check.push(' ');
                     text_to_check.push_str(&filename);
+                    if primary_acf.is_none() {
+                        primary_acf = Some(entry.path());
+                    }
                 }
             }
         }
@@ -491,10 +495,14 @@ impl BitNetModel {
 
         // --- Step 0: Try Native Parsing ---
         // Attempt to parse the .acf file to get definitive data
-        let parsed_data = parser::parse_acf_in_dir(path).ok();
+        let parsed_data = if let Some(acf_path) = primary_acf {
+            parser::parse_acf(&acf_path).ok()
+        } else {
+            None
+        };
 
         if parsed_data.is_some() {
-            println!("[BitNet] Successfully parsed ACF for path: {:?}", path);
+            println!("[BitNet] Successfully parsed ACF from optimized scan");
         }
 
         let mut definitive_prop_type = None;

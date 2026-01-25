@@ -218,8 +218,9 @@ enum Message {
     RenameProfileNameChanged(String),
 
     // Phase 3: Tags & Validation
-    UpdateTagInput(String),
-    AddTag,
+    NewTagChanged(String),
+    AddTag(String, String), // (PackName, Tag)
+    UpdateTagInput(String), // Old input variant
     RemoveTag(String, String), // (PackName, Tag)
     TagOperationComplete,
 
@@ -294,6 +295,23 @@ struct LoadingState {
     log_issues: bool,
     airports: bool,
     logbook: bool,
+}
+
+impl LoadingState {
+    pub fn progress(&self) -> f32 {
+        let fields = [
+            self.scenery,
+            self.aircraft,
+            self.aircraft_tree,
+            self.plugins,
+            self.csls,
+            self.log_issues,
+            self.airports,
+            self.logbook,
+        ];
+        let completed = fields.iter().filter(|&&f| f).count();
+        completed as f32 / fields.len() as f32
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1474,40 +1492,38 @@ impl App {
                 self.show_launch_help = false;
                 Task::none()
             }
-            Message::UpdateTagInput(txt) => {
+            Message::NewTagChanged(txt) | Message::UpdateTagInput(txt) => {
                 self.new_tag_input = txt;
                 Task::none()
             }
-            Message::AddTag => {
-                let tag = self.new_tag_input.trim().to_string();
+            Message::AddTag(pack_name, tag) => {
+                let tag = tag.trim().to_string();
                 if !tag.is_empty() {
-                    if let Some(pack_name) = self.selected_scenery.clone() {
-                        let packs = Arc::make_mut(&mut self.packs);
-                        if let Some(pack) = packs.iter_mut().find(|p| p.name == pack_name) {
-                            if !pack.tags.contains(&tag) {
-                                pack.tags.push(tag.clone());
+                    let packs = Arc::make_mut(&mut self.packs);
+                    if let Some(pack) = packs.iter_mut().find(|p| p.name == pack_name) {
+                        if !pack.tags.contains(&tag) {
+                            pack.tags.push(tag.clone());
 
-                                let root = self.xplane_root.clone();
-                                let p_name = pack_name.clone();
-                                let t_val = tag.clone();
-                                self.new_tag_input.clear();
+                            let root = self.xplane_root.clone();
+                            let p_name = pack_name.clone();
+                            let t_val = tag.clone();
+                            self.new_tag_input.clear();
 
-                                return Task::perform(
-                                    async move {
-                                        if let Some(r) = root {
-                                            let mgr = x_adox_core::groups::GroupManager::new(&r);
-                                            if let Ok(mut col) = mgr.load() {
-                                                let list = col.pack_tags.entry(p_name).or_default();
-                                                if !list.contains(&t_val) {
-                                                    list.push(t_val);
-                                                    let _ = mgr.save(&col);
-                                                }
+                            return Task::perform(
+                                async move {
+                                    if let Some(r) = root {
+                                        let mgr = x_adox_core::groups::GroupManager::new(&r);
+                                        if let Ok(mut col) = mgr.load() {
+                                            let list = col.pack_tags.entry(p_name).or_default();
+                                            if !list.contains(&t_val) {
+                                                list.push(t_val);
+                                                let _ = mgr.save(&col);
                                             }
                                         }
-                                    },
-                                    |_| Message::TagOperationComplete,
-                                );
-                            }
+                                    }
+                                },
+                                |_| Message::TagOperationComplete,
+                            );
                         }
                     }
                 }
@@ -1681,7 +1697,8 @@ impl App {
                             let mut i = 0;
                             while i < packs.len() {
                                 if packs[i].category == SceneryCategory::Mesh
-                                    || packs[i].category == SceneryCategory::Ortho
+                                    || packs[i].category == SceneryCategory::OrthoBase
+                                    || packs[i].category == SceneryCategory::SpecificMesh
                                 {
                                     meshes.push(packs.remove(i));
                                 } else {
@@ -2533,79 +2550,95 @@ impl App {
     }
 
     fn view_loading_overlay(&self) -> Element<'_, Message> {
-        let title = text("Loading X-Plane Profile")
-            .size(24)
+        let p = self.loading_state.progress();
+        let percentage = (p * 100.0) as u32;
+
+        let title = text("X-Addon-Oxide")
+            .size(32)
             .color(style::palette::TEXT_PRIMARY);
 
-        let subtitle = text("Synchronizing all data sources...")
-            .size(16)
+        let subtitle = text("Synchronizing Simulation Environment...")
+            .size(14)
             .color(style::palette::TEXT_SECONDARY);
 
         let items = [
             ("Scenery Library", self.loading_state.scenery),
             ("Aircraft Addons", self.loading_state.aircraft),
-            ("Aircraft Tree Structure", self.loading_state.aircraft_tree),
-            ("Plugins", self.loading_state.plugins),
-            ("CSL Packages", self.loading_state.csls),
-            ("Log Issues Analysis", self.loading_state.log_issues),
+            (
+                "Plugins & CSLs",
+                self.loading_state.plugins && self.loading_state.csls,
+            ),
             ("Airport Database", self.loading_state.airports),
             ("Pilot Logbook", self.loading_state.logbook),
         ];
 
-        let mut progress = Column::new().spacing(12);
+        let mut status_grid = Column::new().spacing(10).width(Length::Fixed(300.0));
         for (label, done) in items {
-            let status_indicator =
-                container("")
-                    .width(10)
-                    .height(10)
-                    .style(move |_| container::Style {
-                        background: Some(Background::Color(if done {
-                            style::palette::ACCENT_GREEN
-                        } else {
-                            Color::from_rgba(0.5, 0.5, 0.5, 0.2)
-                        })),
-                        border: Border {
-                            color: if done {
-                                style::palette::ACCENT_GREEN
-                            } else {
-                                style::palette::BORDER
-                            },
-                            width: 1.0,
-                            radius: 5.0.into(),
-                        },
-                        ..Default::default()
-                    });
-
-            progress = progress.push(
+            status_grid = status_grid.push(
                 row![
-                    status_indicator,
-                    text(label.to_string()).color(if done {
+                    text(label).size(12).color(if done {
                         style::palette::TEXT_PRIMARY
                     } else {
                         style::palette::TEXT_SECONDARY
                     }),
+                    iced::widget::horizontal_space(),
+                    if done {
+                        text("COMPLETE")
+                            .size(10)
+                            .color(style::palette::ACCENT_GREEN)
+                    } else {
+                        text("LOADING...")
+                            .size(10)
+                            .color(style::palette::ACCENT_BLUE)
+                    }
                 ]
-                .spacing(15)
                 .align_y(iced::Alignment::Center),
             );
         }
 
         container(
-            container(
-                column![title, subtitle, progress]
-                    .spacing(20)
-                    .align_x(iced::Alignment::Center),
-            )
-            .style(style::container_modal)
-            .padding(40)
-            .width(Length::Shrink),
+            column![
+                column![title, subtitle]
+                    .align_x(iced::Alignment::Center)
+                    .spacing(5),
+                iced::widget::vertical_space().height(40),
+                container(
+                    column![
+                        row![
+                            text("Overall Progress")
+                                .size(12)
+                                .color(style::palette::TEXT_PRIMARY),
+                            iced::widget::horizontal_space(),
+                            text(format!("{}%", percentage))
+                                .size(12)
+                                .color(style::palette::TEXT_PRIMARY),
+                        ],
+                        progress_bar(0.0..=1.0, p)
+                            .height(8)
+                            .style(|_theme: &Theme| progress_bar::Style {
+                                background: Background::Color(style::palette::SURFACE_VARIANT),
+                                bar: Background::Color(style::palette::ACCENT_BLUE),
+                                border: Border {
+                                    radius: 4.0.into(),
+                                    ..Default::default()
+                                },
+                            }),
+                    ]
+                    .spacing(10)
+                )
+                .width(Length::Fixed(400.0)),
+                iced::widget::vertical_space().height(40),
+                status_grid,
+            ]
+            .align_x(iced::Alignment::Center)
+            .max_width(600),
         )
         .width(Length::Fill)
         .height(Length::Fill)
         .center_x(Length::Fill)
         .center_y(Length::Fill)
         .style(|_| container::Style {
-            background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.85))),
+            background: Some(Background::Color(style::palette::BACKGROUND)),
             ..Default::default()
         })
         .into()
@@ -4026,7 +4059,22 @@ impl App {
             } else {
                 column![
                     text("Inspector Panel").size(18),
-                    container(if let Some(idx) = self.selected_flight {
+                    container(if let Some(airport_id) = self.hovered_airport_id.as_ref() {
+                        if let Some(airport) = self.airports.get(airport_id) {
+                            column![
+                                text(format!("Airport: {}", airport.id)).size(20).color(style::palette::ACCENT_BLUE),
+                                text(&airport.name).size(14).color(style::palette::TEXT_PRIMARY),
+                                text(format!("Type: {:?}", airport.airport_type)).size(12).color(style::palette::TEXT_SECONDARY),
+                                if let (Some(lat), Some(lon)) = (airport.lat, airport.lon) {
+                                    text(format!("Coords: {:.4}, {:.4}", lat, lon)).size(12).color(style::palette::TEXT_SECONDARY)
+                                } else {
+                                    text("No coordinates").size(12).color(style::palette::TEXT_SECONDARY)
+                                },
+                            ].spacing(10)
+                        } else {
+                            column![text(format!("Airport {} (Loading...)", airport_id))]
+                        }
+                    } else if let Some(idx) = self.selected_flight {
                         if let Some(entry) = self.logbook.get(idx) {
                             column![
                                 text(format!(
@@ -4055,6 +4103,16 @@ impl App {
                         .or(self.hovered_scenery.as_ref())
                     {
                         if let Some(pack) = self.packs.iter().find(|p| &p.name == target_name) {
+                            let health = pack.calculate_health_score();
+                            let conflicts = self.find_pack_conflicts(&pack.name);
+                            
+                            let (health_color, health_label) = match health {
+                                90..=100 => (style::palette::ACCENT_GREEN, "EXCELLENT"),
+                                70..=89 => (style::palette::ACCENT_BLUE, "STABLE"),
+                                40..=69 => (style::palette::ACCENT_ORANGE, "NEEDS ATTENTION"),
+                                _ => (style::palette::ACCENT_RED, "CRITICAL"),
+                            };
+
                             let tags_ui: Element<'_, Message> = if !pack.tags.is_empty() {
                                 let r = row(pack
                                     .tags
@@ -4087,74 +4145,125 @@ impl App {
                                         })
                                         .into()
                                     })
-                                    .collect::<Vec<Element<'_, Message>>>())
+                                    .collect::<Vec<_>>()
+                                )
                                 .spacing(5)
                                 .wrap();
-                                Element::from(r)
+                                r.into()
                             } else {
-                                text("No tags").size(10).into()
+                                text("No tags").size(12).color(style::palette::TEXT_SECONDARY).into()
                             };
 
-                            let add_ui: Element<'_, Message> =
-                                if self.selected_scenery.as_ref() == Some(&pack.name) {
-                                    let r = row![
-                                        text_input("New Tag...", &self.new_tag_input)
-                                            .on_input(Message::UpdateTagInput)
-                                            .on_submit(Message::AddTag)
-                                            .padding(6)
-                                            .size(12)
-                                            .width(Length::Fill),
-                                        button(text("+").size(14))
-                                            .on_press(Message::AddTag)
-                                            .style(style::button_primary)
-                                            .padding([6, 12])
-                                    ]
-                                    .spacing(5);
-                                    Element::from(r)
-                                } else {
-                                    text("Select to edit")
-                                        .size(10)
-                                        .color(style::palette::TEXT_SECONDARY)
-                                        .into()
-                                };
-
-                            let (name_display, sub_display) = if target_name == "Global Airports"
-                                && self.hovered_airport_id.is_some()
-                            {
-                                let id = self.hovered_airport_id.as_ref().unwrap();
-                                let apt_name = self
-                                    .airports
-                                    .get(id)
-                                    .map(|a| a.name.as_str())
-                                    .unwrap_or("Unknown");
-                                (
-                                    format!("Global Airport: {}", id),
-                                    Some(apt_name.to_string()),
-                                )
+                            let conflict_ui: Element<'_, Message> = if !conflicts.is_empty() {
+                                column![
+                                    text("Potential Conflicts Detected")
+                                        .size(14)
+                                        .color(style::palette::ACCENT_ORANGE),
+                                    column(conflicts.iter().map(|c| {
+                                        text(format!("• Overlaps with: {}", c))
+                                            .size(11)
+                                            .color(style::palette::TEXT_SECONDARY)
+                                            .into()
+                                    })) 
+                                ]
+                                .spacing(5)
+                                .into()
                             } else {
-                                (target_name.clone(), None)
+                                text("Geographically isolated (No conflicts)").size(11).color(style::palette::TEXT_SECONDARY).into()
+                            };
+
+                            let recommendation = match (pack.category.clone(), health, !conflicts.is_empty()) {
+                                (_, 0..=40, _) => "Check if this pack contains actual scenery data or library files.",
+                                (x_adox_core::scenery::SceneryCategory::OrthoBase, _, true) => "Ensure this is below all Libraries and Overlay scenery.",
+                                (x_adox_core::scenery::SceneryCategory::Library, _, _) => "Libraries are safe anyhere, but usually go near the bottom.",
+                                (_, _, true) => "Conflict detected. Move this pack HIGHER if it should override the overlapping scenery.",
+                                _ => "Load order looks optimal for this category.",
                             };
 
                             column![
-                                text(name_display).size(12).font(iced::Font::MONOSPACE),
-                                if let Some(n) = sub_display {
-                                    text(n).size(14).color(style::palette::ACCENT_BLUE)
+                                text(&pack.name).size(20).color(style::palette::TEXT_PRIMARY).width(Length::Fill),
+                                row![
+                                    column![
+                                        text("Health Score").size(10).color(style::palette::TEXT_SECONDARY),
+                                        text(format!("{}%", health)).size(24).color(health_color).font(iced::Font::DEFAULT),
+                                        text(health_label).size(10).color(health_color),
+                                    ].spacing(2),
+                                    iced::widget::horizontal_space().width(Length::Fixed(40.0)),
+                                    column![
+                                        text("Category").size(10).color(style::palette::TEXT_SECONDARY),
+                                        text(format!("{:?}", pack.category)).size(16).color(style::palette::ACCENT_BLUE),
+                                    ].spacing(2),
+                                ].align_y(iced::Alignment::Center),
+                                
+                                container(column![
+                                    text("RECOMMENDATION").size(10).color(style::palette::TEXT_SECONDARY),
+                                    text(recommendation).size(12).color(style::palette::TEXT_PRIMARY),
+                                ].spacing(5))
+                                .padding(10)
+                                .width(Length::Fill)
+                                .style(|_| container::Style {
+                                    background: Some(iced::Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.05))),
+                                    border: iced::Border {
+                                        radius: 5.0.into(),
+                                        ..Default::default()
+                                    },
+                                    ..Default::default()
+                                }),
+
+                                column![
+                                    text("Content").size(14),
+                                    {
+                                        let el: Element<'_, Message> = if !pack.airports.is_empty() {
+                                            text(format!("• {} Airports detected", pack.airports.len())).size(12).color(style::palette::TEXT_SECONDARY).into()
+                                        } else {
+                                            text("No airports detected").size(12).color(style::palette::TEXT_SECONDARY).into()
+                                        };
+                                        el
+                                    },
+                                    {
+                                        let el: Element<'_, Message> = if !pack.tiles.is_empty() {
+                                            text(format!("• {} Coverage tiles", pack.tiles.len())).size(12).color(style::palette::TEXT_SECONDARY).into()
+                                        } else {
+                                            text("No coverage tiles detected").size(12).color(style::palette::TEXT_SECONDARY).into()
+                                        };
+                                        el
+                                    },
+                                ].spacing(5),
+
+                                if !pack.airports.is_empty() && pack.airports.len() <= 25 {
+                                    let el: Element<'_, Message> = column![
+                                        text("Included Airports").size(12).color(style::palette::TEXT_SECONDARY),
+                                        scrollable(column(pack.airports.iter().map(|a| {
+                                            text(format!("• {} - {}", a.id, a.name)).size(11).into()
+                                        })).spacing(2))
+                                        .height(Length::Fixed(100.0))
+                                    ].spacing(5).into();
+                                    el
                                 } else {
-                                    text("")
+                                    iced::widget::Space::with_height(0.0).into()
                                 },
-                                text(format!(
-                                    "CATEGORY: {:?} | TILES: {} | AIRPORTS: {}",
-                                    pack.category,
-                                    pack.tiles.len(),
-                                    pack.airports.len()
-                                ))
-                                .size(10),
-                                iced::widget::horizontal_rule(1.0),
-                                text("TAGS").size(10).color(style::palette::TEXT_SECONDARY),
-                                tags_ui,
-                                add_ui
+
+                                conflict_ui,
+                                
+                                column![
+                                    text("Tags").size(14),
+                                    tags_ui,
+                                ].spacing(10),
+
+                                row![
+                                    text_input("New tag...", &self.new_tag_input)
+                                        .on_input(Message::NewTagChanged)
+                                        .size(12)
+                                        .padding(8)
+                                        .style(style::text_input_primary),
+                                    button(text("+").size(14))
+                                        .on_press(Message::AddTag(pack.name.clone(), self.new_tag_input.clone()))
+                                        .style(style::button_primary)
+                                        .padding([8, 12]),
+                                ].spacing(5),
                             ]
-                            .spacing(10)
+                            .spacing(15)
+                            .padding([10, 0])
                         } else {
                             column![text("Pack not found").size(12)].spacing(10)
                         }
@@ -4173,6 +4282,33 @@ impl App {
         .spacing(20)
         .height(Length::Fill)
         .into()
+    }
+
+    fn find_pack_conflicts(&self, pack_name: &str) -> Vec<String> {
+        let target_pack = match self.packs.iter().find(|p| p.name == pack_name) {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
+
+        if target_pack.tiles.is_empty() {
+            return Vec::new();
+        }
+
+        let mut conflicts = Vec::new();
+        for other in self.packs.iter() {
+            if other.name == pack_name || other.status != SceneryPackType::Active {
+                continue;
+            }
+
+            // Simple intersection check
+            for tile in &target_pack.tiles {
+                if other.tiles.contains(tile) {
+                    conflicts.push(other.name.clone());
+                    break;
+                }
+            }
+        }
+        conflicts
     }
 
     fn resort_scenery(&mut self) {
@@ -4857,15 +4993,18 @@ impl App {
         let info_col = column![name_text, sub_text].spacing(4).width(Length::Fill);
 
         let tag_color = match pack.category {
-            x_adox_core::scenery::SceneryCategory::EarthAirports => style::palette::ACCENT_ORANGE,
+            x_adox_core::scenery::SceneryCategory::CustomAirport 
+            | x_adox_core::scenery::SceneryCategory::OrbxAirport => style::palette::ACCENT_ORANGE,
             x_adox_core::scenery::SceneryCategory::Library => style::palette::ACCENT_BLUE,
             _ => style::palette::TEXT_SECONDARY,
         };
 
         let cat_display = match pack.category {
-            x_adox_core::scenery::SceneryCategory::EarthAirports => "AIRPORT",
+            x_adox_core::scenery::SceneryCategory::CustomAirport 
+            | x_adox_core::scenery::SceneryCategory::OrbxAirport => "AIRPORT",
             x_adox_core::scenery::SceneryCategory::Library => "LIB",
-            x_adox_core::scenery::SceneryCategory::EarthScenery => "MESH",
+            x_adox_core::scenery::SceneryCategory::Mesh 
+            | x_adox_core::scenery::SceneryCategory::SpecificMesh => "MESH",
             _ => "SCENERY",
         };
 
