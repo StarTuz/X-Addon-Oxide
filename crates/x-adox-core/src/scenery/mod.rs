@@ -139,7 +139,9 @@ impl SceneryPack {
             | SceneryCategory::Mesh
             | SceneryCategory::SpecificMesh
             | SceneryCategory::RegionalOverlay
-            | SceneryCategory::AutoOrthoOverlay => {
+            | SceneryCategory::AutoOrthoOverlay
+            | SceneryCategory::AirportOverlay
+            | SceneryCategory::LowImpactOverlay => {
                 if has_tiles {
                     score += 60;
                 } else if has_airports {
