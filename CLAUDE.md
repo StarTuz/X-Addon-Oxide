@@ -52,6 +52,7 @@ crates/
 ### x-adox-bitnet
 
 Rules-based heuristics engine (not ML) that:
+
 - Scores scenery packs (0-100) for smart sorting with 13 SceneryCategory variants
 - Classifies aircraft by engine type and category
 - Supports manual priority overrides (sticky sort)
@@ -59,9 +60,10 @@ Rules-based heuristics engine (not ML) that:
 ### x-adox-gui
 
 Iced framework (v0.13) with Elm-like message-driven architecture:
+
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, Heuristics, Issues, Utilities, Settings
-- `map.rs` - Interactive world map with tile management and flight path visualization
-- `style.rs` - Dark theme with neon glow effects
+- `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
+- `style.rs` - Dark theme with neon glow effects and animated splash screen (driven by `animation_time` state)
 
 ## X-Plane Integration Points
 

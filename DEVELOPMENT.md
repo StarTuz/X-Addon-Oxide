@@ -74,7 +74,7 @@ crates/
 
 Rules-based heuristics engine that:
 
-- Scores scenery packs (0-100) for smart sorting
+- Scores scenery packs (0-100) for smart sorting. Detailed logic in [HEALTH_SCORE.md](HEALTH_SCORE.md).
 - Classifies aircraft by engine type and category
 - Supports manual priority overrides (sticky sort)
 
