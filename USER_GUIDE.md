@@ -176,7 +176,7 @@ Mentioning disabling, unchecking any plugin will disable it (X-Plane-12/Resource
 
 If X-Plane complains about missing scenery objects a scane will provide you with the list, so you can track/install them outside of the Sim
 
-### V2.2.0 -> Added a Utlities section and some UI enhancements
+### V2.2.5 -> Added a Utlities section and some UI enhancements
 
 **Premium Animated Loading Screen**: When starting up or switching installations, you will see a dynamic splash screen.
 

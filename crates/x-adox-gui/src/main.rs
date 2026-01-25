@@ -221,7 +221,6 @@ enum Message {
     // Phase 3: Tags & Validation
     NewTagChanged(String),
     AddTag(String, String), // (PackName, Tag)
-    UpdateTagInput(String), // Old input variant
     RemoveTag(String, String), // (PackName, Tag)
     TagOperationComplete,
 
@@ -319,15 +318,25 @@ impl LoadingState {
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MapFilters {
+    #[serde(default)]
     pub show_custom_airports: bool,
+    #[serde(default)]
     pub show_enhancements: bool,
+    #[serde(default)]
     pub show_global_airports: bool,
+    #[serde(default)]
     pub show_ortho_coverage: bool,
+    #[serde(default)]
     pub show_ortho_markers: bool,
+    #[serde(default)]
     pub show_regional_overlays: bool,
+    #[serde(default)]
     pub show_mesh_terrain: bool,
+    #[serde(default)]
     pub show_flight_paths: bool,
+    #[serde(default)]
     pub show_libraries: bool,
+    #[serde(default)]
     pub show_health_scores: bool,
 }
 
@@ -1503,7 +1512,7 @@ impl App {
                 self.show_launch_help = false;
                 Task::none()
             }
-            Message::NewTagChanged(txt) | Message::UpdateTagInput(txt) => {
+            Message::NewTagChanged(txt) => {
                 self.new_tag_input = txt;
                 Task::none()
             }

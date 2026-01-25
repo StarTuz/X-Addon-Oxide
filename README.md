@@ -23,7 +23,7 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ## Feature Highlights
 
-- **New for 2.2.0**:
+- **New for 2.2.5**:
   - **Scenery Health Scores**: Diagnostic engine that analyzes metadata and folder structure to ensure your scenery is healthy. High scores (90-100%) indicate stable installations.
   - **Premium Loading Experience**: A completely overhauled splash screen with smooth pulsing animations and shimmer effects.
   - **Enhanced Logbook**: Not just a viewer—now includes robust filtering (Tail #, Aircraft Type, Circular flights, Duration) and character-perfect deletion that maintains strict X-Plane 12 formatting.
