@@ -1693,6 +1693,7 @@ impl App {
                             // which is incorrect when the user has customized their sorting preferences.
                         }
                         "mesh_above_overlay" => {
+                            // Move all mesh/ortho packs to the end of the list
                             let mut meshes = Vec::new();
                             let mut i = 0;
                             while i < packs.len() {
@@ -1706,6 +1707,9 @@ impl App {
                                 }
                             }
                             packs.extend(meshes);
+                            // NOTE: If you click Smart Sort again, BitNet will re-sort using
+                            // heuristics.json scores, which may place orthos differently.
+                            // To permanently fix, adjust Ortho/Photo score in Edit Sort.
                         }
                         "shadowed_mesh" => {
                             if let Some(report) = &self.validation_report {
@@ -4046,16 +4050,21 @@ impl App {
                         .size(10)
                         .color(style::palette::TEXT_SECONDARY),
                     text("10 - Airports (High Priority)").size(12),
+                    text("12 - Orbx A Custom").size(12),
                     text("20 - Global Airports").size(12),
-                    text("30 - Overlays / SimHeaven").size(12),
-                    text("40 - Landmarks / Default").size(12),
-                    text("42 - AutoOrtho Overlays").size(12),
+                    text("25 - Landmarks").size(12),
+                    text("28 - Orbx B / TrueEarth").size(12),
+                    text("30 - SimHeaven / X-World").size(12),
+                    text("32 - Global Forests").size(12),
+                    text("40 - Default (fallback)").size(12),
+                    text("44 - Birds").size(12),
                     text("45 - Libraries").size(12),
-                    text("50 - Ortho (Photos)").size(12),
-                    text("60 - Meshes").size(12),
+                    text("48 - AutoOrtho Overlays").size(12),
+                    text("58 - Ortho / Photo").size(12),
+                    text("60 - Mesh / Terrain").size(12),
                     text("95 - AutoOrtho Base").size(12),
                 ]
-                .spacing(10)
+                .spacing(6)
             } else {
                 column![
                     text("Inspector Panel").size(18),

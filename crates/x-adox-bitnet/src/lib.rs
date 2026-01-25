@@ -88,7 +88,7 @@ impl Default for HeuristicsConfig {
                         "yortho".to_string(),
                         "zortho".to_string(),
                     ],
-                    score: 50,
+                    score: 58, // Below all overlays, above Mesh (60)
                     is_exclusion: false,
                 },
                 Rule {
@@ -258,14 +258,24 @@ impl BitNetModel {
 
         let name_lower = name.to_lowercase();
 
+        // Exclude service/utility packs from airport detection
+        let is_service_pack = name_lower.contains("vehicle")
+            || name_lower.contains("groundservice")
+            || name_lower.contains("followme")
+            || name_lower.contains("jetways")
+            || name_lower.contains("worldjetways")
+            || name_lower.contains("ground_service")
+            || name_lower.contains("static_and_animated");
+
         // Detection for common airport patterns (still somewhat hardcoded as a base logic)
-        let has_airport_keyword = name_lower.contains("airport")
-            || name_lower.contains("apt")
-            || name_lower.contains("airfield")
-            || name_lower.contains("heliport")
-            || name_lower.contains("seaplane")
-            || name_lower.contains("anchorage")
-            || name_lower.contains("panc");
+        let has_airport_keyword = !is_service_pack
+            && (name_lower.contains("airport")
+                || name_lower.contains("apt")
+                || name_lower.contains("airfield")
+                || name_lower.contains("heliport")
+                || name_lower.contains("seaplane")
+                || name_lower.contains("anchorage")
+                || name_lower.contains("panc"));
 
         let is_major_dev = name_lower.contains("aerosoft")
             || name_lower.contains("justsim")
@@ -364,33 +374,45 @@ impl BitNetModel {
 
         let name_lower = name.to_lowercase();
 
+        // Exclude service/utility packs from airport detection
+        let is_service_pack = name_lower.contains("vehicle")
+            || name_lower.contains("groundservice")
+            || name_lower.contains("followme")
+            || name_lower.contains("jetways")
+            || name_lower.contains("worldjetways")
+            || name_lower.contains("ground_service")
+            || name_lower.contains("static_and_animated");
+
         // Detection for common airport patterns
-        let has_airport_keyword = name_lower.contains("airport")
-            || name_lower.contains("apt")
-            || name_lower.contains("airfield")
-            || name_lower.contains("heliport")
-            || name_lower.contains("seaplane")
-            || name_lower.contains("anchorage")
-            || name_lower.contains("panc");
+        let has_airport_keyword = !is_service_pack
+            && (name_lower.contains("airport")
+                || name_lower.contains("apt")
+                || name_lower.contains("airfield")
+                || name_lower.contains("heliport")
+                || name_lower.contains("seaplane")
+                || name_lower.contains("anchorage")
+                || name_lower.contains("panc"));
 
-        let is_major_dev = name_lower.contains("aerosoft")
-            || name_lower.contains("justsim")
-            || name_lower.contains("flytampa")
-            || name_lower.contains("boundless")
-            || name_lower.contains("taimodels")
-            || name_lower.contains("nimbus")
-            || name_lower.contains("axonos")
-            || name_lower.contains("skyline")
-            || name_lower.contains("fly2high")
-            || name_lower.contains("skyhigh")
-            || name_lower.contains("orbx")
-            || name_lower.contains("x-scenery");
+        let is_major_dev = !is_service_pack
+            && (name_lower.contains("aerosoft")
+                || name_lower.contains("justsim")
+                || name_lower.contains("flytampa")
+                || name_lower.contains("boundless")
+                || name_lower.contains("taimodels")
+                || name_lower.contains("nimbus")
+                || name_lower.contains("axonos")
+                || name_lower.contains("skyline")
+                || name_lower.contains("fly2high")
+                || name_lower.contains("skyhigh")
+                || name_lower.contains("orbx")
+                || name_lower.contains("x-scenery"));
 
-        let has_icao = name.split(|c: char| !c.is_alphanumeric()).any(|word| {
-            word.len() == 4
-                && word.chars().all(|c| c.is_alphabetic())
-                && (word.chars().all(|c| c.is_uppercase()) || name_lower.starts_with(word))
-        });
+        let has_icao = !is_service_pack
+            && name.split(|c: char| !c.is_alphanumeric()).any(|word| {
+                word.len() == 4
+                    && word.chars().all(|c| c.is_alphabetic())
+                    && (word.chars().all(|c| c.is_uppercase()) || name_lower.starts_with(word))
+            });
 
         let is_airport = has_airport_keyword || is_major_dev || has_icao;
 

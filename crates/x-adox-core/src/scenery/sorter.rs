@@ -25,16 +25,29 @@ impl SceneryCategory {
 // Custom sort implementation
 pub fn sort_packs(
     packs: &mut [SceneryPack],
-    _model: Option<&x_adox_bitnet::BitNetModel>,
-    _context: &x_adox_bitnet::PredictContext,
+    model: Option<&x_adox_bitnet::BitNetModel>,
+    context: &x_adox_bitnet::PredictContext,
 ) {
     packs.sort_by(|a, b| {
-        // Calculate Version 5.0 Scores
-        let score_a = calculate_score(a);
-        let score_b = calculate_score(b);
+        // Calculate scores - use BitNet model if provided, otherwise fall back to category scores
+        let (score_a, score_b, lower_is_better) = if let Some(m) = model {
+            // BitNet: lower score = higher priority
+            let sa = m.predict(&a.name, &a.path, context);
+            let sb = m.predict(&b.name, &b.path, context);
+            (sa as i32, sb as i32, true)
+        } else {
+            // Category-based: higher score = higher priority
+            (calculate_score(a), calculate_score(b), false)
+        };
 
-        // Sorting is DESCENDING (Higher Score = Top of file)
-        match score_b.cmp(&score_a) {
+        // Primary sort by score
+        let primary = if lower_is_better {
+            score_a.cmp(&score_b) // ASCENDING for BitNet (lower = top)
+        } else {
+            score_b.cmp(&score_a) // DESCENDING for category (higher = top)
+        };
+
+        match primary {
             std::cmp::Ordering::Equal => {
                 // Secondary Sort Rules
 
