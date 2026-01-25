@@ -39,16 +39,16 @@ pub fn sort_packs(
                 // Secondary Sort Rules
 
                 // 1. SimHeaven Internal Order
-                // Group by numeric layer (1-8) first, then by Continent.
+                // Group by Continent FIRST, then by numeric layer (1-8).
+                // This prevents "Continent mixing" (e.g., Australia interleaved with America).
                 if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
                     if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
-                        match layer_a
-                            .partial_cmp(&layer_b)
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                        {
+                        match cont_a.cmp(&cont_b) {
                             std::cmp::Ordering::Equal => {
-                                // Within same layer, sort by continent
-                                return cont_a.cmp(&cont_b);
+                                // Within same continent, sort by layer (1-8)
+                                return layer_a
+                                    .partial_cmp(&layer_b)
+                                    .unwrap_or(std::cmp::Ordering::Equal);
                             }
                             ord => return ord,
                         }
@@ -69,7 +69,11 @@ fn calculate_score(pack: &SceneryPack) -> i32 {
 
     // VFR Boost check (+5)
     // "If name contains '_vfr' or 'VFR' -> +5 points"
-    if name_lower.contains("_vfr") || name_lower.contains("vfr") {
+    // EXCEPTION: SimHeaven packs manage their own VFR layer (Layer 1) internally.
+    // Boosting them breaks the Continent grouping (splits Layer 1 from others).
+    if (name_lower.contains("_vfr") || name_lower.contains("vfr"))
+        && extract_simheaven_info(&pack.name).is_none()
+    {
         score += 5;
     }
 
@@ -213,9 +217,49 @@ mod tests {
         sort_packs(&mut packs, None, &x_adox_bitnet::PredictContext::default());
 
         // Expected Order: 1-vfr (America, then Europe), then 2-regions (America, then Europe)
+        // Expected Order: Continent-grouped.
+        // America-1, America-2, then Europe-1, Europe-2.
         assert_eq!(packs[0].name, "simHeaven_X-World_America-1-vfr");
-        assert_eq!(packs[1].name, "simHeaven_X-World_Europe-1-vfr");
-        assert_eq!(packs[2].name, "simHeaven_X-World_America-2-regions");
+        assert_eq!(packs[1].name, "simHeaven_X-World_America-2-regions");
+        assert_eq!(packs[2].name, "simHeaven_X-World_Europe-1-vfr");
         assert_eq!(packs[3].name, "simHeaven_X-World_Europe-2-regions");
+    }
+
+    #[test]
+    fn test_robust_airport_promotion() {
+        let mut packs = vec![
+            make_pack("Some_Unknown_Regional_Airport"), // Heuristic -> Unknown
+            make_pack("Global Airports"),               // Heuristic -> GlobalAirport (90)
+        ];
+
+        // Simulate discovery finding 1 airport in the first pack
+        packs[0].airports.push(crate::apt_dat::Airport {
+            id: "YCKN".to_string(),
+            name: "Cooktown".to_string(),
+            airport_type: crate::apt_dat::AirportType::Land,
+            lat: Some(0.0),
+            lon: Some(0.0),
+            proj_x: None,
+            proj_y: None,
+        });
+
+        // Simulate the "Post-Discovery Promotion" logic from SceneryManager::load
+        for pack in &mut packs {
+            if !pack.airports.is_empty() {
+                match pack.category {
+                    SceneryCategory::GlobalAirport
+                    | SceneryCategory::Library
+                    | SceneryCategory::GlobalBase => {}
+                    _ => pack.category = SceneryCategory::CustomAirport,
+                }
+            }
+        }
+
+        sort_packs(&mut packs, None, &x_adox_bitnet::PredictContext::default());
+
+        // Now the Unknown Airport should be CustomAirport (100) and sort ABOVE Global (90)
+        assert_eq!(packs[0].name, "Some_Unknown_Regional_Airport");
+        assert_eq!(packs[0].category, SceneryCategory::CustomAirport);
+        assert_eq!(packs[1].name, "Global Airports");
     }
 }

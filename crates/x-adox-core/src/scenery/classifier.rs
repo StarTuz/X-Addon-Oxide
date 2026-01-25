@@ -68,7 +68,6 @@ impl Classifier {
             || name_lower.contains("birds")
             || name_lower.contains("seagulls")
             || name_lower.contains("sealanes")
-            || name_lower.contains("cooktown_sea")
             || name_lower.contains("global_forests_v2")
         {
             return SceneryCategory::RegionalFluff;

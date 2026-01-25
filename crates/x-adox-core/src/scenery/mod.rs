@@ -361,18 +361,26 @@ impl SceneryManager {
                 pack.tiles = tiles;
 
                 // 3. Post-Discovery Promotion
-                // If heuristic was 'Unknown' but we FOUND actual content, promote it appropriately.
-                if pack.category == SceneryCategory::Unknown {
-                    if !pack.airports.is_empty() {
-                        pack.category = SceneryCategory::CustomAirport;
-                    } else if !pack.tiles.is_empty() {
-                        // If it has tiles but no airports, it's likely a regional enhancement or ortho
-                        // We check the name again for "orth" just in case
-                        if pack.name.to_lowercase().contains("ortho") {
-                            pack.category = SceneryCategory::OrthoBase;
-                        } else {
-                            pack.category = SceneryCategory::RegionalOverlay;
+                // If we FOUND actual airports, this is a Custom Airport (Score 100)
+                // UNLESS it's already a 'System' category like GlobalAirport or Library.
+                if !pack.airports.is_empty() {
+                    match pack.category {
+                        SceneryCategory::GlobalAirport
+                        | SceneryCategory::Library
+                        | SceneryCategory::GlobalBase => {
+                            // Keep existing system category
                         }
+                        _ => {
+                            // Promote to Custom Airport
+                            pack.category = SceneryCategory::CustomAirport;
+                        }
+                    }
+                } else if pack.category == SceneryCategory::Unknown && !pack.tiles.is_empty() {
+                    // If it has tiles but no airports, it's likely a regional enhancement or ortho
+                    if pack.name.to_lowercase().contains("ortho") {
+                        pack.category = SceneryCategory::OrthoBase;
+                    } else {
+                        pack.category = SceneryCategory::RegionalOverlay;
                     }
                 }
 
