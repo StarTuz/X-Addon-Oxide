@@ -274,6 +274,7 @@ pub enum MapFilterType {
     MeshTerrain,
     FlightPaths,
     Libraries,
+    HealthScores,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -325,6 +326,7 @@ pub struct MapFilters {
     pub show_mesh_terrain: bool,
     pub show_flight_paths: bool,
     pub show_libraries: bool,
+    pub show_health_scores: bool,
 }
 
 impl Default for MapFilters {
@@ -339,6 +341,7 @@ impl Default for MapFilters {
             show_mesh_terrain: true,
             show_flight_paths: true,
             show_libraries: false,
+            show_health_scores: true,
         }
     }
 }
@@ -1086,6 +1089,9 @@ impl App {
                     }
                     MapFilterType::Libraries => {
                         self.map_filters.show_libraries = !self.map_filters.show_libraries;
+                    }
+                    MapFilterType::HealthScores => {
+                        self.map_filters.show_health_scores = !self.map_filters.show_health_scores;
                     }
                 }
                 self.save_app_config();
@@ -4078,6 +4084,35 @@ impl App {
                                 } else {
                                     text("No coordinates").size(12).color(style::palette::TEXT_SECONDARY)
                                 },
+                                
+                                // Link back to Scenery Pack health if enabled
+                                if self.map_filters.show_health_scores {
+                                    if let Some(parent_pack) = self.packs.iter().find(|p| p.airports.iter().any(|a| &a.id == airport_id)) {
+                                        let health = parent_pack.calculate_health_score();
+                                        let (health_color, health_label) = match health {
+                                            90..=100 => (style::palette::ACCENT_GREEN, "EXCELLENT"),
+                                            70..=89 => (style::palette::ACCENT_BLUE, "STABLE"),
+                                            40..=69 => (style::palette::ACCENT_ORANGE, "NEEDS ATTENTION"),
+                                            _ => (style::palette::ACCENT_RED, "CRITICAL"),
+                                        };
+
+                                         Element::from(
+                                             column![
+                                                 iced::widget::vertical_space().height(10),
+                                                 text("Parent Pack Health").size(10).color(style::palette::TEXT_SECONDARY),
+                                                 row![
+                                                     text(format!("{}%", health)).size(18).color(health_color),
+                                                     text(health_label).size(10).color(health_color),
+                                                 ].spacing(8).align_y(iced::Alignment::Center),
+                                                     text(&parent_pack.name).size(11).color(style::palette::TEXT_SECONDARY),
+                                             ].spacing(2)
+                                         )
+                                     } else {
+                                         Element::from(iced::widget::Space::with_height(0.0))
+                                     }
+                                 } else {
+                                     Element::from(iced::widget::Space::with_height(0.0))
+                                 },
                             ].spacing(10)
                         } else {
                             column![text(format!("Airport {} (Loading...)", airport_id))]
@@ -4113,15 +4148,14 @@ impl App {
                         if let Some(pack) = self.packs.iter().find(|p| &p.name == target_name) {
                             let health = pack.calculate_health_score();
                             let conflicts = self.find_pack_conflicts(&pack.name);
-                            
-                            let (health_color, health_label) = match health {
-                                90..=100 => (style::palette::ACCENT_GREEN, "EXCELLENT"),
-                                70..=89 => (style::palette::ACCENT_BLUE, "STABLE"),
-                                40..=69 => (style::palette::ACCENT_ORANGE, "NEEDS ATTENTION"),
-                                _ => (style::palette::ACCENT_RED, "CRITICAL"),
-                            };
-
-                            let tags_ui: Element<'_, Message> = if !pack.tags.is_empty() {
+                                                        let (health_color, health_label) = match health {
+                                 90..=100 => (style::palette::ACCENT_GREEN, "EXCELLENT"),
+                                 70..=89 => (style::palette::ACCENT_BLUE, "STABLE"),
+                                 40..=69 => (style::palette::ACCENT_ORANGE, "NEEDS ATTENTION"),
+                                 _ => (style::palette::ACCENT_RED, "CRITICAL"),
+                             };
+ 
+                             let tags_ui: Element<'_, Message> = if !pack.tags.is_empty() {
                                 let r = row(pack
                                     .tags
                                     .iter()
@@ -4190,18 +4224,24 @@ impl App {
 
                             column![
                                 text(&pack.name).size(20).color(style::palette::TEXT_PRIMARY).width(Length::Fill),
-                                row![
-                                    column![
-                                        text("Health Score").size(10).color(style::palette::TEXT_SECONDARY),
-                                        text(format!("{}%", health)).size(24).color(health_color).font(iced::Font::DEFAULT),
-                                        text(health_label).size(10).color(health_color),
-                                    ].spacing(2),
-                                    iced::widget::horizontal_space().width(Length::Fixed(40.0)),
-                                    column![
-                                        text("Category").size(10).color(style::palette::TEXT_SECONDARY),
-                                         text(format!("{:?}", pack.category)).size(14).color(style::palette::TEXT_PRIMARY).width(Length::Fill),
-                                    ].spacing(2),
-                                ].align_y(iced::Alignment::Center),
+                                 row![
+                                     if self.map_filters.show_health_scores {
+                                         Element::from(
+                                             column![
+                                                 text("Health Score").size(10).color(style::palette::TEXT_SECONDARY),
+                                                 text(format!("{}%", health)).size(24).color(health_color).font(iced::Font::DEFAULT),
+                                                 text(health_label).size(10).color(health_color),
+                                             ].spacing(2)
+                                         )
+                                     } else {
+                                         Element::from(iced::widget::Space::with_width(0.0))
+                                     },
+                                     iced::widget::horizontal_space().width(Length::Fixed(40.0)),
+                                     column![
+                                         text("Category").size(10).color(style::palette::TEXT_SECONDARY),
+                                          text(format!("{:?}", pack.category)).size(14).color(style::palette::TEXT_PRIMARY).width(Length::Fill),
+                                     ].spacing(2),
+                                 ].align_y(iced::Alignment::Center),
                                 
                                 container(column![
                                     text("RECOMMENDATION").size(10).color(style::palette::TEXT_SECONDARY),
@@ -4754,11 +4794,16 @@ impl App {
                             self.map_filters.show_flight_paths
                         ),
                         filter_row(
-                            "Scenery Libraries",
-                            MapFilterType::Libraries,
-                            self.map_filters.show_libraries
-                        ),
-                    ]
+                             "Scenery Libraries",
+                             MapFilterType::Libraries,
+                             self.map_filters.show_libraries
+                         ),
+                         filter_row(
+                             "Scenery Health Scores",
+                             MapFilterType::HealthScores,
+                             self.map_filters.show_health_scores
+                         ),
+                     ]
                     .spacing(8),
                 )
                 .padding(Padding {
