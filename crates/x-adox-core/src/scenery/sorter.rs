@@ -39,15 +39,16 @@ pub fn sort_packs(
                 // Secondary Sort Rules
 
                 // 1. SimHeaven Internal Order
-                // Group by Continent (America, Europe, etc.), then by numeric layer (1-8).
+                // Group by numeric layer (1-8) first, then by Continent.
                 if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
                     if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
-                        match cont_a.cmp(&cont_b) {
+                        match layer_a
+                            .partial_cmp(&layer_b)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                        {
                             std::cmp::Ordering::Equal => {
-                                // Within same continent, sort by layer 1 -> 8
-                                return layer_a
-                                    .partial_cmp(&layer_b)
-                                    .unwrap_or(std::cmp::Ordering::Equal);
+                                // Within same layer, sort by continent
+                                return cont_a.cmp(&cont_b);
                             }
                             ord => return ord,
                         }
@@ -104,7 +105,7 @@ fn extract_simheaven_info(name: &str) -> Option<(String, f32)> {
         "america"
     } else if lower.contains("europe") {
         "europe"
-    } else if lower.contains("australia") {
+    } else if lower.contains("australia") || lower.contains("oceania") {
         "australia"
     } else if lower.contains("africa") {
         "africa"
@@ -113,7 +114,7 @@ fn extract_simheaven_info(name: &str) -> Option<(String, f32)> {
     } else if lower.contains("antarctica") {
         "antarctica"
     } else {
-        "other"
+        "z_other" // Sinks to bottom of same-layer groups
     }
     .to_string();
 
@@ -130,7 +131,7 @@ fn extract_simheaven_info(name: &str) -> Option<(String, f32)> {
     } else if lower.contains("-6-") || lower.contains("6-scenery") {
         6.0
     } else if lower.contains("vegetation_library") {
-        6.5 // Just before forests (7)
+        6.5 // After Scenery (6) but before Forests (7)
     } else if lower.contains("-7-") || lower.contains("7-forest") {
         7.0
     } else if lower.contains("-8-") || lower.contains("8-network") {
@@ -198,5 +199,23 @@ mod tests {
         assert_eq!(packs[1].name, "X-scenery_UKOO_XP12");
         assert_eq!(packs[2].name, "X-Plane 12 Global Scenery");
         assert_eq!(packs[3].name, "z_ao_na");
+    }
+
+    #[test]
+    fn test_simheaven_layer_priority() {
+        let mut packs = vec![
+            make_pack("simHeaven_X-World_Europe-2-regions"),
+            make_pack("simHeaven_X-World_America-1-vfr"),
+            make_pack("simHeaven_X-World_Europe-1-vfr"),
+            make_pack("simHeaven_X-World_America-2-regions"),
+        ];
+
+        sort_packs(&mut packs, None, &x_adox_bitnet::PredictContext::default());
+
+        // Expected Order: 1-vfr (America, then Europe), then 2-regions (America, then Europe)
+        assert_eq!(packs[0].name, "simHeaven_X-World_America-1-vfr");
+        assert_eq!(packs[1].name, "simHeaven_X-World_Europe-1-vfr");
+        assert_eq!(packs[2].name, "simHeaven_X-World_America-2-regions");
+        assert_eq!(packs[3].name, "simHeaven_X-World_Europe-2-regions");
     }
 }
