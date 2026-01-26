@@ -60,24 +60,20 @@ pub fn sort_packs(
                 // Secondary Sort Rules
 
                 // 1. SimHeaven Internal Order
-                // Group by Continent FIRST, then by numeric layer (1-8).
-                // This prevents "Continent mixing" (e.g., Australia interleaved with America).
                 if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
                     if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
                         match cont_a.cmp(&cont_b) {
-                            std::cmp::Ordering::Equal => {
-                                // Within same continent, sort by layer (1-8)
-                                return layer_a
-                                    .partial_cmp(&layer_b)
-                                    .unwrap_or(std::cmp::Ordering::Equal);
-                            }
-                            ord => return ord,
+                            std::cmp::Ordering::Equal => layer_a
+                                .partial_cmp(&layer_b)
+                                .unwrap_or(std::cmp::Ordering::Equal),
+                            ord => ord,
                         }
+                    } else {
+                        std::cmp::Ordering::Equal
                     }
+                } else {
+                    std::cmp::Ordering::Equal
                 }
-
-                // 2. Stable Sort: Preserve original order for ties
-                std::cmp::Ordering::Equal
             }
             ord => ord,
         }
