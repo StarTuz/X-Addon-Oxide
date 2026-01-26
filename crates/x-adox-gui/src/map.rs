@@ -170,6 +170,7 @@ impl<'a> MapView<'a> {
                 | SceneryCategory::RegionalFluff
                 | SceneryCategory::OrbxAirport // Orbx Custom/Regional
                 | SceneryCategory::AutoOrthoOverlay
+                | SceneryCategory::LowImpactOverlay
         );
 
         let is_airport_enhancement = matches!(
@@ -191,14 +192,15 @@ impl<'a> MapView<'a> {
         } else if is_library {
             self.filters.show_libraries
         } else if is_regional {
-            // Regional packs (SimHeaven, Orbx, AO) always follow the Regional filter
+            // Regional packs (SimHeaven, Orbx, AO, Low-Impact) always follow the Regional filter
             self.filters.show_regional_overlays
         } else if is_airport_enhancement {
             // Airport-specific overlays use the "Enhancements" filter
-            // (These are usually small things like vehicles, static aircraft, or custom ground textures)
             self.filters.show_enhancements
         } else {
-            true
+            // Default: All other internal categories (Mesh, GlobalBase, Unknown) are hidden
+            // unless we decide to add a toggle back for them later.
+            false
         }
     }
 }
@@ -397,6 +399,7 @@ where
                         | x_adox_core::scenery::SceneryCategory::RegionalFluff
                         | x_adox_core::scenery::SceneryCategory::OrbxAirport
                         | x_adox_core::scenery::SceneryCategory::AutoOrthoOverlay
+                        | x_adox_core::scenery::SceneryCategory::LowImpactOverlay
                 );
 
                 let base_color = match pack.status {
@@ -427,16 +430,14 @@ where
 
                 let half_size = size / 2.0;
 
-                // --- Decision Logic for DRAWING ---
-                let is_visible = self.is_pack_visible(pack);
-                let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::OrthoBase;
+                let is_mesh = pack.category == x_adox_core::scenery::SceneryCategory::Mesh
+                    || pack.category == x_adox_core::scenery::SceneryCategory::SpecificMesh
+                    || pack.category == x_adox_core::scenery::SceneryCategory::GlobalBase;
 
-                // Markers are drawn if:
-                // 1. They are visible per filters
-                // 2. OR they are explicitly selected (for user feedback) - BUT NOT for Global Airports/Base (too many dots)
                 let is_global =
                     pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
-                let is_massive = is_regional || is_global;
+                let is_massive = is_mesh || is_regional || is_global;
+                let is_visible = self.is_pack_visible(pack);
                 let should_draw_dots = (is_selected && !is_massive) || is_visible;
 
                 if should_draw_dots {
