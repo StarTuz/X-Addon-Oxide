@@ -6,17 +6,17 @@ impl SceneryCategory {
         match self {
             SceneryCategory::CustomAirport => 100,
             SceneryCategory::OrbxAirport => 95,
+            SceneryCategory::Landmark => 95,
             SceneryCategory::GlobalAirport => 90,
-            SceneryCategory::Landmark => 88,
-            SceneryCategory::RegionalOverlay => 85,
-            SceneryCategory::RegionalFluff => 80,
-            SceneryCategory::AirportOverlay => 75,
-            SceneryCategory::AutoOrthoOverlay => 70, // Keep for now
-            SceneryCategory::Library => 65,
+            SceneryCategory::Library => 85,
+            SceneryCategory::AirportOverlay => 80,
+            SceneryCategory::RegionalOverlay => 75,
+            SceneryCategory::RegionalFluff => 70,
+            SceneryCategory::AutoOrthoOverlay => 65,
             SceneryCategory::GlobalBase => 60,
-            SceneryCategory::OrthoBase => 55,
+            SceneryCategory::OrthoBase => 50,
             SceneryCategory::Mesh | SceneryCategory::SpecificMesh => 30,
-            SceneryCategory::Unknown => 0, // Fallback safety net: sink to bottom
+            SceneryCategory::Unknown => 0,
             _ => 0,
         }
     }

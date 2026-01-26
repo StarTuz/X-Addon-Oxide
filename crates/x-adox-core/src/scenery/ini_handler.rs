@@ -138,23 +138,29 @@ pub fn write_ini(
         }
 
         // Determine the correct relative path for the INI file
-        // System packs (Global Scenery, etc.) should stay as-is
-        // Custom packs should use "Custom Scenery/<name>/" format
+        // System packs in "Global Scenery" should NOT be written as physical paths.
+        // X-Plane 12 handles Global Scenery and Demo Areas automatically.
+        // "Global Airports" MUST be written as the virtual "*GLOBAL_AIRPORTS*" entry.
         let pack_path_str = if pack.name.starts_with('*') {
-            pack.name.clone()
+            Some(pack.name.clone())
         } else {
             let path_str = pack.path.to_string_lossy();
             if path_str.contains("Global Scenery") {
-                // Preserve system pack paths relative to X-Plane root
-                if let Some(idx) = path_str.find("Global Scenery") {
-                    format!("{}/", &path_str[idx..])
+                if pack.name == "Global Airports" || path_str.ends_with("Global Airports") {
+                    Some("*GLOBAL_AIRPORTS*".to_string())
                 } else {
-                    format!("Custom Scenery/{}/", pack.name)
+                    // Skip other Global Scenery items (hallucinations the user complained about)
+                    None
                 }
             } else {
                 // Standard Custom Scenery pack
-                format!("Custom Scenery/{}/", pack.name)
+                Some(format!("Custom Scenery/{}/", pack.name))
             }
+        };
+
+        let pack_path_str = match pack_path_str {
+            Some(s) => s,
+            None => continue, // Skip writing this entry
         };
 
         match pack.status {
