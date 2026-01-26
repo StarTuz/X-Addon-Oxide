@@ -288,8 +288,19 @@ impl SceneryManager {
 
         // De-duplicate INI entries just in case
         let initial_count = packs.len();
-        let mut seen = HashSet::new();
-        packs.retain(|p| seen.insert(p.path.clone()));
+        let mut seen_keys = HashSet::new();
+        packs.retain(|p| {
+            let path_str = p.path.to_string_lossy();
+            let key = if p.name == "*GLOBAL_AIRPORTS*"
+                || path_str.ends_with("Global Airports")
+                || path_str.ends_with("Global Airports/")
+            {
+                "VIRTUAL:GLOBAL_AIRPORTS".to_string()
+            } else {
+                path_str.to_string()
+            };
+            seen_keys.insert(key)
+        });
         if packs.len() < initial_count {
             println!(
                 "[SceneryManager] Removed {} duplicate INI entries",
@@ -323,10 +334,28 @@ impl SceneryManager {
         let all_discovered: Vec<_> = discovered.into_iter().chain(global_discovered).collect();
 
         for disc in all_discovered {
-            // Check if this path is already in the packs list
-            let already_present = packs.iter().any(|p| p.path == disc.path);
+            // Special Case: *GLOBAL_AIRPORTS* virtual tag matches physical "Global Airports" folder.
+            // We must reconcile them to avoid double entries in the INI while allowing discovery
+            // to work on the physical path.
+            let is_global_airports_folder = disc.name == "Global Airports"
+                || disc.path.to_string_lossy().ends_with("Global Airports");
 
-            if !already_present {
+            let existing_idx = packs.iter().position(|p| {
+                if p.path == disc.path {
+                    return true;
+                }
+                if is_global_airports_folder && p.name == "*GLOBAL_AIRPORTS*" {
+                    return true;
+                }
+                false
+            });
+
+            if let Some(idx) = existing_idx {
+                // If it's the virtual tag, update its path to the physical one so discovery works.
+                if packs[idx].name == "*GLOBAL_AIRPORTS*" && is_global_airports_folder {
+                    packs[idx].path = disc.path;
+                }
+            } else {
                 println!("[SceneryManager] Adding NEW discovered pack: {}", disc.name);
                 // Prepend new discovery (X-Plane style)
                 let new_pack = SceneryPack {
