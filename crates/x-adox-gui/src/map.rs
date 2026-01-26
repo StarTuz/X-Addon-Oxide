@@ -162,9 +162,6 @@ impl<'a> MapView<'a> {
 
         // 1. Technical Category Identification
         let is_ortho = pack.category == SceneryCategory::OrthoBase;
-        let is_mesh = pack.category == SceneryCategory::Mesh
-            || pack.category == SceneryCategory::SpecificMesh
-            || pack.category == SceneryCategory::GlobalBase;
         let is_library = pack.category == SceneryCategory::Library;
 
         let is_regional = matches!(
@@ -191,8 +188,6 @@ impl<'a> MapView<'a> {
             self.filters.show_custom_airports
         } else if is_ortho {
             self.filters.show_ortho_markers
-        } else if is_mesh {
-            self.filters.show_mesh_terrain
         } else if is_library {
             self.filters.show_libraries
         } else if is_regional {
@@ -404,10 +399,6 @@ where
                         | x_adox_core::scenery::SceneryCategory::AutoOrthoOverlay
                 );
 
-                let is_mesh = pack.category == x_adox_core::scenery::SceneryCategory::Mesh
-                    || pack.category == x_adox_core::scenery::SceneryCategory::SpecificMesh
-                    || pack.category == x_adox_core::scenery::SceneryCategory::GlobalBase;
-
                 let base_color = match pack.status {
                     SceneryPackType::Active => Color::from_rgb(0.0, 1.0, 0.0), // Classic Green
                     SceneryPackType::Disabled | SceneryPackType::DuplicateHidden => {
@@ -430,8 +421,6 @@ where
                     (Color::from_rgb(1.0, 0.0, 1.0), (size / 2.0).into()) // Purple Circle
                 } else if is_regional {
                     (Color::from_rgb(0.5, 1.0, 0.0), (size / 2.0).into()) // Lime "Diamond" (Circle)
-                } else if is_mesh {
-                    (Color::from_rgb(0.6, 0.3, 0.1), (size / 4.0).into()) // Brown/Orange Square
                 } else {
                     (base_color, (size / 4.0).into()) // Standard rounded square
                 };
@@ -447,7 +436,7 @@ where
                 // 2. OR they are explicitly selected (for user feedback) - BUT NOT for Global Airports/Base (too many dots)
                 let is_global =
                     pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
-                let is_massive = is_mesh || is_regional || is_global;
+                let is_massive = is_regional || is_global;
                 let should_draw_dots = (is_selected && !is_massive) || is_visible;
 
                 if should_draw_dots {

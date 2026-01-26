@@ -272,7 +272,6 @@ pub enum MapFilterType {
     OrthoCoverage,
     OrthoMarkers,
     RegionalOverlays,
-    MeshTerrain,
     FlightPaths,
     Libraries,
     HealthScores,
@@ -331,8 +330,6 @@ pub struct MapFilters {
     #[serde(default)]
     pub show_regional_overlays: bool,
     #[serde(default)]
-    pub show_mesh_terrain: bool,
-    #[serde(default)]
     pub show_flight_paths: bool,
     #[serde(default)]
     pub show_libraries: bool,
@@ -349,7 +346,6 @@ impl Default for MapFilters {
             show_ortho_coverage: false,
             show_ortho_markers: false,
             show_regional_overlays: false,
-            show_mesh_terrain: true,
             show_flight_paths: true,
             show_libraries: false,
             show_health_scores: true,
@@ -1064,9 +1060,6 @@ impl App {
                     MapFilterType::RegionalOverlays => {
                         self.map_filters.show_regional_overlays =
                             !self.map_filters.show_regional_overlays;
-                    }
-                    MapFilterType::MeshTerrain => {
-                        self.map_filters.show_mesh_terrain = !self.map_filters.show_mesh_terrain;
                     }
                     MapFilterType::FlightPaths => {
                         self.map_filters.show_flight_paths = !self.map_filters.show_flight_paths;
@@ -4825,11 +4818,6 @@ impl App {
                             "Regional Overlays",
                             MapFilterType::RegionalOverlays,
                             self.map_filters.show_regional_overlays
-                        ),
-                        filter_row(
-                            "Mesh & Terrain",
-                            MapFilterType::MeshTerrain,
-                            self.map_filters.show_mesh_terrain
                         ),
                         iced::widget::vertical_space().height(5),
                         text("Utilities")
