@@ -112,6 +112,8 @@ pub struct SceneryPack {
     pub tiles: Vec<(i32, i32)>, // SW corner (lat, lon)
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub is_internal: bool,
 }
 
 impl SceneryPack {
@@ -357,6 +359,10 @@ impl SceneryManager {
                 }
             } else {
                 println!("[SceneryManager] Adding NEW discovered pack: {}", disc.name);
+
+                let path_str = disc.path.to_string_lossy();
+                let is_internal = path_str.contains("Global Scenery") && !is_global_airports_folder;
+
                 // Prepend new discovery (X-Plane style)
                 let new_pack = SceneryPack {
                     name: disc.name,
@@ -366,6 +372,7 @@ impl SceneryManager {
                     airports: Vec::new(),
                     tiles: Vec::new(),
                     tags: Vec::new(),
+                    is_internal,
                 };
                 packs.insert(0, new_pack);
             }
@@ -1091,6 +1098,7 @@ mod tests {
             airports: Vec::new(),
             tiles: Vec::new(),
             tags: Vec::new(),
+            is_internal: false,
         });
 
         manager.save(None).expect("Failed to save");
@@ -1138,6 +1146,7 @@ mod tests {
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
+                is_internal: false,
             },
             SceneryPack {
                 name: "Bravo_Airport".to_string(),
@@ -1147,6 +1156,7 @@ mod tests {
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
+                is_internal: false,
             },
             SceneryPack {
                 name: "Alpha_Airport (1)".to_string(),
@@ -1156,6 +1166,7 @@ mod tests {
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
+                is_internal: false,
             },
         ];
 

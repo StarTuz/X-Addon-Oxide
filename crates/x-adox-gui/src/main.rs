@@ -4574,6 +4574,7 @@ impl App {
             move |(packs, selected, overrides)| {
                 let cards: Vec<Element<'static, Message, Theme, Renderer>> = packs
                     .iter()
+                    .filter(|p| !p.is_internal)
                     .map(|pack| {
                         Self::render_scenery_card(
                             pack,

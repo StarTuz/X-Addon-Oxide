@@ -179,6 +179,7 @@ mod tests {
             airports: Vec::new(),
             tiles: Vec::new(),
             tags: Vec::new(),
+            is_internal: false,
         };
         // Re-classify using the same heuristic as the manager
         pack.category =
