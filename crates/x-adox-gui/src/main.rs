@@ -3021,7 +3021,7 @@ impl App {
                         text(format!("{:?}", p.category))
                             .size(10)
                             .width(Length::Fixed(100.0)),
-                        text(p.ui_name()).size(12),
+                        text(&p.name).size(12),
                     ]
                     .spacing(10)
                     .into()
@@ -4153,7 +4153,7 @@ impl App {
                                                      text(format!("{}%", health)).size(18).color(health_color),
                                                      text(health_label).size(10).color(health_color),
                                                  ].spacing(8).align_y(iced::Alignment::Center),
-                                                     text(parent_pack.ui_name()).size(11).color(style::palette::TEXT_SECONDARY),
+                                                     text(&parent_pack.name).size(11).color(style::palette::TEXT_SECONDARY),
                                              ].spacing(2)
                                          )
                                      } else {
@@ -4272,7 +4272,7 @@ impl App {
                             };
 
                             column![
-                                text(pack.ui_name()).size(20).color(style::palette::TEXT_PRIMARY).width(Length::Fill),
+                                text(&pack.name).size(20).color(style::palette::TEXT_PRIMARY).width(Length::Fill),
                                  row![
                                      if self.map_filters.show_health_scores {
                                          Element::from(
@@ -4574,7 +4574,6 @@ impl App {
             move |(packs, selected, overrides)| {
                 let cards: Vec<Element<'static, Message, Theme, Renderer>> = packs
                     .iter()
-                    .filter(|p| !p.is_internal)
                     .map(|pack| {
                         Self::render_scenery_card(
                             pack,
@@ -5084,7 +5083,7 @@ impl App {
             ..Default::default()
         });
 
-        let name_text = text(pack.ui_name().to_string())
+        let name_text = text(pack.name.clone())
             .size(14)
             .color(style::palette::TEXT_PRIMARY);
         let sub_text = text(if is_active { "Active" } else { "Disabled" })

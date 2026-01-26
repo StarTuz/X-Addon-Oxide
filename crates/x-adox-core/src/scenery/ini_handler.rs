@@ -72,7 +72,6 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
                     airports: Vec::new(),
                     tiles: Vec::new(),
                     tags: Vec::new(),
-                    is_internal: false,
                 });
             }
         }

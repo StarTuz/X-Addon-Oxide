@@ -110,19 +110,7 @@ pub struct SceneryPack {
     pub category: SceneryCategory,
     pub airports: Vec<Airport>,
     pub tiles: Vec<(i32, i32)>, // SW corner (lat, lon)
-    #[serde(default)]
     pub tags: Vec<String>,
-    #[serde(default)]
-    pub is_internal: bool,
-}
-
-impl SceneryPack {
-    pub fn ui_name(&self) -> &str {
-        match self.name.as_str() {
-            "X-Plane 12 Demo Areas" => "X-Plane 12 Showcase Areas",
-            _ => &self.name,
-        }
-    }
 }
 
 impl SceneryPack {
@@ -319,17 +307,26 @@ impl SceneryManager {
             discovered.len()
         );
 
-        // 2b. Also scan Global Scenery for system packs (Global Airports, etc.)
+        // 2b. Also scan Global Scenery ONLY for Global Airports
         let xplane_root = custom_scenery_dir.parent().unwrap_or(custom_scenery_dir);
-        let global_scenery_dir = xplane_root.join("Global Scenery");
-        let global_discovered = if global_scenery_dir.exists() {
-            crate::discovery::DiscoveryManager::scan_scenery(&global_scenery_dir, &mut cache)
+        let global_airports_dir = xplane_root.join("Global Scenery").join("Global Airports");
+        let global_discovered = if global_airports_dir.exists() {
+            // Just simulate a discovery for this one specific folder
+            vec![crate::discovery::DiscoveredAddon {
+                name: "Global Airports".to_string(),
+                path: global_airports_dir,
+                addon_type: crate::discovery::AddonType::Scenery {
+                    airports: Vec::new(),
+                },
+                is_enabled: true,
+                tags: Vec::new(),
+            }]
         } else {
             Vec::new()
         };
         println!(
-            "[SceneryManager] Discovered {} folders in Global Scenery",
-            global_discovered.len()
+            "[SceneryManager] Targeted Global Airports discovery: {}",
+            !global_discovered.is_empty()
         );
 
         // Merge both discovery results
@@ -360,9 +357,6 @@ impl SceneryManager {
             } else {
                 println!("[SceneryManager] Adding NEW discovered pack: {}", disc.name);
 
-                let path_str = disc.path.to_string_lossy();
-                let is_internal = path_str.contains("Global Scenery") && !is_global_airports_folder;
-
                 // Prepend new discovery (X-Plane style)
                 let new_pack = SceneryPack {
                     name: disc.name,
@@ -372,7 +366,6 @@ impl SceneryManager {
                     airports: Vec::new(),
                     tiles: Vec::new(),
                     tags: Vec::new(),
-                    is_internal,
                 };
                 packs.insert(0, new_pack);
             }
@@ -1098,7 +1091,6 @@ mod tests {
             airports: Vec::new(),
             tiles: Vec::new(),
             tags: Vec::new(),
-            is_internal: false,
         });
 
         manager.save(None).expect("Failed to save");
@@ -1146,7 +1138,6 @@ mod tests {
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
-                is_internal: false,
             },
             SceneryPack {
                 name: "Bravo_Airport".to_string(),
@@ -1156,7 +1147,6 @@ mod tests {
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
-                is_internal: false,
             },
             SceneryPack {
                 name: "Alpha_Airport (1)".to_string(),
@@ -1166,7 +1156,6 @@ mod tests {
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
-                is_internal: false,
             },
         ];
 
