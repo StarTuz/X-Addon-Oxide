@@ -2182,6 +2182,11 @@ impl App {
                     }
 
                     let root = self.xplane_root.clone();
+                    let model = self.heuristics_model.clone();
+                    let context = x_adox_bitnet::PredictContext {
+                        region_focus: self.region_focus.clone(),
+                        ..Default::default()
+                    };
                     self.status = format!("Installing to {:?}...", tab);
                     self.install_progress = Some(0.0);
 
@@ -2190,9 +2195,18 @@ impl App {
                             10,
                             move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
                                 let mut output_progress = output.clone();
-                                let res = install_addon(root, zip_path, tab, None, move |p| {
-                                    let _ = output_progress.try_send(Message::InstallProgress(p));
-                                })
+                                let res = install_addon(
+                                    root,
+                                    zip_path,
+                                    tab,
+                                    None,
+                                    model,
+                                    context,
+                                    move |p| {
+                                        let _ =
+                                            output_progress.try_send(Message::InstallProgress(p));
+                                    },
+                                )
                                 .await;
                                 let _ = output.try_send(Message::InstallComplete(res));
                             },
@@ -2207,6 +2221,11 @@ impl App {
             Message::InstallAircraftDestPicked(zip_path, dest_opt) => {
                 if let Some(dest_path) = dest_opt {
                     let root = self.xplane_root.clone();
+                    let model = self.heuristics_model.clone();
+                    let context = x_adox_bitnet::PredictContext {
+                        region_focus: self.region_focus.clone(),
+                        ..Default::default()
+                    };
                     self.status = format!("Installing to {}...", dest_path.display());
                     self.install_progress = Some(0.0);
 
@@ -2220,6 +2239,8 @@ impl App {
                                     zip_path,
                                     Tab::Aircraft,
                                     Some(dest_path),
+                                    model,
+                                    context,
                                     move |p| {
                                         let _ =
                                             output_progress.try_send(Message::InstallProgress(p));
@@ -6323,10 +6344,12 @@ async fn install_addon(
     zip_path: PathBuf,
     tab: Tab,
     dest_override: Option<PathBuf>,
+    model: BitNetModel,
+    context: x_adox_bitnet::PredictContext,
     on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let res = tokio::task::spawn_blocking(move || {
-        extract_zip_task(root, zip_path, tab, dest_override, on_progress)
+        extract_zip_task(root, zip_path, tab, dest_override, model, context, on_progress)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -6344,6 +6367,8 @@ fn extract_zip_task(
     zip_path: PathBuf,
     tab: Tab,
     dest_override: Option<PathBuf>,
+    model: BitNetModel,
+    context: x_adox_bitnet::PredictContext,
     mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     // Open the zip file
@@ -6404,7 +6429,10 @@ fn extract_zip_task(
         let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
         let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
         sm.load().map_err(|e| e.to_string())?;
-        sm.save(None).map_err(|e| e.to_string())?;
+        
+        // Auto-sort every time a new pack is installed
+        sm.sort(Some(&model), &context);
+        sm.save(Some(&model)).map_err(|e| e.to_string())?;
     }
 
     Ok(top_folder)
