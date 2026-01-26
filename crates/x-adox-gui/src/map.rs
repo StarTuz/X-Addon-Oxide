@@ -168,7 +168,6 @@ impl<'a> MapView<'a> {
             pack.category,
             SceneryCategory::RegionalOverlay
                 | SceneryCategory::RegionalFluff
-                | SceneryCategory::OrbxAirport // Orbx Custom/Regional
                 | SceneryCategory::AutoOrthoOverlay
                 | SceneryCategory::LowImpactOverlay
         );
@@ -180,7 +179,7 @@ impl<'a> MapView<'a> {
 
         let is_global_apt = pack.category == SceneryCategory::GlobalAirport;
         let is_custom_apt =
-            !pack.airports.is_empty() && pack.category != SceneryCategory::OrbxAirport;
+            !pack.airports.is_empty() || pack.category == SceneryCategory::OrbxAirport;
 
         // 2. Filter Application
         if is_global_apt {
@@ -397,7 +396,6 @@ where
                     pack.category,
                     x_adox_core::scenery::SceneryCategory::RegionalOverlay
                         | x_adox_core::scenery::SceneryCategory::RegionalFluff
-                        | x_adox_core::scenery::SceneryCategory::OrbxAirport
                         | x_adox_core::scenery::SceneryCategory::AutoOrthoOverlay
                         | x_adox_core::scenery::SceneryCategory::LowImpactOverlay
                 );
