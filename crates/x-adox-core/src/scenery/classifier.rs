@@ -73,21 +73,22 @@ impl Classifier {
             return SceneryCategory::RegionalFluff;
         }
 
-        // 8. Airport-Specific Enhancements & Overlays (Level 7 - Score 75)
+        // 8. AutoOrtho Corrections (Level 8 - Score 70)
+        if name_lower.contains("yautoortho_overlays") {
+            return SceneryCategory::AutoOrthoOverlay;
+        }
+
+        // 9. Airport-Specific Enhancements & Overlays (Level 7 - Score 75)
         // Grouping Y KTEX Overlay and other specific enhancements here.
         if name_lower.contains("overlay")
             || name_lower.contains("followme")
             || name_lower.contains("groundservice")
             || name_lower.contains("airportvehicles")
             || name_lower.contains("aep")
+            || (name_lower.starts_with("y") && name_lower.contains("overlay"))
             || name_lower.contains("static")
         {
             return SceneryCategory::AirportOverlay;
-        }
-
-        // 9. AutoOrtho Corrections (Level 8 - Score 70)
-        if name_lower.contains("yautoortho_overlays") {
-            return SceneryCategory::AutoOrthoOverlay;
         }
 
         // 10. Custom Airports (Level 1 - Score 100)
@@ -131,6 +132,40 @@ impl Classifier {
         }
 
         SceneryCategory::Unknown
+    }
+
+    /// Post-discovery "healing" for packs that couldn't be categorized by name alone.
+    /// If a pack has tiles but no airports, it's likely Mesh/Ortho, UNLESS it's a known high-priority type.
+    pub fn heal_classification(
+        category: SceneryCategory,
+        has_airports: bool,
+        has_tiles: bool,
+    ) -> SceneryCategory {
+        // Protected categories that use DSFs for object placement/overlays
+        // and should NOT be demoted to Mesh even if they have no airports.
+        let is_protected = matches!(
+            category,
+            SceneryCategory::OrbxAirport
+                | SceneryCategory::RegionalOverlay
+                | SceneryCategory::RegionalFluff
+                | SceneryCategory::Landmark
+                | SceneryCategory::GlobalAirport
+                | SceneryCategory::AirportOverlay
+                | SceneryCategory::AutoOrthoOverlay
+                | SceneryCategory::Library
+        );
+
+        if !is_protected && has_tiles && !has_airports {
+            // Healed: It looks like Mesh/Ortho Base.
+            // If it was already OrthoBase, keep it. Otherwise, defaults to Mesh for safety.
+            if category == SceneryCategory::OrthoBase {
+                SceneryCategory::OrthoBase
+            } else {
+                SceneryCategory::Mesh
+            }
+        } else {
+            category
+        }
     }
 }
 

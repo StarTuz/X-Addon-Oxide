@@ -72,14 +72,27 @@ impl Default for HeuristicsConfig {
                     is_exclusion: true,
                 },
                 Rule {
-                    name: "Mesh/Terrain".to_string(),
-                    keywords: vec![
-                        "mesh".to_string(),
-                        "uhd".to_string(),
-                        "terrain".to_string(),
-                        "zzz".to_string(),
-                    ],
+                    name: "Mesh/Foundation".to_string(),
+                    keywords: vec!["mesh".to_string(), "zzz".to_string()],
                     score: 60,
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Orbx B / TrueEarth Overlay".to_string(),
+                    keywords: vec!["orbx_b".to_string(), "trueearth_overlay".to_string()],
+                    score: 28, // Above SimHeaven (30) for UK dominance
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Orbx D / Mesh".to_string(),
+                    keywords: vec!["orbx_d_".to_string()],
+                    score: 60, // Standard Mesh priority
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Orbx C / TrueEarth Orthos".to_string(),
+                    keywords: vec!["orbx_c_".to_string()],
+                    score: 58, // Match standard ortho priority
                     is_exclusion: false,
                 },
                 Rule {
@@ -114,16 +127,6 @@ impl Default for HeuristicsConfig {
                     name: "Landmarks".to_string(),
                     keywords: vec!["landmarks".to_string(), "landmark".to_string()],
                     score: 25,
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Orbx B / TrueEarth".to_string(),
-                    keywords: vec![
-                        "orbx_b".to_string(),
-                        "trueearth_overlay".to_string(),
-                        "orbx_c_".to_string(),
-                    ],
-                    score: 28, // Above SimHeaven (30) for UK dominance
                     is_exclusion: false,
                 },
                 Rule {
@@ -368,11 +371,31 @@ impl BitNetModel {
         } else if context.has_airports && !name_lower.contains("overlay") {
             // Healing: Discovery found airports even if name didn't match
             (10, "Airports (Healed)".to_string())
+        } else if name_lower.contains("overlay") || name_lower.contains("static") {
+            // Generic Overlay detection (matched names like "KTUL Overlay" or "Static Objects")
+            (25, "Airport Overlays".to_string())
         } else if name_lower.starts_with('z') || name_lower.starts_with('y') {
             (50, "Y/Z Prefix Scenery".to_string())
         } else if context.has_tiles && !context.has_airports {
-            // Healing: Discovery found tiles (likely mesh/ortho) but no airports
-            (60, "Mesh/Terrain (Healed)".to_string())
+            // Healing: Discovery found tiles (likely mesh/ortho) but no airports.
+            // MUST whitelist high-priority overlay keywords to prevent them from sinking to Mesh.
+            let is_protected_overlay = name_lower.contains("simheaven")
+                || name_lower.contains("x-world")
+                || name_lower.contains("autoortho")
+                || name_lower.contains("forests")
+                || name_lower.contains("birds")
+                || name_lower.contains("library")
+                || name_lower.contains("overlay")
+                || name_lower.contains("static")
+                || name_lower.contains("orbx_a")
+                || name_lower.contains("orbx_b");
+
+            if is_protected_overlay {
+                // If protected, keep it as "Other Scenery" instead of sinking it to Mesh.
+                (self.config.fallback_score, "Other Scenery".to_string())
+            } else {
+                (60, "Mesh/Terrain (Healed)".to_string())
+            }
         } else {
             (self.config.fallback_score, "Other Scenery".to_string())
         };

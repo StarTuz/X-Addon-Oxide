@@ -135,6 +135,7 @@ impl SceneryValidator {
                     first_mesh_idx = Some(i);
                 }
             }
+
             if pack.category == SceneryCategory::RegionalOverlay
                 || pack.category == SceneryCategory::AirportOverlay
                 || pack.category == SceneryCategory::CustomAirport

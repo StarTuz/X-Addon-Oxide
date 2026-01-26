@@ -301,4 +301,35 @@ mod tests {
         assert_eq!(packs[0].name, "aaa_Airport_B");
         assert_eq!(packs[1].name, "aaa_Airport_A");
     }
+
+    #[test]
+    fn test_healed_mesh_whitelist() {
+        use crate::scenery::classifier::Classifier;
+
+        // 1. SimHeaven (Protected)
+        let simheaven = "simHeaven_X-World_Europe-7-forests";
+        let cat = Classifier::classify_heuristic(&PathBuf::from(simheaven), simheaven);
+        assert_eq!(cat, SceneryCategory::RegionalOverlay);
+
+        // Healing should NOT change it even with tiles and no airports
+        let healed = Classifier::heal_classification(cat, false, true);
+        assert_eq!(healed, SceneryCategory::RegionalOverlay);
+
+        // 2. Random unknown pack with tiles and no airports (Unprotected)
+        let unknown = "Random_Pack";
+        let cat_unk = Classifier::classify_heuristic(&PathBuf::from(unknown), unknown);
+        assert_eq!(cat_unk, SceneryCategory::Unknown);
+
+        // Healing SHOULD turn it into Mesh
+        let healed_unk = Classifier::heal_classification(cat_unk, false, true);
+        assert_eq!(healed_unk, SceneryCategory::Mesh);
+
+        // 3. AutoOrtho (Protected)
+        let ao = "yAutoOrtho_Overlays";
+        let cat_ao = Classifier::classify_heuristic(&PathBuf::from(ao), ao);
+        assert_eq!(cat_ao, SceneryCategory::AutoOrthoOverlay);
+
+        let healed_ao = Classifier::heal_classification(cat_ao, false, true);
+        assert_eq!(healed_ao, SceneryCategory::AutoOrthoOverlay);
+    }
 }

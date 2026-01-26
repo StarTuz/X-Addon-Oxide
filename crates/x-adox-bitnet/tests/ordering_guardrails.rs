@@ -66,6 +66,17 @@ fn test_critical_scenery_ordering_pairs() {
             "simHeaven_X-World_Europe",
             "Orbx Custom must be above SimHeaven",
         ),
+        // User Reported Regression: Overlays (FlyTampa/DarkBlue) must be ABOVE Orthos/Mesh (Orbx C/D)
+        (
+            "FlyTampa_Amsterdam_1_overlays",
+            "Orbx_C_GB_Central_TrueEarth_Orthos",
+            "Manufacturer Overlays must be above Orbx Orthos",
+        ),
+        (
+            "DarkBlue-RJTT_Haneda_Overlays1",
+            "Orbx_D_GB_North_TrueEarth_Orthos",
+            "Manufacturer Overlays must be above Orbx Mesh",
+        ),
     ];
 
     let dummy_path = Path::new("/dummy/path");

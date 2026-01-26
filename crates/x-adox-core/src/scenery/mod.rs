@@ -394,6 +394,13 @@ impl SceneryManager {
                     }
                 }
 
+                // 4. Final Healing (Centralized)
+                pack.category = classifier::Classifier::heal_classification(
+                    pack.category,
+                    !pack.airports.is_empty(),
+                    !pack.tiles.is_empty(),
+                );
+
                 (pack, cache_entry)
             })
             .collect();
