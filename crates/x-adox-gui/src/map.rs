@@ -160,43 +160,47 @@ impl<'a> MapView<'a> {
     pub fn is_pack_visible(&self, pack: &SceneryPack) -> bool {
         use x_adox_core::scenery::SceneryCategory;
 
+        // 1. Technical Category Identification
         let is_ortho = pack.category == SceneryCategory::OrthoBase;
         let is_mesh = pack.category == SceneryCategory::Mesh
             || pack.category == SceneryCategory::SpecificMesh;
         let is_library = pack.category == SceneryCategory::Library;
-        let is_overlay = matches!(
+
+        let is_regional = matches!(
             pack.category,
             SceneryCategory::RegionalOverlay
-                | SceneryCategory::AirportOverlay
-                | SceneryCategory::LowImpactOverlay
-                | SceneryCategory::AutoOrthoOverlay
                 | SceneryCategory::RegionalFluff
-                | SceneryCategory::OrbxAirport
+                | SceneryCategory::OrbxAirport // Orbx Custom/Regional
+                | SceneryCategory::AutoOrthoOverlay
         );
-        let is_earth = false; // "EarthScenery" concept removed, merged into Mesh
+
+        let is_airport_enhancement = matches!(
+            pack.category,
+            SceneryCategory::AirportOverlay | SceneryCategory::Landmark
+        );
+
         let is_global_apt = pack.category == SceneryCategory::GlobalAirport;
-        // Exclude OrbxAirport from "Custom Airports" filter because it contains mass regional data
         let is_custom_apt =
             !pack.airports.is_empty() && pack.category != SceneryCategory::OrbxAirport;
 
-        let tile_count = pack.tiles.len();
-        let is_small_enhancement = !is_custom_apt && tile_count < 5 && (is_overlay || is_earth);
-        let is_massive_pack = tile_count >= 10 && (is_overlay || is_earth);
-
+        // 2. Filter Application
         if is_global_apt {
             self.filters.show_global_airports
         } else if is_custom_apt {
             self.filters.show_custom_airports
-        } else if is_small_enhancement {
-            self.filters.show_enhancements
         } else if is_ortho {
             self.filters.show_ortho_markers
         } else if is_mesh {
             self.filters.show_mesh_terrain
         } else if is_library {
             self.filters.show_libraries
-        } else if is_massive_pack {
+        } else if is_regional {
+            // Regional packs (SimHeaven, Orbx, AO) always follow the Regional filter
             self.filters.show_regional_overlays
+        } else if is_airport_enhancement {
+            // Airport-specific overlays use the "Enhancements" filter
+            // (These are usually small things like vehicles, static aircraft, or custom ground textures)
+            self.filters.show_enhancements
         } else {
             true
         }
@@ -390,20 +394,23 @@ where
                 let is_hovered = self.hovered_scenery == Some(&pack.name);
                 let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::OrthoBase;
                 let is_library = pack.category == x_adox_core::scenery::SceneryCategory::Library;
-                let is_overlay = matches!(
+
+                let is_regional = matches!(
                     pack.category,
                     x_adox_core::scenery::SceneryCategory::RegionalOverlay
-                        | x_adox_core::scenery::SceneryCategory::AirportOverlay
-                        | x_adox_core::scenery::SceneryCategory::AutoOrthoOverlay
-                        | x_adox_core::scenery::SceneryCategory::LowImpactOverlay
                         | x_adox_core::scenery::SceneryCategory::RegionalFluff
                         | x_adox_core::scenery::SceneryCategory::OrbxAirport
+                        | x_adox_core::scenery::SceneryCategory::AutoOrthoOverlay
                 );
-                let is_earth = pack.category == x_adox_core::scenery::SceneryCategory::Mesh
-                    || pack.category == x_adox_core::scenery::SceneryCategory::SpecificMesh;
 
-                let tile_count = pack.tiles.len();
-                let is_massive_pack = tile_count >= 10 && (is_overlay || is_earth);
+                let is_airport_enhancement = matches!(
+                    pack.category,
+                    x_adox_core::scenery::SceneryCategory::AirportOverlay
+                        | x_adox_core::scenery::SceneryCategory::Landmark
+                );
+
+                let is_mesh = pack.category == x_adox_core::scenery::SceneryCategory::Mesh
+                    || pack.category == x_adox_core::scenery::SceneryCategory::SpecificMesh;
 
                 let base_color = match pack.status {
                     SceneryPackType::Active => Color::from_rgb(0.0, 1.0, 0.0), // Classic Green
@@ -425,7 +432,7 @@ where
                     (Color::from_rgb(0.0, 1.0, 1.0), 0.0.into()) // Cyan Sharp Square
                 } else if is_library {
                     (Color::from_rgb(1.0, 0.0, 1.0), (size / 2.0).into()) // Purple Circle
-                } else if is_massive_pack {
+                } else if is_regional {
                     (Color::from_rgb(0.5, 1.0, 0.0), (size / 2.0).into()) // Lime "Diamond" (Circle)
                 } else {
                     (base_color, (size / 4.0).into()) // Standard rounded square
