@@ -43,8 +43,8 @@ GitHub Actions builds on push to main and on tags:
 Releases are created automatically when pushing a version tag:
 
 ```bash
-git tag v2.2.5
-git push origin v2.2.5
+git tag v2.2.6
+git push origin v2.2.6
 ```
 
 Artifacts are collected to `dist/{platform}/` and uploaded to GitHub Releases.
