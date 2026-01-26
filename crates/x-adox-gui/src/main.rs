@@ -1628,6 +1628,7 @@ impl App {
                 let root = self.xplane_root.clone();
                 let context = x_adox_bitnet::PredictContext {
                     region_focus: self.region_focus.clone(),
+                    ..Default::default()
                 };
                 let model = self.heuristics_model.clone();
                 let packs = self.packs.clone();
@@ -1749,6 +1750,7 @@ impl App {
                     std::path::Path::new(""), // Not used in predict if it's an override
                     &x_adox_bitnet::PredictContext {
                         region_focus: self.region_focus.clone(),
+                        ..Default::default()
                     },
                 );
                 self.editing_priority = Some((pack_name, current_score));
@@ -1808,6 +1810,7 @@ impl App {
                             std::path::Path::new(""),
                             &x_adox_bitnet::PredictContext {
                                 region_focus: self.region_focus.clone(),
+                                ..Default::default()
                             },
                         );
 
@@ -4387,14 +4390,12 @@ impl App {
     fn resort_scenery(&mut self) {
         let context = x_adox_bitnet::PredictContext {
             region_focus: self.region_focus.clone(),
+            ..Default::default()
         };
-        let model = &self.heuristics_model;
 
-        Arc::make_mut(&mut self.packs).sort_by(|a, b| {
-            let score_a = model.predict(&a.name, std::path::Path::new(""), &context);
-            let score_b = model.predict(&b.name, std::path::Path::new(""), &context);
-            score_a.cmp(&score_b)
-        });
+        // Use the unified discovery-aware sorter
+        let packs = Arc::make_mut(&mut self.packs);
+        x_adox_core::scenery::sorter::sort_packs(packs, Some(&self.heuristics_model), &context);
     }
 
     fn sidebar_button(&self, label: &'static str, tab: Tab) -> Element<'_, Message> {

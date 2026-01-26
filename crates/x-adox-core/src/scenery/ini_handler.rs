@@ -100,7 +100,11 @@ pub fn write_ini(
             let (_score, rule_name) = m.predict_with_rule_name(
                 &pack.name,
                 &pack.path,
-                &x_adox_bitnet::PredictContext::default(),
+                &x_adox_bitnet::PredictContext {
+                    has_airports: !pack.airports.is_empty(),
+                    has_tiles: !pack.tiles.is_empty(),
+                    ..Default::default()
+                },
             );
             format!("# {}", rule_name)
         } else {

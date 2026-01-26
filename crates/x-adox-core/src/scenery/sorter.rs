@@ -32,8 +32,16 @@ pub fn sort_packs(
         // Calculate scores - use BitNet model if provided, otherwise fall back to category scores
         let (score_a, score_b, lower_is_better) = if let Some(m) = model {
             // BitNet: lower score = higher priority
-            let sa = m.predict(&a.name, &a.path, context);
-            let sb = m.predict(&b.name, &b.path, context);
+            let mut ctx_a = context.clone();
+            ctx_a.has_airports = !a.airports.is_empty();
+            ctx_a.has_tiles = !a.tiles.is_empty();
+
+            let mut ctx_b = context.clone();
+            ctx_b.has_airports = !b.airports.is_empty();
+            ctx_b.has_tiles = !b.tiles.is_empty();
+
+            let sa = m.predict(&a.name, &a.path, &ctx_a);
+            let sb = m.predict(&b.name, &b.path, &ctx_b);
             (sa as i32, sb as i32, true)
         } else {
             // Category-based: higher score = higher priority

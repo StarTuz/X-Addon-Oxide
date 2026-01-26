@@ -10,6 +10,8 @@ pub mod parser;
 #[derive(Debug, Clone, Default)]
 pub struct PredictContext {
     pub region_focus: Option<String>,
+    pub has_airports: bool,
+    pub has_tiles: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Hash)]
@@ -468,8 +470,14 @@ impl BitNetModel {
             )
         } else if is_airport && !name_lower.contains("overlay") {
             (10, "Airports".to_string())
+        } else if context.has_airports && !name_lower.contains("overlay") {
+            // Healing: Discovery found airports even if name didn't match
+            (10, "Airports (Healed)".to_string())
         } else if name_lower.starts_with('z') || name_lower.starts_with('y') {
             (50, "Y/Z Prefix Scenery".to_string())
+        } else if context.has_tiles && !context.has_airports {
+            // Healing: Discovery found tiles (likely mesh/ortho) but no airports
+            (60, "Mesh/Terrain (Healed)".to_string())
         } else {
             (self.config.fallback_score, "Other Scenery".to_string())
         };
