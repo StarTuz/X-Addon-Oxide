@@ -866,13 +866,7 @@ fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
     let nav_data_dirs = ["Earth nav data", "Mars nav data"];
     let pack_path_str = pack_path.to_string_lossy().to_lowercase();
 
-    // Clutter filter
-    let excluded_keywords = [
-        "resources",
-        "default scenery",
-        "opensceneryx",
-        "world2xplane",
-    ];
+    let excluded_keywords = ["resources", "default scenery", "opensceneryx"];
 
     let is_global_airports =
         pack_path_str.contains("global airports") || pack_path_str.contains("global_airports");
@@ -930,11 +924,6 @@ fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
 
     tiles.sort();
     tiles.dedup();
-
-    // Filter massive regional packs (max 100 tiles for the map)
-    if tiles.len() > 100 {
-        return Vec::new();
-    }
 
     tiles
 }
