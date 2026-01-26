@@ -163,7 +163,8 @@ impl<'a> MapView<'a> {
         // 1. Technical Category Identification
         let is_ortho = pack.category == SceneryCategory::OrthoBase;
         let is_mesh = pack.category == SceneryCategory::Mesh
-            || pack.category == SceneryCategory::SpecificMesh;
+            || pack.category == SceneryCategory::SpecificMesh
+            || pack.category == SceneryCategory::GlobalBase;
         let is_library = pack.category == SceneryCategory::Library;
 
         let is_regional = matches!(
@@ -403,6 +404,10 @@ where
                         | x_adox_core::scenery::SceneryCategory::AutoOrthoOverlay
                 );
 
+                let is_mesh = pack.category == x_adox_core::scenery::SceneryCategory::Mesh
+                    || pack.category == x_adox_core::scenery::SceneryCategory::SpecificMesh
+                    || pack.category == x_adox_core::scenery::SceneryCategory::GlobalBase;
+
                 let base_color = match pack.status {
                     SceneryPackType::Active => Color::from_rgb(0.0, 1.0, 0.0), // Classic Green
                     SceneryPackType::Disabled | SceneryPackType::DuplicateHidden => {
@@ -425,6 +430,8 @@ where
                     (Color::from_rgb(1.0, 0.0, 1.0), (size / 2.0).into()) // Purple Circle
                 } else if is_regional {
                     (Color::from_rgb(0.5, 1.0, 0.0), (size / 2.0).into()) // Lime "Diamond" (Circle)
+                } else if is_mesh {
+                    (Color::from_rgb(0.6, 0.3, 0.1), (size / 4.0).into()) // Brown/Orange Square
                 } else {
                     (base_color, (size / 4.0).into()) // Standard rounded square
                 };
@@ -435,23 +442,37 @@ where
                 let is_visible = self.is_pack_visible(pack);
                 let is_ortho = pack.category == x_adox_core::scenery::SceneryCategory::OrthoBase;
 
-                let is_global =
-                    pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
-
                 // Markers are drawn if:
                 // 1. They are visible per filters
-                // 2. OR they are explicitly selected (for user feedback) - BUT NOT for Global Airports (too many dots)
-                let should_draw_dots = (is_selected && !is_global) || is_visible;
+                // 2. OR they are explicitly selected (for user feedback) - BUT NOT for Global Airports/Base (too many dots)
+                let is_global =
+                    pack.category == x_adox_core::scenery::SceneryCategory::GlobalAirport;
+                let is_massive = is_mesh || is_regional || is_global;
+                let should_draw_dots = (is_selected && !is_massive) || is_visible;
 
                 if should_draw_dots {
-                    // Optimization: Thin Global Airports at low zoom to prevent overdraw lag
-                    let skip_step = if is_global && zoom < 4.0 {
-                        10
-                    } else if is_global && zoom < 6.0 {
-                        4
+                    // Optimization: High-performance thinning for massive packs
+                    let skip_step = if is_massive {
+                        if zoom < 3.0 {
+                            50
+                        } else if zoom < 5.0 {
+                            15
+                        } else if zoom < 7.0 {
+                            4
+                        } else if zoom < 9.0 {
+                            2
+                        } else {
+                            1
+                        }
                     } else {
                         1
                     };
+
+                    // Pre-calculate lat/lon bounds for early-exit viewport check
+                    let view_lon_min = x_to_lon(view_left, 0.0) - 1.0;
+                    let view_lon_max = x_to_lon(view_right, 0.0) + 1.0;
+                    let view_lat_min = y_to_lat(view_bottom, 0.0) - 1.0;
+                    let view_lat_max = y_to_lat(view_top, 0.0) + 1.0;
 
                     // Draw Tile-based dots (for ortho/mesh/enhancements)
                     if pack.airports.is_empty() {
@@ -459,9 +480,21 @@ where
                             if i % skip_step != 0 {
                                 continue;
                             }
-                            // Quick viewport check in z0 pixels
-                            let wx = lon_to_x(lon as f64 + 0.5, 0.0);
-                            let wy = lat_to_y(lat as f64 + 0.5, 0.0);
+                            // 1. Fast lat/lon early exit
+                            let lat_f = lat as f64;
+                            let lon_f = lon as f64;
+
+                            if lat_f < view_lat_min
+                                || lat_f > view_lat_max
+                                || lon_f < view_lon_min
+                                || lon_f > view_lon_max
+                            {
+                                continue;
+                            }
+
+                            // 2. Precise pixel check (optional but kept for safety at edge of bounds)
+                            let wx = lon_to_x(lon_f + 0.5, 0.0);
+                            let wy = lat_to_y(lat_f + 0.5, 0.0);
 
                             if wx < view_left
                                 || wx > view_right
@@ -504,6 +537,17 @@ where
 
                         if i % skip_step != 0 {
                             continue;
+                        }
+
+                        // 1. Fast lat/lon early exit
+                        if let (Some(lat), Some(lon)) = (airport.lat, airport.lon) {
+                            if lat < view_lat_min
+                                || lat > view_lat_max
+                                || lon < view_lon_min
+                                || lon > view_lon_max
+                            {
+                                continue;
+                            }
                         }
                         if let (Some(px), Some(py)) = (airport.proj_x, airport.proj_y) {
                             // Quick viewport check in z0 pixels

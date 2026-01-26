@@ -115,6 +115,15 @@ pub struct SceneryPack {
 }
 
 impl SceneryPack {
+    pub fn ui_name(&self) -> &str {
+        match self.name.as_str() {
+            "X-Plane 12 Demo Areas" => "X-Plane 12 Showcase Areas",
+            _ => &self.name,
+        }
+    }
+}
+
+impl SceneryPack {
     pub fn calculate_health_score(&self) -> u8 {
         let mut score: u8 = 0;
 
@@ -830,18 +839,10 @@ fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
 
     // Clutter filter
     let excluded_keywords = [
-        "global scenery",
         "resources",
         "default scenery",
-        "landmark",
-        "simheaven",
-        "x-world",
-        "forest",
-        "autogen",
         "opensceneryx",
         "world2xplane",
-        "hd_mesh",
-        "alpilotx",
     ];
 
     let is_global_airports =
