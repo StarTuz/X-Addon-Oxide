@@ -75,20 +75,31 @@ fn test_critical_scenery_ordering_pairs() {
         (
             "DarkBlue-RJTT_Haneda_Overlays1",
             "Orbx_D_GB_North_TrueEarth_Orthos",
-            "Manufacturer Overlays must be above Orbx Mesh",
+            "Manufacturer Overlays must be above Orbx Mesh/Ortho",
         ),
     ];
 
     let dummy_path = Path::new("/dummy/path");
 
     for (high_prio_name, low_prio_name, description) in critical_pairs {
-        let score_high = model.predict(high_prio_name, dummy_path, &context);
-        let score_low = model.predict(low_prio_name, dummy_path, &context);
+        let (score_high, rule_high) =
+            model.predict_with_rule_name(high_prio_name, dummy_path, &context);
+        let (score_low, rule_low) =
+            model.predict_with_rule_name(low_prio_name, dummy_path, &context);
 
         println!(
-            "Testing '{}':\n  {} -> Score {}\n  {} -> Score {}",
-            description, high_prio_name, score_high, low_prio_name, score_low
+            "Testing '{}':\n  {} -> Score {} ({})\n  {} -> Score {} ({})",
+            description, high_prio_name, score_high, rule_high, low_prio_name, score_low, rule_low
         );
+
+        // Verification for specific Orbx GB North labeling
+        if low_prio_name == "Orbx_D_GB_North_TrueEarth_Orthos" {
+            assert_eq!(
+                rule_low, "Orbx TrueEarth Orthos",
+                "GB North should be labeled as Ortho, not Mesh"
+            );
+            assert_eq!(score_low, 58, "GB North Ortho should have score 58");
+        }
 
         assert!(
             score_high < score_low,

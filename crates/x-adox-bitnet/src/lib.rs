@@ -84,15 +84,15 @@ impl Default for HeuristicsConfig {
                     is_exclusion: false,
                 },
                 Rule {
-                    name: "Orbx D / Mesh".to_string(),
-                    keywords: vec!["orbx_d_".to_string()],
-                    score: 60, // Standard Mesh priority
+                    name: "Orbx TrueEarth Orthos".to_string(),
+                    keywords: vec!["orbx_c_".to_string(), "orthos".to_string()],
+                    score: 58, // Match standard ortho priority
                     is_exclusion: false,
                 },
                 Rule {
-                    name: "Orbx C / TrueEarth Orthos".to_string(),
-                    keywords: vec!["orbx_c_".to_string()],
-                    score: 58, // Match standard ortho priority
+                    name: "Orbx D / Mesh".to_string(),
+                    keywords: vec!["orbx_d_".to_string(), "orbx_e_".to_string()],
+                    score: 60, // Standard Mesh priority
                     is_exclusion: false,
                 },
                 Rule {
