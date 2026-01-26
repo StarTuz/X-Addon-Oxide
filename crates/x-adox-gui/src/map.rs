@@ -403,15 +403,6 @@ where
                         | x_adox_core::scenery::SceneryCategory::AutoOrthoOverlay
                 );
 
-                let is_airport_enhancement = matches!(
-                    pack.category,
-                    x_adox_core::scenery::SceneryCategory::AirportOverlay
-                        | x_adox_core::scenery::SceneryCategory::Landmark
-                );
-
-                let is_mesh = pack.category == x_adox_core::scenery::SceneryCategory::Mesh
-                    || pack.category == x_adox_core::scenery::SceneryCategory::SpecificMesh;
-
                 let base_color = match pack.status {
                     SceneryPackType::Active => Color::from_rgb(0.0, 1.0, 0.0), // Classic Green
                     SceneryPackType::Disabled | SceneryPackType::DuplicateHidden => {
