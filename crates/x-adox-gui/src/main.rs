@@ -955,45 +955,15 @@ impl App {
                 Task::none()
             }
             Message::ToggleAllLogbookSelection(select) => {
+                let filtered_indices = self.filtered_logbook_indices();
                 if select {
-                    let filtered_indices: Vec<usize> = self
-                        .logbook
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, entry)| {
-                            if !self.logbook_filter_aircraft.is_empty() {
-                                let filter = self.logbook_filter_aircraft.to_lowercase();
-                                if !entry.tail_number.to_lowercase().contains(&filter)
-                                    && !entry.aircraft_type.to_lowercase().contains(&filter)
-                                {
-                                    return false;
-                                }
-                            }
-                            if self.logbook_filter_circular
-                                && entry.dep_airport != entry.arr_airport
-                            {
-                                return false;
-                            }
-                            if let Ok(min) = self.logbook_filter_duration_min.parse::<f64>() {
-                                if entry.total_duration < min {
-                                    return false;
-                                }
-                            }
-                            if let Ok(max) = self.logbook_filter_duration_max.parse::<f64>() {
-                                if entry.total_duration > max {
-                                    return false;
-                                }
-                            }
-                            true
-                        })
-                        .map(|(idx, _)| idx)
-                        .collect();
-
                     for idx in filtered_indices {
                         self.logbook_selection.insert(idx);
                     }
                 } else {
-                    self.logbook_selection.clear();
+                    for idx in filtered_indices {
+                        self.logbook_selection.remove(&idx);
+                    }
                 }
                 Task::none()
             }
@@ -3336,9 +3306,12 @@ impl App {
                         text("Bulk Actions:")
                             .size(14)
                             .color(style::palette::TEXT_SECONDARY),
-                        checkbox("Select All (filtered)", false)
-                            .on_toggle(Message::ToggleAllLogbookSelection)
-                            .size(16),
+                        checkbox("Select All (filtered)", {
+                            let filtered = self.filtered_logbook_indices();
+                            !filtered.is_empty() && filtered.iter().all(|idx| self.logbook_selection.contains(idx))
+                        })
+                        .on_toggle(Message::ToggleAllLogbookSelection)
+                        .size(16),
                         iced::widget::horizontal_space(),
                         if !self.logbook_selection.is_empty() {
                             Element::from(
@@ -3376,44 +3349,17 @@ impl App {
                 .padding(20)
                 .into()
         } else {
-            let filtered_entries: Vec<(usize, &x_adox_core::logbook::LogbookEntry)> = self
-                .logbook
-                .iter()
-                .enumerate()
-                .filter(|(_, entry)| {
-                    if !self.logbook_filter_aircraft.is_empty() {
-                        let filter = self.logbook_filter_aircraft.to_lowercase();
-                        if !entry.tail_number.to_lowercase().contains(&filter)
-                            && !entry.aircraft_type.to_lowercase().contains(&filter)
-                        {
-                            return false;
-                        }
-                    }
-                    if self.logbook_filter_circular && entry.dep_airport != entry.arr_airport {
-                        return false;
-                    }
-                    if let Ok(min) = self.logbook_filter_duration_min.parse::<f64>() {
-                        if entry.total_duration < min {
-                            return false;
-                        }
-                    }
-                    if let Ok(max) = self.logbook_filter_duration_max.parse::<f64>() {
-                        if entry.total_duration > max {
-                            return false;
-                        }
-                    }
-                    true
-                })
-                .collect();
+            let filtered_indices = self.filtered_logbook_indices();
 
-            if filtered_entries.is_empty() {
+            if filtered_indices.is_empty() {
                 container(text("No entries match filters.").size(14))
                     .center_x(Length::Fill)
                     .padding(20)
                     .into()
             } else {
                 let mut col = Column::new().spacing(5);
-                for (idx, entry) in filtered_entries {
+                for idx in filtered_indices {
+                    let entry = &self.logbook[idx];
                     let is_selected = self.selected_flight == Some(idx);
 
                     let date_str = entry
@@ -6081,6 +6027,38 @@ impl App {
                 let _ = serde_json::to_writer_pretty(writer, &config);
             }
         }
+    }
+
+    fn filtered_logbook_indices(&self) -> Vec<usize> {
+        self.logbook
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| {
+                if !self.logbook_filter_aircraft.is_empty() {
+                    let filter = self.logbook_filter_aircraft.to_lowercase();
+                    if !entry.tail_number.to_lowercase().contains(&filter)
+                        && !entry.aircraft_type.to_lowercase().contains(&filter)
+                    {
+                        return false;
+                    }
+                }
+                if self.logbook_filter_circular && entry.dep_airport != entry.arr_airport {
+                    return false;
+                }
+                if let Ok(min) = self.logbook_filter_duration_min.parse::<f64>() {
+                    if entry.total_duration < min {
+                        return false;
+                    }
+                }
+                if let Ok(max) = self.logbook_filter_duration_max.parse::<f64>() {
+                    if entry.total_duration > max {
+                        return false;
+                    }
+                }
+                true
+            })
+            .map(|(idx, _)| idx)
+            .collect()
     }
 
     fn spawn_companion_app(&mut self, app: &CompanionApp) {
