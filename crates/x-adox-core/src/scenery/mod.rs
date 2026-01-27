@@ -353,7 +353,9 @@ impl SceneryManager {
                         .filter(|c| !c.is_whitespace())
                         .collect::<String>()
                 };
-                if normalize(&p.name) == normalize(&disc.name) {
+                let p_norm = normalize(&p.name);
+                let d_norm = normalize(&disc.name);
+                if p_norm == d_norm {
                     return true;
                 }
                 // Global Airports virtual tag match
@@ -378,19 +380,12 @@ impl SceneryManager {
                     packs[idx].path = disc.path;
                 }
             } else {
-                println!("[SceneryManager] Adding NEW discovered pack: {}", disc.name);
-
-                // Prepend new discovery (X-Plane style)
-                let new_pack = SceneryPack {
-                    name: disc.name,
-                    path: disc.path,
-                    status: SceneryPackType::Active,
-                    category: SceneryCategory::Unknown,
-                    airports: Vec::new(),
-                    tiles: Vec::new(),
-                    tags: Vec::new(),
-                };
-                packs.insert(0, new_pack);
+                // Pack exists on filesystem but NOT in INI - do NOT auto-add
+                // User must manually add packs to scenery_packs.ini or run X-Plane once
+                println!(
+                    "[SceneryManager] Detected unmanaged pack (not in INI): {}",
+                    disc.name
+                );
             }
         }
 
