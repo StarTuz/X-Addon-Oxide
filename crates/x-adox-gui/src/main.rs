@@ -249,6 +249,8 @@ enum Message {
     // Utilities - Companion Apps
     ToggleCompanionAutoLaunch(usize),
     StatusChanged(String),
+    ToggleLogIssue(usize, bool),
+    ToggleAllLogIssues(bool),
     RemoveCompanionApp(usize),
     ToggleMapFilterSettings,
     ToggleMapFilter(MapFilterType),
@@ -499,6 +501,7 @@ struct App {
     logbook_filter_duration_max: String,
     logbook_selection: std::collections::HashSet<usize>,
     show_logbook_bulk_delete_confirm: bool,
+    selected_log_issues: std::collections::HashSet<usize>,
 }
 
 impl App {
@@ -652,6 +655,7 @@ impl App {
             logbook_filter_duration_max: String::new(),
             logbook_selection: std::collections::HashSet::new(),
             show_logbook_bulk_delete_confirm: false,
+            selected_log_issues: std::collections::HashSet::new(),
             smart_groups: std::collections::BTreeMap::new(),
             smart_model_groups: std::collections::BTreeMap::new(),
         };
@@ -757,12 +761,16 @@ impl App {
                 match result {
                     Ok(issues) => {
                         self.log_issues = issues;
+                        // Select all by default
+                        self.selected_log_issues = (0..self.log_issues.len()).collect();
                         if !self.log_issues.is_empty() && !self.loading_state.is_loading {
                             self.status =
                                 format!("Found {} issues in Log.txt", self.log_issues.len());
                         }
                     }
-                    Err(e) => self.status = format!("Log analysis error: {}", e),
+                    Err(e) => {
+                        self.status = format!("Failed to read Log.txt: {}", e);
+                    }
                 }
                 self.check_loading_complete();
                 Task::none()
@@ -776,12 +784,22 @@ impl App {
             }
             Message::ExportLogIssues => {
                 let issues = self.log_issues.clone();
-                if issues.is_empty() {
-                    self.status = "No log issues to export".to_string();
+                let selection = self.selected_log_issues.clone();
+                
+                if selection.is_empty() {
+                    self.status = "No issues selected for export".to_string();
                     return Task::none();
                 }
+
                 Task::perform(
-                    async move { export_log_issues_task(issues) },
+                    async move { 
+                        // Filter issues based on selection
+                        let filtered: Vec<_> = issues.iter().enumerate()
+                            .filter(|(i, _)| selection.contains(i))
+                            .map(|(_, issue)| issue.clone())
+                            .collect();
+                        export_log_issues_task(Arc::new(filtered)) 
+                    },
                     |result| match result {
                         Ok(path) => Message::StatusChanged(format!("Report exported to {}", path.display())),
                         Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
@@ -1635,6 +1653,22 @@ impl App {
             },
             Message::StatusChanged(status) => {
                 self.status = status;
+                Task::none()
+            }
+            Message::ToggleLogIssue(idx, is_selected) => {
+                if is_selected {
+                    self.selected_log_issues.insert(idx);
+                } else {
+                    self.selected_log_issues.remove(&idx);
+                }
+                Task::none()
+            }
+            Message::ToggleAllLogIssues(select_all) => {
+                if select_all {
+                    self.selected_log_issues = (0..self.log_issues.len()).collect();
+                } else {
+                    self.selected_log_issues.clear();
+                }
                 Task::none()
             }
             Message::SmartSort => {
@@ -4929,50 +4963,67 @@ impl App {
             .width(Length::Fill)
             .into()
         } else {
-            let issues_list = column(self.log_issues.iter().map(|issue| {
-                container(
-                    column![
-                        row![
-                            text("Missing Resource: ").color(style::palette::TEXT_SECONDARY),
-                            text(&issue.resource_path).color(style::palette::TEXT_PRIMARY),
-                        ]
-                        .spacing(5),
-                        row![
-                            text("Referenced from: ").color(style::palette::TEXT_SECONDARY),
-                            text(&issue.package_path).color(style::palette::TEXT_PRIMARY),
-                        ]
-                        .spacing(5),
-                        if let Some(lib) = &issue.potential_library {
+            let issues_list = column(self.log_issues.iter().enumerate().map(|(idx, issue)| {
+                let is_selected = self.selected_log_issues.contains(&idx);
+                row![
+                    iced::widget::checkbox("", is_selected)
+                        .on_toggle(move |val| Message::ToggleLogIssue(idx, val))
+                        .size(18),
+                    container(
+                        column![
                             row![
-                                text("Potential Library: ").color(style::palette::TEXT_SECONDARY),
-                                text(lib).color(style::palette::ACCENT_BLUE),
+                                text("Missing Resource: ").color(style::palette::TEXT_SECONDARY),
+                                text(&issue.resource_path).color(style::palette::TEXT_PRIMARY),
                             ]
-                            .spacing(5)
-                        } else {
-                            row![].into()
-                        },
-                    ]
-                    .spacing(8),
-                )
-                .padding(15)
-                .style(style::container_card)
-                .width(Length::Fill)
+                            .spacing(5),
+                            row![
+                                text("Referenced from: ").color(style::palette::TEXT_SECONDARY),
+                                text(&issue.package_path).color(style::palette::TEXT_PRIMARY),
+                            ]
+                            .spacing(5),
+                            if let Some(lib) = &issue.potential_library {
+                                row![
+                                    text("Potential Library: ").color(style::palette::TEXT_SECONDARY),
+                                    text(lib).color(style::palette::ACCENT_BLUE),
+                                ]
+                                .spacing(5)
+                            } else {
+                                row![].into()
+                            },
+                        ]
+                        .spacing(8),
+                    )
+                    .padding(15)
+                    .style(style::container_card)
+                    .width(Length::Fill)
+                ]
+                .spacing(15)
+                .align_y(iced::Alignment::Center)
                 .into()
             }))
             .spacing(10);
 
+            let all_selected = self.selected_log_issues.len() == self.log_issues.len();
+            
             column![
-                text(format!(
-                    "Found {} missing resources.",
-                    self.log_issues.len()
-                ))
-                .color(style::palette::ACCENT_RED),
+                row![
+                    iced::widget::checkbox("Select All", all_selected)
+                        .on_toggle(Message::ToggleAllLogIssues)
+                        .size(18),
+                    text(format!(
+                        "Found {} missing resources.",
+                        self.log_issues.len()
+                    ))
+                    .color(style::palette::ACCENT_RED),
+                ]
+                .spacing(20)
+                .align_y(iced::Alignment::Center),
                 issues_list,
                 row![
                     button("Re-scan Log")
                         .on_press(Message::CheckLogIssues)
                         .style(style::button_secondary),
-                    button("Export Report")
+                    button(text(format!("Export Report ({})", self.selected_log_issues.len())))
                         .on_press(Message::ExportLogIssues)
                         .style(style::button_primary),
                 ]
