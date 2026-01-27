@@ -130,7 +130,9 @@ impl SceneryPack {
             // System / Trusted types get high base scores immediately
             SceneryCategory::GlobalAirport
             | SceneryCategory::Library
-            | SceneryCategory::GlobalBase => {
+            | SceneryCategory::GlobalBase
+            | SceneryCategory::RegionalFluff
+            | SceneryCategory::Landmark => {
                 score += 70;
             }
             // Scenery types that SHOULD have tiles logic

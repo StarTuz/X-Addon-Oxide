@@ -1,6 +1,7 @@
 use iced::widget::{
-    button, checkbox, column, container, image, pick_list, progress_bar, responsive, row,
-    scrollable, slider, stack, svg, text, text_editor, text_input, tooltip, Column, Row,
+    button, checkbox, column, container, horizontal_space, image, pick_list, progress_bar,
+    responsive, row, scrollable, slider, stack, svg, text, text_editor, text_input, tooltip,
+    Column, Row,
 };
 use iced::window::icon;
 use iced::{Background, Border, Color, Element, Length, Padding, Renderer, Shadow, Task, Theme};
@@ -273,7 +274,6 @@ pub enum MapFilterType {
     OrthoMarkers,
     RegionalOverlays,
     FlightPaths,
-    Libraries,
     HealthScores,
 }
 
@@ -332,8 +332,6 @@ pub struct MapFilters {
     #[serde(default)]
     pub show_flight_paths: bool,
     #[serde(default)]
-    pub show_libraries: bool,
-    #[serde(default)]
     pub show_health_scores: bool,
 }
 
@@ -347,7 +345,6 @@ impl Default for MapFilters {
             show_ortho_markers: false,
             show_regional_overlays: false,
             show_flight_paths: true,
-            show_libraries: false,
             show_health_scores: true,
         }
     }
@@ -1063,9 +1060,6 @@ impl App {
                     }
                     MapFilterType::FlightPaths => {
                         self.map_filters.show_flight_paths = !self.map_filters.show_flight_paths;
-                    }
-                    MapFilterType::Libraries => {
-                        self.map_filters.show_libraries = !self.map_filters.show_libraries;
                     }
                     MapFilterType::HealthScores => {
                         self.map_filters.show_health_scores = !self.map_filters.show_health_scores;
@@ -3539,9 +3533,10 @@ impl App {
                     .style(|_, _| svg::Style {
                         color: Some(Color::WHITE),
                     }),
-                text("Refresh").size(12)
+                text("Refresh").size(12),
+                horizontal_space().width(22)
             ]
-            .spacing(6)
+            .spacing(8)
             .align_y(iced::Alignment::Center),
         )
         .on_press(Message::Refresh)
@@ -3571,9 +3566,10 @@ impl App {
                         .style(|_, _| svg::Style {
                             color: Some(Color::WHITE),
                         }),
-                    text("Settings").size(12)
+                    text("Settings").size(12),
+                    horizontal_space().width(22)
                 ]
-                .spacing(6)
+                .spacing(8)
                 .align_y(iced::Alignment::Center),
             )
             .on_press(Message::SwitchTab(Tab::Settings))
@@ -4829,11 +4825,6 @@ impl App {
                             self.map_filters.show_flight_paths
                         ),
                         filter_row(
-                             "Scenery Libraries",
-                             MapFilterType::Libraries,
-                             self.map_filters.show_libraries
-                         ),
-                         filter_row(
                              "Scenery Health Scores",
                              MapFilterType::HealthScores,
                              self.map_filters.show_health_scores

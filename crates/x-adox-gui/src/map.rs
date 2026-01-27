@@ -190,7 +190,7 @@ impl<'a> MapView<'a> {
         } else if is_ortho {
             self.filters.show_ortho_markers
         } else if is_library {
-            self.filters.show_libraries
+            false
         } else if is_regional {
             // Regional packs (SimHeaven, Orbx, AO, Low-Impact) always follow the Regional filter
             self.filters.show_regional_overlays
