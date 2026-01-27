@@ -6812,10 +6812,16 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
     use std::fs::File;
     use std::io::Write;
 
+    let initial_location = directories::UserDirs::new()
+        .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
+        .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
     let path = FileDialog::new()
         .add_filter("CSV File", &["csv"])
         .add_filter("Text File", &["txt"])
-        .set_filename("x_plane_missing_resources")
+        .set_filename("x_plane_missing_resources.csv")
+        .set_location(&initial_location)
         .show_save_single_file()
         .map_err(|e: native_dialog::Error| e.to_string())?
         .ok_or("Export cancelled".to_string())?;
