@@ -23,6 +23,10 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ## Feature Highlights
 
+- **New for 2.3.0**:
+  - **Refined Log Analysis Export**: Export missing resource reports as CSV or TXT with selective checkboxes and a 'Select All / Deselect All' toggle.
+  - **Strict Scenery Adherence**: The app now strictly follows your `scenery_packs.ini` and stops auto-adding unmanaged folders found on disk, giving you total control over your library.
+  - **7z Archive Support**: Install Aircraft, Scenery, and Plugins directly from `.7z` files in addition to `.zip`.
 - **New for 2.2.6**:
   - **Scenery Health Scores**: Diagnostic engine that analyzes metadata and folder structure to ensure your scenery is healthy. High scores (90-100%) indicate stable installations.
   - **Premium Loading Experience**: A completely overhauled splash screen with smooth pulsing animations and shimmer effects.

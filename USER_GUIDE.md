@@ -44,6 +44,7 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 - **Interactive Sorting**: Hover over a scenery card to reveal **Move Up** and **Move Down** arrows. Manual reorders instantly create a **Pin** (Red Icon) which the AI will honor forever.
 - **Smart Pinning**: Any manual adjustment "teaches" the AI your preferred order. Pinned items are highlighted with a red glow and icon.
 - **Clear All Pins**: If you want to undo your manual reorders, use the button at the top of the Scenery list to revert to the default AI logic.
+- **Strict Discovery**: X-Addon-Oxide strictly respects your `scenery_packs.ini`. If a folder exists in `Custom Scenery` but is NOT in your INI file, the app will NOT auto-add it to your library. This gives you absolute control—if you want a new pack to show up, either run X-Plane once to let it auto-generate the entry, or manually add it to the INI.
 - **Stable Sort**: When using "Smart Sort", the application preserves your manual reorders (pins) for items with tied scores. This ensures that your manual efforts (Pinning) are respected 1:1 and never overwritten by alphabetical tie-breaking.
 - **Scenery Health Diagnostics**: A diagnostic score is calculated for every pack based on its contents and metadata.
   - **Scores**: Range from **EXCELLENT (90-100%)** to **CRITICAL (<40%)**.
@@ -172,9 +173,20 @@ Mentioning disabling, unchecking any plugin will disable it (X-Plane-12/Resource
 
 <img width="1027" height="769" alt="image" src="https://github.com/user-attachments/assets/93b7f7d9-7f8f-4b85-b33f-c8b32bc99c78" />
 
-### Issues
+### ⚠️ Issues
 
-If X-Plane complains about missing scenery objects a scane will provide you with the list, so you can track/install them outside of the Sim
+If X-Plane complains about missing scenery objects, a scan will provide you with a detailed report.
+
+- **Selective Export**: Use the checkboxes next to each missing resource to select only the ones you care about.
+- **Select All / Deselect All**: Use the master checkbox to quickly toggle your entire list. Clicking it when everything is already selected will clear the selection.
+- **Export Report**: Export your selected issues to a **CSV** (for spreadsheets) or **TXT** (for readability) file. The button will show a count of your current selection (e.g., "Export Report (16)").
+- **Re-scan Log**: Use this to refresh the report after you've installed missing libraries.
+
+### V2.3.0 -> Refined Export & Strict Scenery
+
+- **Selective Log Export**: Choose exactly which missing resources to export with checkboxes and a 'Select All' toggle.
+- **Strict Scenery Discovery**: Total control over your library—the app will never auto-add folders found on disk that aren't in your `scenery_packs.ini`.
+- **7z Support**: Directly install addons from `.7z` archives.
 
 ### V2.2.6 -> Added a Utlities section and some UI enhancements
 
