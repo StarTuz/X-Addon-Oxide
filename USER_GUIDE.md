@@ -182,7 +182,7 @@ If X-Plane complains about missing scenery objects, a scan will provide you with
 - **Export Report**: Export your selected issues to a **CSV** (for spreadsheets) or **TXT** (for readability) file. The button will show a count of your current selection (e.g., "Export Report (16)").
 - **Re-scan Log**: Use this to refresh the report after you've installed missing libraries.
 
-### V2.3.0 -> Refined Export & Strict Scenery
+### V2.3.1 -> Refined Export & Strict Scenery
 
 - **Selective Log Export**: Choose exactly which missing resources to export with checkboxes and a 'Select All' toggle.
 - **Strict Scenery Discovery**: Total control over your library—the app will never auto-add folders found on disk that aren't in your `scenery_packs.ini`.
