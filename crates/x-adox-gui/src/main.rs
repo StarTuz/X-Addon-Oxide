@@ -777,6 +777,12 @@ impl App {
                 match result {
                     Ok(packs) => {
                         self.packs = packs;
+
+                        // Auto-run validation whenever scenery is loaded
+                        self.validation_report = Some(
+                            x_adox_core::scenery::validator::SceneryValidator::validate(&self.packs),
+                        );
+
                         if !self.loading_state.is_loading {
                             self.status = format!("{} scenery packs", self.packs.len());
 
@@ -1641,7 +1647,7 @@ impl App {
                 let packs_to_save = self.packs.clone();
                 let root = self.xplane_root.clone();
                 self.simulated_packs = None;
-                self.validation_report = None;
+                // validation_report is NOT cleared here; it will be refreshed by the subsequent reload
                 self.status = "Applying changes...".to_string();
                 let model = self.heuristics_model.clone();
                 Task::perform(
@@ -1651,7 +1657,7 @@ impl App {
             }
             Message::CancelSort => {
                 self.simulated_packs = None;
-                self.validation_report = None;
+                // validation_report is NOT cleared here; preserves current state
                 self.status = "Sort cancelled.".to_string();
                 Task::none()
             }
