@@ -1577,7 +1577,7 @@ impl App {
                 self.selected_csl = Some(path);
                 Task::none()
             }
-            Message::InstallCSL => Task::perform(pick_zip("Select CSL ZIP"), |p| {
+            Message::InstallCSL => Task::perform(pick_archive("CSL"), |p| {
                 Message::InstallPicked(Tab::CSLs, p)
             }),
             Message::TogglePack(name) => {
@@ -2145,13 +2145,13 @@ impl App {
                 self.selected_plugin = Some(path);
                 Task::none()
             }
-            Message::InstallScenery => Task::perform(pick_zip("Scenery"), |p| {
+            Message::InstallScenery => Task::perform(pick_archive("Scenery"), |p| {
                 Message::InstallPicked(Tab::Scenery, p)
             }),
-            Message::InstallAircraft => Task::perform(pick_zip("Aircraft"), |p| {
+            Message::InstallAircraft => Task::perform(pick_archive("Aircraft"), |p| {
                 Message::InstallPicked(Tab::Aircraft, p)
             }),
-            Message::InstallPlugin => Task::perform(pick_zip("Plugin"), |p| {
+            Message::InstallPlugin => Task::perform(pick_archive("Plugin"), |p| {
                 Message::InstallPicked(Tab::Plugins, p)
             }),
             Message::InstallPicked(tab, path_opt) => {
@@ -6328,7 +6328,7 @@ async fn install_addon(
     on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let res = tokio::task::spawn_blocking(move || {
-        extract_zip_task(root, zip_path, tab, dest_override, model, context, on_progress)
+        extract_archive_task(root, zip_path, tab, dest_override, model, context, on_progress)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -6415,6 +6415,83 @@ fn extract_zip_task(
     }
 
     Ok(top_folder)
+}
+
+fn extract_7z_task(
+    root: Option<PathBuf>,
+    archive_path: PathBuf,
+    tab: Tab,
+    dest_override: Option<PathBuf>,
+    model: BitNetModel,
+    context: x_adox_bitnet::PredictContext,
+    mut on_progress: impl FnMut(f32) + Send + 'static,
+) -> Result<String, String> {
+    let root = root.ok_or("X-Plane root not found".to_string())?;
+
+    let dest_dir = if let Some(dest) = dest_override {
+        dest
+    } else {
+        match tab {
+            Tab::Aircraft => root.join("Aircraft"),
+            Tab::Plugins => root.join("Resources").join("plugins"),
+            Tab::Scenery => root.join("Custom Scenery"),
+            Tab::CSLs => root.join("Resources").join("plugins"),
+            _ => return Err("Unsupported install tab".to_string()),
+        }
+    };
+
+    // Signal start of extraction
+    on_progress(5.0);
+
+    // Extract using sevenz-rust2
+    sevenz_rust2::decompress_file(&archive_path, &dest_dir)
+        .map_err(|e| format!("Failed to extract 7z: {}", e))?;
+
+    // Signal extraction complete
+    on_progress(90.0);
+
+    // Determine the top-level folder name from the archive filename
+    let top_folder = archive_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    // Special handling for Scenery: add to scenery_packs.ini
+    if matches!(tab, Tab::Scenery) {
+        let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+        let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
+        sm.load().map_err(|e| e.to_string())?;
+
+        // Auto-sort every time a new pack is installed
+        sm.sort(Some(&model), &context);
+        sm.save(Some(&model)).map_err(|e| e.to_string())?;
+    }
+
+    on_progress(100.0);
+    Ok(top_folder)
+}
+
+fn extract_archive_task(
+    root: Option<PathBuf>,
+    archive_path: PathBuf,
+    tab: Tab,
+    dest_override: Option<PathBuf>,
+    model: BitNetModel,
+    context: x_adox_bitnet::PredictContext,
+    on_progress: impl FnMut(f32) + Send + 'static,
+) -> Result<String, String> {
+    let extension = archive_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    match extension.as_str() {
+        "zip" => extract_zip_task(root, archive_path, tab, dest_override, model, context, on_progress),
+        "7z" => extract_7z_task(root, archive_path, tab, dest_override, model, context, on_progress),
+        _ => Err(format!("Unsupported archive format: .{}", extension)),
+    }
 }
 
 fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), String> {
@@ -6539,11 +6616,11 @@ async fn load_airports_data(
     Ok(Arc::new(map))
 }
 
-async fn pick_zip(label: &str) -> Option<PathBuf> {
+async fn pick_archive(label: &str) -> Option<PathBuf> {
     use native_dialog::FileDialog;
     FileDialog::new()
-        .set_title(&format!("Select {} Package (.zip)", label))
-        .add_filter("ZIP Archive", &["zip"])
+        .set_title(&format!("Select {} Package (.zip, .7z)", label))
+        .add_filter("Archives", &["zip", "7z"])
         .show_open_single_file()
         .ok()
         .flatten()
