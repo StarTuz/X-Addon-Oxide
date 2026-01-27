@@ -342,9 +342,21 @@ impl SceneryManager {
                 || disc.path.to_string_lossy().ends_with("Global Airports");
 
             let existing_idx = packs.iter().position(|p| {
+                // Exact path match
                 if p.path == disc.path {
                     return true;
                 }
+                // Normalized name match (handles whitespace/case variations)
+                let normalize = |s: &str| {
+                    s.to_lowercase()
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect::<String>()
+                };
+                if normalize(&p.name) == normalize(&disc.name) {
+                    return true;
+                }
+                // Global Airports virtual tag match
                 if is_global_airports_folder && p.name == "*GLOBAL_AIRPORTS*" {
                     return true;
                 }
@@ -352,7 +364,16 @@ impl SceneryManager {
             });
 
             if let Some(idx) = existing_idx {
-                // If it's the virtual tag, update its path to the physical one so discovery works.
+                // Sync path from filesystem to handle whitespace/case variations
+                // This keeps the INI order but ensures the path is correct for scanning
+                if packs[idx].path != disc.path {
+                    println!(
+                        "[SceneryManager] Syncing path for '{}': {:?} -> {:?}",
+                        packs[idx].name, packs[idx].path, disc.path
+                    );
+                    packs[idx].path = disc.path.clone();
+                }
+                // Update name if Global Airports virtual tag
                 if packs[idx].name == "*GLOBAL_AIRPORTS*" && is_global_airports_folder {
                     packs[idx].path = disc.path;
                 }

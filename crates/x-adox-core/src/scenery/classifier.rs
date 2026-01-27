@@ -63,12 +63,16 @@ impl Classifier {
         }
 
         // 7. Regional Fluff (Level 6 - Score 80)
+        // Low-impact terrain enhancements that don't require overlay priority
         if name_lower.contains("forests")
             || name_lower.contains("network")
             || name_lower.contains("birds")
             || name_lower.contains("seagulls")
             || name_lower.contains("sealanes")
             || name_lower.contains("global_forests_v2")
+            || name_lower.contains("vfr-objects")
+            || name_lower.contains("vfr_objects")
+            || name_lower.contains("shoreline")
         {
             return SceneryCategory::RegionalFluff;
         }

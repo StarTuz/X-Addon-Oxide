@@ -148,12 +148,14 @@ impl SceneryValidator {
 
         if let (Some(m_idx), Some(o_idx)) = (first_mesh_idx, last_overlay_idx) {
             if m_idx < o_idx {
+                // Debug: Log which overlay is at the end
+
                 // If a mesh/ortho is above an overlay
                 report.issues.push(ValidationIssue {
                     pack_name: packs[m_idx].name.clone(),
                     severity: ValidationSeverity::Warning,
                     issue_type: "mesh_above_overlay".to_string(),
-                    message: "Mesh/Ortho pack is above an Overlay/Airport".to_string(),
+                    message: format!("Mesh/Ortho pack is above '{}' ({})", packs[o_idx].name, packs[o_idx].category.short_code()),
                     fix_suggestion: "Move Mesh and Ortho packs to the bottom of the list.".to_string(),
                     details: "X-Plane draws scenery from bottom to top. Terrain meshes and orthophotos should be at the bottom.".to_string(),
                 });

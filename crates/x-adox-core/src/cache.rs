@@ -15,7 +15,7 @@ pub struct CacheEntry {
     pub tiles: Vec<(i32, i32)>,
 }
 
-const CURRENT_CACHE_VERSION: u32 = 3;
+const CURRENT_CACHE_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveryCache {
