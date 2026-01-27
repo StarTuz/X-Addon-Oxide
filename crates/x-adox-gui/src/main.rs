@@ -185,6 +185,7 @@ enum Message {
     // Issues
     LogIssuesLoaded(Result<Arc<Vec<x_adox_core::LogIssue>>, String>),
     CheckLogIssues,
+    ExportLogIssues,
 
     // Sticky Sort (Phase 3)
     OpenPriorityEditor(String),
@@ -247,6 +248,7 @@ enum Message {
     AddCompanionApp,
     // Utilities - Companion Apps
     ToggleCompanionAutoLaunch(usize),
+    StatusChanged(String),
     RemoveCompanionApp(usize),
     ToggleMapFilterSettings,
     ToggleMapFilter(MapFilterType),
@@ -770,6 +772,20 @@ impl App {
                 Task::perform(
                     async move { load_log_issues(root) },
                     Message::LogIssuesLoaded,
+                )
+            }
+            Message::ExportLogIssues => {
+                let issues = self.log_issues.clone();
+                if issues.is_empty() {
+                    self.status = "No log issues to export".to_string();
+                    return Task::none();
+                }
+                Task::perform(
+                    async move { export_log_issues_task(issues) },
+                    |result| match result {
+                        Ok(path) => Message::StatusChanged(format!("Report exported to {}", path.display())),
+                        Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
+                    },
                 )
             }
             Message::SceneryLoaded(result) => {
@@ -1617,6 +1633,10 @@ impl App {
                     Task::none()
                 }
             },
+            Message::StatusChanged(status) => {
+                self.status = status;
+                Task::none()
+            }
             Message::SmartSort => {
                 let root = self.xplane_root.clone();
                 let context = x_adox_bitnet::PredictContext {
@@ -4948,9 +4968,15 @@ impl App {
                 ))
                 .color(style::palette::ACCENT_RED),
                 issues_list,
-                button("Re-scan Log")
-                    .on_press(Message::CheckLogIssues)
-                    .style(style::button_secondary)
+                row![
+                    button("Re-scan Log")
+                        .on_press(Message::CheckLogIssues)
+                        .style(style::button_secondary),
+                    button("Export Report")
+                        .on_press(Message::ExportLogIssues)
+                        .style(style::button_primary),
+                ]
+                .spacing(10)
             ]
             .spacing(10)
             .into()
@@ -6728,4 +6754,51 @@ async fn apply_profile_task(root: Option<PathBuf>, profile: Profile) -> Result<(
     }
 
     Ok(())
+}
+
+fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<PathBuf, String> {
+    use native_dialog::FileDialog;
+    use std::fs::File;
+    use std::io::Write;
+
+    let path = FileDialog::new()
+        .add_filter("CSV File", &["csv"])
+        .add_filter("Text File", &["txt"])
+        .set_filename("x_plane_missing_resources")
+        .show_save_single_file()
+        .map_err(|e: native_dialog::Error| e.to_string())?
+        .ok_or("Export cancelled".to_string())?;
+
+    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+
+    let mut content = String::new();
+    if is_csv {
+        content.push_str("Resource Path,Referenced From,Potential Library\n");
+        for issue in issues.iter() {
+            let lib = issue.potential_library.as_deref().unwrap_or("None");
+            // Simple CSV escaping: wrap in quotes and escape internal quotes
+            let res = issue.resource_path.replace('"', "\"\"");
+            let pkg = issue.package_path.replace('"', "\"\"");
+            let lib_esc = lib.replace('"', "\"\"");
+            content.push_str(&format!("\"{}\",\"{}\",\"{}\"\n", res, pkg, lib_esc));
+        }
+    } else {
+        content.push_str("X-Plane Missing Resources Report\n");
+        content.push_str("==============================\n\n");
+        for issue in issues.iter() {
+            content.push_str(&format!("Missing Resource: {}\n", issue.resource_path));
+            content.push_str(&format!("Referenced from:  {}\n", issue.package_path));
+            if let Some(lib) = &issue.potential_library {
+                content.push_str(&format!("Potential Library: {}\n", lib));
+            }
+            content.push_str("------------------------------\n");
+        }
+        content.push_str(&format!("\nTotal Issues: {}\n", issues.len()));
+    }
+
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(path)
 }
