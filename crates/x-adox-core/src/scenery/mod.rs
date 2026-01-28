@@ -879,7 +879,7 @@ fn is_scenery_root(path: &Path) -> bool {
     false
 }
 
-fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
+pub fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
     let mut tiles = Vec::new();
     let nav_data_dirs = ["Earth nav data", "Mars nav data"];
     let pack_path_str = pack_path.to_string_lossy().to_lowercase();
@@ -943,8 +943,12 @@ fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
 }
 
 fn parse_tile_name(name: &str) -> Option<(i32, i32)> {
-    // Strips .dsf if present
-    let name = name.strip_suffix(".dsf").unwrap_or(name);
+    // Strips .dsf case-insensitively
+    let name = if name.to_lowercase().ends_with(".dsf") {
+        &name[..name.len() - 4]
+    } else {
+        name
+    };
 
     // Format: +40-120 or -10+030
     if name.len() < 6 {
@@ -960,7 +964,7 @@ fn parse_tile_name(name: &str) -> Option<(i32, i32)> {
     Some((lat, lon))
 }
 
-fn discover_airports_in_pack(pack_path: &Path) -> Vec<Airport> {
+pub fn discover_airports_in_pack(pack_path: &Path) -> Vec<Airport> {
     let mut all_airports = Vec::new();
     let roots = find_pack_roots(pack_path);
 

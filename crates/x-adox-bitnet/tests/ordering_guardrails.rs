@@ -77,6 +77,11 @@ fn test_critical_scenery_ordering_pairs() {
             "Orbx_D_GB_North_TrueEarth_Orthos",
             "Manufacturer Overlays must be above Orbx Mesh/Ortho",
         ),
+        (
+            "Riga Latvija",
+            "simHeaven_X-World_Europe",
+            "Regional enhancements (Riga) must be above Generic Overlays (SimHeaven)",
+        ),
     ];
 
     let dummy_path = Path::new("/dummy/path");

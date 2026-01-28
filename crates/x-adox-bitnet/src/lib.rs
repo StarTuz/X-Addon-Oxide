@@ -131,6 +131,20 @@ impl Default for HeuristicsConfig {
                     is_exclusion: false,
                 },
                 Rule {
+                    name: "City Enhancements".to_string(),
+                    keywords: vec![
+                        "riga".to_string(),
+                        "london".to_string(),
+                        "paris".to_string(),
+                        "berlin".to_string(),
+                        "new york".to_string(),
+                        "enhanced".to_string(),
+                        "detailed".to_string(),
+                    ],
+                    score: 25,
+                    is_exclusion: false,
+                },
+                Rule {
                     name: "Landmarks".to_string(),
                     keywords: vec!["landmarks".to_string(), "landmark".to_string()],
                     score: 25,
