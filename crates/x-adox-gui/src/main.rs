@@ -11,7 +11,7 @@ use x_adox_bitnet::BitNetModel;
 use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
 use x_adox_core::management::ModManager;
 use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};
-use x_adox_core::scenery::{SceneryCategory, SceneryManager, SceneryPack, SceneryPackType};
+use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType};
 use x_adox_core::XPlaneManager;
 
 mod map;
@@ -3881,6 +3881,9 @@ impl App {
                         row![]
                     },
                     iced::widget::horizontal_space(),
+                    text(format!("v{}", env!("CARGO_PKG_VERSION")))
+                        .size(12)
+                        .color(style::palette::TEXT_SECONDARY),
                 ]
                 .spacing(10)
                 .align_y(iced::Alignment::Center),
