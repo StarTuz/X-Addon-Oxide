@@ -161,6 +161,7 @@ enum Message {
     ImportHeuristics,
     ExportHeuristics,
     ResetHeuristics,
+    ClearOverrides,
     HeuristicsImported(String),
     SetRegionFocus(Option<String>),
 
@@ -2584,6 +2585,18 @@ impl App {
                 }
                 Task::none()
             }
+            Message::ClearOverrides => {
+                if let Err(e) = self.heuristics_model.clear_overrides() {
+                    self.heuristics_error = Some(format!("Clear overrides failed: {}", e));
+                } else {
+                    let json = serde_json::to_string_pretty(self.heuristics_model.config.as_ref())
+                        .unwrap_or_default();
+                    self.heuristics_json = text_editor::Content::with_text(&json);
+                    self.heuristics_error = None;
+                    self.status = "AutoFix overrides cleared".to_string();
+                }
+                Task::none()
+            }
             Message::ImportHeuristics => Task::perform(
                 async {
                     rfd::AsyncFileDialog::new()
@@ -4873,6 +4886,10 @@ impl App {
                 .padding([10, 20]),
             button(text("Reset to Defaults").size(14))
                 .on_press(Message::ResetHeuristics)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+            button(text("Clear Overrides").size(14))
+                .on_press(Message::ClearOverrides)
                 .style(style::button_secondary)
                 .padding([10, 20]),
         ]

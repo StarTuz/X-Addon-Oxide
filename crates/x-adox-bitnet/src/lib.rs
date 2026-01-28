@@ -31,7 +31,14 @@ pub struct HeuristicsConfig {
     pub overrides: std::collections::BTreeMap<String, u8>,
     #[serde(default)]
     pub aircraft_overrides: std::collections::BTreeMap<String, Vec<String>>,
+    /// Schema version for migration. Increment when breaking changes are made.
+    #[serde(default)]
+    pub schema_version: u32,
 }
+
+/// Current schema version. Increment this when making breaking changes to heuristics.
+/// When a user's file has a lower version, their `overrides` will be cleared on load.
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 impl Default for HeuristicsConfig {
     fn default() -> Self {
@@ -168,6 +175,7 @@ impl Default for HeuristicsConfig {
             fallback_score: 40,
             overrides: std::collections::BTreeMap::new(),
             aircraft_overrides: std::collections::BTreeMap::new(),
+            schema_version: CURRENT_SCHEMA_VERSION,
         }
     }
 }
@@ -216,7 +224,26 @@ impl BitNetModel {
     fn load_config(path: &Path) -> Result<HeuristicsConfig> {
         if path.exists() {
             let content = fs::read_to_string(path)?;
-            let config = serde_json::from_str(&content)?;
+            let mut config: HeuristicsConfig = serde_json::from_str(&content)?;
+
+            // Migration: If schema version is outdated, clear overrides (they may be from buggy AutoFix)
+            if config.schema_version < CURRENT_SCHEMA_VERSION {
+                println!(
+                    "[BitNet] Migrating heuristics.json from schema v{} to v{}. Clearing overrides.",
+                    config.schema_version, CURRENT_SCHEMA_VERSION
+                );
+                config.overrides.clear();
+                config.schema_version = CURRENT_SCHEMA_VERSION;
+                // Save the migrated config
+                if let Some(parent) = path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::write(
+                    path,
+                    serde_json::to_string_pretty(&config).unwrap_or_default(),
+                );
+            }
+
             Ok(config)
         } else {
             Ok(HeuristicsConfig::default())
@@ -245,6 +272,13 @@ impl BitNetModel {
         let content = serde_json::to_string_pretty(self.config.as_ref())?;
         fs::write(&self.config_path, content)?;
         Ok(())
+    }
+
+    /// Clears all scenery override rules (user can call from UI)
+    pub fn clear_overrides(&mut self) -> Result<()> {
+        let config = Arc::make_mut(&mut self.config);
+        config.overrides.clear();
+        self.save()
     }
 
     pub fn reset_defaults(&mut self) -> Result<()> {
