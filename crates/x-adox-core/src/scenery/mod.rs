@@ -114,6 +114,46 @@ pub struct SceneryPack {
 }
 
 impl SceneryPack {
+    pub fn get_centroid(&self) -> Option<(f64, f64)> {
+        // Priority 1: Average of airports
+        if !self.airports.is_empty() {
+            let mut lat_sum = 0.0;
+            let mut lon_sum = 0.0;
+            let mut count = 0;
+
+            for apt in &self.airports {
+                if let (Some(lat), Some(lon)) = (apt.lat, apt.lon) {
+                    lat_sum += lat;
+                    lon_sum += lon;
+                    count += 1;
+                }
+            }
+
+            if count > 0 {
+                return Some((lat_sum / count as f64, lon_sum / count as f64));
+            }
+        }
+
+        // Priority 2: Average of tiles
+        if !self.tiles.is_empty() {
+            let mut lat_sum = 0.0;
+            let mut lon_sum = 0.0;
+
+            for &(lat, lon) in &self.tiles {
+                // Tiles are 1x1 degree, so center is +0.5
+                lat_sum += lat as f64 + 0.5;
+                lon_sum += lon as f64 + 0.5;
+            }
+
+            return Some((
+                lat_sum / self.tiles.len() as f64,
+                lon_sum / self.tiles.len() as f64,
+            ));
+        }
+
+        None
+    }
+
     pub fn calculate_health_score(&self) -> u8 {
         let mut score: u8 = 0;
 

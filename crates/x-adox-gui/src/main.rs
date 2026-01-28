@@ -146,6 +146,7 @@ enum Message {
         new_center: (f64, f64),
         new_zoom: f64,
     },
+    FocusMap(f64, f64, f64), // (lat, lon, zoom)
     InstallProgress(f32),
     SmartSort,
 
@@ -523,6 +524,7 @@ struct App {
     logbook_selection: std::collections::HashSet<usize>,
     show_logbook_bulk_delete_confirm: bool,
     selected_log_issues: std::collections::HashSet<usize>,
+    last_scenery_click: Option<(String, std::time::Instant)>,
 }
 
 impl App {
@@ -681,6 +683,7 @@ impl App {
             selected_log_issues: std::collections::HashSet::new(),
             smart_groups: std::collections::BTreeMap::new(),
             smart_model_groups: std::collections::BTreeMap::new(),
+            last_scenery_click: None,
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -784,6 +787,12 @@ impl App {
                 self.map_center = new_center;
                 self.map_zoom = new_zoom;
                 self.map_initialized = true; // Mark as initialized on first manual interaction
+                return Task::none();
+            }
+            Message::FocusMap(lat, lon, zoom) => {
+                self.map_center = (lat, lon);
+                self.map_zoom = zoom;
+                self.map_initialized = true;
                 return Task::none();
             }
             Message::InstallProgress(p) => {
@@ -2219,16 +2228,44 @@ impl App {
                 Task::none()
             }
             Message::SelectScenery(name) => {
+                let now = std::time::Instant::now();
+                let is_double_click = self
+                    .last_scenery_click
+                    .as_ref()
+                    .map(|(last_name, last_time)| {
+                        last_name == &name && now.duration_since(*last_time).as_millis() < 300
+                    })
+                    .unwrap_or(false);
+
+                self.last_scenery_click = Some((name.clone(), now));
                 self.selected_scenery = Some(name.clone());
+
+                let mut tasks = Vec::new();
+
+                // 1. Scroll to the item in the list
                 if let Some(index) = self.packs.iter().position(|p| p.name == name) {
-                    // Fixed card height 75.0 + 10.0 spacing = 85.0 stride
                     let offset = index as f32 * 85.0;
-                    return scrollable::scroll_to(
+                    tasks.push(scrollable::scroll_to(
                         self.scenery_scroll_id.clone(),
                         scrollable::AbsoluteOffset { x: 0.0, y: offset },
-                    );
+                    ));
+
+                    // 2. If double click, focus the map
+                    if is_double_click {
+                        if let Some(pack) = self.packs.get(index) {
+                            if let Some((lat, lon)) = pack.get_centroid() {
+                                // Default zoom level for focus
+                                tasks.push(Task::done(Message::FocusMap(lat, lon, 10.0)));
+                            }
+                        }
+                    }
                 }
-                Task::none()
+
+                if tasks.is_empty() {
+                    Task::none()
+                } else {
+                    Task::batch(tasks)
+                }
             }
             Message::HoverScenery(name_opt) => {
                 if self.hovered_scenery != name_opt {
