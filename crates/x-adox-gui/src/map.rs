@@ -977,55 +977,6 @@ where
                         }
                     }
 
-                    // 1. PRIORITIZE SELECTED PACK (Stickiness)
-                    // If the user has a pack selected, check its hit-box first.
-                    // SKIP for Global Airports: too many items to iterate on every mouse move.
-                    if let Some(selected_name) = self.selected_scenery {
-                        if let Some(pack) = self.packs.iter().find(|p| &p.name == selected_name) {
-                            let is_global = pack.category
-                                == x_adox_core::scenery::SceneryCategory::GlobalAirport;
-
-                            // Only apply stickiness to non-massive packs
-                            if !is_global {
-                                let mut hit = false;
-                                if pack.airports.is_empty() {
-                                    for &(lat, lon) in &pack.tiles {
-                                        if (lat as f64 + 0.5 - coords.0).abs() < 0.5
-                                            && (lon as f64 + 0.5 - coords.1).abs() < 0.5
-                                        {
-                                            hit = true;
-                                            break;
-                                        }
-                                    }
-                                } else {
-                                    // Limit airport check to first 100 for performance
-                                    for airport in pack.airports.iter().take(100) {
-                                        if let (Some(lat), Some(lon), Some((wx, wy))) =
-                                            (airport.lat, airport.lon, mouse_z0)
-                                        {
-                                            let tx = lon_to_x(lon as f64, 0.0);
-                                            let ty = lat_to_y(lat as f64, 0.0);
-                                            let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
-                                            if dist_sq < (10.0 / scale).powi(2) {
-                                                hit = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if hit {
-                                    if self.hovered_scenery != Some(&pack.name) {
-                                        shell.publish(Message::HoverScenery(Some(
-                                            pack.name.clone(),
-                                        )));
-                                    }
-                                    return advanced::graphics::core::event::Status::Captured;
-                                }
-                            }
-                        }
-                    }
-
                     // 2. DEFAULT HOVER (Priority-Based, Two-Pass)
                     // PASS 1: Check AIRPORTS first across all packs (airports always take priority)
                     for pack in self.packs {
@@ -1068,6 +1019,54 @@ where
                                     }
 
                                     // Always emit pack hover for highlights
+                                    if self.hovered_scenery != Some(&pack.name) {
+                                        shell.publish(Message::HoverScenery(Some(
+                                            pack.name.clone(),
+                                        )));
+                                    }
+                                    return advanced::graphics::core::event::Status::Captured;
+                                }
+                            }
+                        }
+                    }
+
+                    // 1. PRIORITIZE SELECTED PACK (Stickiness)
+                    // If the user has a pack selected, check its hit-box second.
+                    if let Some(selected_name) = self.selected_scenery {
+                        if let Some(pack) = self.packs.iter().find(|p| &p.name == selected_name) {
+                            let is_global = pack.category
+                                == x_adox_core::scenery::SceneryCategory::GlobalAirport;
+
+                            // Only apply stickiness to non-massive packs
+                            if !is_global {
+                                let mut hit = false;
+                                if pack.airports.is_empty() {
+                                    for &(lat, lon) in &pack.tiles {
+                                        if (lat as f64 + 0.5 - coords.0).abs() < 0.5
+                                            && (lon as f64 + 0.5 - coords.1).abs() < 0.5
+                                        {
+                                            hit = true;
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    // Limit airport check to first 100 for performance
+                                    for airport in pack.airports.iter().take(100) {
+                                        if let (Some(lat), Some(lon), Some((wx, wy))) =
+                                            (airport.lat, airport.lon, mouse_z0)
+                                        {
+                                            let tx = lon_to_x(lon as f64, 0.0);
+                                            let ty = lat_to_y(lat as f64, 0.0);
+                                            let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
+                                            if dist_sq < (10.0 / scale).powi(2) {
+                                                hit = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if hit {
                                     if self.hovered_scenery != Some(&pack.name) {
                                         shell.publish(Message::HoverScenery(Some(
                                             pack.name.clone(),
