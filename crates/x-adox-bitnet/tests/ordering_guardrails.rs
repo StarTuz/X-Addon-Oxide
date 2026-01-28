@@ -82,6 +82,11 @@ fn test_critical_scenery_ordering_pairs() {
             "simHeaven_X-World_Europe",
             "Regional enhancements (Riga) must be above Generic Overlays (SimHeaven)",
         ),
+        (
+            "Orbx_A_EGLC_LondonCity",
+            "Global Airports",
+            "Orbx EGLC must be Top Priority (Airports) above Global (Precedence Bug Check)",
+        ),
     ];
 
     let dummy_path = Path::new("/dummy/path");

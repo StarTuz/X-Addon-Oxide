@@ -38,98 +38,38 @@ pub struct HeuristicsConfig {
 
 /// Current schema version. Increment this when making breaking changes to heuristics.
 /// When a user's file has a lower version, their `overrides` will be cleared on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 impl Default for HeuristicsConfig {
     fn default() -> Self {
         Self {
             rules: vec![
+                // --- Tier 1: Top Priority Airports & Manufactuers ---
+                Rule {
+                    name: "Orbx A Custom".to_string(),
+                    keywords: vec!["orbx_a".to_string()],
+                    score: 12, // Top priority
+                    is_exclusion: false,
+                },
                 Rule {
                     name: "Major Airports (PANC, etc.)".to_string(),
                     keywords: vec!["panc".to_string(), "anchorage".to_string()],
                     score: 10,
                     is_exclusion: false,
                 },
+                // --- Tier 2: The Pivot (Global Airports) ---
+                // MUST check this before generic city/landmark rules to ensure *GLOBAL_AIRPORTS* isn't misclassified
                 Rule {
-                    name: "SimHeaven / X-World".to_string(),
+                    name: "Global Airports".to_string(),
                     keywords: vec![
-                        "simheaven".to_string(),
-                        "x-world".to_string(),
-                        "w2xp".to_string(),
+                        "global airports".to_string(),
+                        "global_airports".to_string(),
+                        "x-plane landmarks".to_string(),
                     ],
-                    score: 30, // Below Global Airports (20)
+                    score: 20,
                     is_exclusion: false,
                 },
-                Rule {
-                    name: "AutoOrtho Overlays".to_string(),
-                    keywords: vec!["yautoortho".to_string(), "y_autoortho".to_string()],
-                    score: 48, // Between Libraries (45) and Ortho (50)
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "AutoOrtho Base".to_string(),
-                    keywords: vec!["z_autoortho".to_string(), "z_ao_".to_string()],
-                    score: 95,
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Exclusion Logic (Overlay/Mesh Tweaks)".to_string(),
-                    keywords: vec!["exclude".to_string(), "exclusion".to_string()],
-                    score: 61,
-                    is_exclusion: true,
-                },
-                Rule {
-                    name: "Mesh/Foundation".to_string(),
-                    keywords: vec!["mesh".to_string(), "zzz".to_string()],
-                    score: 60,
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Orbx B / TrueEarth Overlay".to_string(),
-                    keywords: vec!["orbx_b".to_string(), "trueearth_overlay".to_string()],
-                    score: 28, // Above SimHeaven (30) for UK dominance
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Orbx TrueEarth Orthos".to_string(),
-                    keywords: vec!["orbx_c_".to_string(), "orthos".to_string()],
-                    score: 58, // Match standard ortho priority
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Orbx D / Mesh".to_string(),
-                    keywords: vec!["orbx_d_".to_string(), "orbx_e_".to_string()],
-                    score: 60, // Standard Mesh priority
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Ortho/Photo".to_string(),
-                    keywords: vec![
-                        "ortho".to_string(),
-                        "photoscenery".to_string(),
-                        "yortho".to_string(),
-                        "zortho".to_string(),
-                    ],
-                    score: 58, // Below all overlays, above Mesh (60)
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Libraries".to_string(),
-                    keywords: vec![
-                        "library".to_string(),
-                        "lib".to_string(),
-                        "opensceneryx".to_string(),
-                        "r2_library".to_string(),
-                        "bs2001".to_string(),
-                        "3dnl".to_string(),
-                        "misterx".to_string(),
-                        "zdp".to_string(),
-                        "sam".to_string(),
-                        "assets".to_string(),
-                    ],
-                    score: 45,
-                    is_exclusion: false,
-                },
+                // --- Tier 3: High Priority Overlays (Cities, Landmarks) ---
                 Rule {
                     name: "City Enhancements".to_string(),
                     keywords: vec![
@@ -151,6 +91,30 @@ impl Default for HeuristicsConfig {
                     is_exclusion: false,
                 },
                 Rule {
+                    name: "Orbx B / TrueEarth Overlay".to_string(),
+                    keywords: vec!["orbx_b".to_string(), "trueearth_overlay".to_string()],
+                    score: 28, // Above SimHeaven (30) for UK dominance
+                    is_exclusion: false,
+                },
+                // --- Tier 4: Regional & World Scenery ---
+                Rule {
+                    name: "SimHeaven / X-World".to_string(),
+                    keywords: vec![
+                        "simheaven".to_string(),
+                        "x-world".to_string(),
+                        "w2xp".to_string(),
+                    ],
+                    score: 30,
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Global Forests".to_string(),
+                    keywords: vec!["global_forests".to_string()],
+                    score: 32, // Below SimHeaven (30)
+                    is_exclusion: false,
+                },
+                // --- Tier 5: Generic Libraries & Fluff ---
+                Rule {
                     name: "Birds".to_string(),
                     keywords: vec![
                         "birds".to_string(),
@@ -164,25 +128,69 @@ impl Default for HeuristicsConfig {
                     is_exclusion: false,
                 },
                 Rule {
-                    name: "Orbx A Custom".to_string(),
-                    keywords: vec!["orbx_a".to_string()],
-                    score: 12, // Top priority
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Global Forests".to_string(),
-                    keywords: vec!["global_forests".to_string()],
-                    score: 32, // Below SimHeaven (30)
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Global Airports".to_string(),
+                    name: "Libraries".to_string(),
                     keywords: vec![
-                        "global airports".to_string(),
-                        "global_airports".to_string(),
-                        "x-plane landmarks".to_string(),
+                        "library".to_string(),
+                        "lib".to_string(),
+                        "opensceneryx".to_string(),
+                        "r2_library".to_string(),
+                        "bs2001".to_string(),
+                        "3dnl".to_string(),
+                        "misterx".to_string(),
+                        "zdp".to_string(),
+                        "sam".to_string(),
+                        "assets".to_string(),
                     ],
-                    score: 20,
+                    score: 45,
+                    is_exclusion: false,
+                },
+                // --- Tier 6: AutoOrtho & Photo Overlays ---
+                Rule {
+                    name: "AutoOrtho Overlays".to_string(),
+                    keywords: vec!["yautoortho".to_string(), "y_autoortho".to_string()],
+                    score: 48, // Between Libraries (45) and Ortho (50)
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Orbx TrueEarth Orthos".to_string(),
+                    keywords: vec!["orbx_c_".to_string(), "orthos".to_string()],
+                    score: 58, // Match standard ortho priority
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Ortho/Photo".to_string(),
+                    keywords: vec![
+                        "ortho".to_string(),
+                        "photoscenery".to_string(),
+                        "yortho".to_string(),
+                        "zortho".to_string(),
+                    ],
+                    score: 58, // Below all overlays, above Mesh (60)
+                    is_exclusion: false,
+                },
+                // --- Tier 7: Mesh & Foundations ---
+                Rule {
+                    name: "Mesh/Foundation".to_string(),
+                    keywords: vec!["mesh".to_string(), "zzz".to_string()],
+                    score: 60,
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Orbx D / Mesh".to_string(),
+                    keywords: vec!["orbx_d_".to_string(), "orbx_e_".to_string()],
+                    score: 60, // Standard Mesh priority
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Exclusion Logic (Overlay/Mesh Tweaks)".to_string(),
+                    keywords: vec!["exclude".to_string(), "exclusion".to_string()],
+                    score: 61,
+                    is_exclusion: true,
+                },
+                Rule {
+                    name: "AutoOrtho Base".to_string(),
+                    keywords: vec!["z_autoortho".to_string(), "z_ao_".to_string()],
+                    score: 95,
                     is_exclusion: false,
                 },
             ],
