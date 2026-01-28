@@ -1077,8 +1077,67 @@ pub fn discover_airports_in_pack(pack_path: &Path) -> Vec<Airport> {
 mod tests {
     use super::*;
 
+    use crate::apt_dat::Airport;
     use std::io::Write;
     use tempfile::tempdir;
+
+    #[test]
+    fn test_centroid_calculation() {
+        let mut pack = SceneryPack {
+            name: "Test Pack".into(),
+            path: PathBuf::from("/test"),
+            status: SceneryPackType::Active,
+            category: SceneryCategory::CustomAirport,
+            airports: vec![
+                Airport {
+                    id: "A1".into(),
+                    name: "Airport 1".into(),
+                    lat: Some(10.0),
+                    lon: Some(20.0),
+                    airport_type: crate::apt_dat::AirportType::Land,
+                    proj_x: None,
+                    proj_y: None,
+                },
+                Airport {
+                    id: "A2".into(),
+                    name: "Airport 2".into(),
+                    lat: Some(20.0),
+                    lon: Some(30.0),
+                    airport_type: crate::apt_dat::AirportType::Land,
+                    proj_x: None,
+                    proj_y: None,
+                },
+                Airport {
+                    id: "A3".into(),
+                    name: "Empty".into(),
+                    lat: None,
+                    lon: None,
+                    airport_type: crate::apt_dat::AirportType::Land,
+                    proj_x: None,
+                    proj_y: None,
+                },
+            ],
+            tiles: vec![(40, 50), (41, 51)],
+            tags: vec![],
+        };
+
+        // Should favor airports: (10 + 20) / 2 = 15, (20 + 30) / 2 = 25
+        let center = pack.get_centroid().unwrap();
+        assert!((center.0 - 15.0).abs() < 0.001);
+        assert!((center.1 - 25.0).abs() < 0.001);
+
+        // Remove airports, should use tiles
+        pack.airports.clear();
+        let center = pack.get_centroid().unwrap();
+        // (40.5 + 41.5) / 2 = 41.0
+        // (50.5 + 51.5) / 2 = 51.0
+        assert!((center.0 - 41.0).abs() < 0.001);
+        assert!((center.1 - 51.0).abs() < 0.001);
+
+        // Empty pack
+        pack.tiles.clear();
+        assert_eq!(pack.get_centroid(), None);
+    }
 
     #[test]
     fn test_discover_tiles_dsf() {
