@@ -1214,12 +1214,11 @@ impl App {
             }
             Message::BrowseForCompanionPath => Task::perform(
                 async {
-                    use native_dialog::FileDialog;
-                    FileDialog::new()
+                    rfd::AsyncFileDialog::new()
                         .set_title("Select Companion Application Executable")
-                        .show_open_single_file()
-                        .ok()
-                        .flatten()
+                        .pick_file()
+                        .await
+                        .map(|f| f.path().to_path_buf())
                 },
                 Message::CompanionPathSelected,
             ),
@@ -2048,12 +2047,11 @@ impl App {
                 self.status = "Select X-Plane folder...".to_string();
                 Task::perform(
                     async {
-                        use native_dialog::FileDialog;
-                        FileDialog::new()
+                        rfd::AsyncFileDialog::new()
                             .set_title("Select X-Plane Folder")
-                            .show_open_single_dir()
-                            .ok()
-                            .flatten()
+                            .pick_folder()
+                            .await
+                            .map(|f| f.path().to_path_buf())
                     },
                     Message::FolderSelected,
                 )
@@ -2565,13 +2563,12 @@ impl App {
             }
             Message::ImportHeuristics => Task::perform(
                 async {
-                    use native_dialog::FileDialog;
-                    FileDialog::new()
+                    rfd::AsyncFileDialog::new()
                         .set_title("Import Heuristics JSON")
                         .add_filter("JSON", &["json"])
-                        .show_open_single_file()
-                        .ok()
-                        .flatten()
+                        .pick_file()
+                        .await
+                        .map(|f| f.path().to_path_buf())
                 },
                 |path_opt| {
                     if let Some(path) = path_opt {
@@ -2592,13 +2589,12 @@ impl App {
                 let text = self.heuristics_json.text();
                 Task::perform(
                     async move {
-                        use native_dialog::FileDialog;
-                        FileDialog::new()
+                        rfd::AsyncFileDialog::new()
                             .set_title("Export Heuristics JSON")
                             .add_filter("JSON", &["json"])
-                            .show_save_single_file()
-                            .ok()
-                            .flatten()
+                            .save_file()
+                            .await
+                            .map(|f| f.path().to_path_buf())
                     },
                     move |path_opt| {
                         if let Some(path) = path_opt {
@@ -2615,12 +2611,10 @@ impl App {
                 self.is_picking_exclusion = true;
                 Task::perform(
                     async move {
-                        use native_dialog::FileDialog;
-                        FileDialog::new()
-                            .set_location("~")
-                            .show_open_single_dir()
-                            .ok()
-                            .flatten()
+                        rfd::AsyncFileDialog::new()
+                            .pick_folder()
+                            .await
+                            .map(|f| f.path().to_path_buf())
                     },
                     Message::ExclusionSelected,
                 )
@@ -2656,21 +2650,15 @@ impl App {
                 Task::none()
             }
             Message::BrowseForIcon(path) => {
-                let path_c = path.clone();
                 Task::perform(
                     async move {
-                        let result = tokio::task::spawn_blocking(move || {
-                            native_dialog::FileDialog::new()
-                                .set_location(&path_c)
-                                .set_title("Select Custom Aircraft Icon")
-                                .add_filter("Images", &["png", "jpg", "jpeg", "webp"])
-                                .show_open_single_file()
-                        })
-                        .await;
-                        match result {
-                            Ok(Ok(Some(icon_path))) => Some((path, icon_path)),
-                            _ => None,
-                        }
+                        let icon_path = rfd::AsyncFileDialog::new()
+                            .set_title("Select Custom Aircraft Icon")
+                            .add_filter("Images", &["png", "jpg", "jpeg", "webp"])
+                            .pick_file()
+                            .await
+                            .map(|f| f.path().to_path_buf());
+                        icon_path.map(|icon| (path, icon))
                     },
                     |res| {
                         if let Some((path, icon)) = res {
@@ -6848,24 +6836,20 @@ async fn load_airports_data(
 }
 
 async fn pick_archive(label: &str) -> Option<PathBuf> {
-    use native_dialog::FileDialog;
-    FileDialog::new()
+    rfd::AsyncFileDialog::new()
         .set_title(&format!("Select {} Package (.zip, .7z)", label))
         .add_filter("Archives", &["zip", "7z"])
-        .show_open_single_file()
-        .ok()
-        .flatten()
+        .pick_file()
+        .await
+        .map(|f| f.path().to_path_buf())
 }
 
 async fn pick_folder(title: &str, start_dir: Option<PathBuf>) -> Option<PathBuf> {
-    use native_dialog::FileDialog;
-    let dialog = FileDialog::new().set_title(title);
-    match start_dir {
-        Some(path) => dialog.set_location(&path).show_open_single_dir(),
-        None => dialog.show_open_single_dir(),
+    let mut dialog = rfd::AsyncFileDialog::new().set_title(title);
+    if let Some(path) = start_dir {
+        dialog = dialog.set_directory(&path);
     }
-    .ok()
-    .flatten()
+    dialog.pick_folder().await.map(|f| f.path().to_path_buf())
 }
 
 fn load_log_issues(root: Option<PathBuf>) -> Result<Arc<Vec<x_adox_core::LogIssue>>, String> {
@@ -6956,7 +6940,6 @@ async fn apply_profile_task(root: Option<PathBuf>, profile: Profile) -> Result<(
 }
 
 fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<PathBuf, String> {
-    use native_dialog::FileDialog;
     use std::fs::File;
     use std::io::Write;
 
@@ -6965,13 +6948,12 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
         .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
 
-    let path = FileDialog::new()
+    let path = rfd::FileDialog::new()
         .add_filter("CSV File", &["csv"])
         .add_filter("Text File", &["txt"])
-        .set_filename("x_plane_missing_resources.csv")
-        .set_location(&initial_location)
-        .show_save_single_file()
-        .map_err(|e: native_dialog::Error| e.to_string())?
+        .set_file_name("x_plane_missing_resources.csv")
+        .set_directory(&initial_location)
+        .save_file()
         .ok_or("Export cancelled".to_string())?;
 
     let is_csv = path.extension().map_or(false, |ext| ext == "csv");
