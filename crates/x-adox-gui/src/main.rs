@@ -1835,23 +1835,46 @@ impl App {
                             // which is incorrect when the user has customized their sorting preferences.
                         }
                         "mesh_above_overlay" => {
-                            // Move all mesh/ortho packs to the end of the list
-                            let mut meshes = Vec::new();
-                            let mut i = 0;
-                            while i < packs.len() {
-                                if packs[i].category == SceneryCategory::Mesh
-                                    || packs[i].category == SceneryCategory::OrthoBase
-                                    || packs[i].category == SceneryCategory::SpecificMesh
-                                {
-                                    meshes.push(packs.remove(i));
-                                } else {
-                                    i += 1;
+                            // PERMANENT FIX: Add override rules for misclassified mesh/ortho packs
+                            // This teaches the sorting engine to treat these packs as Mesh (Score 30)
+                            let mut added_overrides = Vec::new();
+
+                            if let Some(report) = &self.validation_report {
+                                for issue in &report.issues {
+                                    if issue.issue_type == "mesh_above_overlay"
+                                        && !self.ignored_issues.contains(&(
+                                            issue.issue_type.clone(),
+                                            issue.pack_name.clone(),
+                                        ))
+                                    {
+                                        // Add this pack to overrides with Mesh score (60 = bottom priority)
+                                        let config = Arc::make_mut(&mut self.heuristics_model.config);
+                                        if !config.overrides.contains_key(&issue.pack_name) {
+                                            config.overrides.insert(issue.pack_name.clone(), 60);
+                                            added_overrides.push(issue.pack_name.clone());
+                                        }
+                                    }
                                 }
                             }
-                            packs.extend(meshes);
-                            // NOTE: If you click Smart Sort again, BitNet will re-sort using
-                            // heuristics.json scores, which may place orthos differently.
-                            // To permanently fix, adjust Ortho/Photo score in Edit Sort.
+
+                            if !added_overrides.is_empty() {
+                                // Save the updated heuristics
+                                if let Err(e) = self.heuristics_model.save() {
+                                    self.status = format!("AutoFix failed to save: {}", e);
+                                } else {
+                                    self.status = format!(
+                                        "AutoFix: Added {} permanent override(s). Re-sorting...",
+                                        added_overrides.len()
+                                    );
+                                    println!("[AutoFix] Added permanent overrides for: {:?}", added_overrides);
+                                    
+                                    // Trigger a re-sort with the new rules
+                                    self.simulated_packs = None;
+                                    return Task::done(Message::SmartSort);
+                                }
+                            } else {
+                                self.status = "No packs needed override (already fixed or ignored)".to_string();
+                            }
                         }
                         "shadowed_mesh" => {
                             if let Some(report) = &self.validation_report {

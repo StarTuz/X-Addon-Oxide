@@ -123,39 +123,62 @@ impl SceneryValidator {
     }
 
     fn check_mesh_ordering(packs: &[SceneryPack], report: &mut ValidationReport) {
+        // Simplified position-based check:
+        // If the list is already sorted such that mesh-like packs are at the bottom,
+        // don't report issues even if their category labels are wrong.
+        //
+        // Strategy: Check if any pack with "mesh", "ortho", "z_ao_" in the name
+        // appears before a pack that looks like an airport/overlay by name.
+
+        let is_mesh_by_name = |name: &str| -> bool {
+            let lower = name.to_lowercase();
+            lower.contains("mesh")
+                || lower.contains("z_ao_")
+                || lower.contains("z_autoortho")
+                || lower.contains("ortho4xp")
+                || (lower.contains("orthos") && !lower.contains("overlay"))
+                || lower.starts_with("zzz")
+        };
+
+        let is_overlay_by_name = |name: &str| -> bool {
+            let lower = name.to_lowercase();
+            // Check for definitive overlay/airport patterns
+            lower.contains("airport")
+                || lower.contains("_overlay")
+                || lower.contains("landmarks")
+                || lower.contains("global_airports")
+                || lower.contains("simheaven")
+                || lower.contains("library")
+        };
+
+        // Find first mesh-by-name pack
         let mut first_mesh_idx = None;
-        let mut last_overlay_idx = None;
-
+        let mut first_mesh_name = String::new();
         for (i, pack) in packs.iter().enumerate() {
-            if pack.category == SceneryCategory::Mesh
-                || pack.category == SceneryCategory::SpecificMesh
-                || pack.category == SceneryCategory::OrthoBase
-            {
-                if first_mesh_idx.is_none() {
-                    first_mesh_idx = Some(i);
-                }
+            if is_mesh_by_name(&pack.name) {
+                first_mesh_idx = Some(i);
+                first_mesh_name = pack.name.clone();
+                break;
             }
+        }
 
-            if pack.category == SceneryCategory::RegionalOverlay
-                || pack.category == SceneryCategory::AirportOverlay
-                || pack.category == SceneryCategory::CustomAirport
-                || pack.category == SceneryCategory::GlobalAirport
-                || pack.category == SceneryCategory::Landmark
-            {
+        // Find last overlay-by-name pack
+        let mut last_overlay_idx = None;
+        let mut last_overlay_name = String::new();
+        for (i, pack) in packs.iter().enumerate() {
+            if is_overlay_by_name(&pack.name) {
                 last_overlay_idx = Some(i);
+                last_overlay_name = pack.name.clone();
             }
         }
 
         if let (Some(m_idx), Some(o_idx)) = (first_mesh_idx, last_overlay_idx) {
             if m_idx < o_idx {
-                // Debug: Log which overlay is at the end
-
-                // If a mesh/ortho is above an overlay
                 report.issues.push(ValidationIssue {
-                    pack_name: packs[m_idx].name.clone(),
+                    pack_name: first_mesh_name,
                     severity: ValidationSeverity::Warning,
                     issue_type: "mesh_above_overlay".to_string(),
-                    message: format!("Mesh/Ortho pack is above '{}' ({})", packs[o_idx].name, packs[o_idx].category.short_code()),
+                    message: format!("Mesh/Ortho pack is above '{}'", last_overlay_name),
                     fix_suggestion: "Move Mesh and Ortho packs to the bottom of the list.".to_string(),
                     details: "X-Plane draws scenery from bottom to top. Terrain meshes and orthophotos should be at the bottom.".to_string(),
                 });
