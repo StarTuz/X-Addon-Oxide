@@ -153,8 +153,14 @@ pub fn write_ini(
                     None
                 }
             } else {
-                // Standard Custom Scenery pack
-                Some(format!("Custom Scenery/{}/", pack.name))
+                // Standard Custom Scenery pack - use ACTUAL path from disk, not reconstructed name
+                // Extract the folder name from the actual filesystem path
+                let folder_name = pack
+                    .path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_else(|| pack.name.clone());
+                Some(format!("Custom Scenery/{}/", folder_name))
             }
         };
 
