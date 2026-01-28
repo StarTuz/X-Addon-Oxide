@@ -1009,6 +1009,12 @@ impl App {
                 match result {
                     Ok(airports) => {
                         self.airports = airports;
+
+                        // Merge custom pack airports if scenery is already loaded
+                        if self.loading_state.scenery {
+                            self.merge_custom_airports();
+                        }
+
                         if !self.loading_state.is_loading {
                             self.status = format!(
                                 "Airport database loaded: {} airports",

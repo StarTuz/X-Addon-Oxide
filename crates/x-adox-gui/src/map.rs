@@ -678,7 +678,7 @@ where
                         let dx = sx2 - sx1;
                         let dy = sy2 - sy1;
                         let distance = (dx * dx + dy * dy).sqrt();
-                        let steps = (distance / 4.0).ceil() as usize; // More efficient stepping
+                        let steps = (distance / 4.0).ceil().max(1.0) as usize; // Ensure at least 1 step
                         for i in 0..=steps {
                             let t = i as f32 / steps as f32;
                             let px = sx1 + dx * t;
@@ -1011,32 +1011,33 @@ where
                             if let (Some(lat), Some(lon), Some((wx, wy))) =
                                 (airport.lat, airport.lon, mouse_z0)
                             {
+                                // Fast early exit: skip airports far from cursor
+                                // The 10px radius at current zoom translates to roughly:
+                                let hit_radius_deg = 10.0 / scale / TILE_SIZE * 360.0;
+                                if (lon as f64 - coords.1).abs() > hit_radius_deg * 2.0
+                                    || (lat as f64 - coords.0).abs() > hit_radius_deg * 2.0
+                                {
+                                    continue;
+                                }
+
                                 let tx = lon_to_x(lon as f64, 0.0);
                                 let ty = lat_to_y(lat as f64, 0.0);
                                 let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
 
                                 // Use a 10px hit radius in screen pixels
                                 if dist_sq < (10.0 / scale).powi(2) {
-                                    if is_global {
-                                        // For Global Airports, emit individual airport hover
-                                        if self.hovered_airport_id != Some(&airport.id) {
-                                            shell.publish(Message::HoverAirport(Some(
-                                                airport.id.clone(),
-                                            )));
-                                        }
-                                        // ALSO emit pack hover so the UI Inspector knows which pack we are on
-                                        if self.hovered_scenery != Some(&pack.name) {
-                                            shell.publish(Message::HoverScenery(Some(
-                                                pack.name.clone(),
-                                            )));
-                                        }
-                                    } else {
-                                        // For other packs, emit pack-level hover
-                                        if self.hovered_scenery != Some(&pack.name) {
-                                            shell.publish(Message::HoverScenery(Some(
-                                                pack.name.clone(),
-                                            )));
-                                        }
+                                    // Always emit airport hover for Inspector Panel
+                                    if self.hovered_airport_id != Some(&airport.id) {
+                                        shell.publish(Message::HoverAirport(Some(
+                                            airport.id.clone(),
+                                        )));
+                                    }
+
+                                    // Always emit pack hover for highlights
+                                    if self.hovered_scenery != Some(&pack.name) {
+                                        shell.publish(Message::HoverScenery(Some(
+                                            pack.name.clone(),
+                                        )));
                                     }
                                     return advanced::graphics::core::event::Status::Captured;
                                 }
@@ -1044,6 +1045,7 @@ where
                         }
                     }
                     // Clear hover state when cursor is not over any airport/tile
+                    // Only emit if state is changing (prevent continuous message flood)
                     if self.hovered_scenery.is_some() {
                         shell.publish(Message::HoverScenery(None));
                     }
