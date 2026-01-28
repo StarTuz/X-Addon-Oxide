@@ -2240,32 +2240,19 @@ impl App {
                 self.last_scenery_click = Some((name.clone(), now));
                 self.selected_scenery = Some(name.clone());
 
-                let mut tasks = Vec::new();
-
-                // 1. Scroll to the item in the list
-                if let Some(index) = self.packs.iter().position(|p| p.name == name) {
-                    let offset = index as f32 * 85.0;
-                    tasks.push(scrollable::scroll_to(
-                        self.scenery_scroll_id.clone(),
-                        scrollable::AbsoluteOffset { x: 0.0, y: offset },
-                    ));
-
-                    // 2. If double click, focus the map
-                    if is_double_click {
+                // If double click, focus the map
+                if is_double_click {
+                    if let Some(index) = self.packs.iter().position(|p| p.name == name) {
                         if let Some(pack) = self.packs.get(index) {
                             if let Some((lat, lon)) = pack.get_centroid() {
                                 // Default zoom level for focus
-                                tasks.push(Task::done(Message::FocusMap(lat, lon, 10.0)));
+                                return Task::done(Message::FocusMap(lat, lon, 10.0));
                             }
                         }
                     }
                 }
 
-                if tasks.is_empty() {
-                    Task::none()
-                } else {
-                    Task::batch(tasks)
-                }
+                Task::none()
             }
             Message::HoverScenery(name_opt) => {
                 if self.hovered_scenery != name_opt {
