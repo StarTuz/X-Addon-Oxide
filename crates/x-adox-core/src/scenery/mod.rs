@@ -901,38 +901,34 @@ fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
     let roots = find_pack_roots(pack_path);
 
     for root in roots {
-        // Search for nav data folders case-insensitively within each root
-        let real_nav_path = if let Ok(entries) = std::fs::read_dir(&root) {
-            entries.flatten().find_map(|e| {
-                let name = e.file_name().to_string_lossy().to_lowercase();
-                if nav_data_dirs.iter().any(|&d| d.to_lowercase() == name) {
-                    Some(e.path())
-                } else {
-                    None
-                }
-            })
+        // Find nav data folders case-insensitively within each root
+        let nav_dirs = if let Ok(entries) = std::fs::read_dir(&root) {
+            entries
+                .flatten()
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().to_lowercase();
+                    if nav_data_dirs.iter().any(|&d| d.to_lowercase() == name) {
+                        Some(e.path())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
         } else {
-            None
+            Vec::new()
         };
 
-        if let Some(nav_path) = real_nav_path {
-            // Search for folders like +40-090
-            if let Ok(entries) = std::fs::read_dir(nav_path) {
-                for entry in entries.flatten() {
-                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                        let folder_path = entry.path();
-
-                        // Scan inside the folder for .dsf files (e.g., +41-088.dsf)
-                        if let Ok(file_entries) = std::fs::read_dir(folder_path) {
-                            for file_entry in file_entries.flatten() {
-                                let file_name =
-                                    file_entry.file_name().to_string_lossy().to_string();
-                                if file_name.to_lowercase().ends_with(".dsf") {
-                                    if let Some(tile) = parse_tile_name(&file_name) {
-                                        tiles.push(tile);
-                                    }
-                                }
-                            }
+        for nav_path in nav_dirs {
+            // Traverse recursively to find .dsf files
+            // This handles variations like 'Earth nav data/lat+50+020/...'
+            // and 'Earth nav data/DSF/lat+50+020/...'
+            let mut it = walkdir::WalkDir::new(nav_path).into_iter();
+            while let Some(Ok(entry)) = it.next() {
+                if entry.file_type().is_file() {
+                    let file_name = entry.file_name().to_string_lossy();
+                    if file_name.to_lowercase().ends_with(".dsf") {
+                        if let Some(tile) = parse_tile_name(&file_name) {
+                            tiles.push(tile);
                         }
                     }
                 }

@@ -977,6 +977,48 @@ where
                         }
                     }
 
+                    // 1. PRIORITIZE SELECTED PACK (Stickiness)
+                    // If the user has a pack selected, check its hit-box first.
+                    if let Some(selected_name) = self.selected_scenery {
+                        if let Some(pack) = self.packs.iter().find(|p| &p.name == selected_name) {
+                            let mut hit = false;
+                            if pack.airports.is_empty() {
+                                for &(lat, lon) in &pack.tiles {
+                                    if (lat as f64 + 0.5 - coords.0).abs() < 0.5
+                                        && (lon as f64 + 0.5 - coords.1).abs() < 0.5
+                                    {
+                                        hit = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            // Also check airports in the selected pack
+                            if !hit {
+                                for airport in &pack.airports {
+                                    if let (Some(lat), Some(lon), Some((wx, wy))) =
+                                        (airport.lat, airport.lon, mouse_z0)
+                                    {
+                                        let tx = lon_to_x(lon as f64, 0.0);
+                                        let ty = lat_to_y(lat as f64, 0.0);
+                                        let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
+                                        if dist_sq < (10.0 / scale).powi(2) {
+                                            hit = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if hit {
+                                if self.hovered_scenery != Some(&pack.name) {
+                                    shell.publish(Message::HoverScenery(Some(pack.name.clone())));
+                                }
+                                return advanced::graphics::core::event::Status::Captured;
+                            }
+                        }
+                    }
+
+                    // 2. DEFAULT HOVER (Priority-Based)
                     for pack in self.packs {
                         // Ignore packs that are filtered out unless they are selected
                         if !self.is_pack_visible(pack) && self.selected_scenery != Some(&pack.name)

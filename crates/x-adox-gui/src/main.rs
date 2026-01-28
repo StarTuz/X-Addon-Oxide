@@ -4555,6 +4555,19 @@ impl App {
                                         };
                                         el
                                     },
+                                    {
+                                        let el: Element<'_, Message> = if (pack.category == x_adox_core::scenery::SceneryCategory::RegionalOverlay || 
+                                           pack.category == x_adox_core::scenery::SceneryCategory::OrthoBase) && 
+                                           pack.tiles.is_empty() {
+                                                text("⚠️ No tiles detected! Check if 'Earth nav data' is nested correctly.")
+                                                    .size(11)
+                                                    .color(style::palette::ACCENT_ORANGE)
+                                                    .into()
+                                        } else {
+                                            iced::widget::Space::with_height(0.0).into()
+                                        };
+                                        el
+                                    },
                                 ].spacing(5),
 
                                 if !pack.airports.is_empty() && pack.airports.len() <= 25 {
