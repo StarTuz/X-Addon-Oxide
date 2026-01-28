@@ -238,6 +238,8 @@ enum Message {
         Result<Arc<std::collections::HashMap<String, x_adox_core::apt_dat::Airport>>, String>,
     ),
     ToggleLogbook,
+    LogbooksFound(Result<Vec<LogbookPath>, String>),
+    SelectLogbook(LogbookPath),
     // Companion Apps
     LaunchCompanionApp,
     SelectCompanionApp(usize),
@@ -279,6 +281,22 @@ pub enum MapFilterType {
     RegionalOverlays,
     FlightPaths,
     HealthScores,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogbookPath(pub PathBuf);
+
+impl std::fmt::Display for LogbookPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.0
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -426,6 +444,8 @@ struct App {
     selected_flight: Option<usize>,
     airports: Arc<std::collections::HashMap<String, x_adox_core::apt_dat::Airport>>,
     logbook_expanded: bool,
+    available_logbooks: Vec<LogbookPath>,
+    selected_logbook_path: Option<LogbookPath>,
 
     // Pro Mode
     validation_report: Option<x_adox_core::scenery::validator::ValidationReport>,
@@ -637,6 +657,8 @@ impl App {
             selected_flight: None,
             airports: Arc::new(std::collections::HashMap::new()),
             logbook_expanded: false,
+            available_logbooks: Vec::new(),
+            selected_logbook_path: None,
 
             // Launch X-Plane
             launch_args: String::new(),
@@ -704,7 +726,14 @@ impl App {
                     Message::LogIssuesLoaded,
                 ),
                 Task::perform(load_airports_data(Some(r7)), Message::AirportsLoaded),
-                Task::perform(load_logbook_data(Some(r8)), Message::LogbookLoaded),
+                Task::perform(
+                    async move {
+                        x_adox_core::logbook::LogbookParser::find_logbooks(r8)
+                            .map(|paths| paths.into_iter().map(LogbookPath).collect::<Vec<_>>())
+                            .map_err(|e| e.to_string())
+                    },
+                    Message::LogbooksFound,
+                ),
             ])
         } else {
             Task::none()
@@ -718,6 +747,31 @@ impl App {
             self.loading_state.is_loading = false;
             self.status = "X-Plane Ready".to_string();
         }
+    }
+
+    /// Merges airports discovered in scenery packs into the global airports map.
+    /// Custom pack airports take precedence over global airports if they have valid coordinates.
+    fn merge_custom_airports(&mut self) {
+        let mut merged = (*self.airports).clone();
+        let mut added = 0usize;
+
+        for pack in self.packs.iter() {
+            for airport in &pack.airports {
+                // Only merge if the airport has valid coordinates
+                if airport.lat.is_some() && airport.lon.is_some() {
+                    // Insert or replace (custom packs take precedence)
+                    if !merged.contains_key(&airport.id) {
+                        added += 1;
+                    }
+                    merged.insert(airport.id.clone(), airport.clone());
+                }
+            }
+        }
+
+        if added > 0 {
+            println!("[App] Merged {} custom airports into map database", added);
+        }
+        self.airports = Arc::new(merged);
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -750,11 +804,52 @@ impl App {
                 };
 
                 if tab == Tab::Utilities {
-                    let root = self.xplane_root.clone();
-                    return Task::perform(load_logbook_data(root), Message::LogbookLoaded);
+                    if let Some(log_path) = &self.selected_logbook_path {
+                        return Task::perform(load_logbook_data(log_path.0.clone()), Message::LogbookLoaded);
+                    }
                 }
 
                 Task::none()
+            }
+            Message::LogbooksFound(result) => {
+                match result {
+                    Ok(logbooks) => {
+                        self.available_logbooks = logbooks;
+                        if self.selected_logbook_path.is_none() {
+                            // Default to "X-Plane Pilot.txt" if found
+                            if let Some(pilot) = self.available_logbooks.iter().find(|p| {
+                                p.0.file_name()
+                                    .and_then(|s| s.to_str())
+                                    .map(|s| s == "X-Plane Pilot.txt")
+                                    .unwrap_or(false)
+                            }) {
+                                self.selected_logbook_path = Some(pilot.clone());
+                            } else {
+                                self.selected_logbook_path = self.available_logbooks.first().cloned();
+                            }
+                        }
+
+                        if let Some(log_path) = &self.selected_logbook_path {
+                            return Task::perform(
+                                load_logbook_data(log_path.0.clone()),
+                                Message::LogbookLoaded,
+                            );
+                        } else {
+                            self.loading_state.logbook = true;
+                            self.check_loading_complete();
+                        }
+                    }
+                    Err(e) => {
+                        self.status = format!("Failed to find logbooks: {}", e);
+                        self.loading_state.logbook = true;
+                        self.check_loading_complete();
+                    }
+                }
+                Task::none()
+            }
+            Message::SelectLogbook(log_path) => {
+                self.selected_logbook_path = Some(log_path.clone());
+                Task::perform(load_logbook_data(log_path.0), Message::LogbookLoaded)
             }
             Message::LogIssuesLoaded(result) => {
                 self.loading_state.log_issues = true;
@@ -811,6 +906,9 @@ impl App {
                 match result {
                     Ok(packs) => {
                         self.packs = packs;
+
+                        // Merge custom pack airports into the global database for map lookups
+                        self.merge_custom_airports();
 
                         // Auto-run validation whenever scenery is loaded
                         self.validation_report = Some(
@@ -1926,7 +2024,19 @@ impl App {
             Message::Refresh => {
                 self.status = "Refreshing...".to_string();
                 let root = self.xplane_root.clone();
-                Task::perform(async move { load_packs(root) }, Message::SceneryLoaded)
+                let root_for_logbooks = root.clone();
+                Task::batch([
+                    Task::perform(async move { load_packs(root) }, Message::SceneryLoaded),
+                    Task::perform(
+                        async move {
+                            let r = root_for_logbooks.ok_or("X-Plane root not found")?;
+                            x_adox_core::logbook::LogbookParser::find_logbooks(r)
+                                .map(|paths| paths.into_iter().map(LogbookPath).collect())
+                                .map_err(|e| e.to_string())
+                        },
+                        Message::LogbooksFound,
+                    ),
+                ])
             }
             Message::SelectFolder => {
                 self.status = "Select X-Plane folder...".to_string();
@@ -1998,7 +2108,15 @@ impl App {
                                     Message::LogIssuesLoaded,
                                 ),
                                 Task::perform(load_airports_data(root7), Message::AirportsLoaded),
-                                Task::perform(load_logbook_data(root8), Message::LogbookLoaded),
+                                Task::perform(
+                                    async move {
+                                        let r = root8.ok_or("X-Plane root not found")?;
+                                        x_adox_core::logbook::LogbookParser::find_logbooks(r)
+                                            .map(|paths| paths.into_iter().map(LogbookPath).collect::<Vec<_>>())
+                                            .map_err(|e| e.to_string())
+                                    },
+                                    Message::LogbooksFound,
+                                ),
                             ]);
                         }
                         Err(e) => {
@@ -2055,7 +2173,15 @@ impl App {
                         Message::LogIssuesLoaded,
                     ),
                     Task::perform(load_airports_data(root7), Message::AirportsLoaded),
-                    Task::perform(load_logbook_data(root8), Message::LogbookLoaded),
+                    Task::perform(
+                        async move {
+                            let r = root8.ok_or("X-Plane root not found")?;
+                            x_adox_core::logbook::LogbookParser::find_logbooks(r)
+                                .map(|paths| paths.into_iter().map(LogbookPath).collect::<Vec<_>>())
+                                .map_err(|e| e.to_string())
+                        },
+                        Message::LogbooksFound,
+                    ),
                 ])
             }
             Message::ToggleAircraftFolder(path) => {
@@ -3331,8 +3457,30 @@ impl App {
         .width(Length::Fill);
 
         let filter_bar = if self.logbook_expanded {
+            let logbook_selector = if !self.available_logbooks.is_empty() {
+                container(
+                    row![
+                        text("Select Logbook:").size(14).color(style::palette::TEXT_SECONDARY),
+                        pick_list(
+                            self.available_logbooks.as_slice(),
+                            self.selected_logbook_path.clone(),
+                            Message::SelectLogbook,
+                        )
+                        .placeholder("Select logbook...")
+                        .text_size(14)
+                        .padding(5)
+                        .style(style::pick_list_primary),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Alignment::Center)
+                )
+            } else {
+                container(text("No logbooks found in Output/logbooks").size(14).color(style::palette::ACCENT_RED))
+            };
+
             container(
                 column![
+                    logbook_selector,
                     row![
                         text_input(
                             "Filter Aircraft (Tail/Type)...",
@@ -6663,16 +6811,10 @@ fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), St
 }
 
 async fn load_logbook_data(
-    root: Option<PathBuf>,
+    path: PathBuf,
 ) -> Result<Vec<x_adox_core::logbook::LogbookEntry>, String> {
-    let root = root.ok_or("X-Plane root not found")?;
-    let path = root
-        .join("Output")
-        .join("logbooks")
-        .join("X-Plane Pilot.txt");
-
     if !path.exists() {
-        return Err("X-Plane Pilot.txt not found in Output/logbooks".to_string());
+        return Err(format!("Logbook not found: {}", path.display()));
     }
 
     x_adox_core::logbook::LogbookParser::parse_file(path).map_err(|e| e.to_string())

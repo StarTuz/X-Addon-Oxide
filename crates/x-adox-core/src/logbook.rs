@@ -148,6 +148,42 @@ impl LogbookParser {
 
         Ok(entries)
     }
+
+    pub fn find_logbooks<P: AsRef<Path>>(xplane_root: P) -> Result<Vec<std::path::PathBuf>> {
+        let logbook_dir = xplane_root.as_ref().join("Output").join("logbooks");
+        if !logbook_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut logbooks = Vec::new();
+        for entry in std::fs::read_dir(logbook_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if !path.is_file() {
+                continue;
+            }
+
+            // Check header instead of extension
+            if let Ok(file) = File::open(&path) {
+                let mut reader = std::io::BufReader::new(file);
+                let mut first_line = String::new();
+                if reader.read_line(&mut first_line).is_ok() {
+                    let trimmed = first_line.trim();
+                    // Basic X-Plane data file header check:
+                    // I (Intel), A (Apple)
+                    if trimmed == "I" || trimmed == "A" {
+                        logbooks.push(path);
+                    }
+                }
+            }
+        }
+
+        // Sort by filename for stability
+        logbooks.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+
+        Ok(logbooks)
+    }
 }
 
 #[cfg(test)]
