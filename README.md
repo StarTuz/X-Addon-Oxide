@@ -59,6 +59,15 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 - **Native Support**: We provide proper installers for **Windows** (MSI/EXE), **macOS** (DMG), and **Linux** (AppImage). No dependencies to hunt down.
 - **Developer Friendly**: Hot-swap addons while the sim is running (plugin dependent) for rapid testing.
 
+## Release Notes
+
+### v2.3.2
+
+- **Content-Aware Scenery Sorting**: "Heals" misclassified scenery by analyzing standard X-Plane file structures.
+- **Robust Developer Priority**: Major developers (Orbx, FlyTampa, Aerosoft) are now strictly pinned above generic city scenery.
+- **Map Improvements**: Double-click to zoom, better hover priority, and correct draw order.
+- **Improved Installation**: Native file dialogs on macOS/Linux.
+
 ## Getting Started
 
 1. **Set your X-Plane Path**: Point the app to your X-Plane installation directory.

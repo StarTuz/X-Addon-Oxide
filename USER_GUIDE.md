@@ -45,7 +45,10 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 - **Smart Pinning**: Any manual adjustment "teaches" the AI your preferred order. Pinned items are highlighted with a red glow and icon.
 - **Clear All Pins**: If you want to undo your manual reorders, use the button at the top of the Scenery list to revert to the default AI logic.
 - **Strict Discovery**: X-Addon-Oxide strictly respects your `scenery_packs.ini`. If a folder exists in `Custom Scenery` but is NOT in your INI file, the app will NOT auto-add it to your library. This gives you absolute control—if you want a new pack to show up, either run X-Plane once to let it auto-generate the entry, or manually add it to the INI.
-- **Stable Sort**: When using "Smart Sort", the application preserves your manual reorders (pins) for items with tied scores. This ensures that your manual efforts (Pinning) are respected 1:1 and never overwritten by alphabetical tie-breaking.
+- **Stable Sort**: When using "Smart Sort", the application preserves your manual reorders (pins) for items with ties.
+- **Content-Aware Analysis**: The "Smart Sort" is now powered by deep inspection.
+  - **Healed Sections**: You may see headers like `# Airports (Healed)` or `# Mesh (Healed)`. This means the AI found files inside the pack (runways, thousands of polygons) that contradicted its folder name, and "Healed" the classification to ensure it loads in the safe order.
+  - **Manufacturer Priority**: Major developers (Orbx, FlyTampa, Aerosoft, etc.) are strictly prioritized above generic "City" logic to ensure complex airports are never buried by regional overlays.
 - **Scenery Health Diagnostics**: A diagnostic score is calculated for every pack based on its contents and metadata.
   - **Scores**: Range from **EXCELLENT (90-100%)** to **CRITICAL (<40%)**.
   - **CEILING**: Note that 90% is the practical "Perfect" ceiling for standard custom addons, as 100% is reserved for system/internal library files.
