@@ -87,6 +87,19 @@ fn test_critical_scenery_ordering_pairs() {
             "Global Airports",
             "Orbx EGLC must be Top Priority (Airports) above Global (Precedence Bug Check)",
         ),
+        // STRESS TEST: Verify other developers aren't vulnerable to the same City Keyword bug
+        // "London" is a City keyword (Score 25). FlyTampa/Aerosoft should be Airports (Score 10).
+        // If these fail, we need to promote those devs to explicit Rules.
+        (
+            "FlyTampa_London_Heathrow",
+            "Global Airports",
+            "FlyTampa (Implicit Dev) must override 'London' (City Rule) and float to top",
+        ),
+        (
+            "Aerosoft_Paris_CDG",
+            "Global Airports",
+            "Aerosoft (Implicit Dev) must override 'Paris' (City Rule) and float to top",
+        ),
     ];
 
     let dummy_path = Path::new("/dummy/path");
