@@ -85,6 +85,39 @@ pub fn container_tooltip(_theme: &Theme) -> container::Style {
     }
 }
 
+pub fn container_ghost(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgba(0.25, 0.25, 0.25, 0.7))),
+        border: Border {
+            color: palette::ACCENT_BLUE,
+            width: 2.0,
+            radius: 8.0.into(),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.23, 0.51, 0.96, 0.5),
+            offset: iced::Vector::new(0.0, 8.0),
+            blur_radius: 20.0,
+        },
+        ..Default::default()
+    }
+}
+
+pub fn container_drop_gap_active(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(palette::ACCENT_BLUE)),
+        border: Border {
+            radius: 2.0.into(),
+            ..Default::default()
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.23, 0.51, 0.96, 0.4),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 8.0,
+        },
+        ..Default::default()
+    }
+}
+
 // Button Styles
 pub fn button_primary(_theme: &Theme, status: button::Status) -> button::Style {
     let base = button::Style {

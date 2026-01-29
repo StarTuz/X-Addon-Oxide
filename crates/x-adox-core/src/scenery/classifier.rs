@@ -139,14 +139,15 @@ impl Classifier {
     }
 
     /// Post-discovery "healing" for packs that couldn't be categorized by name alone.
-    /// If a pack has tiles but no airports, it's likely Mesh/Ortho, UNLESS it's a known high-priority type.
+    /// Uses structural metadata (SceneryDescriptor) to identify archetypes.
     pub fn heal_classification(
         category: SceneryCategory,
         has_airports: bool,
         has_tiles: bool,
+        descriptor: &crate::scenery::SceneryDescriptor,
     ) -> SceneryCategory {
-        // Protected categories that use DSFs for object placement/overlays
-        // and should NOT be demoted to Mesh even if they have no airports.
+        // Protected categories that should NEVER be overridden by structural analysis.
+        // These were already classified correctly by name heuristics.
         let is_protected = matches!(
             category,
             SceneryCategory::OrbxAirport
@@ -157,15 +158,46 @@ impl Classifier {
                 | SceneryCategory::AirportOverlay
                 | SceneryCategory::AutoOrthoOverlay
                 | SceneryCategory::Library
+                | SceneryCategory::CustomAirport
         );
 
-        if !is_protected && has_tiles && !has_airports {
-            // Healed: It looks like Mesh/Ortho Base.
-            // If it was already OrthoBase, keep it. Otherwise, defaults to Mesh for safety.
+        // If already classified correctly, don't override
+        if is_protected {
+            return category;
+        }
+
+        // 1. Urban Enhancement Heuristic (City Scenery)
+        // ONLY for Unknown packs: If it looks like a city, promote to Landmark.
+        if category == SceneryCategory::Unknown
+            && (descriptor.object_count > 50 || descriptor.facade_count > 20)
+            && !has_airports
+        {
+            return SceneryCategory::Landmark;
+        }
+
+        // 2. Airport Specific Enhancements
+        // If the DSF explicitly contains airport properties, it's an AirportOverlay.
+        if descriptor.has_airport_properties && !has_airports {
+            return SceneryCategory::AirportOverlay;
+        }
+
+        // 3. Structural Ortho/Mesh Detection
+        if has_tiles && !has_airports {
+            // If it has polygons but NO objects/facades/forests, it's almost certainly an Ortho base.
+            if descriptor.polygon_count > 1000
+                && descriptor.object_count == 0
+                && descriptor.facade_count == 0
+            {
+                return SceneryCategory::OrthoBase;
+            }
+
+            // Defaults to Mesh for safety if it looks like foundation data.
             if category == SceneryCategory::OrthoBase {
                 SceneryCategory::OrthoBase
-            } else {
+            } else if category == SceneryCategory::Unknown {
                 SceneryCategory::Mesh
+            } else {
+                category
             }
         } else {
             category

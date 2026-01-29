@@ -13,9 +13,11 @@ pub struct CacheEntry {
     pub airports: Vec<crate::apt_dat::Airport>,
     #[serde(default)]
     pub tiles: Vec<(i32, i32)>,
+    #[serde(default)]
+    pub descriptor: crate::scenery::SceneryDescriptor,
 }
 
-const CURRENT_CACHE_VERSION: u32 = 4;
+const CURRENT_CACHE_VERSION: u32 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveryCache {
@@ -94,6 +96,7 @@ impl DiscoveryCache {
         addons: Vec<DiscoveredAddon>,
         airports: Vec<crate::apt_dat::Airport>,
         tiles: Vec<(i32, i32)>,
+        descriptor: crate::scenery::SceneryDescriptor,
     ) {
         if let Ok(metadata) = std::fs::metadata(&path) {
             if let Ok(mtime) = metadata.modified() {
@@ -105,6 +108,7 @@ impl DiscoveryCache {
                         addons,
                         airports,
                         tiles,
+                        descriptor,
                     },
                 );
             }

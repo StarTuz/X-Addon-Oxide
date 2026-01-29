@@ -179,6 +179,7 @@ mod tests {
             airports: Vec::new(),
             tiles: Vec::new(),
             tags: Vec::new(),
+            descriptor: crate::scenery::SceneryDescriptor::default(),
         };
         // Re-classify using the same heuristic as the manager
         pack.category =
@@ -312,7 +313,12 @@ mod tests {
         assert_eq!(cat, SceneryCategory::RegionalOverlay);
 
         // Healing should NOT change it even with tiles and no airports
-        let healed = Classifier::heal_classification(cat, false, true);
+        let healed = Classifier::heal_classification(
+            cat,
+            false,
+            true,
+            &crate::scenery::SceneryDescriptor::default(),
+        );
         assert_eq!(healed, SceneryCategory::RegionalOverlay);
 
         // 2. Random unknown pack with tiles and no airports (Unprotected)
@@ -321,7 +327,12 @@ mod tests {
         assert_eq!(cat_unk, SceneryCategory::Unknown);
 
         // Healing SHOULD turn it into Mesh
-        let healed_unk = Classifier::heal_classification(cat_unk, false, true);
+        let healed_unk = Classifier::heal_classification(
+            cat_unk,
+            false,
+            true,
+            &crate::scenery::SceneryDescriptor::default(),
+        );
         assert_eq!(healed_unk, SceneryCategory::Mesh);
 
         // 3. AutoOrtho (Protected)
@@ -329,7 +340,12 @@ mod tests {
         let cat_ao = Classifier::classify_heuristic(&PathBuf::from(ao), ao);
         assert_eq!(cat_ao, SceneryCategory::AutoOrthoOverlay);
 
-        let healed_ao = Classifier::heal_classification(cat_ao, false, true);
+        let healed_ao = Classifier::heal_classification(
+            cat_ao,
+            false,
+            true,
+            &crate::scenery::SceneryDescriptor::default(),
+        );
         assert_eq!(healed_ao, SceneryCategory::AutoOrthoOverlay);
     }
 }

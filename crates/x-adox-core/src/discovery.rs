@@ -127,6 +127,7 @@ impl DiscoveryManager {
             folder_results.clone(),
             Vec::new(),
             Vec::new(),
+            crate::scenery::SceneryDescriptor::default(),
         );
         results.extend(folder_results);
     }
@@ -190,7 +191,6 @@ impl DiscoveryManager {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-
             if path.is_dir() && !name.starts_with('.') {
                 results.push(DiscoveredAddon {
                     path: path.clone(),
@@ -198,12 +198,19 @@ impl DiscoveryManager {
                     addon_type: AddonType::Scenery {
                         airports: Vec::new(),
                     },
-                    is_enabled: true, // Default to true, calling code should reconcile with scenery_packs.ini
+                    is_enabled: true,
                     tags: Vec::new(),
                 });
             }
         }
-        cache.insert(root.to_path_buf(), results.clone(), Vec::new(), Vec::new());
+
+        cache.insert(
+            root.to_path_buf(),
+            results.clone(),
+            Vec::new(),
+            Vec::new(),
+            crate::scenery::SceneryDescriptor::default(),
+        );
         results
     }
 
@@ -280,6 +287,7 @@ impl DiscoveryManager {
             dir_results.clone(),
             Vec::new(),
             Vec::new(),
+            crate::scenery::SceneryDescriptor::default(),
         );
         results.extend(dir_results);
     }
@@ -403,6 +411,7 @@ impl DiscoveryManager {
                 csl_results.clone(),
                 Vec::new(),
                 Vec::new(),
+                crate::scenery::SceneryDescriptor::default(),
             );
             results.extend(csl_results);
         }

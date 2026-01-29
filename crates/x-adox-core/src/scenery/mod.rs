@@ -1,4 +1,5 @@
 pub mod classifier;
+pub mod dsf_peek;
 pub mod ini_handler;
 pub mod sorter;
 pub mod validator;
@@ -102,6 +103,17 @@ impl SceneryCategory {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, Hash)]
+pub struct SceneryDescriptor {
+    pub object_count: usize,
+    pub facade_count: usize,
+    pub forest_count: usize,
+    pub polygon_count: usize,
+    pub mesh_count: usize,
+    pub has_airport_properties: bool,
+    pub library_refs: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
 pub struct SceneryPack {
     pub name: String,
@@ -111,6 +123,8 @@ pub struct SceneryPack {
     pub airports: Vec<Airport>,
     pub tiles: Vec<(i32, i32)>, // SW corner (lat, lon)
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub descriptor: SceneryDescriptor,
 }
 
 impl SceneryPack {
@@ -439,32 +453,40 @@ impl SceneryManager {
                 pack.category = classifier::Classifier::classify_heuristic(&pack.path, &pack.name);
 
                 // 2. Discover details with cache check
-                let (airports, tiles, cache_entry) = if let Some(entry) = cache_ref.get(&pack.path)
-                {
-                    (entry.airports.clone(), entry.tiles.clone(), None)
-                } else {
-                    let airports = discover_airports_in_pack(&pack.path);
-                    let tiles = discover_tiles_in_pack(&pack.path);
+                let (airports, tiles, descriptor, cache_entry) =
+                    if let Some(entry) = cache_ref.get(&pack.path) {
+                        (
+                            entry.airports.clone(),
+                            entry.tiles.clone(),
+                            entry.descriptor.clone(),
+                            None,
+                        )
+                    } else {
+                        let airports = discover_airports_in_pack(&pack.path);
+                        let (tiles, descriptor) = discover_tiles_in_pack(&pack.path);
 
-                    let mtime = std::fs::metadata(&pack.path)
-                        .and_then(|m| m.modified())
-                        .map(|m| m.into())
-                        .unwrap_or_else(|_| chrono::Utc::now());
+                        let mtime = std::fs::metadata(&pack.path)
+                            .and_then(|m| m.modified())
+                            .map(|m| m.into())
+                            .unwrap_or_else(|_| chrono::Utc::now());
 
-                    (
-                        airports.clone(),
-                        tiles.clone(),
-                        Some(crate::cache::CacheEntry {
-                            mtime,
-                            addons: Vec::new(),
-                            airports,
-                            tiles,
-                        }),
-                    )
-                };
+                        (
+                            airports.clone(),
+                            tiles.clone(),
+                            descriptor.clone(),
+                            Some(crate::cache::CacheEntry {
+                                mtime,
+                                addons: Vec::new(),
+                                airports,
+                                tiles,
+                                descriptor,
+                            }),
+                        )
+                    };
 
                 pack.airports = airports;
                 pack.tiles = tiles;
+                pack.descriptor = descriptor;
 
                 // 3. Post-Discovery Promotion
                 // If we FOUND actual airports, this is a Custom Airport (Score 100)
@@ -495,6 +517,7 @@ impl SceneryManager {
                     pack.category,
                     !pack.airports.is_empty(),
                     !pack.tiles.is_empty(),
+                    &pack.descriptor,
                 );
 
                 (pack, cache_entry)
@@ -919,8 +942,11 @@ fn is_scenery_root(path: &Path) -> bool {
     false
 }
 
-pub fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
+pub fn discover_tiles_in_pack(pack_path: &Path) -> (Vec<(i32, i32)>, SceneryDescriptor) {
     let mut tiles = Vec::new();
+    let mut descriptor = SceneryDescriptor::default();
+    let mut descriptor_calculated = false;
+
     let nav_data_dirs = ["Earth nav data", "Mars nav data"];
     let pack_path_str = pack_path.to_string_lossy().to_lowercase();
 
@@ -932,7 +958,7 @@ pub fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
     if !is_global_airports {
         for keyword in excluded_keywords {
             if pack_path_str.contains(keyword) {
-                return tiles;
+                return (tiles, descriptor);
             }
         }
     }
@@ -960,8 +986,6 @@ pub fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
 
         for nav_path in nav_dirs {
             // Traverse recursively to find .dsf files
-            // This handles variations like 'Earth nav data/lat+50+020/...'
-            // and 'Earth nav data/DSF/lat+50+020/...'
             let mut it = walkdir::WalkDir::new(nav_path).into_iter();
             while let Some(Ok(entry)) = it.next() {
                 if entry.file_type().is_file() {
@@ -969,6 +993,14 @@ pub fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
                     if file_name.to_lowercase().ends_with(".dsf") {
                         if let Some(tile) = parse_tile_name(&file_name) {
                             tiles.push(tile);
+
+                            // Peek into the first DSF found for metadata
+                            if !descriptor_calculated {
+                                if let Ok(d) = dsf_peek::DsfPeek::analyze(entry.path()) {
+                                    descriptor = d;
+                                    descriptor_calculated = true;
+                                }
+                            }
                         }
                     }
                 }
@@ -979,7 +1011,7 @@ pub fn discover_tiles_in_pack(pack_path: &Path) -> Vec<(i32, i32)> {
     tiles.sort();
     tiles.dedup();
 
-    tiles
+    (tiles, descriptor)
 }
 
 fn parse_tile_name(name: &str) -> Option<(i32, i32)> {
@@ -1119,6 +1151,7 @@ mod tests {
             ],
             tiles: vec![(40, 50), (41, 51)],
             tags: vec![],
+            descriptor: SceneryDescriptor::default(),
         };
 
         // Should favor airports: (10 + 20) / 2 = 15, (20 + 30) / 2 = 25
@@ -1152,7 +1185,7 @@ mod tests {
         // Another tile in the same grid
         std::fs::write(grid_path.join("+38-009.dsf"), "").unwrap();
 
-        let tiles = discover_tiles_in_pack(pack_path);
+        let (tiles, _descriptor) = discover_tiles_in_pack(pack_path);
         assert_eq!(tiles.len(), 2);
         assert_eq!(tiles[0], (37, -8));
         assert_eq!(tiles[1], (38, -9));
@@ -1197,6 +1230,7 @@ mod tests {
             airports: Vec::new(),
             tiles: Vec::new(),
             tags: Vec::new(),
+            descriptor: SceneryDescriptor::default(),
         });
 
         manager.save(None).expect("Failed to save");
@@ -1244,6 +1278,7 @@ mod tests {
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
             },
             SceneryPack {
                 name: "Bravo_Airport".to_string(),
@@ -1253,6 +1288,7 @@ mod tests {
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
             },
             SceneryPack {
                 name: "Alpha_Airport (1)".to_string(),
@@ -1262,6 +1298,7 @@ mod tests {
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
             },
         ];
 

@@ -4,7 +4,10 @@ use iced::widget::{
     Column, Row,
 };
 use iced::window::icon;
-use iced::{Background, Border, Color, Element, Length, Padding, Renderer, Shadow, Task, Theme};
+use iced::{
+    Background, Border, Color, Element, Length, Padding, Point, Renderer, Shadow, Subscription,
+    Task, Theme,
+};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
@@ -91,6 +94,14 @@ struct AircraftNode {
     acf_file: Option<String>, // .acf filename if aircraft
     is_enabled: bool,
     tags: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct DragContext {
+    source_index: usize,
+    source_name: String,
+    hover_target_index: Option<usize>,
+    cursor_position: Point,
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +210,14 @@ enum Message {
     // Interactive Sorting (Phase 4)
     MovePack(String, MoveDirection),
     ClearAllPins,
+
+    // Drag and Drop (Phase 5)
+    DragStart { index: usize, name: String },
+    DragMove(Point),
+    DragHover(usize),
+    DragLeaveHover,
+    DragEnd,
+    DragCancel,
 
     // Aircraft Override
     SetAircraftCategory(String, String), // Name, Category
@@ -420,6 +439,7 @@ struct App {
     icon_plugins: svg::Handle,
     icon_csls: svg::Handle,
     refresh_icon: svg::Handle,
+    icon_grip: svg::Handle,
     // Map state
     hovered_scenery: Option<String>,
     hovered_airport_id: Option<String>,
@@ -466,8 +486,9 @@ struct App {
     expanded_issue_groups: std::collections::HashSet<String>,    // type
     loading_state: LoadingState,
 
-    // Sticky Sort Editing
+    // Floating UI
     editing_priority: Option<(String, u8)>,
+    drag_context: Option<DragContext>,
     // UI Helpers
     is_picking_exclusion: bool,
     // Phase 4 Icons
@@ -612,6 +633,7 @@ impl App {
             ignored_issues: std::collections::HashSet::new(),
             expanded_issue_groups: std::collections::HashSet::new(),
             editing_priority: None,
+            drag_context: None,
             loading_state: LoadingState::default(),
             icon_arrow_up: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/arrow_up.svg").to_vec(),
@@ -624,6 +646,9 @@ impl App {
             ),
             icon_trash: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/trash.svg").to_vec(),
+            ),
+            icon_grip: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/grip.svg").to_vec(),
             ),
             is_picking_exclusion: false,
             fallback_airliner: image::Handle::from_bytes(
@@ -2025,6 +2050,101 @@ impl App {
                 self.status = "All manual reorder pins cleared".to_string();
                 Task::none()
             }
+            Message::DragStart { index, name } => {
+                self.drag_context = Some(DragContext {
+                    source_index: index,
+                    source_name: name,
+                    hover_target_index: None,
+                    cursor_position: Point::ORIGIN,
+                });
+                Task::none()
+            }
+            Message::DragMove(position) => {
+                if let Some(ctx) = &mut self.drag_context {
+                    ctx.cursor_position = position;
+                }
+                Task::none()
+            }
+            Message::DragHover(index) => {
+                if let Some(ctx) = &mut self.drag_context {
+                    ctx.hover_target_index = Some(index);
+                }
+                Task::none()
+            }
+            Message::DragLeaveHover => {
+                if let Some(ctx) = &mut self.drag_context {
+                    ctx.hover_target_index = None;
+                }
+                Task::none()
+            }
+            Message::DragEnd => {
+                if let Some(ctx) = self.drag_context.take() {
+                    if let Some(target_idx) = ctx.hover_target_index {
+                        // target_idx is the gap index. 
+                        // If we drag item 2 to Gap 0, Gap 1, Gap 2, Gap 3...
+                        // If target_idx == source_index or target_idx == source_index + 1, it's a no-op.
+                        if target_idx != ctx.source_index && target_idx != ctx.source_index + 1 {
+                            let packs = Arc::make_mut(&mut self.packs);
+                            let name = ctx.source_name.clone();
+
+                            // 1. Physical move
+                            let item = packs.remove(ctx.source_index);
+                            let actual_target = if ctx.source_index < target_idx {
+                                target_idx - 1
+                            } else {
+                                target_idx
+                            };
+                            packs.insert(actual_target, item);
+
+                            // 2. Priority pinning (Pin to neighbor score)
+                            let neighbor_idx = if actual_target > 0 { actual_target - 1 } else { actual_target + 1 };
+                            let mut new_score = 0;
+                            if neighbor_idx < packs.len() {
+                                let neighbor_name = packs[neighbor_idx].name.clone();
+                                new_score = self.heuristics_model.predict(
+                                    &neighbor_name,
+                                    std::path::Path::new(""),
+                                    &x_adox_bitnet::PredictContext {
+                                        region_focus: self.region_focus.clone(),
+                                        ..Default::default()
+                                    },
+                                );
+
+                                Arc::make_mut(&mut self.heuristics_model.config)
+                                    .overrides
+                                    .insert(name.clone(), new_score);
+                                self.heuristics_model.refresh_regex_set();
+                                let _ = self.heuristics_model.save();
+                            }
+
+                            self.status = format!("Reordered {} (pinned to {})", name, new_score);
+
+                            // 3. Save scenery_packs.ini asynchronously
+                            if let Some(root) = self.xplane_root.clone() {
+                                let packs_to_save = (*self.packs).clone();
+                                let model = self.heuristics_model.clone();
+                                return Task::perform(
+                                    async move {
+                                        save_scenery_packs(root, packs_to_save, model)
+                                    },
+                                    |res| {
+                                        if let Err(e) = res {
+                                            Message::StatusChanged(format!("Save failed: {}", e))
+                                        } else {
+                                            Message::StatusChanged("Scenery order saved".to_string())
+                                        }
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::DragCancel => {
+                self.drag_context = None;
+                Task::none()
+            }
             Message::SetAircraftCategory(name, category) => {
                 // Determine tags based on selected category
                 // For now, let's keep it simple: one tag if it's a known category,
@@ -2742,23 +2862,80 @@ impl App {
                 Task::none()
             }
             Message::Tick(_now) => {
+                let mut tasks = Vec::new();
+
                 if self.loading_state.is_loading {
                     self.animation_time += 0.05;
                     if self.animation_time > 1000.0 {
                         self.animation_time = 0.0;
                     }
                 }
-                Task::none()
+
+                if let Some(ctx) = &self.drag_context {
+                    let top_threshold = 150.0;
+                    let _bottom_threshold = 100.0;
+                    let scroll_speed = 15.0;
+
+                    if ctx.cursor_position.y < top_threshold {
+                        tasks.push(scrollable::scroll_by(
+                            self.scenery_scroll_id.clone(),
+                            scrollable::AbsoluteOffset {
+                                x: 0.0,
+                                y: -scroll_speed,
+                            },
+                        ));
+                    } else if ctx.cursor_position.y > 600.0 {
+                        // Defensive lower bound
+                        tasks.push(scrollable::scroll_by(
+                            self.scenery_scroll_id.clone(),
+                            scrollable::AbsoluteOffset {
+                                x: 0.0,
+                                y: scroll_speed,
+                            },
+                        ));
+                    }
+                }
+
+                if tasks.is_empty() {
+                    Task::none()
+                } else {
+                    Task::batch(tasks)
+                }
             }
         }
     }
 
-    fn subscription(&self) -> iced::Subscription<Message> {
-        if self.loading_state.is_loading {
-            iced::time::every(std::time::Duration::from_millis(30)).map(Message::Tick)
+    fn subscription(&self) -> Subscription<Message> {
+        use iced::event::{self, Event};
+        use iced::keyboard;
+        use iced::mouse;
+        use iced::time;
+
+        let dragging = if self.drag_context.is_some() {
+            event::listen_with(|event, _status, _window| match event {
+                Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                    Some(Message::DragMove(position))
+                }
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    Some(Message::DragEnd)
+                }
+                Event::Keyboard(keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(keyboard::key::Named::Escape),
+                    ..
+                }) => Some(Message::DragCancel),
+                _ => None,
+            })
         } else {
-            iced::Subscription::none()
-        }
+            Subscription::none()
+        };
+
+        let tick = if self.loading_state.is_loading || self.drag_context.is_some() {
+            time::every(std::time::Duration::from_millis(16)).map(Message::Tick)
+        } else {
+            Subscription::none()
+        };
+
+        Subscription::batch(vec![dragging, tick])
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -2806,8 +2983,44 @@ impl App {
                 })
                 .into()
         } else {
-            main_view.into()
+            let mut final_view = stack![main_view];
+
+            if let Some(ctx) = &self.drag_context {
+                let ghost = container(self.view_ghost(ctx))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding(Padding {
+                        top: ctx.cursor_position.y - 10.0,
+                        right: 0.0,
+                        bottom: 0.0,
+                        left: ctx.cursor_position.x - 10.0,
+                    });
+
+                final_view = final_view.push(ghost);
+            }
+
+            final_view.into()
         }
+    }
+
+    fn view_ghost(&self, ctx: &DragContext) -> Element<'static, Message> {
+        container(
+            row![
+                svg(self.icon_grip.clone())
+                    .width(Length::Fixed(16.0))
+                    .height(Length::Fixed(16.0))
+                    .style(|_, _| svg::Style {
+                        color: Some(style::palette::TEXT_PRIMARY),
+                    }),
+                text(ctx.source_name.clone()).size(14)
+            ]
+            .spacing(10)
+            .align_y(iced::Alignment::Center),
+        )
+        .padding(15)
+        .style(style::container_ghost)
+        .width(Length::Fixed(300.0))
+        .into()
     }
 
     fn view_loading_overlay(&self) -> Element<'_, Message> {
@@ -4834,24 +5047,41 @@ impl App {
             self.icon_pin_outline.clone(),
             self.icon_arrow_up.clone(),
             self.icon_arrow_down.clone(),
+            self.icon_grip.clone(),
         );
 
-        let list_container = scrollable(lazy(
-            (packs, selected, overrides),
-            move |(packs, selected, overrides)| {
-                let cards: Vec<Element<'static, Message, Theme, Renderer>> = packs
-                    .iter()
-                    .map(|pack| {
-                        Self::render_scenery_card(
-                            pack,
-                            selected.as_ref() == Some(&pack.name),
-                            overrides.contains_key(&pack.name),
-                            icons.clone(),
-                        )
-                    })
-                    .collect();
+        let drag_id = self.drag_context.as_ref().map(|ctx| ctx.source_index);
+        let hover_id = self.drag_context.as_ref().and_then(|ctx| ctx.hover_target_index);
+        let is_dragging = self.drag_context.is_some();
 
-                Element::from(column(cards).spacing(10))
+        let list_container = scrollable(lazy(
+            (packs, selected, overrides, drag_id, hover_id),
+            move |(packs, selected, overrides, drag_id, hover_id)| {
+                let mut items = Vec::new();
+
+                for (idx, pack) in packs.iter().enumerate() {
+                    // Pre-item gap
+                    if is_dragging {
+                        items.push(Self::view_drop_gap(idx, *hover_id == Some(idx)));
+                    }
+
+                    let is_being_dragged = *drag_id == Some(idx);
+                    items.push(Self::render_scenery_card(
+                        pack,
+                        selected.as_ref() == Some(&pack.name),
+                        overrides.contains_key(&pack.name),
+                        idx,
+                        is_being_dragged,
+                        icons.clone(),
+                    ));
+                }
+
+                // Final gap at the very bottom
+                if is_dragging {
+                    items.push(Self::view_drop_gap(packs.len(), *hover_id == Some(packs.len())));
+                }
+
+                Element::from(column(items).spacing(2)) // Tighter spacing because gaps add padding
             },
         ))
         .id(self.scenery_scroll_id.clone());
@@ -5338,15 +5568,18 @@ impl App {
         pack: &SceneryPack,
         is_selected: bool,
         is_heroic: bool,
+        index: usize,
+        is_dragging_this: bool,
         icons: (
             iced::widget::svg::Handle,
             iced::widget::svg::Handle,
             iced::widget::svg::Handle,
             iced::widget::svg::Handle,
+            iced::widget::svg::Handle, // grip
         ),
     ) -> Element<'static, Message> {
         let is_active = pack.status == SceneryPackType::Active;
-        let (icon_pin, icon_pin_outline, icon_arrow_up, icon_arrow_down) = icons;
+        let (icon_pin, icon_pin_outline, icon_arrow_up, icon_arrow_down, icon_grip) = icons;
 
         let status_dot = container(iced::widget::Space::new(
             Length::Fixed(0.0),
@@ -5486,7 +5719,22 @@ impl App {
 
         let move_controls = column![move_up_btn, move_down_btn].spacing(2);
 
+        let grip = button(
+            svg(icon_grip)
+                .width(Length::Fixed(16.0))
+                .height(Length::Fixed(16.0))
+                .style(|_, _| svg::Style {
+                    color: Some(style::palette::TEXT_SECONDARY),
+                }),
+        )
+        .style(style::button_ghost)
+        .on_press(Message::DragStart {
+            index,
+            name: pack.name.clone(),
+        });
+
         let content_row = row![
+            grip,
             status_dot,
             info_col,
             tags_row,
@@ -5498,7 +5746,7 @@ impl App {
         .spacing(15)
         .align_y(iced::Alignment::Center);
 
-        button(content_row)
+        let card: Element<'static, Message> = button(content_row)
             .on_press(Message::SelectScenery(pack.name.clone()))
             .style(move |theme, status| {
                 let mut base = style::button_card(theme, status);
@@ -5511,7 +5759,49 @@ impl App {
             .padding(15)
             .height(Length::Fixed(75.0))
             .width(Length::Fill)
-            .into()
+            .into();
+
+        if is_dragging_this {
+            container(card)
+                .style(|_| container::Style {
+                    background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.5))),
+                    ..Default::default()
+                })
+                .into()
+        } else {
+            card
+        }
+    }
+
+    fn view_drop_gap(index: usize, is_active: bool) -> Element<'static, Message> {
+        use iced::widget::{horizontal_rule, mouse_area, rule};
+
+        let height = if is_active { 12.0 } else { 4.0 };
+        let color = if is_active {
+            style::palette::ACCENT_BLUE
+        } else {
+            Color::TRANSPARENT
+        };
+
+        mouse_area(
+            container(horizontal_rule(2).style(move |_| rule::Style {
+                color,
+                width: 2,
+                radius: 0.0.into(),
+                fill_mode: rule::FillMode::Full,
+            }))
+            .height(Length::Fixed(height))
+            .width(Length::Fill)
+            .padding(if is_active { Padding::new(4.0) } else { Padding::new(0.0) })
+            .style(if is_active {
+                |t: &Theme| style::container_drop_gap_active(t)
+            } else {
+                |_: &Theme| container::Style::default()
+            }),
+        )
+        .on_enter(Message::DragHover(index))
+        .on_exit(Message::DragLeaveHover)
+        .into()
     }
 
     fn view_addon_list<'a>(
@@ -6485,6 +6775,18 @@ fn toggle_pack(root: Option<PathBuf>, name: String, enable: bool) -> Result<(), 
     }
 
     sm.save(None).map_err(|e| e.to_string())
+}
+
+fn save_scenery_packs(
+    root: PathBuf,
+    packs: Vec<SceneryPack>,
+    model: BitNetModel,
+) -> Result<(), String> {
+    let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+    let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
+    sm.packs = packs;
+    sm.save(Some(&model)).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn load_aircraft_tree(
