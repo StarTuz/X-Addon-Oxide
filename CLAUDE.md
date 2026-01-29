@@ -64,6 +64,10 @@ Iced framework (v0.13) with Elm-like message-driven architecture:
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
 - `style.rs` - Dark theme with neon glow effects and animated splash screen (driven by `animation_time` state)
+- **Drag-and-Drop**:
+  - Parity-first design: Drops trigger physical move + pin + save to `scenery_packs.ini`
+  - Visuals: Grip handles, drop gaps, ghost overlay, auto-scroll (`AbsoluteOffset`)
+  - Determinism: `discovery.rs` must NOT sort alphabetically (uses filesystem order to match X-Plane)
 
 ## X-Plane Integration Points
 

@@ -41,7 +41,10 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 - **Persistence**: Your map filter selections are automatically saved and will be restored every time you launch the application.
 - **Toggling**: Use the **Enable/Disable** buttons on scenery cards. This modifies your `scenery_packs.ini` instantly.
 - **Inspector**: Hover over a card to see details in the Inspector Panel, including tile coordinates and airport counts.
-- **Interactive Sorting**: Hover over a scenery card to reveal **Move Up** and **Move Down** arrows. Manual reorders instantly create a **Pin** (Red Icon) which the AI will honor forever.
+- **Interactive Drag-and-Drop Reordering**: Use the **Grip Icon** (six dots on the left) to drag scenery packs to your desired position.
+  - **Visual Feedback**: A "ghost" card follows your cursor, and blue "Gap" lines show exactly where the item will drop.
+  - **Auto-Scroll**: Dragging near the top or bottom of the list will automatically scroll the view.
+  - **Instant Parity**: Dropping an item performs a physical move, creates a "Pin" in the BitNet engine, and immediately saves the new order to `scenery_packs.ini`.
 - **Smart Pinning**: Any manual adjustment "teaches" the AI your preferred order. Pinned items are highlighted with a red glow and icon.
 - **Clear All Pins**: If you want to undo your manual reorders, use the button at the top of the Scenery list to revert to the default AI logic.
 - **Strict Discovery**: X-Addon-Oxide strictly respects your `scenery_packs.ini`. If a folder exists in `Custom Scenery` but is NOT in your INI file, the app will NOT auto-add it to your library. This gives you absolute control—if you want a new pack to show up, either run X-Plane once to let it auto-generate the entry, or manually add it to the INI.
