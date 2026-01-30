@@ -659,7 +659,7 @@ impl App {
                 include_bytes!("../assets/icons/trash.svg").to_vec(),
             ),
             icon_grip: svg::Handle::from_memory(
-                include_bytes!("../assets/icons/grip.svg").to_vec(),
+                include_bytes!("../assets/icons/grab_hand.svg").to_vec(),
             ),
             is_picking_exclusion: false,
             fallback_airliner: image::Handle::from_bytes(
