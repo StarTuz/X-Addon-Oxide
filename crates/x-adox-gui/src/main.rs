@@ -290,6 +290,12 @@ enum Message {
     ConfirmLogbookBulkDelete,
     CancelLogbookBulkDelete,
     Tick(std::time::Instant),
+
+    // Scenery Search
+    ScenerySearchChanged(String),
+    ScenerySearchNext,
+    ScenerySearchPrev,
+    ScenerySearchSubmit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -546,6 +552,11 @@ struct App {
     show_logbook_bulk_delete_confirm: bool,
     selected_log_issues: std::collections::HashSet<usize>,
     last_scenery_click: Option<(String, std::time::Instant)>,
+
+    // Scenery Search
+    scenery_search_query: String,
+    scenery_search_matches: Vec<usize>,
+    scenery_search_index: Option<usize>,
 }
 
 impl App {
@@ -709,6 +720,11 @@ impl App {
             smart_groups: std::collections::BTreeMap::new(),
             smart_model_groups: std::collections::BTreeMap::new(),
             last_scenery_click: None,
+
+            // Scenery Search
+            scenery_search_query: String::new(),
+            scenery_search_matches: Vec::new(),
+            scenery_search_index: None,
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -776,6 +792,18 @@ impl App {
             self.loading_state.is_loading = false;
             self.status = "X-Plane Ready".to_string();
         }
+    }
+
+    fn scroll_to_scenery_index(&self, index: usize) -> Task<Message> {
+        // Height: 75px card + 2px spacing (from view_scenery column spacing)
+        let card_height = 75.0; 
+        let spacing = 2.0;
+        let offset = index as f32 * (card_height + spacing);
+
+        scrollable::scroll_to(
+            self.scenery_scroll_id.clone(),
+            scrollable::AbsoluteOffset { x: 0.0, y: offset },
+        )
     }
 
     /// Merges airports discovered in scenery packs into the global airports map.
@@ -2861,6 +2889,58 @@ impl App {
                 }
                 Task::none()
             }
+            Message::ScenerySearchChanged(query) => {
+                self.scenery_search_query = query;
+                if self.scenery_search_query.is_empty() {
+                    self.scenery_search_matches.clear();
+                    self.scenery_search_index = None;
+                } else {
+                    let q = self.scenery_search_query.to_lowercase();
+                    self.scenery_search_matches = self
+                        .packs
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, p)| p.name.to_lowercase().contains(&q))
+                        .map(|(i, _)| i)
+                        .collect();
+
+                    if self.scenery_search_matches.is_empty() {
+                        self.scenery_search_index = None;
+                    } else {
+                        self.scenery_search_index = Some(0);
+                        let target_idx = self.scenery_search_matches[0];
+                        return self.scroll_to_scenery_index(target_idx);
+                    }
+                }
+                Task::none()
+            }
+            Message::ScenerySearchNext => {
+                if let Some(current) = self.scenery_search_index {
+                    if !self.scenery_search_matches.is_empty() {
+                        let next = (current + 1) % self.scenery_search_matches.len();
+                        self.scenery_search_index = Some(next);
+                        let target_idx = self.scenery_search_matches[next];
+                        return self.scroll_to_scenery_index(target_idx);
+                    }
+                }
+                Task::none()
+            }
+            Message::ScenerySearchPrev => {
+                if let Some(current) = self.scenery_search_index {
+                    if !self.scenery_search_matches.is_empty() {
+                        let prev = if current == 0 {
+                            self.scenery_search_matches.len() - 1
+                        } else {
+                            current - 1
+                        };
+                        self.scenery_search_index = Some(prev);
+                        let target_idx = self.scenery_search_matches[prev];
+                        return self.scroll_to_scenery_index(target_idx);
+                    }
+                }
+                Task::none()
+            }
+            Message::ScenerySearchSubmit => Task::done(Message::ScenerySearchNext),
             Message::Tick(_now) => {
                 let mut tasks = Vec::new();
 
@@ -5054,9 +5134,12 @@ impl App {
         let hover_id = self.drag_context.as_ref().and_then(|ctx| ctx.hover_target_index);
         let is_dragging = self.drag_context.is_some();
 
+        let current_search_match = self.scenery_search_index
+            .and_then(|idx| self.scenery_search_matches.get(idx).cloned());
+
         let list_container = scrollable(lazy(
-            (packs, selected, overrides, drag_id, hover_id),
-            move |(packs, selected, overrides, drag_id, hover_id)| {
+            (packs, selected, overrides, drag_id, hover_id, current_search_match),
+            move |(packs, selected, overrides, drag_id, hover_id, current_search_match)| {
                 let mut items = Vec::new();
 
                 for (idx, pack) in packs.iter().enumerate() {
@@ -5066,12 +5149,15 @@ impl App {
                     }
 
                     let is_being_dragged = *drag_id == Some(idx);
+                    let is_search_match = *current_search_match == Some(idx);
+
                     items.push(Self::render_scenery_card(
                         pack,
                         selected.as_ref() == Some(&pack.name),
                         overrides.contains_key(&pack.name),
                         idx,
                         is_being_dragged,
+                        is_search_match,
                         icons.clone(),
                     ));
                 }
@@ -5119,6 +5205,47 @@ impl App {
             ]
             .align_y(iced::Alignment::Center)
             .padding(10),
+            row![
+                text_input("Search scenery...", &self.scenery_search_query)
+                    .on_input(Message::ScenerySearchChanged)
+                    .on_submit(Message::ScenerySearchSubmit)
+                    .padding(8)
+                    .width(Length::FillPortion(2)),
+                row![
+                    button(text("<").size(12))
+                        .on_press(Message::ScenerySearchPrev)
+                        .style(style::button_secondary)
+                        .padding([6, 10]),
+                    container(
+                        text(if self.scenery_search_matches.is_empty() {
+                            "0 / 0".to_string()
+                        } else {
+                            format!(
+                                "{} / {}",
+                                self.scenery_search_index.unwrap_or(0) + 1,
+                                self.scenery_search_matches.len()
+                            )
+                        })
+                        .size(12)
+                        .color(style::palette::TEXT_SECONDARY)
+                    )
+                    .padding([0, 10]),
+                    button(text(">").size(12))
+                        .on_press(Message::ScenerySearchNext)
+                        .style(style::button_secondary)
+                        .padding([6, 10]),
+                ]
+                .spacing(5)
+                .align_y(iced::Alignment::Center)
+                .width(Length::FillPortion(1)),
+            ]
+            .spacing(10)
+            .padding(Padding {
+                top: 0.0,
+                right: 10.0,
+                bottom: 10.0,
+                left: 10.0,
+            }),
             list_container
         ]
         .spacing(10)
@@ -5570,6 +5697,7 @@ impl App {
         is_heroic: bool,
         index: usize,
         is_dragging_this: bool,
+        is_search_match: bool,
         icons: (
             iced::widget::svg::Handle,
             iced::widget::svg::Handle,
@@ -5753,6 +5881,10 @@ impl App {
                 if is_selected {
                     base.border.color = style::palette::ACCENT_BLUE;
                     base.border.width = 1.0;
+                }
+                if is_search_match {
+                    base.border.color = Color::from_rgb(0.9, 0.9, 0.0); // Yellow highlight
+                    base.border.width = 2.0;
                 }
                 base
             })
