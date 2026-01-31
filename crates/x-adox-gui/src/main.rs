@@ -5343,26 +5343,36 @@ impl App {
             // ... (bucket_ctrls logic was replaced by the basket toggle)
         }
 
+        let is_basket_open = self.show_scenery_basket;
+        let basket_count = self.scenery_bucket.len();
+        
         let bucket_indicator = button(
             container(
                 row![
                     svg(self.icon_basket.clone())
                         .width(Length::Fixed(14.0))
                         .height(Length::Fixed(14.0))
-                        .style(|_, _| svg::Style {
-                            color: Some(if self.scenery_bucket.is_empty() {
+                        .style(move |_, _| svg::Style {
+                            color: Some(if basket_count == 0 && !is_basket_open {
                                 style::palette::TEXT_SECONDARY
                             } else {
-                                style::palette::ACCENT_BLUE
+                                style::palette::TEXT_PRIMARY
                             }),
                         }),
-                    text(format!("Basket: {}", self.scenery_bucket.len()))
-                        .size(12)
-                        .color(if self.scenery_bucket.is_empty() {
-                            style::palette::TEXT_SECONDARY
-                        } else {
-                            style::palette::TEXT_PRIMARY
-                        }),
+                    text(if is_basket_open {
+                        format!("Hide Basket ({})", basket_count)
+                    } else {
+                        format!("Show Basket ({})", basket_count)
+                    })
+                    .size(12)
+                    .color(if basket_count == 0 && !is_basket_open {
+                        style::palette::TEXT_SECONDARY
+                    } else {
+                        style::palette::TEXT_PRIMARY
+                    }),
+                    text(if is_basket_open { "▴" } else { "▾" })
+                        .size(10)
+                        .color(style::palette::TEXT_SECONDARY),
                 ]
                 .spacing(8)
                 .align_y(iced::Alignment::Center)
@@ -5370,7 +5380,11 @@ impl App {
             .padding([0, 10])
         )
         .on_press(Message::ToggleBucket)
-        .style(style::button_secondary)
+        .style(if is_basket_open {
+            style::button_primary
+        } else {
+            style::button_secondary
+        })
         .padding([4, 8]);
 
         let main_view = column![
@@ -6170,25 +6184,25 @@ impl App {
             name: pack.name.clone(),
         });
 
-        let basket_btn = button(
-            svg(icon_basket)
-                .width(Length::Fixed(14.0))
-                .height(Length::Fixed(14.0))
-                .style(move |_, _| svg::Style {
-                    color: Some(if is_in_bucket {
-                        style::palette::ACCENT_BLUE
-                    } else {
-                        style::palette::TEXT_SECONDARY
+        let basket_btn = tooltip(
+            button(
+                svg(icon_basket)
+                    .width(Length::Fixed(14.0))
+                    .height(Length::Fixed(14.0))
+                    .style(move |_, _| svg::Style {
+                        color: Some(if is_in_bucket {
+                            style::palette::ACCENT_BLUE
+                        } else {
+                            style::palette::TEXT_SECONDARY
+                        }),
                     }),
-                }),
-        )
-        .on_press(Message::ToggleBucketItem(pack.name.clone()))
-        .style(if is_in_bucket {
-            style::button_ghost
-        } else {
-            style::button_ghost
-        })
-        .padding(4);
+            )
+            .on_press(Message::ToggleBucketItem(pack.name.clone()))
+            .style(style::button_ghost)
+            .padding(4),
+            "Add/Remove from Basket",
+            tooltip::Position::Top,
+        );
 
         let paste_btn: Element<'_, Message> = if can_paste_mode {
             button(
