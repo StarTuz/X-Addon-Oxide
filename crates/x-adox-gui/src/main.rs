@@ -1,7 +1,7 @@
 use iced::widget::{
-    button, checkbox, column, container, horizontal_space, image, pick_list, progress_bar,
-    responsive, row, scrollable, slider, stack, svg, text, text_editor, text_input, tooltip,
-    Column, Row,
+    button, checkbox, column, container, horizontal_space, image, mouse_area, pick_list,
+    progress_bar, responsive, row, scrollable, slider, stack, svg, text, text_editor, text_input,
+    tooltip, Column, Row,
 };
 use iced::window::icon;
 use iced::{
@@ -301,8 +301,11 @@ enum Message {
     ClearBucket,
     ToggleBucket,
     ToggleBasketSelection(String),
-    DragBucketStart(Option<String>), // Some(name) if dragging specific, None if dragging all selected
+    DragBucketStart(Option<String>),
     DropBucketAt(usize),
+    BasketDragStart,
+    BasketDragged(Point),
+    BasketDragEnd,
     ModifiersChanged(keyboard::Modifiers),
 }
 
@@ -572,6 +575,9 @@ struct App {
     icon_paste: svg::Handle,
     pub show_scenery_basket: bool,
     pub selected_basket_items: std::collections::HashSet<String>,
+    pub basket_offset: iced::Vector,
+    pub basket_drag_origin: Option<Point>,
+    pub is_basket_dragging: bool,
 }
 
 impl App {
@@ -751,6 +757,9 @@ impl App {
             ),
             show_scenery_basket: false,
             selected_basket_items: std::collections::HashSet::new(),
+            basket_offset: iced::Vector::default(),
+            basket_drag_origin: None,
+            is_basket_dragging: false,
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -3038,6 +3047,26 @@ impl App {
                 }
                 Task::none()
             }
+            Message::BasketDragStart => {
+                self.is_basket_dragging = true;
+                self.basket_drag_origin = None;
+                Task::none()
+            }
+            Message::BasketDragged(pos) => {
+                if let Some(origin) = self.basket_drag_origin {
+                    let delta = pos - origin;
+                    self.basket_offset = self.basket_offset + delta;
+                    self.basket_drag_origin = Some(pos);
+                } else {
+                    self.basket_drag_origin = Some(pos);
+                }
+                Task::none()
+            }
+            Message::BasketDragEnd => {
+                self.is_basket_dragging = false;
+                self.basket_drag_origin = None;
+                Task::none()
+            }
             Message::DropBucketAt(target_idx) => {
                 let items_to_move = if self.selected_basket_items.is_empty() {
                     self.scenery_bucket.clone()
@@ -3162,7 +3191,21 @@ impl App {
             Subscription::none()
         };
 
-        let tick = if self.loading_state.is_loading || self.drag_context.is_some() {
+        let basket_dragging = if self.is_basket_dragging {
+            event::listen_with(|event, _status, _window| match event {
+                Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                    Some(Message::BasketDragged(position))
+                }
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    Some(Message::BasketDragEnd)
+                }
+                _ => None,
+            })
+        } else {
+            Subscription::none()
+        };
+
+        let tick = if self.loading_state.is_loading || self.drag_context.is_some() || self.is_basket_dragging {
             time::every(std::time::Duration::from_millis(16)).map(Message::Tick)
         } else {
             Subscription::none()
@@ -3175,7 +3218,7 @@ impl App {
             _ => None,
         });
 
-        Subscription::batch(vec![dragging, tick, kb_sub])
+        Subscription::batch(vec![dragging, basket_dragging, tick, kb_sub])
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -3224,6 +3267,24 @@ impl App {
                 .into()
         } else {
             let mut final_view = stack![main_view];
+
+            if self.show_scenery_basket {
+                let basket = self.view_scenery_basket();
+
+                final_view = final_view.push(
+                    container(basket)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .align_x(iced::alignment::Horizontal::Right)
+                        .align_y(iced::alignment::Vertical::Top)
+                        .padding(Padding {
+                            top: 60.0 + self.basket_offset.y,
+                            right: 20.0 - self.basket_offset.x,
+                            bottom: 0.0,
+                            left: 0.0,
+                        })
+                );
+            }
 
             if let Some(ctx) = &self.drag_context {
                 let ghost = container(self.view_ghost(ctx))
@@ -5468,19 +5529,7 @@ impl App {
         ]
         .spacing(10);
 
-        if self.show_scenery_basket {
-            stack![
-                main_view,
-                container(self.view_scenery_basket())
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .align_x(iced::alignment::Horizontal::Right)
-                    .align_y(iced::alignment::Vertical::Top)
-                    .padding([60, 20])
-            ].into()
-        } else {
-            main_view.into()
-        }
+        main_view.into()
     }
 
     fn view_scenery_basket(&self) -> Element<'_, Message> {
@@ -5489,7 +5538,9 @@ impl App {
 
         let mut content = Column::new().spacing(10);
         
-        content = content.push(
+        let _is_dragging = self.basket_drag_origin.is_some();
+
+        let header = container(
             row![
                 svg(self.icon_basket.clone()).width(20).height(20).style(|_, _| svg::Style { color: Some(style::palette::ACCENT_BLUE) }),
                 text("Scenery Basket").size(18).width(Length::Fill),
@@ -5497,7 +5548,18 @@ impl App {
                     .on_press(Message::ClearBucket)
                     .style(style::button_ghost)
             ].align_y(iced::Alignment::Center)
-        );
+        ).padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 10.0,
+            left: 0.0,
+        });
+
+        // Wrap header in a mouse area for dragging
+        let header_with_drag = mouse_area(header)
+            .on_press(Message::BasketDragStart);
+
+        content = content.push(header_with_drag);
 
         let items_list: Element<'_, Message> = if bucket.is_empty() {
             container(text("Drop scenery here...").color(style::palette::TEXT_SECONDARY))
@@ -5529,7 +5591,10 @@ impl App {
                     ].spacing(8).align_y(iced::Alignment::Center)
                 );
             }
-            scrollable(list).height(Length::Shrink).into()
+            container(scrollable(list).height(Length::Shrink))
+                .height(Length::Shrink)
+                .max_height(400.0)
+                .into()
         };
 
         let mut bottom_actions = Column::new().spacing(10);
@@ -5553,12 +5618,15 @@ impl App {
                 container(items_list)
                     .padding(10)
                     .width(Length::Fill)
+                    .height(Length::Shrink)
                     .style(style::container_drop_zone),
                 bottom_actions
             ].spacing(15)
         )
         .padding(15)
         .width(Length::Fixed(350.0))
+        .height(Length::Shrink)
+        .max_height(700.0)
         .style(style::container_sidebar)
         .into()
     }
