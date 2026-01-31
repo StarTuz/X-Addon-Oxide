@@ -8,6 +8,7 @@ use iced::{
     Background, Border, Color, Element, Length, Padding, Point, Renderer, Shadow, Subscription,
     Task, Theme,
 };
+use iced::keyboard;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
@@ -296,6 +297,13 @@ enum Message {
     ScenerySearchNext,
     ScenerySearchPrev,
     ScenerySearchSubmit,
+    ToggleBucketItem(String),
+    ClearBucket,
+    ToggleBucket,
+    ToggleBasketSelection(String),
+    DragBucketStart(Option<String>), // Some(name) if dragging specific, None if dragging all selected
+    DropBucketAt(usize),
+    ModifiersChanged(keyboard::Modifiers),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -557,6 +565,13 @@ struct App {
     scenery_search_query: String,
     scenery_search_matches: Vec<usize>,
     scenery_search_index: Option<usize>,
+    pub scenery_bucket: Vec<String>,
+    pub scenery_last_bucket_index: Option<usize>,
+    pub keyboard_modifiers: keyboard::Modifiers,
+    icon_basket: svg::Handle,
+    icon_paste: svg::Handle,
+    pub show_scenery_basket: bool,
+    pub selected_basket_items: std::collections::HashSet<String>,
 }
 
 impl App {
@@ -725,6 +740,17 @@ impl App {
             scenery_search_query: String::new(),
             scenery_search_matches: Vec::new(),
             scenery_search_index: None,
+            scenery_bucket: Vec::new(),
+            scenery_last_bucket_index: None,
+            keyboard_modifiers: keyboard::Modifiers::default(),
+            icon_basket: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/basket.svg").to_vec(),
+            ),
+            icon_paste: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/paste.svg").to_vec(),
+            ),
+            show_scenery_basket: false,
+            selected_basket_items: std::collections::HashSet::new(),
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -2087,6 +2113,16 @@ impl App {
                 });
                 Task::none()
             }
+            Message::DragBucketStart(name_opt) => {
+                let name = name_opt.unwrap_or_else(|| "Selected items".to_string());
+                self.drag_context = Some(DragContext {
+                    source_index: usize::MAX, // Special marker for basket
+                    source_name: name,
+                    hover_target_index: None,
+                    cursor_position: Point::ORIGIN,
+                });
+                Task::none()
+            }
             Message::DragMove(position) => {
                 if let Some(ctx) = &mut self.drag_context {
                     ctx.cursor_position = position;
@@ -2108,9 +2144,9 @@ impl App {
             Message::DragEnd => {
                 if let Some(ctx) = self.drag_context.take() {
                     if let Some(target_idx) = ctx.hover_target_index {
-                        // target_idx is the gap index. 
-                        // If we drag item 2 to Gap 0, Gap 1, Gap 2, Gap 3...
-                        // If target_idx == source_index or target_idx == source_index + 1, it's a no-op.
+                        if ctx.source_index == usize::MAX {
+                            return Task::done(Message::DropBucketAt(target_idx));
+                        }
                         if target_idx != ctx.source_index && target_idx != ctx.source_index + 1 {
                             let packs = Arc::make_mut(&mut self.packs);
                             let name = ctx.source_name.clone();
@@ -2941,6 +2977,123 @@ impl App {
                 Task::none()
             }
             Message::ScenerySearchSubmit => Task::done(Message::ScenerySearchNext),
+            Message::ModifiersChanged(modifiers) => {
+                self.keyboard_modifiers = modifiers;
+                Task::none()
+            }
+            Message::ToggleBucketItem(name) => {
+                if self.keyboard_modifiers.shift() {
+                    // Range selection logic
+                    if let (Some(last_idx), Some(current_idx)) = (
+                        self.scenery_last_bucket_index,
+                        self.packs.iter().position(|p| p.name == name),
+                    ) {
+                        let start = last_idx.min(current_idx);
+                        let end = last_idx.max(current_idx);
+                        for i in start..=end {
+                            let p_name = self.packs[i].name.clone();
+                            if !self.scenery_bucket.contains(&p_name) {
+                                self.scenery_bucket.push(p_name);
+                            }
+                        }
+                        self.scenery_last_bucket_index = Some(current_idx);
+                    } else if let Some(current_idx) = self.packs.iter().position(|p| p.name == name)
+                    {
+                        // Fallback to single if no last index
+                        if let Some(pos) = self.scenery_bucket.iter().position(|n| n == &name) {
+                            self.scenery_bucket.remove(pos);
+                        } else {
+                            self.scenery_bucket.push(name.clone());
+                        }
+                        self.scenery_last_bucket_index = Some(current_idx);
+                    }
+                } else {
+                    // Standard toggle
+                    if let Some(pos) = self.scenery_bucket.iter().position(|n| n == &name) {
+                        self.scenery_bucket.remove(pos);
+                    } else {
+                        self.scenery_bucket.push(name.clone());
+                    }
+                    if let Some(idx) = self.packs.iter().position(|p| p.name == name) {
+                        self.scenery_last_bucket_index = Some(idx);
+                    }
+                }
+                Task::none()
+            }
+            Message::ClearBucket => {
+                self.scenery_bucket.clear();
+                self.scenery_last_bucket_index = None;
+                self.selected_basket_items.clear();
+                Task::none()
+            }
+            Message::ToggleBucket => {
+                self.show_scenery_basket = !self.show_scenery_basket;
+                Task::none()
+            }
+            Message::ToggleBasketSelection(name) => {
+                if self.selected_basket_items.contains(&name) {
+                    self.selected_basket_items.remove(&name);
+                } else {
+                    self.selected_basket_items.insert(name.clone());
+                }
+                Task::none()
+            }
+            Message::DropBucketAt(target_idx) => {
+                let items_to_move = if self.selected_basket_items.is_empty() {
+                    self.scenery_bucket.clone()
+                } else {
+                    self.scenery_bucket
+                        .iter()
+                        .filter(|name| self.selected_basket_items.contains(*name))
+                        .cloned()
+                        .collect()
+                };
+
+                if items_to_move.is_empty() {
+                    return Task::none();
+                }
+
+                let mut new_packs = (*self.packs).clone();
+                let bucket_items: Vec<SceneryPack> = items_to_move
+                    .iter()
+                    .filter_map(|name| new_packs.iter().find(|p| &p.name == name).cloned())
+                    .collect();
+
+                // Remove items from the list
+                new_packs.retain(|p| !items_to_move.contains(&p.name));
+
+                // Adjust target_idx because items were removed
+                let target_idx = target_idx.min(new_packs.len());
+
+                // Insert items at target_idx
+                for (i, pack) in bucket_items.into_iter().enumerate() {
+                    new_packs.insert(target_idx + i, pack);
+                }
+
+                self.packs = Arc::new(new_packs);
+                self.scenery_bucket.retain(|name| !items_to_move.contains(name));
+                self.selected_basket_items.clear();
+                self.scenery_last_bucket_index = None;
+
+                let current_packs = self.packs.clone();
+                let xplane_root = self.xplane_root.clone();
+                let model = self.heuristics_model.clone();
+
+                if let Some(root) = xplane_root {
+                    Task::perform(
+                        async move { save_scenery_packs(root, (*current_packs).clone(), model) },
+                        |res| {
+                            if let Err(e) = res {
+                                Message::StatusChanged(format!("Save failed: {}", e))
+                            } else {
+                                Message::StatusChanged("Scenery order saved".to_string())
+                            }
+                        },
+                    )
+                } else {
+                    Task::none()
+                }
+            }
             Message::Tick(_now) => {
                 let mut tasks = Vec::new();
 
@@ -3015,7 +3168,14 @@ impl App {
             Subscription::none()
         };
 
-        Subscription::batch(vec![dragging, tick])
+        let kb_sub = event::listen_with(|event, _status, _window| match event {
+            Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
+                Some(Message::ModifiersChanged(modifiers))
+            }
+            _ => None,
+        });
+
+        Subscription::batch(vec![dragging, tick, kb_sub])
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -5128,6 +5288,8 @@ impl App {
             self.icon_arrow_up.clone(),
             self.icon_arrow_down.clone(),
             self.icon_grip.clone(),
+            self.icon_basket.clone(),
+            self.icon_paste.clone(),
         );
 
         let drag_id = self.drag_context.as_ref().map(|ctx| ctx.source_index);
@@ -5137,9 +5299,11 @@ impl App {
         let current_search_match = self.scenery_search_index
             .and_then(|idx| self.scenery_search_matches.get(idx).cloned());
 
+        let bucket = self.scenery_bucket.clone();
+
         let list_container = scrollable(lazy(
-            (packs, selected, overrides, drag_id, hover_id, current_search_match),
-            move |(packs, selected, overrides, drag_id, hover_id, current_search_match)| {
+            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket),
+            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket)| {
                 let mut items = Vec::new();
 
                 for (idx, pack) in packs.iter().enumerate() {
@@ -5150,6 +5314,7 @@ impl App {
 
                     let is_being_dragged = *drag_id == Some(idx);
                     let is_search_match = *current_search_match == Some(idx);
+                    let is_in_bucket = bucket.contains(&pack.name);
 
                     items.push(Self::render_scenery_card(
                         pack,
@@ -5158,6 +5323,8 @@ impl App {
                         idx,
                         is_being_dragged,
                         is_search_match,
+                        is_in_bucket,
+                        !bucket.is_empty(),
                         icons.clone(),
                     ));
                 }
@@ -5172,32 +5339,68 @@ impl App {
         ))
         .id(self.scenery_scroll_id.clone());
 
-        column![
+        if !self.scenery_bucket.is_empty() {
+            // ... (bucket_ctrls logic was replaced by the basket toggle)
+        }
+
+        let bucket_indicator = button(
+            container(
+                row![
+                    svg(self.icon_basket.clone())
+                        .width(Length::Fixed(14.0))
+                        .height(Length::Fixed(14.0))
+                        .style(|_, _| svg::Style {
+                            color: Some(if self.scenery_bucket.is_empty() {
+                                style::palette::TEXT_SECONDARY
+                            } else {
+                                style::palette::ACCENT_BLUE
+                            }),
+                        }),
+                    text(format!("Basket: {}", self.scenery_bucket.len()))
+                        .size(12)
+                        .color(if self.scenery_bucket.is_empty() {
+                            style::palette::TEXT_SECONDARY
+                        } else {
+                            style::palette::TEXT_PRIMARY
+                        }),
+                ]
+                .spacing(8)
+                .align_y(iced::Alignment::Center)
+            )
+            .padding([0, 10])
+        )
+        .on_press(Message::ToggleBucket)
+        .style(style::button_secondary)
+        .padding([4, 8]);
+
+        let main_view = column![
             row![
                 text("Scenery Library").size(24).width(Length::Fill),
                 if !self.heuristics_model.config.overrides.is_empty() {
-                    let btn: Element<'_, Message> =
-                        button(
-                            Row::<Message, Theme, Renderer>::new()
-                                .push(svg(self.icon_pin.clone()).width(14).height(14).style(
-                                    |_, _| svg::Style {
+                    let btn: Element<'_, Message> = button(
+                        Row::<Message, Theme, Renderer>::new()
+                            .push(
+                                svg(self.icon_pin.clone())
+                                    .width(14)
+                                    .height(14)
+                                    .style(|_, _| svg::Style {
                                         color: Some(style::palette::ACCENT_RED),
-                                    },
+                                    }),
+                            )
+                            .push(
+                                text(format!(
+                                    "Clear All Pins ({})",
+                                    self.heuristics_model.config.overrides.len()
                                 ))
-                                .push(
-                                    text(format!(
-                                        "Clear All Pins ({})",
-                                        self.heuristics_model.config.overrides.len()
-                                    ))
-                                    .size(12),
-                                )
-                                .spacing(8)
-                                .align_y(iced::Alignment::Center),
-                        )
-                        .on_press(Message::ClearAllPins)
-                        .style(style::button_secondary)
-                        .padding([6, 12])
-                        .into();
+                                .size(12),
+                            )
+                            .spacing(8)
+                            .align_y(iced::Alignment::Center),
+                    )
+                    .on_press(Message::ClearAllPins)
+                    .style(style::button_secondary)
+                    .padding([6, 12])
+                    .into();
                     btn
                 } else {
                     iced::widget::Space::new(Length::Fixed(0.0), Length::Fixed(0.0)).into()
@@ -5211,6 +5414,7 @@ impl App {
                     .on_submit(Message::ScenerySearchSubmit)
                     .padding(8)
                     .width(Length::FillPortion(2)),
+                bucket_indicator,
                 row![
                     button(text("<").size(12))
                         .on_press(Message::ScenerySearchPrev)
@@ -5248,7 +5452,100 @@ impl App {
             }),
             list_container
         ]
-        .spacing(10)
+        .spacing(10);
+
+        if self.show_scenery_basket {
+            stack![
+                main_view,
+                container(self.view_scenery_basket())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .align_y(iced::alignment::Vertical::Top)
+                    .padding([60, 20])
+            ].into()
+        } else {
+            main_view.into()
+        }
+    }
+
+    fn view_scenery_basket(&self) -> Element<'_, Message> {
+        let bucket = self.scenery_bucket.clone();
+        let selected = self.selected_basket_items.clone();
+
+        let mut content = Column::new().spacing(10);
+        
+        content = content.push(
+            row![
+                svg(self.icon_basket.clone()).width(20).height(20).style(|_, _| svg::Style { color: Some(style::palette::ACCENT_BLUE) }),
+                text("Scenery Basket").size(18).width(Length::Fill),
+                button(text("Clear").size(10))
+                    .on_press(Message::ClearBucket)
+                    .style(style::button_ghost)
+            ].align_y(iced::Alignment::Center)
+        );
+
+        let items_list: Element<'_, Message> = if bucket.is_empty() {
+            container(text("Drop scenery here...").color(style::palette::TEXT_SECONDARY))
+                .width(Length::Fill)
+                .height(Length::Fixed(150.0))
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .into()
+        } else {
+            let mut list = Column::new().spacing(5);
+            for item in bucket {
+                let is_selected = selected.contains(&item);
+                let name_clone = item.clone();
+                let name_clone2 = item.clone();
+                list = list.push(
+                    row![
+                        checkbox("", is_selected).on_toggle(move |_| Message::ToggleBasketSelection(name_clone.clone())),
+                        text(item).size(12).width(Length::Fill),
+                        button(
+                            svg(self.icon_grip.clone())
+                                .width(Length::Fixed(14.0))
+                                .height(Length::Fixed(14.0))
+                                .style(|_, _| svg::Style {
+                                    color: Some(style::palette::TEXT_SECONDARY),
+                                }),
+                        )
+                        .style(style::button_ghost)
+                        .on_press(Message::DragBucketStart(Some(name_clone2))),
+                    ].spacing(8).align_y(iced::Alignment::Center)
+                );
+            }
+            scrollable(list).height(Length::Shrink).into()
+        };
+
+        let mut bottom_actions = Column::new().spacing(10);
+        if !selected.is_empty() {
+             bottom_actions = bottom_actions.push(
+                button(
+                    row![
+                        svg(self.icon_grip.clone()).width(14).height(14).style(|_, _| svg::Style { color: Some(Color::WHITE) }),
+                        text(format!("Drag Selected ({})", selected.len())).size(12)
+                    ].spacing(8).align_y(iced::Alignment::Center)
+                )
+                .on_press(Message::DragBucketStart(None))
+                .style(style::button_primary)
+                .width(Length::Fill)
+            );
+        }
+
+        container(
+            column![
+                content,
+                container(items_list)
+                    .padding(10)
+                    .width(Length::Fill)
+                    .style(style::container_drop_zone),
+                bottom_actions
+            ].spacing(15)
+        )
+        .padding(15)
+        .width(Length::Fixed(350.0))
+        .style(style::container_sidebar)
         .into()
     }
 
@@ -5698,16 +5995,28 @@ impl App {
         index: usize,
         is_dragging_this: bool,
         is_search_match: bool,
+        is_in_bucket: bool,
+        can_paste_mode: bool,
         icons: (
             iced::widget::svg::Handle,
             iced::widget::svg::Handle,
             iced::widget::svg::Handle,
             iced::widget::svg::Handle,
             iced::widget::svg::Handle, // grip
+            iced::widget::svg::Handle, // bucket
+            iced::widget::svg::Handle, // paste
         ),
     ) -> Element<'static, Message> {
         let is_active = pack.status == SceneryPackType::Active;
-        let (icon_pin, icon_pin_outline, icon_arrow_up, icon_arrow_down, icon_grip) = icons;
+        let (
+            icon_pin,
+            icon_pin_outline,
+            icon_arrow_up,
+            icon_arrow_down,
+            icon_grip,
+            icon_basket,
+            icon_paste,
+        ) = icons;
 
         let status_dot = container(iced::widget::Space::new(
             Length::Fixed(0.0),
@@ -5861,7 +6170,45 @@ impl App {
             name: pack.name.clone(),
         });
 
+        let basket_btn = button(
+            svg(icon_basket)
+                .width(Length::Fixed(14.0))
+                .height(Length::Fixed(14.0))
+                .style(move |_, _| svg::Style {
+                    color: Some(if is_in_bucket {
+                        style::palette::ACCENT_BLUE
+                    } else {
+                        style::palette::TEXT_SECONDARY
+                    }),
+                }),
+        )
+        .on_press(Message::ToggleBucketItem(pack.name.clone()))
+        .style(if is_in_bucket {
+            style::button_ghost
+        } else {
+            style::button_ghost
+        })
+        .padding(4);
+
+        let paste_btn: Element<'_, Message> = if can_paste_mode {
+            button(
+                svg(icon_paste)
+                    .width(Length::Fixed(14.0))
+                    .height(Length::Fixed(14.0))
+                    .style(move |_, _| svg::Style {
+                        color: Some(style::palette::ACCENT_GREEN),
+                    }),
+            )
+            .on_press(Message::DropBucketAt(index))
+            .style(style::button_ghost)
+            .padding(4)
+            .into()
+        } else {
+            iced::widget::Space::new(Length::Fixed(0.0), Length::Fixed(0.0)).into()
+        };
+
         let content_row = row![
+            basket_btn,
             grip,
             status_dot,
             info_col,
@@ -5869,6 +6216,7 @@ impl App {
             type_tag,
             move_controls,
             pin_btn,
+            paste_btn,
             action_btn
         ]
         .spacing(15)
