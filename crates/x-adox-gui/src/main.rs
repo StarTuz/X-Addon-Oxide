@@ -858,6 +858,52 @@ impl App {
         }
     }
 
+    fn sync_active_profile_scenery(&mut self) {
+        if let Some(ref active_name) = self.profiles.active_profile.clone() {
+            if let Some(profile) = self.profiles.profiles.iter_mut().find(|p| p.name == *active_name) {
+                profile.scenery_states = self.packs
+                    .iter()
+                    .map(|p| (p.name.clone(), p.status == SceneryPackType::Active))
+                    .collect();
+                self.save_profiles();
+            }
+        }
+    }
+
+    fn sync_active_profile_plugins(&mut self) {
+        if let Some(ref active_name) = self.profiles.active_profile.clone() {
+            if let Some(profile) = self.profiles.profiles.iter_mut().find(|p| p.name == *active_name) {
+                profile.plugin_states = self.plugins
+                    .iter()
+                    .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
+                    .collect();
+                // Also merge CSLs into plugin_states as they use the same management logic
+                for csl in &*self.csls {
+                    profile.plugin_states.insert(csl.path.to_string_lossy().to_string(), csl.is_enabled);
+                }
+                self.save_profiles();
+            }
+        }
+    }
+
+    fn sync_active_profile_aircraft(&mut self) {
+        if let Some(ref active_name) = self.profiles.active_profile.clone() {
+            if let Some(profile) = self.profiles.profiles.iter_mut().find(|p| p.name == *active_name) {
+                profile.aircraft_states = self.aircraft
+                    .iter()
+                    .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
+                    .collect();
+                self.save_profiles();
+            }
+        }
+    }
+
+    fn save_profiles(&self) {
+        if let Some(ref pm) = self.profile_manager {
+            let _ = pm.save(&self.profiles);
+        }
+    }
+
     fn scroll_to_scenery_index(&self, index: usize) -> Task<Message> {
         // Height: 75px card + 2px spacing (from view_scenery column spacing)
         let card_height = 75.0; 
@@ -1043,6 +1089,7 @@ impl App {
                         );
 
                         if !self.loading_state.is_loading {
+                            self.sync_active_profile_scenery();
                             self.status = format!("{} scenery packs", self.packs.len());
 
                             // Pipeline: Trigger next scan (only if not doing global reload)
@@ -1067,6 +1114,7 @@ impl App {
                     Ok(aircraft) => {
                         self.aircraft = aircraft;
                         if !self.loading_state.is_loading {
+                            self.sync_active_profile_aircraft();
                             if self.active_tab == Tab::Aircraft {
                                 self.status = format!("{} aircraft", self.aircraft.len());
                             }
@@ -1395,6 +1443,7 @@ impl App {
                     Ok(plugins) => {
                         self.plugins = plugins;
                         if !self.loading_state.is_loading {
+                            self.sync_active_profile_plugins();
                             if self.active_tab == Tab::Plugins {
                                 self.status = format!("{} plugins", self.plugins.len());
                             }
@@ -1424,6 +1473,7 @@ impl App {
                         self.show_csl_tab = !self.csls.is_empty();
 
                         if !self.loading_state.is_loading {
+                            self.sync_active_profile_plugins(); // CSLs share plugin_states
                             if self.active_tab == Tab::CSLs {
                                 self.status = format!("{} CSL packages", self.csls.len());
                             }
@@ -1525,9 +1575,6 @@ impl App {
                 }
             }
             Message::SaveCurrentProfile(name) => {
-                let pm = self.profile_manager.clone();
-                let mut collection = self.profiles.clone();
-
                 // Create profile from current state
                 let scenery_states = self
                     .packs
@@ -1539,11 +1586,14 @@ impl App {
                     .iter()
                     .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
                     .collect();
-                let plugin_states = self
+                let mut plugin_states: std::collections::HashMap<String, bool> = self
                     .plugins
                     .iter()
                     .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
                     .collect();
+                for csl in &*self.csls {
+                    plugin_states.insert(csl.path.to_string_lossy().to_string(), csl.is_enabled);
+                }
 
                 let new_profile = Profile {
                     name: name.clone(),
@@ -1566,18 +1616,8 @@ impl App {
                 self.new_profile_name = String::new();
 
                 self.status = format!("Profile {} saved", name);
-                Task::perform(
-                    async move {
-                        if let Some(pm) = pm {
-                            pm.save(&collection).map_err(|e| e.to_string())?;
-                        }
-                        Ok::<(), String>(())
-                    },
-                    |result: Result<(), String>| match result {
-                        Ok(_) => Message::Refresh,
-                        Err(e) => Message::ProfilesLoaded(Err(e)),
-                    },
-                )
+                self.save_profiles();
+                Task::done(Message::Refresh)
             }
             Message::DeleteProfile(name) => {
                 self.profiles.profiles.retain(|p| p.name != name);
@@ -1723,10 +1763,7 @@ impl App {
                         profile.launch_args = args;
                     }
 
-                    // Save profiles
-                    if let Some(ref pm) = self.profile_manager {
-                        let _ = pm.save(&self.profiles);
-                    }
+                    self.save_profiles();
                 }
                 Task::none()
             }
