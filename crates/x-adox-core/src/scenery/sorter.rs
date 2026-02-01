@@ -67,6 +67,16 @@ pub fn sort_packs(
 
                 // 1. Group by Rule Name (to keep headers together)
                 if !name_a.is_empty() && !name_b.is_empty() {
+                    let pin_name = x_adox_bitnet::PINNED_RULE_NAME;
+
+                    // Pin priority: If one is pinned and the other isn't, pin wins.
+                    if name_a == pin_name && name_b != pin_name {
+                        return std::cmp::Ordering::Less; // A is pinned -> Top
+                    }
+                    if name_b == pin_name && name_a != pin_name {
+                        return std::cmp::Ordering::Greater; // B is pinned -> Bottom of their tier
+                    }
+
                     match name_a.cmp(&name_b) {
                         std::cmp::Ordering::Equal => (),
                         ord => return ord,

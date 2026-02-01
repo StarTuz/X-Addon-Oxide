@@ -36,9 +36,10 @@ pub struct HeuristicsConfig {
     pub schema_version: u32,
 }
 
-/// Current schema version. Increment this when making breaking changes to heuristics.
 /// When a user's file has a lower version, their `overrides` will be cleared on load.
 pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+
+pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
 impl Default for HeuristicsConfig {
     fn default() -> Self {
@@ -319,7 +320,7 @@ impl BitNetModel {
     ) -> (u8, String) {
         // 1. Check for manual overrides first (Sticky Sort)
         if let Some(&score) = self.config.overrides.get(name) {
-            return (score, "Pinned / Manual Override".to_string());
+            return (score, PINNED_RULE_NAME.to_string());
         }
 
         let name_lower = name.to_lowercase();
