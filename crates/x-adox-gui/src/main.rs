@@ -318,6 +318,7 @@ enum Message {
     ClearBucket,
     ToggleBucket,
     ToggleBasketSelection(String),
+    ToggleAutopin(bool),
     DragBucketStart(Option<String>),
     DropBucketAt(usize),
     BasketDragStart,
@@ -601,6 +602,7 @@ struct App {
     pub basket_size: iced::Vector,
     pub active_resize_edge: Option<ResizeEdge>,
     pub window_size: iced::Size,
+    pub autopin_enabled: bool,
 }
 
 impl App {
@@ -786,6 +788,7 @@ impl App {
             basket_size: iced::Vector::new(350.0, 400.0),
             active_resize_edge: None,
             window_size: iced::Size::new(1280.0, 720.0),
+            autopin_enabled: true, // Enabled by default as it's a "Smart" feature
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -3103,6 +3106,10 @@ impl App {
                 }
                 Task::none()
             }
+            Message::ToggleAutopin(enabled) => {
+                self.autopin_enabled = enabled;
+                Task::none()
+            }
             Message::BasketDragStart => {
                 self.is_basket_dragging = true;
                 self.basket_drag_origin = None;
@@ -3241,7 +3248,33 @@ impl App {
 
                 // Insert items at target_idx
                 for (i, pack) in bucket_items.into_iter().enumerate() {
-                    new_packs.insert(target_idx + i, pack);
+                    let idx = target_idx + i;
+                    new_packs.insert(idx, pack.clone());
+
+                    if self.autopin_enabled {
+                        // Pin to neighbor score
+                        let neighbor_idx = if idx > 0 { idx - 1 } else { idx + 1 };
+                        if neighbor_idx < new_packs.len() {
+                            let neighbor_name = new_packs[neighbor_idx].name.clone();
+                            let score = self.heuristics_model.predict(
+                                &neighbor_name,
+                                std::path::Path::new(""),
+                                &x_adox_bitnet::PredictContext {
+                                    region_focus: self.region_focus.clone(),
+                                    ..Default::default()
+                                },
+                            );
+                            
+                            Arc::make_mut(&mut self.heuristics_model.config)
+                                .overrides
+                                .insert(pack.name.clone(), score);
+                        }
+                    }
+                }
+
+                if self.autopin_enabled {
+                    self.heuristics_model.refresh_regex_set();
+                    let _ = self.heuristics_model.save();
                 }
 
                 self.packs = Arc::new(new_packs);
@@ -5719,6 +5752,10 @@ impl App {
             row![
                 svg(self.icon_basket.clone()).width(20).height(20).style(|_, _| svg::Style { color: Some(style::palette::ACCENT_BLUE) }),
                 text("Scenery Basket").size(18).width(Length::Fill),
+                row![
+                    text("Auto-pin").size(10),
+                    checkbox("", self.autopin_enabled).size(12).on_toggle(Message::ToggleAutopin),
+                ].spacing(5).align_y(iced::Alignment::Center),
                 button(text("Clear").size(10))
                     .on_press(Message::ClearBucket)
                     .style(style::button_ghost)
