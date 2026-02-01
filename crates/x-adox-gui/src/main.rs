@@ -5750,8 +5750,16 @@ impl App {
 
         let header = container(
             row![
-                svg(self.icon_basket.clone()).width(20).height(20).style(|_, _| svg::Style { color: Some(style::palette::ACCENT_BLUE) }),
-                text("Scenery Basket").size(18).width(Length::Fill),
+                mouse_area(
+                    container(
+                        row![
+                            svg(self.icon_basket.clone()).width(20).height(20).style(|_, _| svg::Style { color: Some(style::palette::ACCENT_BLUE) }),
+                            text("Scenery Basket").size(18),
+                        ].spacing(8).align_y(iced::Alignment::Center)
+                    ).width(Length::Fill)
+                )
+                .on_press(Message::BasketDragStart)
+                .interaction(mouse::Interaction::Grab),
                 row![
                     text("Auto-pin").size(10),
                     checkbox("", self.autopin_enabled).size(12).on_toggle(Message::ToggleAutopin),
@@ -5767,11 +5775,7 @@ impl App {
             left: 0.0,
         });
 
-        // Wrap header in a mouse area for dragging
-        let header_with_drag = mouse_area(header)
-            .on_press(Message::BasketDragStart);
-
-        content = content.push(header_with_drag);
+        content = content.push(header);
 
         let items_list: Element<'_, Message> = if bucket.is_empty() {
             container(text("Drop scenery here...").color(style::palette::TEXT_SECONDARY))
@@ -5845,10 +5849,6 @@ impl App {
 
         stack![
             main_basket,
-            // Header grab area (overlaying the header part of main_basket)
-            mouse_area(horizontal_space().width(self.basket_size.x).height(40))
-                .on_press(Message::BasketDragStart)
-                .interaction(mouse::Interaction::Grab),
             // Top edge
             mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
                 .on_press(Message::BasketResizeStart(ResizeEdge::Top))
