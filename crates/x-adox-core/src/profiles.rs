@@ -4,6 +4,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     pub name: String,
@@ -55,14 +58,30 @@ impl ProfileCollection {
     }
 }
 
+fn calculate_path_hash(path: &Path) -> String {
+    let mut s = DefaultHasher::new();
+    path.hash(&mut s);
+    format!("{:x}", s.finish())
+}
+
 #[derive(Debug, Clone)]
 pub struct ProfileManager {
     config_path: PathBuf,
 }
 
 impl ProfileManager {
-    pub fn new(_xplane_root: &Path) -> Self {
-        let config_path = crate::get_config_root().join("profiles.json");
+    pub fn new(xplane_root: &Path) -> Self {
+        // Canonicalize the path to ensure consistency (e.g. trailing slashes)
+        let canonical_root = xplane_root
+            .canonicalize()
+            .unwrap_or_else(|_| xplane_root.to_path_buf());
+        let hash = calculate_path_hash(&canonical_root);
+
+        let config_path = crate::get_config_root()
+            .join("profiles")
+            .join(hash)
+            .join("profiles.json");
+
         Self { config_path }
     }
 

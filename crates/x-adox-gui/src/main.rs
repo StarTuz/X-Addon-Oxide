@@ -2502,6 +2502,20 @@ impl App {
                 self.xplane_root = Some(path);
                 self.save_app_config();
                 self.profile_manager = self.xplane_root.as_ref().map(|r| ProfileManager::new(r));
+                
+                // Reload profiles for the newly selected root
+                if let Some(pm) = &self.profile_manager {
+                    match pm.load() {
+                        Ok(collection) => {
+                            self.profiles = collection;
+                        }
+                        Err(e) => {
+                            self.status = format!("Failed to load profiles: {}", e);
+                            self.profiles = ProfileCollection::default();
+                        }
+                    }
+                }
+
                 self.status = "Loading X-Plane Profile...".to_string();
 
                 // Reset loading state
