@@ -51,33 +51,6 @@ impl Default for HeuristicsConfig {
                     score: 12, // Top priority
                     is_exclusion: false,
                 },
-                Rule {
-                    name: "Major Developer Airports".to_string(),
-                    keywords: vec![
-                        "flytampa".to_string(),
-                        "aerosoft".to_string(),
-                        "justsim".to_string(),
-                        "boundless".to_string(),
-                        "taimodels".to_string(),
-                        "nimbus".to_string(),
-                        "axonos".to_string(),
-                        "fly2high".to_string(),
-                        "skyhigh".to_string(),
-                        "globall".to_string(),
-                        "drzewiecki".to_string(),
-                        "uk2000".to_string(),
-                        "magknight".to_string(),
-                        "latinvfr".to_string(),
-                    ],
-                    score: 10,
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Major Airports (PANC, etc.)".to_string(),
-                    keywords: vec!["panc".to_string(), "anchorage".to_string()],
-                    score: 10,
-                    is_exclusion: false,
-                },
                 // --- Tier 2: The Pivot (Global Airports) ---
                 // MUST check this before generic city/landmark rules to ensure *GLOBAL_AIRPORTS* isn't misclassified
                 Rule {
@@ -366,23 +339,7 @@ impl BitNetModel {
                 || name_lower.contains("apt")
                 || name_lower.contains("airfield")
                 || name_lower.contains("heliport")
-                || name_lower.contains("seaplane")
-                || name_lower.contains("anchorage")
-                || name_lower.contains("panc"));
-
-        let is_major_dev = !is_service_pack
-            && (name_lower.contains("aerosoft")
-                || name_lower.contains("justsim")
-                || name_lower.contains("flytampa")
-                || name_lower.contains("boundless")
-                || name_lower.contains("taimodels")
-                || name_lower.contains("nimbus")
-                || name_lower.contains("axonos")
-                || name_lower.contains("skyline")
-                || name_lower.contains("fly2high")
-                || name_lower.contains("skyhigh")
-                || name_lower.contains("orbx")
-                || name_lower.contains("x-scenery"));
+                || name_lower.contains("seaplane"));
 
         let has_icao = !is_service_pack
             && name.split(|c: char| !c.is_alphanumeric()).any(|word| {
@@ -391,7 +348,7 @@ impl BitNetModel {
                     && (word.chars().all(|c| c.is_uppercase()) || name_lower.starts_with(word))
             });
 
-        let is_airport = has_airport_keyword || is_major_dev || has_icao;
+        let is_airport = has_airport_keyword || has_icao;
 
         let mut matched_rule_name: Option<String> = None;
         let mut score = None;
@@ -447,7 +404,7 @@ impl BitNetModel {
             (10, "Airports".to_string())
         } else if context.has_airports && !name_lower.contains("overlay") {
             // Healing: Discovery found airports even if name didn't match
-            (10, "Airports (Healed)".to_string())
+            (10, "Airports".to_string())
         } else if name_lower.contains("overlay") || name_lower.contains("static") {
             // Generic Overlay detection (matched names like "KTUL Overlay" or "Static Objects")
             (25, "Airport Overlays".to_string())

@@ -4,9 +4,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     pub name: String,
@@ -21,13 +18,57 @@ pub struct Profile {
     pub launch_args: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+impl Profile {
+    pub fn new_default(name: String) -> Self {
+        Self {
+            name,
+            scenery_states: HashMap::new(),
+            plugin_states: HashMap::new(),
+            aircraft_states: HashMap::new(),
+            launch_args: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileCollection {
     pub profiles: Vec<Profile>,
     pub active_profile: Option<String>,
 }
 
+impl Default for ProfileCollection {
+    fn default() -> Self {
+        let default_profile = Profile::new_default("Default".to_string());
+        Self {
+            profiles: vec![default_profile],
+            active_profile: Some("Default".to_string()),
+        }
+    }
+}
+
 impl ProfileCollection {
+    /// Returns true if this collection has no meaningful user data.
+    /// This is used to detect if we should attempt migration from legacy locations.
+    pub fn is_empty_or_default(&self) -> bool {
+        // Completely empty
+        if self.profiles.is_empty() {
+            return true;
+        }
+
+        // Only has one profile and it has no saved states
+        if self.profiles.len() == 1 {
+            let p = &self.profiles[0];
+            if p.scenery_states.is_empty()
+                && p.plugin_states.is_empty()
+                && p.aircraft_states.is_empty()
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn get_active_profile_mut(&mut self) -> Option<&mut Profile> {
         let active_name = self.active_profile.as_ref()?;
         self.profiles.iter_mut().find(|p| p.name == *active_name)
@@ -58,12 +99,6 @@ impl ProfileCollection {
     }
 }
 
-fn calculate_path_hash(path: &Path) -> String {
-    let mut s = DefaultHasher::new();
-    path.hash(&mut s);
-    format!("{:x}", s.finish())
-}
-
 #[derive(Debug, Clone)]
 pub struct ProfileManager {
     config_path: PathBuf,
@@ -71,29 +106,56 @@ pub struct ProfileManager {
 
 impl ProfileManager {
     pub fn new(xplane_root: &Path) -> Self {
-        // Canonicalize the path to ensure consistency (e.g. trailing slashes)
-        let canonical_root = xplane_root
-            .canonicalize()
-            .unwrap_or_else(|_| xplane_root.to_path_buf());
-        let hash = calculate_path_hash(&canonical_root);
-
-        let config_path = crate::get_config_root()
-            .join("profiles")
-            .join(hash)
-            .join("profiles.json");
-
+        let config_path = crate::get_scoped_config_root(xplane_root).join("profiles.json");
         Self { config_path }
     }
 
     pub fn load(&self) -> Result<ProfileCollection> {
-        if !self.config_path.exists() {
-            return Ok(ProfileCollection::default());
+        // Try loading from scoped path first
+        let scoped_collection = if self.config_path.exists() {
+            let content =
+                fs::read_to_string(&self.config_path).context("Failed to read profiles.json")?;
+            Some(serde_json::from_str::<ProfileCollection>(&content).context("Failed to parse profiles.json")?)
+        } else {
+            None
+        };
+
+        // If scoped file has meaningful data, use it directly
+        if let Some(ref collection) = scoped_collection {
+            if !collection.is_empty_or_default() {
+                return Ok(collection.clone());
+            }
         }
 
-        let content =
-            fs::read_to_string(&self.config_path).context("Failed to read profiles.json")?;
+        // --- Migration Fallback ---
+        // Scoped file is missing OR empty/default - check legacy locations for user data
+        if let Some(config_root) = crate::get_config_root().parent() {
+            let legacy_paths = [
+                config_root.join("x-addon-oxide").join("profiles.json"),
+                config_root.join("x-adox").join("profiles.json"),
+            ];
 
-        serde_json::from_str(&content).context("Failed to parse profiles.json")
+            for path in &legacy_paths {
+                if path.exists() {
+                    if let Ok(content) = fs::read_to_string(path) {
+                        if let Ok(collection) = serde_json::from_str::<ProfileCollection>(&content) {
+                            // Only migrate if legacy has actual data
+                            if !collection.is_empty_or_default() {
+                                println!("[Migration] Migrating profiles from legacy location {:?}", path);
+                                // Auto-save to scoped location so migration only happens once
+                                if let Err(e) = self.save(&collection) {
+                                    eprintln!("[Migration] Warning: Failed to save migrated profiles: {}", e);
+                                }
+                                return Ok(collection);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Return scoped collection if we had one (even if empty), otherwise default
+        Ok(scoped_collection.unwrap_or_default())
     }
 
     pub fn save(&self, collection: &ProfileCollection) -> Result<()> {

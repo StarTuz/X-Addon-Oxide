@@ -356,7 +356,8 @@ impl SceneryManager {
         }
 
         // 2. Scan Custom Scenery for new packs not yet in the INI
-        let mut cache = crate::cache::DiscoveryCache::load();
+        let xplane_root = custom_scenery_dir.parent().unwrap_or(custom_scenery_dir);
+        let mut cache = crate::cache::DiscoveryCache::load(Some(xplane_root));
         let discovered =
             crate::discovery::DiscoveryManager::scan_scenery(custom_scenery_dir, &mut cache);
         println!(
@@ -365,7 +366,6 @@ impl SceneryManager {
         );
 
         // 2b. Also scan Global Scenery ONLY for Global Airports
-        let xplane_root = custom_scenery_dir.parent().unwrap_or(custom_scenery_dir);
         let global_airports_dir = xplane_root.join("Global Scenery").join("Global Airports");
         let global_discovered = if global_airports_dir.exists() {
             // Just simulate a discovery for this one specific folder
@@ -560,7 +560,7 @@ impl SceneryManager {
         self.packs = packs;
 
         // 4. Save cache AFTER all discovery (prevents partial/missing saves)
-        let _ = cache.save();
+        let _ = cache.save(Some(xplane_root));
 
         Ok(())
     }

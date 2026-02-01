@@ -21,8 +21,14 @@ cargo test
 cargo test -p x-adox-core
 cargo test -p x-adox-bitnet
 
+# Run a single test by name
+cargo test -p x-adox-core test_name_here
+
 # Local CI pipeline (build + test + verify binary)
 ./scripts/local_ci.sh
+
+# Full test suite with checks
+./scripts/test_all.sh
 
 # Build AppImage (Linux via Docker)
 ./scripts/build_appimage.sh
@@ -44,9 +50,12 @@ crates/
 
 ### x-adox-core Key Modules
 
-- `lib.rs` - XPlaneManager: locates X-Plane installation, parses Log.txt
+- `lib.rs` - Path normalization, config root detection, X-Plane install registry lookup
 - `discovery.rs` - Scans Aircraft/, Custom Scenery/, plugins/, CSLs
 - `management.rs` - Enables/disables plugins and aircraft via "(Disabled)" suffix folders
+- `profiles.rs` - Profile management for switching hangar configurations (root-specific isolation)
+- `cache.rs` - Disk-backed caching for scenery bounds and metadata
+- `logbook.rs` - X-Plane Pilot.txt parsing (character-perfect for X-Plane 12)
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
 
 ### x-adox-bitnet
@@ -100,3 +109,13 @@ Follow conventional commits: `feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `release
 ## Non-Destructive Philosophy
 
 Disabled addons are moved to `(Disabled)` folders, never deleted. Original files are always preserved.
+
+## Linux System Dependencies
+
+For building on Linux, install these packages first:
+
+**Ubuntu/Debian**: `sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-dev libxkbcommon-dev libdbus-1-dev pkg-config`
+
+**Arch**: `sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus pkgconf`
+
+**Fedora**: `sudo dnf install alsa-lib-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-devel pkg-config`

@@ -30,7 +30,7 @@ pub fn sort_packs(
 ) {
     packs.sort_by(|a, b| {
         // Calculate scores - use BitNet model if provided, otherwise fall back to category scores
-        let (score_a, score_b, lower_is_better) = if let Some(m) = model {
+        let (score_a, score_b, name_a, name_b, lower_is_better) = if let Some(m) = model {
             // BitNet: lower score = higher priority
             let mut ctx_a = context.clone();
             ctx_a.has_airports = !a.airports.is_empty();
@@ -40,12 +40,18 @@ pub fn sort_packs(
             ctx_b.has_airports = !b.airports.is_empty();
             ctx_b.has_tiles = !b.tiles.is_empty();
 
-            let sa = m.predict(&a.name, &a.path, &ctx_a);
-            let sb = m.predict(&b.name, &b.path, &ctx_b);
-            (sa as i32, sb as i32, true)
+            let (sa, na) = m.predict_with_rule_name(&a.name, &a.path, &ctx_a);
+            let (sb, nb) = m.predict_with_rule_name(&b.name, &b.path, &ctx_b);
+            (sa as i32, sb as i32, na, nb, true)
         } else {
             // Category-based: higher score = higher priority
-            (calculate_score(a), calculate_score(b), false)
+            (
+                calculate_score(a),
+                calculate_score(b),
+                String::new(),
+                String::new(),
+                false,
+            )
         };
 
         // Primary sort by score
@@ -59,7 +65,15 @@ pub fn sort_packs(
             std::cmp::Ordering::Equal => {
                 // Secondary Sort Rules
 
-                // 1. SimHeaven Internal Order
+                // 1. Group by Rule Name (to keep headers together)
+                if !name_a.is_empty() && !name_b.is_empty() {
+                    match name_a.cmp(&name_b) {
+                        std::cmp::Ordering::Equal => (),
+                        ord => return ord,
+                    }
+                }
+
+                // 2. SimHeaven Internal Order
                 if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
                     if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
                         match cont_a.cmp(&cont_b) {

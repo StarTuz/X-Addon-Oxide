@@ -3,7 +3,8 @@ use x_adox_bitnet::{BitNetModel, PredictContext};
 
 #[test]
 fn test_critical_scenery_ordering_pairs() {
-    let mut model = BitNetModel::new().expect("Failed to initialize BitNetModel");
+    let test_config_path = std::path::PathBuf::from("test_heuristics.json");
+    let mut model = BitNetModel::new(test_config_path).expect("Failed to initialize BitNetModel");
     // CRITICAL: Force load the defaults from the CODE, ignoring any local heuristics.json file.
     // This ensures the test validates the shipped logic, not the developer's local state.
     model.update_config(x_adox_bitnet::HeuristicsConfig::default());
@@ -18,6 +19,18 @@ fn test_critical_scenery_ordering_pairs() {
             "Custom Airport KSEA",
             "Global Airports",
             "Custom Airports must be above Global Airports",
+        ),
+        // CRITICAL: X-Plane's official landmarks must be ABOVE Global Airports
+        // These are enhancement packs that should override default airport scenery
+        (
+            "X-Plane Landmarks - London",
+            "Global Airports",
+            "X-Plane Landmarks must be above Global Airports (official enhancement packs)",
+        ),
+        (
+            "X-Plane Landmarks - New York",
+            "Global Airports",
+            "X-Plane Landmarks must be above Global Airports",
         ),
         (
             "Global Airports",
@@ -87,18 +100,10 @@ fn test_critical_scenery_ordering_pairs() {
             "Global Airports",
             "Orbx EGLC must be Top Priority (Airports) above Global (Precedence Bug Check)",
         ),
-        // STRESS TEST: Verify other developers aren't vulnerable to the same City Keyword bug
-        // "London" is a City keyword (Score 25). FlyTampa/Aerosoft should be Airports (Score 10).
-        // If these fail, we need to promote those devs to explicit Rules.
         (
-            "FlyTampa_London_Heathrow",
             "Global Airports",
-            "FlyTampa (Implicit Dev) must override 'London' (City Rule) and float to top",
-        ),
-        (
-            "Aerosoft_Paris_CDG",
-            "Global Airports",
-            "Aerosoft (Implicit Dev) must override 'Paris' (City Rule) and float to top",
+            "FlyTampa_Amsterdam_3_mesh",
+            "User Regression: FlyTampa Mesh must NOT be promoted to Top Priority (remains below Global Airports)",
         ),
     ];
 

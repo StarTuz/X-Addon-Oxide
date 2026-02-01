@@ -9,6 +9,7 @@ fn create_test_pack(name: &str) -> SceneryPack {
     SceneryPack {
         name: name.to_string(),
         path: PathBuf::from(name),
+        raw_path: None,
         status: SceneryPackType::Active,
         category: SceneryCategory::Unknown,
         airports: Vec::new(),

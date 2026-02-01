@@ -671,6 +671,7 @@ impl App {
             map_initialized: false,
             scenery_scroll_id: scrollable::Id::unique(),
             install_progress: None,
+            // Heuristics are GLOBAL (not per-install) - use BitNetModel's global config path
             heuristics_model: BitNetModel::new().unwrap_or_default(),
             heuristics_json: text_editor::Content::new(),
             heuristics_error: None,
@@ -2500,8 +2501,10 @@ impl App {
                 }
 
                 self.xplane_root = Some(path);
+                let root_ref = self.xplane_root.as_ref().unwrap();
+                
                 self.save_app_config();
-                self.profile_manager = self.xplane_root.as_ref().map(|r| ProfileManager::new(r));
+                self.profile_manager = Some(ProfileManager::new(root_ref));
                 
                 // Reload profiles for the newly selected root
                 if let Some(pm) = &self.profile_manager {
@@ -2515,6 +2518,9 @@ impl App {
                         }
                     }
                 }
+
+                // Heuristics are GLOBAL - no need to reload when switching X-Plane roots
+                // (The same scoring rules apply to all installations)
 
                 self.status = "Loading X-Plane Profile...".to_string();
 
@@ -7412,12 +7418,7 @@ impl App {
     }
 
     fn get_icon_overrides_path() -> Option<PathBuf> {
-        let proj_dirs = directories::ProjectDirs::from("com", "startux", "x-adox")?;
-        let config_dir = proj_dirs.config_dir();
-        if !config_dir.exists() {
-            let _ = std::fs::create_dir_all(config_dir);
-        }
-        Some(config_dir.join("icon_overrides.json"))
+        Some(x_adox_core::get_config_root().join("icon_overrides.json"))
     }
 
     fn load_icon_overrides(&mut self) {
@@ -7441,17 +7442,13 @@ impl App {
         }
     }
 
-    fn get_scan_config_path() -> Option<PathBuf> {
-        let proj_dirs = directories::ProjectDirs::from("com", "startux", "x-adox")?;
-        let config_dir = proj_dirs.config_dir();
-        if !config_dir.exists() {
-            let _ = std::fs::create_dir_all(config_dir);
-        }
-        Some(config_dir.join("scan_config.json"))
+    fn get_scan_config_path(&self) -> Option<PathBuf> {
+        let root = x_adox_core::get_scoped_config_root(self.xplane_root.as_ref()?);
+        Some(root.join("scan_config.json"))
     }
 
     fn load_scan_config(&mut self) {
-        if let Some(path) = Self::get_scan_config_path() {
+        if let Some(path) = self.get_scan_config_path() {
             if let Ok(file) = std::fs::File::open(path) {
                 let reader = std::io::BufReader::new(file);
                 // Define a struct for serialization matching what we want
@@ -7476,7 +7473,7 @@ impl App {
     }
 
     fn save_scan_config(&self) {
-        if let Some(path) = Self::get_scan_config_path() {
+        if let Some(path) = self.get_scan_config_path() {
             if let Ok(file) = std::fs::File::create(path) {
                 #[derive(serde::Serialize)]
                 struct ScanConfig<'a> {
@@ -7494,12 +7491,7 @@ impl App {
     }
 
     fn get_app_config_path() -> Option<PathBuf> {
-        let proj_dirs = directories::ProjectDirs::from("com", "startux", "x-adox")?;
-        let config_dir = proj_dirs.config_dir();
-        if !config_dir.exists() {
-            let _ = std::fs::create_dir_all(config_dir);
-        }
-        Some(config_dir.join("app_config.json"))
+        Some(x_adox_core::get_config_root().join("app_config.json"))
     }
 
     fn load_app_config() -> (Option<PathBuf>, Vec<CompanionApp>, MapFilters) {
@@ -7638,26 +7630,26 @@ fn load_aircraft(
     // Canonicalize root for robust exclusion matching
     let root = root.canonicalize().unwrap_or(root);
 
-    let mut cache = x_adox_core::cache::DiscoveryCache::load();
+    let mut cache = x_adox_core::cache::DiscoveryCache::load(Some(&root));
     let aircraft = DiscoveryManager::scan_aircraft(&root, &mut cache, &exclusions);
-    let _ = cache.save();
+    let _ = cache.save(Some(&root));
 
     Ok(Arc::new(aircraft))
 }
 
 fn load_plugins(root: Option<PathBuf>) -> Result<Arc<Vec<DiscoveredAddon>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
-    let mut cache = x_adox_core::cache::DiscoveryCache::load();
+    let mut cache = x_adox_core::cache::DiscoveryCache::load(Some(&root));
     let plugins = DiscoveryManager::scan_plugins(&root, &mut cache);
-    let _ = cache.save();
+    let _ = cache.save(Some(&root));
     Ok(Arc::new(plugins))
 }
 
 fn load_csls(root: Option<PathBuf>) -> Result<Arc<Vec<DiscoveredAddon>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
-    let mut cache = x_adox_core::cache::DiscoveryCache::load();
+    let mut cache = x_adox_core::cache::DiscoveryCache::load(Some(&root));
     let csls = DiscoveryManager::scan_csls(&root, &mut cache);
-    let _ = cache.save();
+    let _ = cache.save(Some(&root));
     Ok(Arc::new(csls))
 }
 
@@ -7711,7 +7703,7 @@ fn load_aircraft_tree(
         return Err("Aircraft folder not found".to_string());
     }
 
-    // Load BitNet model for tagging
+    // Load BitNet model for tagging (heuristics are GLOBAL)
     let bitnet = BitNetModel::new().unwrap_or_default();
 
     let merged_node = build_merged_aircraft_tree(
@@ -8195,7 +8187,7 @@ async fn apply_profile_task(root: Option<PathBuf>, profile: Profile) -> Result<(
         .map_err(|e| e.to_string())?;
 
     // 2. Plugins & Aircraft require discovering current paths to correctly toggle
-    let mut cache = x_adox_core::cache::DiscoveryCache::load();
+    let mut cache = x_adox_core::cache::DiscoveryCache::load(Some(&root));
 
     // Plugins
     let current_plugins = DiscoveryManager::scan_plugins(&root, &mut cache);
@@ -8225,6 +8217,7 @@ async fn apply_profile_task(root: Option<PathBuf>, profile: Profile) -> Result<(
         }
     }
 
+    let _ = cache.save(Some(&root));
     Ok(())
 }
 

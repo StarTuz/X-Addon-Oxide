@@ -14,6 +14,9 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 use thiserror::Error;
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 pub fn get_config_root() -> PathBuf {
     // Allow overriding via environment variable for tests
     if let Ok(env_path) = env::var("X_ADOX_CONFIG_DIR") {
@@ -27,6 +30,103 @@ pub fn get_config_root() -> PathBuf {
         PathBuf::from(".xad_oxide")
     };
 
+    if !path.exists() {
+        let _ = fs::create_dir_all(&path);
+    }
+    path
+}
+
+pub fn calculate_path_hash(path: &Path) -> String {
+    let mut s = DefaultHasher::new();
+    // Canonicalize to ensure same path always has same hash (handle trailing slashes/symlinks)
+    let p = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    p.hash(&mut s);
+    format!("{:016x}", s.finish())
+}
+
+/// Normalizes an X-Plane installation path by checking against the global registry files.
+/// This ensures that aliases (e.g. symlinks, different mount points) that resolve to the same
+/// physical installation are treated as the SAME config scope.
+pub fn normalize_install_path(path: &Path) -> PathBuf {
+    // If the path is not absolute or doesn't exist, we can't do much.
+    // Try canonicalizing first.
+    let canonical_input = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+
+    // Registry files to check
+    let filenames = ["x-plane_install_12.txt", "x-plane_install_11.txt"];
+    let mut candidate_dirs = Vec::new();
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(home) = env::var("HOME") {
+            candidate_dirs.push(PathBuf::from(home).join(".x-plane"));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = env::var("HOME") {
+            // macOS typically uses Application Support for this, but could be in Preferences
+            candidate_dirs.push(PathBuf::from(&home).join("Library/Application Support/X-Plane"));
+            candidate_dirs.push(PathBuf::from(&home).join("Library/Preferences"));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
+            candidate_dirs.push(PathBuf::from(local_appdata));
+        }
+    }
+
+    for dir in candidate_dirs {
+        for filename in &filenames {
+            let config_path = dir.join(filename);
+            if let Ok(content) = fs::read_to_string(config_path) {
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() || trimmed.starts_with('#') {
+                        continue;
+                    }
+
+                    let registry_path = PathBuf::from(trimmed);
+                    // Check if this registry entry matches our input
+                    // We check both raw and canonical equality
+                    if registry_path == *path || registry_path == canonical_input {
+                        return registry_path;
+                    }
+
+                    if let Ok(registry_canonical) = registry_path.canonicalize() {
+                        if registry_canonical == canonical_input {
+                            // MATCH FOUND! Return the registry version of the path.
+                            // This guarantees the hash will match what is stored in the registry.
+                            return registry_path;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Default: return canonical input if no match found
+    canonical_input
+}
+
+pub fn get_scoped_config_root(xplane_root: &Path) -> PathBuf {
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // CRITICAL ARCHITECTURE REQUIREMENT: PATH NORMALIZATION
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // We MUST normalize the installation path using the X-Plane Registry (install_xx.txt).
+    // Failing to do this results in DATA LOSS (Profile Reversal) because different aliases
+    // (e.g., /home/user/XP12 vs /mnt/data/XP12) will produce different hashes, treating
+    // the same physical installation as two separate buckets.
+    //
+    // DO NOT REMOVE `normalize_install_path` CALL UNDER ANY CIRCUMSTANCES.
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    let normalized = normalize_install_path(xplane_root);
+
+    let hash = calculate_path_hash(&normalized);
+    let path = get_config_root().join("installs").join(hash);
     if !path.exists() {
         let _ = fs::create_dir_all(&path);
     }

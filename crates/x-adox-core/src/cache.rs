@@ -40,27 +40,64 @@ impl DiscoveryCache {
         Self::default()
     }
 
-    pub fn load() -> Self {
-        let path = Self::get_cache_path();
+    pub fn load(xplane_root: Option<&Path>) -> Self {
+        let (path, is_scoped) = if let Some(root) = xplane_root {
+            (
+                crate::get_scoped_config_root(root).join("discovery_cache.json"),
+                true,
+            )
+        } else {
+            (Self::get_cache_path(), false)
+        };
+
         if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Ok(cache) = serde_json::from_str::<DiscoveryCache>(&content) {
                     if cache.version == CURRENT_CACHE_VERSION {
                         return cache;
-                    } else {
-                        println!(
-                            "[DiscoveryCache] Outdated cache version ({} vs {}), re-scanning...",
-                            cache.version, CURRENT_CACHE_VERSION
-                        );
                     }
                 }
             }
         }
+
+        // --- Migration Fallback ---
+        if is_scoped {
+            if let Some(config_root) = crate::get_config_root().parent() {
+                let legacy_paths = [
+                    config_root
+                        .join("x-addon-oxide")
+                        .join("discovery_cache.json"),
+                    config_root.join("x-adox").join("discovery_cache.json"),
+                ];
+
+                for legacy_path in &legacy_paths {
+                    if legacy_path.exists() {
+                        if let Ok(content) = std::fs::read_to_string(legacy_path) {
+                            if let Ok(cache) = serde_json::from_str::<DiscoveryCache>(&content) {
+                                if cache.version == CURRENT_CACHE_VERSION {
+                                    println!(
+                                        "[Migration] Loaded legacy cache from {:?}",
+                                        legacy_path
+                                    );
+                                    return cache;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Self::new()
     }
 
-    pub fn save(&self) -> Result<()> {
-        let path = Self::get_cache_path();
+    pub fn save(&self, xplane_root: Option<&Path>) -> Result<()> {
+        let path = if let Some(root) = xplane_root {
+            crate::get_scoped_config_root(root).join("discovery_cache.json")
+        } else {
+            Self::get_cache_path()
+        };
+
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -71,7 +108,7 @@ impl DiscoveryCache {
 
     fn get_cache_path() -> PathBuf {
         // We use the same config dir as heuristics
-        directories::ProjectDirs::from("com", "x-adox", "X-Addon-Oxide")
+        directories::ProjectDirs::from("org", "x-adox", "X-Addon-Oxide")
             .map(|dirs| dirs.config_dir().join("discovery_cache.json"))
             .unwrap_or_else(|| PathBuf::from("discovery_cache.json"))
     }

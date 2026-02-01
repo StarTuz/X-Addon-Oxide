@@ -85,6 +85,7 @@ fn main() -> Result<()> {
         }
         Commands::SmartSort => {
             println!("Running Smart Sort on {:?}", root);
+
             let model = x_adox_bitnet::BitNetModel::new().unwrap_or_default();
             let context = x_adox_bitnet::PredictContext::default();
             scenery.sort(Some(&model), &context);
