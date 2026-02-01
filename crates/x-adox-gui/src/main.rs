@@ -1575,6 +1575,7 @@ impl App {
                 }
             }
             Message::SaveCurrentProfile(name) => {
+                let mut collection = self.profiles.clone();
                 // Create profile from current state
                 let scenery_states = self
                     .packs
