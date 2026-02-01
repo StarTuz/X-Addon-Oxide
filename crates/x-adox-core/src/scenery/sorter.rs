@@ -87,16 +87,28 @@ pub fn sort_packs(
                 if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
                     if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
                         match cont_a.cmp(&cont_b) {
-                            std::cmp::Ordering::Equal => layer_a
-                                .partial_cmp(&layer_b)
-                                .unwrap_or(std::cmp::Ordering::Equal),
-                            ord => ord,
+                            std::cmp::Ordering::Equal => {
+                                let ord = layer_a
+                                    .partial_cmp(&layer_b)
+                                    .unwrap_or(std::cmp::Ordering::Equal);
+                                if ord != std::cmp::Ordering::Equal {
+                                    return ord;
+                                }
+                            }
+                            ord => return ord,
                         }
-                    } else {
-                        std::cmp::Ordering::Equal
                     }
-                } else {
+                }
+
+                // 3. Final tie-breaker:
+                // If both are pinned, preserve their relative order (return Equal for stable sort)
+                if name_a == x_adox_bitnet::PINNED_RULE_NAME
+                    && name_b == x_adox_bitnet::PINNED_RULE_NAME
+                {
                     std::cmp::Ordering::Equal
+                } else {
+                    // Otherwise, sort alphabetically within the tier/category to be deterministic
+                    a.name.cmp(&b.name)
                 }
             }
             ord => ord,
