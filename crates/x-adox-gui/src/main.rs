@@ -1,3 +1,4 @@
+use std::process::{Command, Stdio};
 use iced::widget::{
     button, checkbox, column, container, horizontal_space, image, mouse_area, pick_list,
     progress_bar, responsive, row, scrollable, slider, stack, svg, text, text_editor, text_input,
@@ -1741,9 +1742,16 @@ impl App {
                                     self.launch_args.split_whitespace().collect()
                                 };
 
-                                match std::process::Command::new(&exe)
+                                match Command::new(&exe)
                                     .args(&args_vec)
                                     .current_dir(root)
+                                    .stdin(Stdio::null())
+                                    .stdout(Stdio::null())
+                                    .stderr(Stdio::null())
+                                    // Escape AppImage sandbox if necessary
+                                    .env_remove("LD_LIBRARY_PATH")
+                                    .env_remove("APPDIR")
+                                    .env_remove("APPIMAGE")
                                     .spawn()
                                 {
                                     Ok(_) => {
