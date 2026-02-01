@@ -18,8 +18,8 @@ fn test_recursive_tile_nesting() {
     fs::write(nav_path.join("+56-003.dsf"), "").unwrap();
 
     let tiles = discover_tiles_in_pack(pack_path);
-    assert_eq!(tiles.len(), 1, "Should find the nested DSF tile");
-    assert_eq!(tiles[0], (56, -3));
+    assert_eq!(tiles.0.len(), 1, "Should find the nested DSF tile");
+    assert_eq!(tiles.0[0], (56, -3));
 }
 
 #[test]
@@ -41,8 +41,8 @@ fn test_case_insensitive_scanning() {
     .unwrap();
 
     let tiles = discover_tiles_in_pack(pack_path);
-    assert_eq!(tiles.len(), 1, "Should find tiles regardless of case");
-    assert_eq!(tiles[0], (51, 21));
+    assert_eq!(tiles.0.len(), 1, "Should find tiles regardless of case");
+    assert_eq!(tiles.0[0], (51, 21));
 
     let airports = discover_airports_in_pack(pack_path);
     assert_eq!(airports.len(), 1, "Should find apt.dat regardless of case");
@@ -73,7 +73,7 @@ fn test_multiple_roots_discovery() {
     fs::write(root2.join("+41-009.dsf"), "").unwrap();
 
     let tiles = discover_tiles_in_pack(pack_path);
-    assert_eq!(tiles.len(), 2, "Should find tiles from multiple roots");
-    assert!(tiles.contains(&(51, -9)));
-    assert!(tiles.contains(&(41, -9)));
+    assert_eq!(tiles.0.len(), 2, "Should find tiles from multiple roots");
+    assert!(tiles.0.contains(&(51, -9)));
+    assert!(tiles.0.contains(&(41, -9)));
 }

@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use x_adox_core::scenery::classifier::Classifier;
 use x_adox_core::scenery::{SceneryCategory, SceneryDescriptor};
 

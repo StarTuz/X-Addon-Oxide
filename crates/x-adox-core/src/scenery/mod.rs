@@ -118,6 +118,7 @@ pub struct SceneryDescriptor {
 pub struct SceneryPack {
     pub name: String,
     pub path: PathBuf,
+    pub raw_path: Option<String>,
     pub status: SceneryPackType,
     pub category: SceneryCategory,
     pub airports: Vec<Airport>,
@@ -628,6 +629,56 @@ impl SceneryManager {
         sorter::sort_packs(&mut self.packs, model, context);
     }
 
+    pub fn drop_basket_at(
+        &mut self,
+        items_to_move: &[String],
+        target_idx: usize,
+        model: &mut x_adox_bitnet::BitNetModel,
+        context: &x_adox_bitnet::PredictContext,
+        autopin: bool,
+    ) {
+        if items_to_move.is_empty() {
+            return;
+        }
+
+        let bucket_items: Vec<SceneryPack> = items_to_move
+            .iter()
+            .filter_map(|name| self.packs.iter().find(|p| &p.name == name).cloned())
+            .collect();
+
+        // Remove items from the list
+        self.packs.retain(|p| !items_to_move.contains(&p.name));
+
+        // Adjust target_idx because items were removed
+        let target_idx = target_idx.min(self.packs.len());
+
+        // Insert items at target_idx
+        for (i, pack) in bucket_items.into_iter().enumerate() {
+            let idx = target_idx + i;
+
+            if autopin {
+                // Pin to neighbor score
+                let neighbor_idx = if idx > 0 { idx - 1 } else { idx + 1 };
+                if neighbor_idx < self.packs.len() {
+                    let neighbor_name = self.packs[neighbor_idx].name.clone();
+                    let neighbor_path = &self.packs[neighbor_idx].path;
+                    let score = model.predict(&neighbor_name, neighbor_path, context);
+
+                    std::sync::Arc::make_mut(&mut model.config)
+                        .overrides
+                        .insert(pack.name.clone(), score);
+                }
+            }
+
+            self.packs.insert(idx, pack);
+        }
+
+        if autopin {
+            model.refresh_regex_set();
+            let _ = model.save();
+        }
+    }
+
     pub fn validate_sort(&self) -> validator::ValidationReport {
         validator::SceneryValidator::validate(&self.packs)
     }
@@ -1118,6 +1169,7 @@ mod tests {
         let mut pack = SceneryPack {
             name: "Test Pack".into(),
             path: PathBuf::from("/test"),
+            raw_path: None,
             status: SceneryPackType::Active,
             category: SceneryCategory::CustomAirport,
             airports: vec![
@@ -1225,6 +1277,7 @@ mod tests {
         manager.packs.push(SceneryPack {
             name: "TestPack".to_string(),
             path: PathBuf::from("Custom Scenery/TestPack/"),
+            raw_path: None,
             status: SceneryPackType::Active,
             category: SceneryCategory::default(),
             airports: Vec::new(),
@@ -1273,6 +1326,7 @@ mod tests {
             SceneryPack {
                 name: "Alpha_Airport".to_string(),
                 path: PathBuf::from("A"),
+                raw_path: None,
                 status: SceneryPackType::Active,
                 category: SceneryCategory::default(),
                 airports: Vec::new(),
@@ -1283,6 +1337,7 @@ mod tests {
             SceneryPack {
                 name: "Bravo_Airport".to_string(),
                 path: PathBuf::from("B"),
+                raw_path: None,
                 status: SceneryPackType::Active,
                 category: SceneryCategory::default(),
                 airports: Vec::new(),
@@ -1293,6 +1348,7 @@ mod tests {
             SceneryPack {
                 name: "Alpha_Airport (1)".to_string(),
                 path: PathBuf::from("A1"),
+                raw_path: None,
                 status: SceneryPackType::Active,
                 category: SceneryCategory::default(),
                 airports: Vec::new(),

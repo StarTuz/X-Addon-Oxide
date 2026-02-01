@@ -603,6 +603,8 @@ struct App {
     pub active_resize_edge: Option<ResizeEdge>,
     pub window_size: iced::Size,
     pub autopin_enabled: bool,
+    pub scenery_is_saving: bool,
+    pub scenery_save_pending: bool,
 }
 
 impl App {
@@ -789,6 +791,8 @@ impl App {
             active_resize_edge: None,
             window_size: iced::Size::new(1280.0, 720.0),
             autopin_enabled: true, // Enabled by default as it's a "Smart" feature
+            scenery_is_saving: false,
+            scenery_save_pending: false,
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -859,43 +863,53 @@ impl App {
     }
 
     fn sync_active_profile_scenery(&mut self) {
-        if let Some(ref active_name) = self.profiles.active_profile.clone() {
-            if let Some(profile) = self.profiles.profiles.iter_mut().find(|p| p.name == *active_name) {
-                profile.scenery_states = self.packs
-                    .iter()
-                    .map(|p| (p.name.clone(), p.status == SceneryPackType::Active))
-                    .collect();
-                self.save_profiles();
-            }
+        let states = self.packs
+            .iter()
+            .map(|p| (p.name.clone(), p.status == SceneryPackType::Active))
+            .collect();
+        self.profiles.update_active_scenery(states);
+        self.save_profiles();
+    }
+
+    fn trigger_scenery_save(&mut self) -> Task<Message> {
+        if self.scenery_is_saving {
+            self.scenery_save_pending = true;
+            return Task::none();
         }
+
+        if let Some(root) = self.xplane_root.clone() {
+            self.scenery_is_saving = true;
+            self.scenery_save_pending = false;
+            let current_packs = (*self.packs).clone();
+            let model = self.heuristics_model.clone();
+            return Task::perform(
+                async move { save_scenery_packs(root, current_packs, model) },
+                Message::PackToggled,
+            );
+        }
+        Task::none()
     }
 
     fn sync_active_profile_plugins(&mut self) {
-        if let Some(ref active_name) = self.profiles.active_profile.clone() {
-            if let Some(profile) = self.profiles.profiles.iter_mut().find(|p| p.name == *active_name) {
-                profile.plugin_states = self.plugins
-                    .iter()
-                    .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
-                    .collect();
-                // Also merge CSLs into plugin_states as they use the same management logic
-                for csl in &*self.csls {
-                    profile.plugin_states.insert(csl.path.to_string_lossy().to_string(), csl.is_enabled);
-                }
-                self.save_profiles();
-            }
+        let mut states: std::collections::HashMap<String, bool> = self.plugins
+            .iter()
+            .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
+            .collect();
+        // Also merge CSLs into plugin_states as they use the same management logic
+        for csl in &*self.csls {
+            states.insert(csl.path.to_string_lossy().to_string(), csl.is_enabled);
         }
+        self.profiles.update_active_plugins(states);
+        self.save_profiles();
     }
 
     fn sync_active_profile_aircraft(&mut self) {
-        if let Some(ref active_name) = self.profiles.active_profile.clone() {
-            if let Some(profile) = self.profiles.profiles.iter_mut().find(|p| p.name == *active_name) {
-                profile.aircraft_states = self.aircraft
-                    .iter()
-                    .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
-                    .collect();
-                self.save_profiles();
-            }
-        }
+        let states = self.aircraft
+            .iter()
+            .map(|p| (p.path.to_string_lossy().to_string(), p.is_enabled))
+            .collect();
+        self.profiles.update_active_aircraft(states);
+        self.save_profiles();
     }
 
     fn save_profiles(&self) {
@@ -1752,20 +1766,8 @@ impl App {
             }
             Message::LaunchArgsChanged(args) => {
                 self.launch_args = args.clone();
-
-                // Update current profile's launch_args if there's an active one
-                if let Some(ref active_name) = self.profiles.active_profile.clone() {
-                    if let Some(profile) = self
-                        .profiles
-                        .profiles
-                        .iter_mut()
-                        .find(|p| p.name == *active_name)
-                    {
-                        profile.launch_args = args;
-                    }
-
-                    self.save_profiles();
-                }
+                self.profiles.update_active_launch_args(args);
+                self.save_profiles();
                 Task::none()
             }
             Message::TagOperationComplete => Task::none(),
@@ -1889,36 +1891,54 @@ impl App {
                 Message::InstallPicked(Tab::CSLs, p)
             }),
             Message::TogglePack(name) => {
-                let root = self.xplane_root.clone();
-                let enable = self
-                    .packs
-                    .iter()
-                    .find(|p| p.name == name)
-                    .map(|p| p.status == SceneryPackType::Disabled)
-                    .unwrap_or(false);
+                let mut new_packs = (*self.packs).clone();
+                let mut toggled_status = None;
 
-                self.status = format!(
-                    "{} {}...",
-                    if enable { "Enabling" } else { "Disabling" },
-                    name
-                );
+                if let Some(pack) = new_packs.iter_mut().find(|p| p.name == name) {
+                    let enable = pack.status == SceneryPackType::Disabled;
+                    pack.status = if enable {
+                        SceneryPackType::Active
+                    } else {
+                        SceneryPackType::Disabled
+                    };
+                    toggled_status = Some(pack.status.clone());
+                }
 
-                Task::perform(
-                    async move { toggle_pack(root, name, enable) },
-                    Message::PackToggled,
-                )
+                if let Some(status) = toggled_status {
+                    self.packs = Arc::new(new_packs);
+                    self.sync_active_profile_scenery();
+
+                    self.status = format!(
+                        "{} {}...",
+                        if status == SceneryPackType::Active {
+                            "Enabling"
+                        } else {
+                            "Disabling"
+                        },
+                        name
+                    );
+
+                    return self.trigger_scenery_save();
+                }
+                Task::none()
             }
-            Message::PackToggled(result) => match result {
-                Ok(()) => {
-                    self.status = "Saved!".to_string();
-                    let root = self.xplane_root.clone();
-                    Task::perform(async move { load_packs(root) }, Message::SceneryLoaded)
+            Message::PackToggled(result) => {
+                self.scenery_is_saving = false;
+                match result {
+                    Ok(()) => {
+                        self.status = "Saved!".to_string();
+                        if self.scenery_save_pending {
+                            return self.trigger_scenery_save();
+                        }
+                        Task::none()
+                    }
+                    Err(e) => {
+                        self.status = format!("Error saving scenery: {}", e);
+                        self.scenery_save_pending = false; // Stop queue on error
+                        Task::none()
+                    }
                 }
-                Err(e) => {
-                    self.status = format!("Error: {}", e);
-                    Task::none()
-                }
-            },
+            }
             Message::StatusChanged(status) => {
                 self.status = status;
                 Task::none()
@@ -3272,73 +3292,29 @@ impl App {
                     return Task::none();
                 }
 
-                let mut new_packs = (*self.packs).clone();
-                let bucket_items: Vec<SceneryPack> = items_to_move
-                    .iter()
-                    .filter_map(|name| new_packs.iter().find(|p| &p.name == name).cloned())
-                    .collect();
+                let mut sm = x_adox_core::scenery::SceneryManager::new(std::path::PathBuf::new());
+                sm.packs = (*self.packs).clone();
+                
+                sm.drop_basket_at(
+                    &items_to_move,
+                    target_idx,
+                    &mut self.heuristics_model,
+                    &x_adox_bitnet::PredictContext {
+                        region_focus: self.region_focus.clone(),
+                        ..Default::default()
+                    },
+                    self.autopin_enabled,
+                );
 
-                // Remove items from the list
-                new_packs.retain(|p| !items_to_move.contains(&p.name));
-
-                // Adjust target_idx because items were removed
-                let target_idx = target_idx.min(new_packs.len());
-
-                // Insert items at target_idx
-                for (i, pack) in bucket_items.into_iter().enumerate() {
-                    let idx = target_idx + i;
-                    new_packs.insert(idx, pack.clone());
-
-                    if self.autopin_enabled {
-                        // Pin to neighbor score
-                        let neighbor_idx = if idx > 0 { idx - 1 } else { idx + 1 };
-                        if neighbor_idx < new_packs.len() {
-                            let neighbor_name = new_packs[neighbor_idx].name.clone();
-                            let score = self.heuristics_model.predict(
-                                &neighbor_name,
-                                std::path::Path::new(""),
-                                &x_adox_bitnet::PredictContext {
-                                    region_focus: self.region_focus.clone(),
-                                    ..Default::default()
-                                },
-                            );
-                            
-                            Arc::make_mut(&mut self.heuristics_model.config)
-                                .overrides
-                                .insert(pack.name.clone(), score);
-                        }
-                    }
-                }
-
-                if self.autopin_enabled {
-                    self.heuristics_model.refresh_regex_set();
-                    let _ = self.heuristics_model.save();
-                }
-
-                self.packs = Arc::new(new_packs);
+                self.packs = Arc::new(sm.packs);
                 self.scenery_bucket.retain(|name| !items_to_move.contains(name));
                 self.selected_basket_items.clear();
                 self.scenery_last_bucket_index = None;
-
-                let current_packs = self.packs.clone();
-                let xplane_root = self.xplane_root.clone();
-                let model = self.heuristics_model.clone();
-
-                if let Some(root) = xplane_root {
-                    Task::perform(
-                        async move { save_scenery_packs(root, (*current_packs).clone(), model) },
-                        |res| {
-                            if let Err(e) = res {
-                                Message::StatusChanged(format!("Save failed: {}", e))
-                            } else {
-                                Message::StatusChanged("Scenery order saved".to_string())
-                            }
-                        },
-                    )
-                } else {
-                    Task::none()
-                }
+                
+                self.status = "Applied!".to_string();
+                self.trigger_scenery_save()
             }
+
             Message::Tick(_now) => {
                 let mut tasks = Vec::new();
 
@@ -7626,20 +7602,6 @@ fn toggle_csl(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(), 
     Ok(())
 }
 
-fn toggle_pack(root: Option<PathBuf>, name: String, enable: bool) -> Result<(), String> {
-    let root = root.ok_or("X-Plane root not found")?;
-    let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
-    let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
-    sm.load().map_err(|e| e.to_string())?;
-
-    if enable {
-        sm.enable_pack(&name);
-    } else {
-        sm.disable_pack(&name);
-    }
-
-    sm.save(None).map_err(|e| e.to_string())
-}
 
 fn save_scenery_packs(
     root: PathBuf,

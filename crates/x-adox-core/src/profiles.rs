@@ -24,6 +24,37 @@ pub struct ProfileCollection {
     pub active_profile: Option<String>,
 }
 
+impl ProfileCollection {
+    pub fn get_active_profile_mut(&mut self) -> Option<&mut Profile> {
+        let active_name = self.active_profile.as_ref()?;
+        self.profiles.iter_mut().find(|p| p.name == *active_name)
+    }
+
+    pub fn update_active_scenery(&mut self, states: HashMap<String, bool>) {
+        if let Some(profile) = self.get_active_profile_mut() {
+            profile.scenery_states = states;
+        }
+    }
+
+    pub fn update_active_plugins(&mut self, states: HashMap<String, bool>) {
+        if let Some(profile) = self.get_active_profile_mut() {
+            profile.plugin_states = states;
+        }
+    }
+
+    pub fn update_active_aircraft(&mut self, states: HashMap<String, bool>) {
+        if let Some(profile) = self.get_active_profile_mut() {
+            profile.aircraft_states = states;
+        }
+    }
+
+    pub fn update_active_launch_args(&mut self, args: String) {
+        if let Some(profile) = self.get_active_profile_mut() {
+            profile.launch_args = args;
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProfileManager {
     config_path: PathBuf,

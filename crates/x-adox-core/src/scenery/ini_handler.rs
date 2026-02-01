@@ -22,59 +22,67 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
             continue;
         }
 
-        if trim_line.starts_with("SCENERY_PACK") {
-            let is_disabled = trim_line.starts_with("SCENERY_PACK_DISABLED");
+        if line.starts_with("SCENERY_PACK") {
+            let (is_disabled, tag_len) = if line.starts_with("SCENERY_PACK_DISABLED ") {
+                (true, "SCENERY_PACK_DISABLED ".len())
+            } else if line.starts_with("SCENERY_PACK ") {
+                (false, "SCENERY_PACK ".len())
+            } else {
+                continue; // Malformed or comment
+            };
+
             let status = if is_disabled {
                 SceneryPackType::Disabled
             } else {
                 SceneryPackType::Active
             };
 
-            let parts: Vec<&str> = trim_line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let relative_path_str = parts[1..].join(" ");
-                // Normalize backslashes (Windows) to forward slashes
-                let normalized_path = relative_path_str.replace('\\', "/");
-
-                // Remove trailing slash and extra whitespace
-                let clean_path = normalized_path
-                    .trim()
-                    .trim_end_matches('/')
-                    .trim()
-                    .to_string();
-                let pack_path = PathBuf::from(&clean_path);
-
-                let name = pack_path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .trim()
-                    .to_string();
-
-                // Resolve full path
-                let full_path = if pack_path.is_absolute() {
-                    pack_path
-                } else if clean_path.starts_with("Custom Scenery") {
-                    // Custom Scenery/PackName
-                    scenery_root.join(&name)
-                } else {
-                    // System packs like "Global Scenery/Global Airports"
-                    // These are root-relative. scenery_root is "<root>/Custom Scenery"
-                    let xplane_root = scenery_root.parent().unwrap_or(scenery_root);
-                    xplane_root.join(&pack_path)
-                };
-
-                packs.push(SceneryPack {
-                    name,
-                    path: full_path,
-                    status,
-                    category: SceneryCategory::Unknown, // Will be classified later
-                    airports: Vec::new(),
-                    tiles: Vec::new(),
-                    tags: Vec::new(),
-                    descriptor: crate::scenery::SceneryDescriptor::default(),
-                });
+            // Grab the rest of the line LITERALLY
+            let raw_path_str = &line[tag_len..];
+            if raw_path_str.is_empty() {
+                continue;
             }
+
+            // Normalize backslashes (Windows) ONLY for internal path resolution
+            let normalized_path = raw_path_str.replace('\\', "/");
+
+            // Strip trailing slash for the internal 'name' calculation
+            let clean_path = if normalized_path.ends_with('/') {
+                &normalized_path[..normalized_path.len() - 1]
+            } else {
+                &normalized_path
+            };
+
+            let pack_path = PathBuf::from(clean_path);
+
+            let name = pack_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+
+            // Resolve full path
+            let full_path = if pack_path.is_absolute() {
+                pack_path
+            } else if clean_path.starts_with("Custom Scenery/") {
+                let sub_path = &clean_path["Custom Scenery/".len()..];
+                scenery_root.join(sub_path)
+            } else {
+                let xplane_root = scenery_root.parent().unwrap_or(scenery_root);
+                xplane_root.join(pack_path)
+            };
+
+            packs.push(SceneryPack {
+                name,
+                path: full_path,
+                raw_path: Some(raw_path_str.to_string()),
+                status,
+                category: SceneryCategory::Unknown,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: crate::scenery::SceneryDescriptor::default(),
+            });
         }
     }
 
@@ -139,29 +147,52 @@ pub fn write_ini(
         }
 
         // Determine the correct relative path for the INI file
-        // System packs in "Global Scenery" should NOT be written as physical paths.
-        // X-Plane 12 handles Global Scenery and Demo Areas automatically.
-        // "Global Airports" MUST be written as the virtual "*GLOBAL_AIRPORTS*" entry.
-        let pack_path_str = if pack.name.starts_with('*') {
+        let pack_path_str = if let Some(raw) = &pack.raw_path {
+            // Priority 1: Use the literal raw path from the original file
+            Some(raw.clone())
+        } else if pack.name.starts_with('*') {
             Some(pack.name.clone())
         } else {
             let path_str = pack.path.to_string_lossy();
-            if path_str.contains("Global Scenery") {
-                if pack.name == "Global Airports" || path_str.ends_with("Global Airports") {
+            if path_str.contains("/Global Scenery/") || path_str.contains("\\Global Scenery\\") {
+                if pack.name == "Global Airports"
+                    || path_str.ends_with("Global Airports")
+                    || path_str.ends_with("Global Airports/")
+                    || path_str.ends_with("Global Airports\\")
+                {
                     Some("*GLOBAL_AIRPORTS*".to_string())
                 } else {
-                    // Skip other Global Scenery items (hallucinations the user complained about)
+                    // Skip other Global Scenery items (system internal stuff)
                     None
                 }
             } else {
-                // Standard Custom Scenery pack - use ACTUAL path from disk, not reconstructed name
-                // Extract the folder name from the actual filesystem path
-                let folder_name = pack
-                    .path
-                    .file_name()
-                    .map(|f| f.to_string_lossy().to_string())
-                    .unwrap_or_else(|| pack.name.clone());
-                Some(format!("Custom Scenery/{}/", folder_name))
+                // FALLBACK: Calculate path (for new items)
+                let xplane_root = file_path.parent().and_then(|p| p.parent());
+
+                let mut is_relative = false;
+                let mut final_path = pack.path.to_string_lossy().to_string();
+
+                if let Some(root) = xplane_root {
+                    if let Ok(rel) = pack.path.strip_prefix(root) {
+                        // It's inside the X-Plane root.
+                        if rel.starts_with("Custom Scenery") {
+                            // Standard Custom Scenery relative format
+                            let rel_str = rel.to_string_lossy().replace('\\', "/");
+                            final_path = rel_str;
+                            is_relative = true;
+                        }
+                    }
+                }
+
+                if !is_relative {
+                    // Normalize for INI
+                    final_path = final_path.replace('\\', "/");
+                }
+                
+                if !final_path.ends_with('/') {
+                    final_path.push('/');
+                }
+                Some(final_path)
             }
         };
 
