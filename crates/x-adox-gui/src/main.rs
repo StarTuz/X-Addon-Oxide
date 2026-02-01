@@ -225,6 +225,7 @@ enum Message {
 
     // Interactive Sorting (Phase 4)
     MovePack(String, MoveDirection),
+    EnableAllScenery,
     ClearAllPins,
 
     // Drag and Drop (Phase 5)
@@ -869,6 +870,13 @@ impl App {
             .collect();
         self.profiles.update_active_scenery(states);
         self.save_profiles();
+    }
+
+    fn count_disabled_scenery(&self) -> usize {
+        self.packs
+            .iter()
+            .filter(|p| p.status == SceneryPackType::Disabled)
+            .count()
     }
 
     fn trigger_scenery_save(&mut self) -> Task<Message> {
@@ -2189,6 +2197,17 @@ impl App {
                     }
                 }
                 Task::none()
+            }
+            Message::EnableAllScenery => {
+                let mut new_packs = (*self.packs).clone();
+                for pack in new_packs.iter_mut() {
+                    if pack.status == SceneryPackType::Disabled {
+                        pack.status = SceneryPackType::Active;
+                    }
+                }
+                self.packs = Arc::new(new_packs);
+                self.sync_active_profile_scenery();
+                return self.trigger_scenery_save();
             }
             Message::ClearAllPins => {
                 Arc::make_mut(&mut self.heuristics_model.config)
@@ -5673,36 +5692,84 @@ impl App {
         let main_view = column![
             row![
                 text("Scenery Library").size(24).width(Length::Fill),
-                if !self.heuristics_model.config.overrides.is_empty() {
-                    let btn: Element<'_, Message> = button(
+                {
+                    let count = self.heuristics_model.config.overrides.len();
+                    let mut btn = button(
                         Row::<Message, Theme, Renderer>::new()
                             .push(
                                 svg(self.icon_pin.clone())
                                     .width(14)
                                     .height(14)
-                                    .style(|_, _| svg::Style {
-                                        color: Some(style::palette::ACCENT_RED),
+                                    .style(move |_, _| svg::Style {
+                                        color: Some(if count > 0 {
+                                            style::palette::ACCENT_RED
+                                        } else {
+                                            style::palette::TEXT_SECONDARY
+                                        }),
                                     }),
                             )
                             .push(
-                                text(format!(
-                                    "Clear All Pins ({})",
-                                    self.heuristics_model.config.overrides.len()
-                                ))
-                                .size(12),
+                                text(format!("Clear All Pins ({})", count))
+                                    .size(12)
+                                    .color(if count > 0 {
+                                        style::palette::TEXT_PRIMARY
+                                    } else {
+                                        style::palette::TEXT_SECONDARY
+                                    }),
                             )
                             .spacing(8)
                             .align_y(iced::Alignment::Center),
-                    )
-                    .on_press(Message::ClearAllPins)
-                    .style(style::button_secondary)
+                    );
+
+                    if count > 0 {
+                        btn = btn.on_press(Message::ClearAllPins);
+                    }
+
+                    btn.style(style::button_secondary)
+                        .padding([6, 12])
+                },
+                {
+                    let count = self.count_disabled_scenery();
+                    let mut btn = button(
+                        Row::<Message, Theme, Renderer>::new()
+                            .push(
+                                svg(self.icon_scenery.clone())
+                                    .width(14)
+                                    .height(14)
+                                    .style(move |_, _| svg::Style {
+                                        color: Some(if count > 0 {
+                                            Color::WHITE
+                                        } else {
+                                            style::palette::TEXT_SECONDARY
+                                        }),
+                                    }),
+                            )
+                            .push(
+                                text(format!("Enable All Scenery ({})", count))
+                                    .size(12)
+                                    .color(if count > 0 {
+                                        Color::WHITE
+                                    } else {
+                                        style::palette::TEXT_SECONDARY
+                                    }),
+                            )
+                            .spacing(8)
+                            .align_y(iced::Alignment::Center),
+                    );
+
+                    if count > 0 {
+                        btn = btn.on_press(Message::EnableAllScenery);
+                    }
+
+                    btn.style(if count > 0 {
+                        style::button_enable_all
+                    } else {
+                        style::button_secondary
+                    })
                     .padding([6, 12])
-                    .into();
-                    btn
-                } else {
-                    iced::widget::Space::new(Length::Fixed(0.0), Length::Fixed(0.0)).into()
                 }
             ]
+            .spacing(10)
             .align_y(iced::Alignment::Center)
             .padding(10),
             row![
