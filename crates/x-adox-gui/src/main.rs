@@ -9,6 +9,7 @@ use iced::{
     Task, Theme,
 };
 use iced::keyboard;
+use iced::mouse;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
@@ -5807,40 +5808,52 @@ impl App {
 
         stack![
             main_basket,
+            // Header grab area (overlaying the header part of main_basket)
+            mouse_area(horizontal_space().width(self.basket_size.x).height(40))
+                .on_press(Message::BasketDragStart)
+                .interaction(mouse::Interaction::Grab),
             // Top edge
             mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
-                .on_press(Message::BasketResizeStart(ResizeEdge::Top)),
+                .on_press(Message::BasketResizeStart(ResizeEdge::Top))
+                .interaction(mouse::Interaction::ResizingVertically),
             // Bottom edge
             container(
                 mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
                     .on_press(Message::BasketResizeStart(ResizeEdge::Bottom))
+                    .interaction(mouse::Interaction::ResizingVertically)
             ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
             // Left edge
             mouse_area(container(iced::widget::horizontal_space()).width(5).height(Length::Fill))
-                .on_press(Message::BasketResizeStart(ResizeEdge::Left)),
+                .on_press(Message::BasketResizeStart(ResizeEdge::Left))
+                .interaction(mouse::Interaction::ResizingHorizontally),
             // Right edge
             container(
                 mouse_area(container(iced::widget::horizontal_space()).width(5).height(Length::Fill))
                     .on_press(Message::BasketResizeStart(ResizeEdge::Right))
+                    .interaction(mouse::Interaction::ResizingHorizontally)
             ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
             // Corners
             // Top Left
             mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
-                .on_press(Message::BasketResizeStart(ResizeEdge::TopLeft)),
+                .on_press(Message::BasketResizeStart(ResizeEdge::TopLeft))
+                .interaction(mouse::Interaction::ResizingDiagonallyDown),
             // Top Right
             container(
                 mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
                     .on_press(Message::BasketResizeStart(ResizeEdge::TopRight))
+                    .interaction(mouse::Interaction::ResizingDiagonallyUp)
             ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
             // Bottom Left
             container(
                 mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
                     .on_press(Message::BasketResizeStart(ResizeEdge::BottomLeft))
+                    .interaction(mouse::Interaction::ResizingDiagonallyUp)
             ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
             // Bottom Right
             container(
                 mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
                     .on_press(Message::BasketResizeStart(ResizeEdge::BottomRight))
+                    .interaction(mouse::Interaction::ResizingDiagonallyDown)
             ).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom),
         ].into()
     }
