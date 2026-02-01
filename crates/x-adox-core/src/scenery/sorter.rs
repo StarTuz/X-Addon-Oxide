@@ -30,7 +30,7 @@ pub fn sort_packs(
 ) {
     packs.sort_by(|a, b| {
         // Calculate scores - use BitNet model if provided, otherwise fall back to category scores
-        let (score_a, score_b, name_a, name_b, lower_is_better) = if let Some(m) = model {
+        let (score_a, score_b, _name_a, _name_b, lower_is_better) = if let Some(m) = model {
             // BitNet: lower score = higher priority
             let mut ctx_a = context.clone();
             ctx_a.has_airports = !a.airports.is_empty();
@@ -63,53 +63,19 @@ pub fn sort_packs(
 
         match primary {
             std::cmp::Ordering::Equal => {
-                // Secondary Sort Rules
-
-                // 1. Group by Rule Name (to keep headers together)
-                if !name_a.is_empty() && !name_b.is_empty() {
-                    let pin_name = x_adox_bitnet::PINNED_RULE_NAME;
-
-                    // Pin priority: If one is pinned and the other isn't, pin wins.
-                    if name_a == pin_name && name_b != pin_name {
-                        return std::cmp::Ordering::Less; // A is pinned -> Top
-                    }
-                    if name_b == pin_name && name_a != pin_name {
-                        return std::cmp::Ordering::Greater; // B is pinned -> Bottom of their tier
-                    }
-
-                    match name_a.cmp(&name_b) {
-                        std::cmp::Ordering::Equal => (),
-                        ord => return ord,
-                    }
-                }
-
-                // 2. SimHeaven Internal Order
+                // Secondary Sort Rules (SimHeaven only)
                 if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
                     if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
-                        match cont_a.cmp(&cont_b) {
-                            std::cmp::Ordering::Equal => {
-                                let ord = layer_a
-                                    .partial_cmp(&layer_b)
-                                    .unwrap_or(std::cmp::Ordering::Equal);
-                                if ord != std::cmp::Ordering::Equal {
-                                    return ord;
-                                }
-                            }
-                            ord => return ord,
+                        if cont_a == cont_b {
+                            return layer_a
+                                .partial_cmp(&layer_b)
+                                .unwrap_or(std::cmp::Ordering::Equal);
                         }
                     }
                 }
 
-                // 3. Final tie-breaker:
-                // If both are pinned, preserve their relative order (return Equal for stable sort)
-                if name_a == x_adox_bitnet::PINNED_RULE_NAME
-                    && name_b == x_adox_bitnet::PINNED_RULE_NAME
-                {
-                    std::cmp::Ordering::Equal
-                } else {
-                    // Otherwise, sort alphabetically within the tier/category to be deterministic
-                    a.name.cmp(&b.name)
-                }
+                // Pure Stability: items with the same score tier stay exactly where they were
+                std::cmp::Ordering::Equal
             }
             ord => ord,
         }
