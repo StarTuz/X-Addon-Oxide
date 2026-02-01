@@ -103,6 +103,19 @@ struct DragContext {
     source_name: String,
     hover_target_index: Option<usize>,
     cursor_position: Point,
+    is_over_basket: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ResizeEdge {
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
 }
 
 #[derive(Debug, Clone)]
@@ -112,6 +125,7 @@ enum Message {
 
     // Scenery
     SceneryLoaded(Result<Arc<Vec<SceneryPack>>, String>),
+    WindowResized(iced::Size),
     TogglePack(String),
     PackToggled(Result<(), String>),
 
@@ -217,6 +231,8 @@ enum Message {
     DragMove(Point),
     DragHover(usize),
     DragLeaveHover,
+    DragEnterBasket,
+    DragLeaveBasket,
     DragEnd,
     DragCancel,
 
@@ -306,6 +322,9 @@ enum Message {
     BasketDragStart,
     BasketDragged(Point),
     BasketDragEnd,
+    BasketResizeStart(ResizeEdge),
+    BasketResized(Point),
+    BasketResizeEnd,
     ModifiersChanged(keyboard::Modifiers),
 }
 
@@ -578,6 +597,9 @@ struct App {
     pub basket_offset: iced::Vector,
     pub basket_drag_origin: Option<Point>,
     pub is_basket_dragging: bool,
+    pub basket_size: iced::Vector,
+    pub active_resize_edge: Option<ResizeEdge>,
+    pub window_size: iced::Size,
 }
 
 impl App {
@@ -757,9 +779,12 @@ impl App {
             ),
             show_scenery_basket: false,
             selected_basket_items: std::collections::HashSet::new(),
-            basket_offset: iced::Vector::default(),
+            basket_offset: iced::Vector::new(20.0, 60.0), // Margin from Right (x) and Top (y)
             basket_drag_origin: None,
             is_basket_dragging: false,
+            basket_size: iced::Vector::new(350.0, 400.0),
+            active_resize_edge: None,
+            window_size: iced::Size::new(1280.0, 720.0),
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -2113,12 +2138,17 @@ impl App {
                 self.status = "All manual reorder pins cleared".to_string();
                 Task::none()
             }
+            Message::WindowResized(size) => {
+                self.window_size = size;
+                Task::none()
+            }
             Message::DragStart { index, name } => {
                 self.drag_context = Some(DragContext {
                     source_index: index,
                     source_name: name,
                     hover_target_index: None,
                     cursor_position: Point::ORIGIN,
+                    is_over_basket: false,
                 });
                 Task::none()
             }
@@ -2129,6 +2159,7 @@ impl App {
                     source_name: name,
                     hover_target_index: None,
                     cursor_position: Point::ORIGIN,
+                    is_over_basket: false,
                 });
                 Task::none()
             }
@@ -2150,8 +2181,32 @@ impl App {
                 }
                 Task::none()
             }
+            Message::DragEnterBasket => {
+                if let Some(ctx) = &mut self.drag_context {
+                    ctx.is_over_basket = true;
+                }
+                Task::none()
+            }
+            Message::DragLeaveBasket => {
+                if let Some(ctx) = &mut self.drag_context {
+                    ctx.is_over_basket = false;
+                }
+                Task::none()
+            }
             Message::DragEnd => {
                 if let Some(ctx) = self.drag_context.take() {
+                    if ctx.is_over_basket {
+                        // Drop into basket
+                        if ctx.source_index != usize::MAX {
+                            // If dragging multiple items from scenery list (not currently supported by selection, 
+                            // but let's assume single item for now as per ctx.source_name)
+                            if !self.scenery_bucket.contains(&ctx.source_name) {
+                                self.scenery_bucket.push(ctx.source_name.clone());
+                                self.status = format!("Added {} to basket", ctx.source_name);
+                            }
+                        }
+                        return Task::none();
+                    }
                     if let Some(target_idx) = ctx.hover_target_index {
                         if ctx.source_index == usize::MAX {
                             return Task::done(Message::DropBucketAt(target_idx));
@@ -3055,7 +3110,15 @@ impl App {
             Message::BasketDragged(pos) => {
                 if let Some(origin) = self.basket_drag_origin {
                     let delta = pos - origin;
-                    self.basket_offset = self.basket_offset + delta;
+                    // For Right margin: moving mouse RIGHT (delta.x > 0) decreases margin
+                    self.basket_offset.x = (self.basket_offset.x - delta.x).max(0.0);
+                    // For Top margin: moving mouse DOWN (delta.y > 0) increases margin
+                    self.basket_offset.y = (self.basket_offset.y + delta.y).max(0.0);
+                    
+                    // Clamp to screen
+                    self.basket_offset.x = self.basket_offset.x.min(self.window_size.width - self.basket_size.x);
+                    self.basket_offset.y = self.basket_offset.y.min(self.window_size.height - self.basket_size.y);
+                    
                     self.basket_drag_origin = Some(pos);
                 } else {
                     self.basket_drag_origin = Some(pos);
@@ -3064,6 +3127,87 @@ impl App {
             }
             Message::BasketDragEnd => {
                 self.is_basket_dragging = false;
+                self.basket_drag_origin = None;
+                Task::none()
+            }
+            Message::BasketResizeStart(edge) => {
+                self.active_resize_edge = Some(edge);
+                self.basket_drag_origin = None;
+                Task::none()
+            }
+            Message::BasketResized(pos) => {
+                if let (Some(origin), Some(edge)) = (self.basket_drag_origin, self.active_resize_edge) {
+                    let delta = pos - origin;
+
+                    match edge {
+                        ResizeEdge::Top => {
+                            let new_height = (self.basket_size.y - delta.y).max(150.0);
+                            let actual_dy = self.basket_size.y - new_height;
+                            self.basket_size.y = new_height;
+                            self.basket_offset.y += actual_dy;
+                        }
+                        ResizeEdge::Bottom => {
+                            self.basket_size.y = (self.basket_size.y + delta.y).max(150.0);
+                        }
+                        ResizeEdge::Left => {
+                            self.basket_size.x = (self.basket_size.x - delta.x).max(200.0);
+                        }
+                        ResizeEdge::Right => {
+                            let new_width = (self.basket_size.x + delta.x).max(200.0);
+                            let actual_dx = new_width - self.basket_size.x;
+                            self.basket_size.x = new_width;
+                            self.basket_offset.x -= actual_dx;
+                        }
+                        ResizeEdge::TopLeft => {
+                            // Top
+                            let new_height = (self.basket_size.y - delta.y).max(150.0);
+                            let actual_dy = self.basket_size.y - new_height;
+                            self.basket_size.y = new_height;
+                            self.basket_offset.y += actual_dy;
+                            // Left
+                            self.basket_size.x = (self.basket_size.x - delta.x).max(200.0);
+                        }
+                        ResizeEdge::TopRight => {
+                            // Top
+                            let new_height = (self.basket_size.y - delta.y).max(150.0);
+                            let actual_dy = self.basket_size.y - new_height;
+                            self.basket_size.y = new_height;
+                            self.basket_offset.y += actual_dy;
+                            // Right
+                            let new_width = (self.basket_size.x + delta.x).max(200.0);
+                            let actual_dx = new_width - self.basket_size.x;
+                            self.basket_size.x = new_width;
+                            self.basket_offset.x -= actual_dx;
+                        }
+                        ResizeEdge::BottomLeft => {
+                            // Bottom
+                            self.basket_size.y = (self.basket_size.y + delta.y).max(150.0);
+                            // Left
+                            self.basket_size.x = (self.basket_size.x - delta.x).max(200.0);
+                        }
+                        ResizeEdge::BottomRight => {
+                            // Bottom
+                            self.basket_size.y = (self.basket_size.y + delta.y).max(150.0);
+                            // Right
+                            let new_width = (self.basket_size.x + delta.x).max(200.0);
+                            let actual_dx = new_width - self.basket_size.x;
+                            self.basket_size.x = new_width;
+                            self.basket_offset.x -= actual_dx;
+                        }
+                    }
+                    
+                    // Clamping
+                    self.basket_offset.x = self.basket_offset.x.max(0.0).min(self.window_size.width - self.basket_size.x);
+                    self.basket_offset.y = self.basket_offset.y.max(0.0).min(self.window_size.height - self.basket_size.y);
+
+                    self.basket_drag_origin = Some(pos);
+                } else {
+                    self.basket_drag_origin = Some(pos);
+                }
+                Task::none()
+            }
+            Message::BasketResizeEnd => {
+                self.active_resize_edge = None;
                 self.basket_drag_origin = None;
                 Task::none()
             }
@@ -3191,6 +3335,11 @@ impl App {
             Subscription::none()
         };
 
+        let window_sub = event::listen_with(|event, _status, _window| match event {
+            Event::Window(iced::window::Event::Resized(size)) => Some(Message::WindowResized(size)),
+            _ => None,
+        });
+
         let basket_dragging = if self.is_basket_dragging {
             event::listen_with(|event, _status, _window| match event {
                 Event::Mouse(mouse::Event::CursorMoved { position }) => {
@@ -3205,7 +3354,25 @@ impl App {
             Subscription::none()
         };
 
-        let tick = if self.loading_state.is_loading || self.drag_context.is_some() || self.is_basket_dragging {
+        let basket_resizing = if self.active_resize_edge.is_some() {
+            event::listen_with(|event, _status, _window| match event {
+                Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                    Some(Message::BasketResized(position))
+                }
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    Some(Message::BasketResizeEnd)
+                }
+                _ => None,
+            })
+        } else {
+            Subscription::none()
+        };
+
+        let tick = if self.loading_state.is_loading
+            || self.drag_context.is_some()
+            || self.is_basket_dragging
+            || self.active_resize_edge.is_some()
+        {
             time::every(std::time::Duration::from_millis(16)).map(Message::Tick)
         } else {
             Subscription::none()
@@ -3218,7 +3385,14 @@ impl App {
             _ => None,
         });
 
-        Subscription::batch(vec![dragging, basket_dragging, tick, kb_sub])
+        Subscription::batch(vec![
+            dragging,
+            basket_dragging,
+            basket_resizing,
+            tick,
+            kb_sub,
+            window_sub,
+        ])
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -3278,8 +3452,8 @@ impl App {
                         .align_x(iced::alignment::Horizontal::Right)
                         .align_y(iced::alignment::Vertical::Top)
                         .padding(Padding {
-                            top: 60.0 + self.basket_offset.y,
-                            right: 20.0 - self.basket_offset.x,
+                            top: self.basket_offset.y,
+                            right: self.basket_offset.x,
                             bottom: 0.0,
                             left: 0.0,
                         })
@@ -5591,9 +5765,8 @@ impl App {
                     ].spacing(8).align_y(iced::Alignment::Center)
                 );
             }
-            container(scrollable(list).height(Length::Shrink))
-                .height(Length::Shrink)
-                .max_height(400.0)
+            container(scrollable(list).height(Length::Fill))
+                .height(Length::Fill)
                 .into()
         };
 
@@ -5612,23 +5785,64 @@ impl App {
             );
         }
 
-        container(
+        let main_basket = container(
             column![
                 content,
-                container(items_list)
-                    .padding(10)
-                    .width(Length::Fill)
-                    .height(Length::Shrink)
-                    .style(style::container_drop_zone),
+                mouse_area(
+                    container(items_list)
+                        .padding(10)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .style(style::container_drop_zone)
+                )
+                .on_enter(Message::DragEnterBasket)
+                .on_exit(Message::DragLeaveBasket),
                 bottom_actions
             ].spacing(15)
         )
         .padding(15)
-        .width(Length::Fixed(350.0))
-        .height(Length::Shrink)
-        .max_height(700.0)
-        .style(style::container_sidebar)
-        .into()
+        .width(Length::Fixed(self.basket_size.x))
+        .height(Length::Fixed(self.basket_size.y))
+        .style(style::container_sidebar);
+
+        stack![
+            main_basket,
+            // Top edge
+            mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
+                .on_press(Message::BasketResizeStart(ResizeEdge::Top)),
+            // Bottom edge
+            container(
+                mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
+                    .on_press(Message::BasketResizeStart(ResizeEdge::Bottom))
+            ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
+            // Left edge
+            mouse_area(container(iced::widget::horizontal_space()).width(5).height(Length::Fill))
+                .on_press(Message::BasketResizeStart(ResizeEdge::Left)),
+            // Right edge
+            container(
+                mouse_area(container(iced::widget::horizontal_space()).width(5).height(Length::Fill))
+                    .on_press(Message::BasketResizeStart(ResizeEdge::Right))
+            ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
+            // Corners
+            // Top Left
+            mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                .on_press(Message::BasketResizeStart(ResizeEdge::TopLeft)),
+            // Top Right
+            container(
+                mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                    .on_press(Message::BasketResizeStart(ResizeEdge::TopRight))
+            ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
+            // Bottom Left
+            container(
+                mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                    .on_press(Message::BasketResizeStart(ResizeEdge::BottomLeft))
+            ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
+            // Bottom Right
+            container(
+                mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                    .on_press(Message::BasketResizeStart(ResizeEdge::BottomRight))
+            ).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom),
+        ].into()
     }
 
     fn view_heuristics_editor(&self) -> Element<'_, Message> {
