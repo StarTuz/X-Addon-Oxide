@@ -53,12 +53,13 @@ fn test_basket_drop_and_pin() {
         true, // autopin
     );
 
-    // Expecting: [Neighbor, Moving, Below]
-    assert_eq!(sm.packs[0].name, "Neighbor");
-    assert_eq!(sm.packs[1].name, "Moving");
+    // Expected: [Moving, Neighbor, Below] (Semantic drop above Neighbor)
+    assert_eq!(sm.packs[0].name, "Moving");
+    assert_eq!(sm.packs[1].name, "Neighbor");
     assert_eq!(sm.packs[2].name, "Below");
 
     // "Moving" should be pinned to Neighbor's score (15)
+    // In the new logic, neighbor_idx for index 0 is idx+1 (1) which is "Neighbor"
     assert_eq!(model.config.overrides.get("Moving"), Some(&15));
 }
 
@@ -73,7 +74,8 @@ fn test_basket_multi_move() {
 
     let mut model = BitNetModel::default();
 
-    // Move A and C to index 1 (between B)
+    // Move A and C to index 1 (between A and B)
+    // Semantically, user dropped at Gap 1 (above B)
     sm.drop_basket_at(
         &vec!["A".to_string(), "C".to_string()],
         1,
@@ -82,8 +84,10 @@ fn test_basket_multi_move() {
         false,
     );
 
-    // Expect: [B, A, C]
-    assert_eq!(sm.packs[0].name, "B");
-    assert_eq!(sm.packs[1].name, "A");
-    assert_eq!(sm.packs[2].name, "C");
+    // Expect: [A, C, B]
+    // A stays at index 0 (above B)
+    // C moves to index 1 (above B)
+    assert_eq!(sm.packs[0].name, "A");
+    assert_eq!(sm.packs[1].name, "C");
+    assert_eq!(sm.packs[2].name, "B");
 }

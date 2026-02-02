@@ -646,11 +646,19 @@ impl SceneryManager {
             .filter_map(|name| self.packs.iter().find(|p| &p.name == name).cloned())
             .collect();
 
+        // Calculate how many items are being moved from *above* or at the target index
+        // to correctly adjust the final insertion point after they are removed.
+        let offset = items_to_move
+            .iter()
+            .filter_map(|name| self.packs.iter().position(|p| &p.name == name))
+            .filter(|&idx| idx < target_idx)
+            .count();
+
         // Remove items from the list
         self.packs.retain(|p| !items_to_move.contains(&p.name));
 
-        // Adjust target_idx because items were removed
-        let target_idx = target_idx.min(self.packs.len());
+        // Adjust target_idx because items were removed from above it
+        let target_idx = (target_idx - offset).min(self.packs.len());
 
         // Insert items at target_idx
         for (i, pack) in bucket_items.into_iter().enumerate() {
@@ -658,7 +666,7 @@ impl SceneryManager {
 
             if autopin {
                 // Pin to neighbor score
-                let neighbor_idx = if idx > 0 { idx - 1 } else { idx + 1 };
+                let neighbor_idx = if idx > 0 { idx - 1 } else { idx };
                 if neighbor_idx < self.packs.len() {
                     let neighbor_name = self.packs[neighbor_idx].name.clone();
                     let neighbor_path = &self.packs[neighbor_idx].path;
