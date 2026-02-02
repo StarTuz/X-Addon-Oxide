@@ -23,7 +23,7 @@ pub fn get_config_root() -> PathBuf {
         return PathBuf::from(env_path);
     }
 
-    let path = if let Some(proj_dirs) = ProjectDirs::from("org", "x-adox", "X-Addon-Oxide") {
+    let path = if let Some(proj_dirs) = ProjectDirs::from("org", "x-adox", "x-adox") {
         proj_dirs.config_dir().to_path_buf()
     } else {
         // Fallback to a local hidden folder if ProjectDirs fails

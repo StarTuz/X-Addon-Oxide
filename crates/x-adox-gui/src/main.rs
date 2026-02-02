@@ -154,6 +154,7 @@ enum Message {
 
     // Install/Delete
     SelectScenery(String),
+    GotoScenery(String), // New message for navigation from reports
     HoverScenery(Option<String>),
     HoverAirport(Option<String>),
     SelectAircraft(PathBuf),
@@ -1119,7 +1120,6 @@ impl App {
                         );
 
                         if !self.loading_state.is_loading {
-                            self.sync_active_profile_scenery();
                             self.status = format!("{} scenery packs", self.packs.len());
 
                             // Pipeline: Trigger next scan (only if not doing global reload)
@@ -1144,7 +1144,6 @@ impl App {
                     Ok(aircraft) => {
                         self.aircraft = aircraft;
                         if !self.loading_state.is_loading {
-                            self.sync_active_profile_aircraft();
                             if self.active_tab == Tab::Aircraft {
                                 self.status = format!("{} aircraft", self.aircraft.len());
                             }
@@ -2617,6 +2616,17 @@ impl App {
 
                 Task::none()
             }
+            Message::GotoScenery(name) => {
+                self.active_tab = Tab::Scenery;
+                self.selected_scenery = Some(name.clone());
+                self.simulated_packs = None;
+                self.validation_report = None;
+
+                if let Some(index) = self.packs.iter().position(|p| p.name == name) {
+                    return self.scroll_to_scenery_index(index);
+                }
+                Task::none()
+            }
             Message::HoverScenery(name_opt) => {
                 if self.hovered_scenery != name_opt {
                     self.hovered_scenery = name_opt;
@@ -4057,6 +4067,10 @@ impl App {
                                             .size(13)
                                             .width(Length::Fill)
                                             .color(style::palette::TEXT_PRIMARY),
+                                        button(text("Go to").size(11))
+                                            .on_press(Message::GotoScenery(issue.pack_name.clone()))
+                                            .style(style::button_secondary)
+                                            .padding([4, 8]),
                                         button(text("Ignore").size(11))
                                             .on_press(Message::IgnoreIssue(
                                                 issue.issue_type.clone(),
@@ -4088,7 +4102,7 @@ impl App {
                                         .style(style::button_primary)
                                         .padding([6, 12]),
                                     button(text("Manual Edit").size(12))
-                                        .on_press(Message::OpenHeuristicsEditor)
+                                        .on_press(Message::GotoScenery(first.pack_name.clone()))
                                         .style(style::button_secondary)
                                         .padding([6, 12]),
                                     button(text("Ignore this").size(12))

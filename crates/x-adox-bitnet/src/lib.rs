@@ -235,7 +235,7 @@ impl BitNetModel {
 
     fn get_config_path() -> PathBuf {
         // Use the same qualifier as the GUI to ensure heuristics.json is in the same config folder
-        ProjectDirs::from("com", "startux", "x-adox")
+        ProjectDirs::from("org", "x-adox", "x-adox")
             .map(|dirs| dirs.config_dir().join("heuristics.json"))
             .unwrap_or_else(|| PathBuf::from("heuristics.json"))
     }
