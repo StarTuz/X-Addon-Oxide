@@ -115,7 +115,10 @@ impl ProfileManager {
         let scoped_collection = if self.config_path.exists() {
             let content =
                 fs::read_to_string(&self.config_path).context("Failed to read profiles.json")?;
-            Some(serde_json::from_str::<ProfileCollection>(&content).context("Failed to parse profiles.json")?)
+            Some(
+                serde_json::from_str::<ProfileCollection>(&content)
+                    .context("Failed to parse profiles.json")?,
+            )
         } else {
             None
         };
@@ -128,25 +131,39 @@ impl ProfileManager {
         }
 
         // --- Migration Fallback ---
-        // Scoped file is missing OR empty/default - check legacy locations for user data
-        if let Some(config_root) = crate::get_config_root().parent() {
-            let legacy_paths = [
-                config_root.join("x-addon-oxide").join("profiles.json"),
-                config_root.join("x-adox").join("profiles.json"),
-            ];
+        // Scoped file is missing OR empty/default.
+        // We ONLY migrate if this appears to be the FIRST installation configured (i.e. installs dir is empty or only has us).
+        let installs_dir = crate::get_config_root().join("installs");
+        let is_first_migration = installs_dir.exists()
+            && fs::read_dir(&installs_dir)
+                .map(|entries| entries.count() <= 1)
+                .unwrap_or(true);
 
-            for path in &legacy_paths {
-                if path.exists() {
-                    if let Ok(content) = fs::read_to_string(path) {
-                        if let Ok(collection) = serde_json::from_str::<ProfileCollection>(&content) {
-                            // Only migrate if legacy has actual data
-                            if !collection.is_empty_or_default() {
-                                println!("[Migration] Migrating profiles from legacy location {:?}", path);
-                                // Auto-save to scoped location so migration only happens once
-                                if let Err(e) = self.save(&collection) {
-                                    eprintln!("[Migration] Warning: Failed to save migrated profiles: {}", e);
+        if is_first_migration {
+            if let Some(config_root) = crate::get_config_root().parent() {
+                let legacy_paths = [
+                    config_root.join("x-addon-oxide").join("profiles.json"),
+                    config_root.join("x-adox").join("profiles.json"),
+                ];
+
+                for path in &legacy_paths {
+                    if path.exists() {
+                        if let Ok(content) = fs::read_to_string(path) {
+                            if let Ok(collection) =
+                                serde_json::from_str::<ProfileCollection>(&content)
+                            {
+                                // Only migrate if legacy has actual data
+                                if !collection.is_empty_or_default() {
+                                    println!(
+                                        "[Migration] Migrating profiles from legacy location {:?}",
+                                        path
+                                    );
+                                    // Auto-save to scoped location so migration only happens once
+                                    if let Err(e) = self.save(&collection) {
+                                        eprintln!("[Migration] Warning: Failed to save migrated profiles: {}", e);
+                                    }
+                                    return Ok(collection);
                                 }
-                                return Ok(collection);
                             }
                         }
                     }

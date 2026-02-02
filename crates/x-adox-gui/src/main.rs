@@ -1143,6 +1143,7 @@ impl App {
                 match result {
                     Ok(aircraft) => {
                         self.aircraft = aircraft;
+                        
                         if !self.loading_state.is_loading {
                             if self.active_tab == Tab::Aircraft {
                                 self.status = format!("{} aircraft", self.aircraft.len());
@@ -2445,6 +2446,16 @@ impl App {
                             self.save_app_config();
                             self.profile_manager =
                                 self.xplane_root.as_ref().map(|r| ProfileManager::new(r));
+                            
+                            // Force reload of profiles for the new install location
+                            if let Some(pm) = &self.profile_manager {
+                                if let Ok(collection) = pm.load() {
+                                    self.profiles = collection;
+                                } else {
+                                    self.profiles = ProfileCollection::default();
+                                }
+                            }
+
                             self.status = "X-Plane folder set! Reloading...".to_string();
 
                             // Reset loading state
