@@ -183,6 +183,7 @@ enum Message {
     InstallAircraftDestPicked(PathBuf, Option<PathBuf>),
     InstallComplete(Result<String, String>),
     DeleteAddon(Tab),
+    DeleteAddonDirect(PathBuf, Tab),
     ConfirmDelete(Tab, bool),
 
     // Expansion & Scripts
@@ -3009,6 +3010,32 @@ impl App {
                 }
                 Task::none()
             }
+            Message::DeleteAddonDirect(path, tab) => {
+                let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Unknown".to_string());
+                use native_dialog::{MessageDialog, MessageType};
+                let confirmed = MessageDialog::new()
+                    .set_title("Confirm Deletion")
+                    .set_text(&format!(
+                        "Are you sure you want to permanently delete '{}'?",
+                        name
+                    ))
+                    .set_type(MessageType::Warning)
+                    .show_confirm()
+                    .unwrap_or(false);
+
+                if confirmed {
+                    // Set global selection so ConfirmDelete correctly picks it up if it falls back to them
+                    match tab {
+                        Tab::Scenery => self.selected_scenery = Some(name),
+                        Tab::Aircraft => self.selected_aircraft = Some(path.clone()),
+                        Tab::Plugins => self.selected_plugin = Some(path.clone()),
+                        Tab::CSLs => self.selected_csl = Some(path.clone()),
+                        _ => {}
+                    }
+                    return Task::done(Message::ConfirmDelete(tab, true));
+                }
+                Task::none()
+            }
             Message::ConfirmDelete(tab, confirmed) => {
                 self.show_delete_confirm = false;
                 if confirmed {
@@ -4779,7 +4806,7 @@ impl App {
                     .align_x(iced::alignment::Horizontal::Center),
             )
             .on_press(delete_msg)
-            .style(style::button_secondary)
+            .style(style::button_danger)
             .padding([6, 12])
         } else {
             button(
@@ -5841,6 +5868,7 @@ impl App {
             self.icon_grip.clone(),
             self.icon_basket.clone(),
             self.icon_paste.clone(),
+            self.icon_trash.clone(),
         );
 
         let drag_id = self.drag_context.as_ref().map(|ctx| ctx.source_index);
@@ -6701,6 +6729,7 @@ impl App {
             iced::widget::svg::Handle, // grip
             iced::widget::svg::Handle, // bucket
             iced::widget::svg::Handle, // paste
+            iced::widget::svg::Handle, // trash
         ),
     ) -> Element<'static, Message> {
         let is_active = pack.status == SceneryPackType::Active;
@@ -6712,6 +6741,7 @@ impl App {
             icon_grip,
             icon_basket,
             icon_paste,
+            icon_trash,
         ) = icons;
 
         let status_dot = container(iced::widget::Space::new(
@@ -6893,7 +6923,20 @@ impl App {
             iced::widget::Space::new(Length::Fixed(0.0), Length::Fixed(0.0)).into()
         };
 
+        let delete_card_btn = button(
+            svg(icon_trash)
+                .width(Length::Fixed(14.0))
+                .height(Length::Fixed(14.0))
+                .style(move |_, _| svg::Style {
+                    color: Some(style::palette::ACCENT_RED),
+                }),
+        )
+        .on_press(Message::DeleteAddonDirect(pack.path.clone(), Tab::Scenery))
+        .style(style::button_neumorphic)
+        .padding(4);
+
         let content_row = row![
+            delete_card_btn,
             basket_btn,
             grip,
             status_dot,
@@ -6993,8 +7036,9 @@ impl App {
                 show_delete_confirm,
                 active_tab,
                 label_owned,
+                self.icon_trash.clone(),
             ),
-            move |(addons, selected_path, show_delete_confirm, active_tab, label)| {
+            move |(addons, selected_path, show_delete_confirm, active_tab, label, icon_trash)| {
                 let is_plugins = label == "Plugin";
                 let is_csls = label == "CSL Package";
 
@@ -7055,6 +7099,15 @@ impl App {
                                         .style(style)
                                         .padding([4, 8])
                                         .width(Length::Fill),
+                                    button(
+                                        svg(icon_trash.clone())
+                                            .width(14)
+                                            .height(14)
+                                            .style(|_, _| svg::Style { color: Some(style::palette::ACCENT_RED) })
+                                    )
+                                    .on_press(Message::DeleteAddonDirect(path.clone(), if is_plugins { Tab::Plugins } else { Tab::CSLs }))
+                                    .style(style::button_ghost)
+                                    .padding(4),
                                 ]
                                 .spacing(5)
                                 .into()
@@ -7065,6 +7118,15 @@ impl App {
                                         text(type_label.clone())
                                             .size(12)
                                             .color(style::palette::TEXT_SECONDARY),
+                                        button(
+                                            svg(icon_trash.clone())
+                                                .width(14)
+                                                .height(14)
+                                                .style(|_, _| svg::Style { color: Some(style::palette::ACCENT_RED) })
+                                        )
+                                        .on_press(Message::DeleteAddonDirect(path.clone(), Tab::Aircraft))
+                                        .style(style::button_ghost)
+                                        .padding(4),
                                     ]
                                     .spacing(10)
                                     .align_y(iced::Alignment::Center),
@@ -7164,20 +7226,32 @@ impl App {
             let use_smart = self.use_smart_view;
             let tree = self.aircraft_tree.clone();
             let selected = self.selected_aircraft.clone();
+            let smart_groups = self.smart_groups.clone();
+            let smart_model_groups = self.smart_model_groups.clone();
+            let icon_trash = self.icon_trash.clone();
 
             scrollable(lazy(
                 (
                     use_smart,
-                    tree.clone(),
-                    selected.clone(),
+                    tree,
+                    selected,
                     self.smart_view_expanded.clone(),
+                    smart_groups,
+                    smart_model_groups,
+                    icon_trash,
                 ),
-                move |(_use_smart, tree, selected, expanded)| {
-                    let items: Vec<Element<'_, Message, Theme, Renderer>> = if self.use_smart_view {
-                        self.collect_smart_nodes(&selected, &expanded)
+                move |(use_smart, tree, selected, expanded, smart_groups, smart_model_groups, icon_trash)| {
+                    let items: Vec<Element<'_, Message, Theme, Renderer>> = if *use_smart {
+                        Self::collect_smart_nodes(
+                            smart_groups,
+                            smart_model_groups,
+                            selected,
+                            expanded,
+                            icon_trash.clone(),
+                        )
                     } else {
                         match tree {
-                            Some(t) => Self::collect_tree_nodes(t, 0, selected),
+                            Some(t) => Self::collect_tree_nodes(t, 0, selected, icon_trash.clone()),
                             None => vec![Element::from(text("Loading aircraft...").size(14))],
                         }
                     };
@@ -7304,8 +7378,9 @@ impl App {
         node: &AircraftNode,
         depth: usize,
         selected_aircraft: &Option<std::path::PathBuf>,
+        icon_trash: svg::Handle,
     ) -> Vec<Element<'static, Message>> {
-        let mut result = vec![Self::render_aircraft_row(node, depth, selected_aircraft)];
+        let mut result = vec![Self::render_aircraft_row(node, depth, selected_aircraft, icon_trash.clone())];
 
         // Collect children if expanded
         if node.is_expanded {
@@ -7314,6 +7389,7 @@ impl App {
                     child,
                     depth + 1,
                     selected_aircraft,
+                    icon_trash.clone(),
                 ));
             }
         }
@@ -7325,6 +7401,7 @@ impl App {
         node: &AircraftNode,
         depth: usize,
         selected_aircraft: &Option<std::path::PathBuf>,
+        icon_trash: svg::Handle,
     ) -> Element<'static, Message> {
         let indent = 20.0 * depth as f32;
 
@@ -7401,9 +7478,19 @@ impl App {
                     ]
                     .spacing(5),
                 )
-                .on_press(Message::SelectAircraft(path))
+                .on_press(Message::SelectAircraft(path.clone()))
                 .style(style)
                 .padding([4, 8])
+                .width(Length::Fill),
+                button(
+                    svg(icon_trash)
+                        .width(14)
+                        .height(14)
+                        .style(|_, _| svg::Style { color: Some(style::palette::ACCENT_RED) })
+                )
+                .on_press(Message::DeleteAddonDirect(path.clone(), Tab::Aircraft))
+                .style(style::button_ghost)
+                .padding(4),
             ]
             .spacing(10)
             .into()
@@ -7424,13 +7511,18 @@ impl App {
     }
 
     fn collect_smart_nodes(
-        &self,
+        smart_groups: &std::collections::BTreeMap<String, Vec<AircraftNode>>,
+        smart_model_groups: &std::collections::BTreeMap<
+            String,
+            std::collections::BTreeMap<String, Vec<AircraftNode>>,
+        >,
         selected_aircraft: &Option<std::path::PathBuf>,
         expanded_smart: &std::collections::BTreeSet<String>,
+        icon_trash: svg::Handle,
     ) -> Vec<Element<'static, Message>> {
         let mut result = Vec::new();
 
-        for (tag, aircraft) in &self.smart_groups {
+        for (tag, aircraft) in smart_groups {
             let tag_id = format!("tag:{}", tag);
             let is_expanded = expanded_smart.contains(&tag_id);
             let icon = if is_expanded { "v" } else { ">" };
@@ -7459,7 +7551,7 @@ impl App {
             let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
 
             if is_manufacturer {
-                if let Some(model_groups) = self.smart_model_groups.get(tag) {
+                if let Some(model_groups) = smart_model_groups.get(tag) {
                     for (model, acs) in model_groups {
                         let model_id = format!("model:{}:{}", tag, model);
                         let model_expanded = expanded_smart.contains(&model_id);
@@ -7505,14 +7597,14 @@ impl App {
                             for ac in acs {
                                 let mut ac = ac.clone();
                                 ac.acf_file = None;
-                                result.push(Self::render_aircraft_row(&ac, 2, selected_aircraft));
+                                result.push(Self::render_aircraft_row(&ac, 2, selected_aircraft, icon_trash.clone()));
                             }
                         }
                     }
                 }
             } else {
                 for ac in aircraft {
-                    result.push(Self::render_aircraft_row(ac, 1, selected_aircraft));
+                    result.push(Self::render_aircraft_row(ac, 1, selected_aircraft, icon_trash.clone()));
                 }
             }
         }
