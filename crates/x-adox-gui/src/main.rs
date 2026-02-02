@@ -330,6 +330,12 @@ enum Message {
     BasketResized(Point),
     BasketResizeEnd,
     ModifiersChanged(keyboard::Modifiers),
+
+    // Backup & Restore
+    BackupUserData,
+    RestoreUserData,
+    BackupComplete(Result<PathBuf, String>),
+    RestoreComplete(Result<String, String>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2249,7 +2255,7 @@ impl App {
                     source_name: name,
                     hover_target_index: None,
                     cursor_position: Point::ORIGIN,
-                    is_over_basket: false,
+                    is_over_basket: true,
                 });
                 Task::none()
             }
@@ -3150,6 +3156,100 @@ impl App {
                 Task::none()
             }
             Message::ScenerySearchSubmit => Task::done(Message::ScenerySearchNext),
+            Message::BackupUserData => {
+                let xplane_root = self.xplane_root.clone();
+                match xplane_root {
+                    Some(root) => {
+                        self.status = "Exporting configuration...".to_string();
+                        Task::perform(
+                            async move {
+                                let handle = rfd::AsyncFileDialog::new()
+                                    .set_title("Export Configuration Backup")
+                                    .add_filter("X-Addon-Oxide Backup", &["xback"])
+                                    .set_file_name("oxide_backup.xback")
+                                    .save_file()
+                                    .await;
+
+                                if let Some(file) = handle {
+                                    match x_adox_core::management::BackupManager::backup_user_data(
+                                        &root,
+                                        file.path(),
+                                    ) {
+                                        Ok(_) => Ok(file.path().to_path_buf()),
+                                        Err(e) => Err(e.to_string()),
+                                    }
+                                } else {
+                                    Err("Operation cancelled".to_string())
+                                }
+                            },
+                            Message::BackupComplete,
+                        )
+                    }
+                    None => Task::none(),
+                }
+            }
+            Message::BackupComplete(result) => {
+                match result {
+                    Ok(path) => {
+                        self.status = format!("Exported to {}", path.display());
+                    }
+                    Err(e) if e == "Operation cancelled" => {
+                        self.status = "Export cancelled".to_string();
+                    }
+                    Err(e) => {
+                        self.status = format!("Export failed: {}", e);
+                    }
+                }
+                Task::none()
+            }
+            Message::RestoreUserData => {
+                let xplane_root = self.xplane_root.clone();
+                match xplane_root {
+                    Some(root) => {
+                        self.status = "Importing configuration...".to_string();
+                        Task::perform(
+                            async move {
+                                let handle = rfd::AsyncFileDialog::new()
+                                    .set_title("Import Configuration Backup")
+                                    .add_filter("X-Addon-Oxide Backup", &["xback", "json"])
+                                    .pick_file()
+                                    .await;
+
+                                if let Some(file) = handle {
+                                    match x_adox_core::management::BackupManager::restore_user_data(
+                                        &root,
+                                        file.path(),
+                                    ) {
+                                        Ok(msg) => Ok(msg),
+                                        Err(e) => Err(e.to_string()),
+                                    }
+                                } else {
+                                    Err("Operation cancelled".to_string())
+                                }
+                            },
+                            Message::RestoreComplete,
+                        )
+                    }
+                    None => Task::none(),
+                }
+            }
+            Message::RestoreComplete(result) => {
+                match result {
+                    Ok(msg) => {
+                        self.status = format!("Import Success: {}", msg);
+                        // Refresh app state after restore
+                        Task::done(Message::Refresh)
+                    }
+                    Err(e) if e == "Operation cancelled" => {
+                        self.status = "Import cancelled".to_string();
+                        Task::none()
+                    }
+                    Err(e) => {
+                        self.status = format!("Import failed: {}", e);
+                        Task::none()
+                    }
+                }
+            }
             Message::ModifiersChanged(modifiers) => {
                 self.keyboard_modifiers = modifiers;
                 Task::none()
@@ -3373,27 +3473,28 @@ impl App {
                 }
 
                 if let Some(ctx) = &self.drag_context {
-                    let top_threshold = 150.0;
-                    let _bottom_threshold = 100.0;
-                    let scroll_speed = 15.0;
+                    if !ctx.is_over_basket {
+                        let top_threshold = 50.0;
+                        let bottom_threshold = self.window_size.height - 50.0;
+                        let scroll_speed = 15.0;
 
-                    if ctx.cursor_position.y < top_threshold {
-                        tasks.push(scrollable::scroll_by(
-                            self.scenery_scroll_id.clone(),
-                            scrollable::AbsoluteOffset {
-                                x: 0.0,
-                                y: -scroll_speed,
-                            },
-                        ));
-                    } else if ctx.cursor_position.y > 600.0 {
-                        // Defensive lower bound
-                        tasks.push(scrollable::scroll_by(
-                            self.scenery_scroll_id.clone(),
-                            scrollable::AbsoluteOffset {
-                                x: 0.0,
-                                y: scroll_speed,
-                            },
-                        ));
+                        if ctx.cursor_position.y < top_threshold {
+                            tasks.push(scrollable::scroll_by(
+                                self.scenery_scroll_id.clone(),
+                                scrollable::AbsoluteOffset {
+                                    x: 0.0,
+                                    y: -scroll_speed,
+                                },
+                            ));
+                        } else if ctx.cursor_position.y > bottom_threshold {
+                            tasks.push(scrollable::scroll_by(
+                                self.scenery_scroll_id.clone(),
+                                scrollable::AbsoluteOffset {
+                                    x: 0.0,
+                                    y: scroll_speed,
+                                },
+                            ));
+                        }
                     }
                 }
 
@@ -5936,72 +6037,74 @@ impl App {
             );
         }
 
-        let main_basket = container(
-            column![
-                content,
-                mouse_area(
-                    container(items_list)
-                        .padding(10)
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .style(style::container_drop_zone)
-                )
-                .on_enter(Message::DragEnterBasket)
-                .on_exit(Message::DragLeaveBasket),
-                bottom_actions
-            ].spacing(15)
+        let basket_content = mouse_area(
+            container(
+                column![
+                    content,
+                    container(items_list).height(Length::Fill),
+                    bottom_actions
+                ].spacing(15)
+            )
+            .padding(15)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(style::container_sidebar)
         )
-        .padding(15)
-        .width(Length::Fixed(self.basket_size.x))
-        .height(Length::Fixed(self.basket_size.y))
-        .style(style::container_sidebar);
+        .on_enter(Message::DragEnterBasket)
+        .on_exit(Message::DragLeaveBasket);
 
-        stack![
-            main_basket,
-            // Top edge
-            mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
-                .on_press(Message::BasketResizeStart(ResizeEdge::Top))
-                .interaction(mouse::Interaction::ResizingVertically),
-            // Bottom edge
-            container(
+        let main_basket = container(
+            stack![
+                basket_content,
+                // Top edge
                 mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
-                    .on_press(Message::BasketResizeStart(ResizeEdge::Bottom))
-                    .interaction(mouse::Interaction::ResizingVertically)
-            ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
-            // Left edge
-            mouse_area(container(iced::widget::horizontal_space()).width(5).height(Length::Fill))
-                .on_press(Message::BasketResizeStart(ResizeEdge::Left))
-                .interaction(mouse::Interaction::ResizingHorizontally),
-            // Right edge
-            container(
+                    .on_press(Message::BasketResizeStart(ResizeEdge::Top))
+                    .interaction(mouse::Interaction::ResizingVertically),
+                // Bottom edge
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
+                        .on_press(Message::BasketResizeStart(ResizeEdge::Bottom))
+                        .interaction(mouse::Interaction::ResizingVertically)
+                ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
+                // Left edge
                 mouse_area(container(iced::widget::horizontal_space()).width(5).height(Length::Fill))
-                    .on_press(Message::BasketResizeStart(ResizeEdge::Right))
-                    .interaction(mouse::Interaction::ResizingHorizontally)
-            ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
-            // Corners
-            // Top Left
-            mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
-                .on_press(Message::BasketResizeStart(ResizeEdge::TopLeft))
-                .interaction(mouse::Interaction::ResizingDiagonallyDown),
-            // Top Right
-            container(
+                    .on_press(Message::BasketResizeStart(ResizeEdge::Left))
+                    .interaction(mouse::Interaction::ResizingHorizontally),
+                // Right edge
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(5).height(Length::Fill))
+                        .on_press(Message::BasketResizeStart(ResizeEdge::Right))
+                        .interaction(mouse::Interaction::ResizingHorizontally)
+                ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
+                // Corners
+                // Top Left
                 mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
-                    .on_press(Message::BasketResizeStart(ResizeEdge::TopRight))
-                    .interaction(mouse::Interaction::ResizingDiagonallyUp)
-            ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
-            // Bottom Left
-            container(
-                mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
-                    .on_press(Message::BasketResizeStart(ResizeEdge::BottomLeft))
-                    .interaction(mouse::Interaction::ResizingDiagonallyUp)
-            ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
-            // Bottom Right
-            container(
-                mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
-                    .on_press(Message::BasketResizeStart(ResizeEdge::BottomRight))
-                    .interaction(mouse::Interaction::ResizingDiagonallyDown)
-            ).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom),
-        ].into()
+                    .on_press(Message::BasketResizeStart(ResizeEdge::TopLeft))
+                    .interaction(mouse::Interaction::ResizingDiagonallyDown),
+                // Top Right
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                        .on_press(Message::BasketResizeStart(ResizeEdge::TopRight))
+                        .interaction(mouse::Interaction::ResizingDiagonallyUp)
+                ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
+                // Bottom Left
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                        .on_press(Message::BasketResizeStart(ResizeEdge::BottomLeft))
+                        .interaction(mouse::Interaction::ResizingDiagonallyUp)
+                ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
+                // Bottom Right
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                        .on_press(Message::BasketResizeStart(ResizeEdge::BottomRight))
+                        .interaction(mouse::Interaction::ResizingDiagonallyDown)
+                ).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom),
+            ]
+        )
+        .width(Length::Fixed(self.basket_size.x))
+        .height(Length::Fixed(self.basket_size.y));
+
+        main_basket.into()
     }
 
     fn view_heuristics_editor(&self) -> Element<'_, Message> {
@@ -6094,7 +6197,33 @@ impl App {
     fn view_settings(&self) -> Element<'_, Message> {
         let title = text("Scan Settings").size(24);
 
-        // Exclusions Section
+        // 1. Backup & Restore Section
+        let backup_section: Element<'_, Message> = container(
+            column![
+                text("Backup & Restore").size(18),
+                text("Export your profiles, scenery overrides, and sorting rules to a single file.")
+                    .size(12)
+                    .color(style::palette::TEXT_SECONDARY),
+                row![
+                    button(text("Export Config (.xback)").size(14))
+                        .on_press(Message::BackupUserData)
+                        .style(style::button_primary)
+                        .padding([10, 20]),
+                    button(text("Import Config").size(14))
+                        .on_press(Message::RestoreUserData)
+                        .style(style::button_secondary)
+                        .padding([10, 20]),
+                ]
+                .spacing(10)
+            ]
+            .spacing(10),
+        )
+        .padding(20)
+        .style(style::container_card)
+        .width(Length::Fill)
+        .into();
+
+        // 2. Exclusions Section
         let exclusions_title = text("Excluded Folders (Ignored by AI Scan)").size(18);
 
         let exclusions_list: Element<'_, Message> = if self.scan_exclusions.is_empty() {
@@ -6130,7 +6259,7 @@ impl App {
 
         let add_btn = button(
             row![
-                svg(self.icon_plugins.clone()).width(Length::Fixed(16.0)), // reusing plugins icon as generic 'plus' or folder
+                svg(self.icon_plugins.clone()).width(Length::Fixed(16.0)),
                 text("Add Exclusion Folder")
             ]
             .spacing(8)
@@ -6140,6 +6269,7 @@ impl App {
         .padding(10)
         .style(style::button_primary);
 
+        // 3. Map Filter Section
         let mut filter_content = Column::<'_, Message, Theme, Renderer>::new().spacing(5);
 
         filter_content = filter_content.push(
@@ -6220,7 +6350,7 @@ impl App {
                              MapFilterType::HealthScores,
                              self.map_filters.show_health_scores
                          ),
-                     ]
+                    ]
                     .spacing(8),
                 )
                 .padding(Padding {
@@ -6228,21 +6358,28 @@ impl App {
                     right: 0.0,
                     bottom: 0.0,
                     left: 20.0,
-                }),
+                })
+                .style(style::container_card)
             );
         }
 
+        // Final Assembly
         scrollable(
             column![
                 row![
                     button(text("Back").size(12))
-                        .on_press(Message::SwitchTab(Tab::Aircraft))
+                        .on_press(Message::SwitchTab(Tab::Scenery))
                         .style(style::button_secondary)
                         .padding([5, 10]),
                     title
                 ]
                 .spacing(20)
                 .align_y(iced::Alignment::Center),
+                
+                backup_section,
+
+                iced::widget::horizontal_rule(1.0),
+
                 container(
                     column![
                         exclusions_title,
@@ -6257,6 +6394,7 @@ impl App {
                 .padding(20)
                 .style(style::container_card)
                 .width(Length::Fill),
+
                 container(filter_content)
                     .padding(20)
                     .style(style::container_card)

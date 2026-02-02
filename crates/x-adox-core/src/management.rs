@@ -1,6 +1,9 @@
+use crate::profiles::{ProfileCollection, ProfileManager};
 use crate::scenery::SceneryManager;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use x_adox_bitnet::BitNetModel;
 
 pub struct ModManager;
 
@@ -112,5 +115,78 @@ impl ModManager {
         }
 
         Ok(target_path)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BackupData {
+    pub heuristics: x_adox_bitnet::HeuristicsConfig,
+    pub profiles: ProfileCollection,
+    pub export_date: String,
+    pub version: String,
+}
+
+pub struct BackupManager;
+
+impl BackupManager {
+    pub fn backup_user_data(
+        xplane_root: &Path,
+        output_path: &Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let model = BitNetModel::new()?;
+        let profile_mgr = ProfileManager::new(xplane_root);
+        let profiles = profile_mgr.load()?;
+
+        let backup = BackupData {
+            heuristics: model.config.as_ref().clone(),
+            profiles,
+            export_date: chrono::Local::now().to_rfc3339(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        };
+
+        let content = serde_json::to_string_pretty(&backup)?;
+        fs::write(output_path, content)?;
+        Ok(())
+    }
+
+    pub fn restore_user_data(
+        xplane_root: &Path,
+        input_path: &Path,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let content = fs::read_to_string(input_path)?;
+
+        // 1. Try parsing as full backup file (.xback)
+        if let Ok(backup) = serde_json::from_str::<BackupData>(&content) {
+            // Restore Heuristics
+            let mut model = BitNetModel::new()?;
+            model.update_config(backup.heuristics);
+            model.save()?;
+
+            // Restore Profiles
+            let profile_mgr = ProfileManager::new(xplane_root);
+            profile_mgr.save(&backup.profiles)?;
+
+            return Ok(format!("Restored backup from {}", backup.export_date));
+        }
+
+        // 2. Try parsing as legacy heuristics.json
+        if let Ok(heuristics) = serde_json::from_str::<x_adox_bitnet::HeuristicsConfig>(&content) {
+            let mut model = BitNetModel::new()?;
+            model.update_config(heuristics);
+            model.save()?;
+            return Ok("Imported heuristics only (legacy format)".to_string());
+        }
+
+        // 3. Try parsing as legacy profiles.json
+        if let Ok(profiles) = serde_json::from_str::<ProfileCollection>(&content) {
+            let profile_mgr = ProfileManager::new(xplane_root);
+            profile_mgr.save(&profiles)?;
+            return Ok("Imported profiles only (legacy format)".to_string());
+        }
+
+        Err(
+            "File format not recognized. Please select a valid backup or legacy config file."
+                .into(),
+        )
     }
 }

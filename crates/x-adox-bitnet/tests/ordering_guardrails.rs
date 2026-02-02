@@ -3,7 +3,7 @@ use x_adox_bitnet::{BitNetModel, PredictContext};
 
 #[test]
 fn test_critical_scenery_ordering_pairs() {
-    let mut model = BitNetModel::new();
+    let mut model = BitNetModel::new().unwrap();
     // CRITICAL: Force load the defaults from the CODE, ignoring any local heuristics.json file.
     // This ensures the test validates the shipped logic, not the developer's local state.
     model.update_config(x_adox_bitnet::HeuristicsConfig::default());

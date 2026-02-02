@@ -55,12 +55,14 @@ impl Default for HeuristicsConfig {
                 // --- Tier 2: The Pivot (Global Airports) ---
                 // MUST check this before generic city/landmark rules to ensure *GLOBAL_AIRPORTS* isn't misclassified
                 Rule {
+                    name: "Official Landmarks".to_string(),
+                    keywords: vec!["x-plane landmarks".to_string()],
+                    score: 18, // Above Global Airports (20)
+                    is_exclusion: false,
+                },
+                Rule {
                     name: "Global Airports".to_string(),
-                    keywords: vec![
-                        "global airports".to_string(),
-                        "global_airports".to_string(),
-                        "x-plane landmarks".to_string(),
-                    ],
+                    keywords: vec!["global airports".to_string(), "global_airports".to_string()],
                     score: 20,
                     is_exclusion: false,
                 },
@@ -249,7 +251,6 @@ impl BitNetModel {
                     "[BitNet] Migrating heuristics.json from schema v{} to v{}. Clearing overrides.",
                     config.schema_version, CURRENT_SCHEMA_VERSION
                 );
-                config.overrides.clear();
                 config.schema_version = CURRENT_SCHEMA_VERSION;
                 // Save the migrated config
                 if let Some(parent) = path.parent() {

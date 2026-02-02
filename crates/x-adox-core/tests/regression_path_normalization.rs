@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 use x_adox_core::normalize_install_path;
 
