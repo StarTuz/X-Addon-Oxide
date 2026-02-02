@@ -2489,6 +2489,12 @@ impl App {
             }
             Message::FolderSelected(path_opt) => {
                 if let Some(path) = path_opt {
+                    // Sync current state before switching installations
+                    log::debug!("Pre-syncing current state before switching installations");
+                    self.sync_active_profile_scenery();
+                    self.sync_active_profile_plugins();
+                    self.sync_active_profile_aircraft();
+
                     // Validate it's an X-Plane folder
                     match XPlaneManager::new(&path) {
                         Ok(_) => {
@@ -2593,6 +2599,12 @@ impl App {
                     return Task::none(); // Already selected
                 }
 
+                // Sync current state before switching installations
+                log::debug!("Pre-syncing current state before switching installations");
+                self.sync_active_profile_scenery();
+                self.sync_active_profile_plugins();
+                self.sync_active_profile_aircraft();
+
                 self.xplane_root = Some(path);
                 let root_ref = self.xplane_root.as_ref().unwrap();
                 
@@ -2612,8 +2624,21 @@ impl App {
                     }
                 }
 
-                // Heuristics are GLOBAL - no need to reload when switching X-Plane roots
-                // (The same scoring rules apply to all installations)
+                // Force reload of heuristics for the new install location
+                if let Some(r) = &self.xplane_root {
+                    self.heuristics_model = Self::initialize_heuristics(r);
+                    
+                    // Apply the pins from the newly loaded profile
+                    if let Some(active_name) = &self.profiles.active_profile {
+                        if let Some(profile) = self.profiles.profiles.iter().find(|p| p.name == *active_name) {
+                            let overrides = profile.scenery_overrides.iter()
+                                .map(|(k, v)| (k.clone(), *v))
+                                .collect::<std::collections::BTreeMap<_, _>>();
+                            log::debug!("Root switch: Applying {} overrides from profile '{}'", overrides.len(), active_name);
+                            self.heuristics_model.apply_overrides(overrides);
+                        }
+                    }
+                }
 
                 self.status = "Loading X-Plane Profile...".to_string();
 
