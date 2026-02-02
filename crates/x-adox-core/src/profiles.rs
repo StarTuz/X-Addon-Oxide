@@ -13,6 +13,9 @@ pub struct Profile {
     pub plugin_states: HashMap<String, bool>,
     /// Map of aircraft paths (relative to X-Plane root) to their enabled status
     pub aircraft_states: HashMap<String, bool>,
+    /// Map of scenery names to their manual priority overrides (Pins)
+    #[serde(default)]
+    pub scenery_overrides: HashMap<String, u8>,
     /// Command-line arguments for launching X-Plane
     #[serde(default)]
     pub launch_args: String,
@@ -25,6 +28,7 @@ impl Profile {
             scenery_states: HashMap::new(),
             plugin_states: HashMap::new(),
             aircraft_states: HashMap::new(),
+            scenery_overrides: HashMap::new(),
             launch_args: String::new(),
         }
     }
@@ -97,6 +101,12 @@ impl ProfileCollection {
             profile.launch_args = args;
         }
     }
+
+    pub fn update_active_overrides(&mut self, overrides: HashMap<String, u8>) {
+        if let Some(profile) = self.get_active_profile_mut() {
+            profile.scenery_overrides = overrides;
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +136,10 @@ impl ProfileManager {
         // If scoped file has meaningful data, use it directly
         if let Some(ref collection) = scoped_collection {
             if !collection.is_empty_or_default() {
+                log::debug!(
+                    "Loaded {} profiles from scoped path",
+                    collection.profiles.len()
+                );
                 return Ok(collection.clone());
             }
         }
@@ -185,6 +199,11 @@ impl ProfileManager {
         let content =
             serde_json::to_string_pretty(collection).context("Failed to serialize profiles")?;
 
+        log::debug!(
+            "Saving {} profiles to {:?}",
+            collection.profiles.len(),
+            self.config_path
+        );
         fs::write(&self.config_path, content).context("Failed to write profiles.json")
     }
 }

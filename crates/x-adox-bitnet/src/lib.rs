@@ -224,6 +224,16 @@ impl BitNetModel {
         Ok(Self::default())
     }
 
+    pub fn at_path(path: PathBuf) -> Self {
+        let config = Self::load_config(&path).unwrap_or_default();
+        let regex_set = Self::build_regex_set(&config);
+        Self {
+            config: Arc::new(config),
+            config_path: path,
+            regex_set,
+        }
+    }
+
     pub fn update_config(&mut self, config: HeuristicsConfig) {
         self.regex_set = Self::build_regex_set(&config);
         self.config = Arc::new(config);
@@ -231,6 +241,12 @@ impl BitNetModel {
 
     pub fn refresh_regex_set(&mut self) {
         self.regex_set = Self::build_regex_set(&self.config);
+    }
+
+    pub fn apply_overrides(&mut self, new_overrides: std::collections::BTreeMap<String, u8>) {
+        let config = Arc::make_mut(&mut self.config);
+        config.overrides = new_overrides;
+        self.refresh_regex_set();
     }
 
     fn get_config_path() -> PathBuf {

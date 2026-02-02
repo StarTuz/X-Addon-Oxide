@@ -15,6 +15,7 @@ fn test_profile_state_updates() {
         scenery_states: HashMap::new(),
         plugin_states: HashMap::new(),
         aircraft_states: HashMap::new(),
+        scenery_overrides: HashMap::new(),
         launch_args: String::new(),
     };
 
@@ -23,6 +24,7 @@ fn test_profile_state_updates() {
         scenery_states: HashMap::new(),
         plugin_states: HashMap::new(),
         aircraft_states: HashMap::new(),
+        scenery_overrides: HashMap::new(),
         launch_args: String::new(),
     };
 
@@ -72,6 +74,7 @@ fn test_profile_persistence() {
             scenery_states: HashMap::new(),
             plugin_states: HashMap::new(),
             aircraft_states: HashMap::new(),
+            scenery_overrides: HashMap::new(),
             launch_args: "--persist".to_string(),
         }],
         active_profile: Some("Persist Test".to_string()),

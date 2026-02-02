@@ -23,6 +23,8 @@ use x_adox_core::XPlaneManager;
 mod map;
 mod style;
 use map::{MapView, TileManager};
+use simplelog::*;
+use std::fs::File;
 
 const AIRCRAFT_CATEGORIES: &[&str] = &[
     "Airliner",
@@ -61,6 +63,19 @@ const MANUFACTURERS: &[&str] = &[
 ];
 
 fn main() -> iced::Result {
+    // Initialize logging
+    let config_root = x_adox_core::get_config_root();
+    let log_path = config_root.join("x-adox.log");
+    
+    if let Ok(log_file) = File::create(&log_path) {
+        let _ = WriteLogger::init(
+            LevelFilter::Debug,
+            Config::default(),
+            log_file,
+        );
+        log::info!("Logging initialized at {:?}", log_path);
+    }
+
     let icon_data = include_bytes!("../../../icon.png");
     let window_icon = icon::from_file_data(icon_data, None).ok();
 
@@ -680,7 +695,9 @@ impl App {
             scenery_scroll_id: scrollable::Id::unique(),
             install_progress: None,
             // Heuristics are GLOBAL (not per-install) - use BitNetModel's global config path
-            heuristics_model: BitNetModel::new().unwrap_or_default(),
+            heuristics_model: root.as_ref()
+                .map(|r| Self::initialize_heuristics(r))
+                .unwrap_or_else(|| BitNetModel::new().unwrap_or_default()),
             heuristics_json: text_editor::Content::new(),
             heuristics_error: None,
             log_issues: Arc::new(Vec::new()),
@@ -808,6 +825,19 @@ impl App {
         if let Some(pm) = &app.profile_manager {
             if let Ok(collection) = pm.load() {
                 app.profiles = collection;
+                
+                // Apply active profile's pins on startup
+                if let Some(active_name) = &app.profiles.active_profile {
+                    if let Some(profile) = app.profiles.profiles.iter().find(|p| p.name == *active_name) {
+                        let overrides = profile.scenery_overrides.iter()
+                            .map(|(k, v)| (k.clone(), *v))
+                            .collect::<std::collections::BTreeMap<_, _>>();
+                        app.heuristics_model.apply_overrides(overrides);
+                    }
+                }
+
+                // Initial sync to capture any existing heuristics.json overrides into the active profile
+                app.sync_active_profile_scenery();
             }
         }
 
@@ -878,7 +908,16 @@ impl App {
             .map(|p| (p.name.clone(), p.status == SceneryPackType::Active))
             .collect();
         self.profiles.update_active_scenery(states);
+
+        // Also sync manual reorder pins (scenery overrides) into the profile
+        let overrides = self.heuristics_model.config.overrides.iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        self.profiles.update_active_overrides(overrides);
+        
         self.save_profiles();
+        // [DEBUG]
+        log::debug!("Synced {} overrides to active profile", self.profiles.get_active_profile_mut().map(|p| p.scenery_overrides.len()).unwrap_or(0));
     }
 
     fn count_disabled_scenery(&self) -> usize {
@@ -1581,6 +1620,11 @@ impl App {
                     .find(|p| p.name == name)
                     .cloned()
                 {
+                    log::debug!("Pre-syncing current state before switching to profile '{}'", name);
+                    self.sync_active_profile_scenery();
+                    self.sync_active_profile_plugins();
+                    self.sync_active_profile_aircraft();
+
                     self.profiles.active_profile = Some(name.clone());
                     self.launch_args = profile.launch_args.clone(); // Load launch args from profile
                     let pm = self.profile_manager.clone();
@@ -1592,9 +1636,18 @@ impl App {
                         let _ = pm.save(&collection);
                     }
 
+                    // Apply profile-specific scenery overrides (Pins)
+                    let new_overrides = profile.scenery_overrides
+                        .iter()
+                        .map(|(k, v)| (k.clone(), *v))
+                        .collect::<std::collections::BTreeMap<_, _>>();
+                    log::debug!("Switching Profile: Applying {} overrides from profile '{}'", new_overrides.len(), name);
+                    self.heuristics_model.apply_overrides(new_overrides);
+
                     self.status = format!("Switching to profile {}...", name);
+                    let model = self.heuristics_model.clone();
                     Task::perform(
-                        async move { apply_profile_task(root, profile).await },
+                        async move { apply_profile_task(root, profile, model).await },
                         |result: Result<(), String>| match result {
                             Ok(_) => Message::Refresh,
                             Err(e) => Message::ProfilesLoaded(Err(e)),
@@ -1626,11 +1679,17 @@ impl App {
                     plugin_states.insert(csl.path.to_string_lossy().to_string(), csl.is_enabled);
                 }
 
+                let scenery_overrides = self.heuristics_model.config.overrides
+                    .iter()
+                    .map(|(k, v)| (k.clone(), *v))
+                    .collect();
+
                 let new_profile = Profile {
                     name: name.clone(),
                     scenery_states,
                     aircraft_states,
                     plugin_states,
+                    scenery_overrides,
                     launch_args: self.launch_args.clone(),
                 };
 
@@ -2142,22 +2201,28 @@ impl App {
                 Task::none()
             }
             Message::SetPriority(pack_name, score) => {
+                log::debug!("Setting priority: {} -> {}", pack_name, score);
                 Arc::make_mut(&mut self.heuristics_model.config)
                     .overrides
                     .insert(pack_name, score);
                 self.heuristics_model.refresh_regex_set();
                 let _ = self.heuristics_model.save();
+                self.resort_scenery();
+                self.sync_active_profile_scenery();
                 self.editing_priority = None;
-                Task::none()
+                return self.trigger_scenery_save();
             }
             Message::RemovePriority(pack_name) => {
+                log::debug!("Removing priority for: {}", pack_name);
                 Arc::make_mut(&mut self.heuristics_model.config)
                     .overrides
                     .remove(&pack_name);
                 self.heuristics_model.refresh_regex_set();
                 let _ = self.heuristics_model.save();
+                self.resort_scenery();
+                self.sync_active_profile_scenery();
                 self.editing_priority = None;
-                Task::none()
+                return self.trigger_scenery_save();
             }
             Message::CancelPriorityEdit => {
                 self.editing_priority = None;
@@ -2209,6 +2274,8 @@ impl App {
                         // Locally swap to provide instant feedback
                         Arc::make_mut(&mut self.packs).swap(idx, n_idx);
                         self.status = format!("Moved {} and pinned to score {}", name, new_score);
+                        self.sync_active_profile_scenery();
+                        return self.trigger_scenery_save();
                     }
                 }
                 Task::none()
@@ -2231,8 +2298,9 @@ impl App {
                 self.heuristics_model.refresh_regex_set();
                 let _ = self.heuristics_model.save();
                 self.resort_scenery();
+                self.sync_active_profile_scenery();
                 self.status = "All manual reorder pins cleared".to_string();
-                Task::none()
+                return self.trigger_scenery_save();
             }
             Message::WindowResized(size) => {
                 self.window_size = size;
@@ -2343,23 +2411,9 @@ impl App {
 
                             self.status = format!("Reordered {} (pinned to {})", name, new_score);
 
-                            // 3. Save scenery_packs.ini asynchronously
-                            if let Some(root) = self.xplane_root.clone() {
-                                let packs_to_save = (*self.packs).clone();
-                                let model = self.heuristics_model.clone();
-                                return Task::perform(
-                                    async move {
-                                        save_scenery_packs(root, packs_to_save, model)
-                                    },
-                                    |res| {
-                                        if let Err(e) = res {
-                                            Message::StatusChanged(format!("Save failed: {}", e))
-                                        } else {
-                                            Message::StatusChanged("Scenery order saved".to_string())
-                                        }
-                                    },
-                                );
-                            }
+                            // 3. Sync to profile and save to scenery_packs.ini
+                            self.sync_active_profile_scenery();
+                            return self.trigger_scenery_save();
                         }
                     }
                 }
@@ -2453,6 +2507,21 @@ impl App {
                                     self.profiles = collection;
                                 } else {
                                     self.profiles = ProfileCollection::default();
+                                }
+                            }
+
+                            // Force reload of heuristics for the new install location
+                            if let Some(r) = &self.xplane_root {
+                                self.heuristics_model = Self::initialize_heuristics(r);
+                                
+                                // Apply the pins from the newly loaded profile
+                                if let Some(active_name) = &self.profiles.active_profile {
+                                    if let Some(profile) = self.profiles.profiles.iter().find(|p| p.name == *active_name) {
+                                        let overrides = profile.scenery_overrides.iter()
+                                            .map(|(k, v)| (k.clone(), *v))
+                                            .collect::<std::collections::BTreeMap<_, _>>();
+                                        self.heuristics_model.apply_overrides(overrides);
+                                    }
                                 }
                             }
 
@@ -3480,6 +3549,7 @@ impl App {
                 self.scenery_last_bucket_index = None;
                 
                 self.status = "Applied!".to_string();
+                self.sync_active_profile_scenery();
                 self.trigger_scenery_save()
             }
 
@@ -7689,6 +7759,26 @@ impl App {
         (None, Vec::new(), MapFilters::default())
     }
 
+    fn initialize_heuristics(xplane_root: &Path) -> BitNetModel {
+        let scoped_root = x_adox_core::get_scoped_config_root(xplane_root);
+        let scoped_path = scoped_root.join("heuristics.json");
+
+        if !scoped_path.exists() {
+            // Check for global heuristics to migrate
+            if let Some(proj_dirs) = directories::ProjectDirs::from("org", "x-adox", "x-adox") {
+                let global_path = proj_dirs.config_dir().join("heuristics.json");
+                if global_path.exists() {
+                    println!("[Migration] Migrating global heuristics to scoped path: {:?}", scoped_path);
+                    if let Ok(content) = std::fs::read_to_string(&global_path) {
+                        let _ = std::fs::write(&scoped_path, content);
+                    }
+                }
+            }
+        }
+
+        BitNetModel::at_path(scoped_path)
+    }
+
     fn save_app_config(&self) {
         if let Some(path) = Self::get_app_config_path() {
             if let Ok(file) = std::fs::File::create(path) {
@@ -8350,12 +8440,36 @@ fn save_packs_task(
     sm.save(Some(&model)).map_err(|e| e.to_string())
 }
 
-async fn apply_profile_task(root: Option<PathBuf>, profile: Profile) -> Result<(), String> {
+async fn apply_profile_task(
+    root: Option<PathBuf>,
+    profile: Profile,
+    mut model: x_adox_bitnet::BitNetModel,
+) -> Result<(), String> {
     let root = root.ok_or("X-Plane root not found")?;
 
-    // 1. Scenery
-    ModManager::set_bulk_scenery_enabled(&root, &profile.scenery_states)
-        .map_err(|e| e.to_string())?;
+    // 1. Scenery Enablement & Order
+    let scenery_ini_path = root.join("Custom Scenery").join("scenery_packs.ini");
+    let mut manager =
+        x_adox_core::scenery::SceneryManager::new(scenery_ini_path);
+    manager.load().map_err(|e| e.to_string())?;
+
+    // Apply enablement
+    manager.set_bulk_states(&profile.scenery_states);
+
+    // Apply profile-specific pins to the model before sorting
+    let overrides = profile
+        .scenery_overrides
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    model.apply_overrides(overrides);
+
+    // Sort and Save
+    manager.sort(
+        Some(&model),
+        &x_adox_bitnet::PredictContext::default(),
+    );
+    manager.save(Some(&model)).map_err(|e| e.to_string())?;
 
     // 2. Plugins & Aircraft require discovering current paths to correctly toggle
     let mut cache = x_adox_core::cache::DiscoveryCache::load(Some(&root));
