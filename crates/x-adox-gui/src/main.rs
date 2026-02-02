@@ -5920,7 +5920,7 @@ impl App {
         .style(if is_basket_open {
             style::button_primary
         } else {
-            style::button_secondary
+            style::button_neumorphic
         })
         .padding([4, 8]);
 
@@ -6115,7 +6115,7 @@ impl App {
                                 .width(Length::Fixed(14.0))
                                 .height(Length::Fixed(14.0))
                         )
-                        .style(style::button_ghost)
+                        .style(style::button_neumorphic)
                         .on_press(Message::DragBucketStart(Some(name_clone2))),
                     ].spacing(8).align_y(iced::Alignment::Center)
                 );
@@ -6857,7 +6857,7 @@ impl App {
                 .width(Length::Fixed(16.0))
                 .height(Length::Fixed(16.0))
         )
-        .style(style::button_ghost)
+        .style(style::button_neumorphic)
         .on_press(Message::DragStart {
             index,
             name: pack.name.clone(),
@@ -6870,7 +6870,7 @@ impl App {
                     .height(Length::Fixed(14.0))
             )
             .on_press(Message::ToggleBucketItem(pack.name.clone()))
-            .style(if is_in_bucket { style::button_primary } else { style::button_ghost })
+            .style(if is_in_bucket { style::button_primary } else { style::button_neumorphic })
             .padding(4),
             "Add/Remove from Basket",
             tooltip::Position::Top,

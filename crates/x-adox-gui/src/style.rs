@@ -599,6 +599,41 @@ pub fn button_pin_ghost(_theme: &Theme, status: button::Status) -> button::Style
     }
 }
 
+pub fn button_neumorphic(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::SURFACE)),
+        text_color: palette::TEXT_PRIMARY,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: palette::BORDER,
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(1.0, 1.0, 1.0, 0.45),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 15.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.25, 0.25, 0.25))),
+            shadow: Shadow {
+                color: Color::from_rgba(1.0, 1.0, 1.0, 0.2),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 15.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.15, 0.15, 0.15))),
+            shadow: Shadow::default(), // "Pressed" into the surface
+            ..base
+        },
+        _ => base,
+    }
+}
+
 pub fn pick_list_primary(_theme: &Theme, _status: pick_list::Status) -> pick_list::Style {
     pick_list::Style {
         text_color: palette::TEXT_PRIMARY,
