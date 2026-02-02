@@ -5890,10 +5890,6 @@ impl App {
         ))
         .id(self.scenery_scroll_id.clone());
 
-        if !self.scenery_bucket.is_empty() {
-            // ... (bucket_ctrls logic was replaced by the basket toggle)
-        }
-
         let is_basket_open = self.show_scenery_basket;
         let basket_count = self.scenery_bucket.len();
         
@@ -5902,14 +5898,7 @@ impl App {
                 row![
                     svg(self.icon_basket.clone())
                         .width(Length::Fixed(14.0))
-                        .height(Length::Fixed(14.0))
-                        .style(move |_, _| svg::Style {
-                            color: Some(if basket_count == 0 && !is_basket_open {
-                                style::palette::TEXT_SECONDARY
-                            } else {
-                                style::palette::TEXT_PRIMARY
-                            }),
-                        }),
+                        .height(Length::Fixed(14.0)),
                     text(if is_basket_open {
                         format!("Hide Basket ({})", basket_count)
                     } else {
@@ -5921,9 +5910,6 @@ impl App {
                     } else {
                         style::palette::TEXT_PRIMARY
                     }),
-                    text(if is_basket_open { "▴" } else { "▾" })
-                        .size(10)
-                        .color(style::palette::TEXT_SECONDARY),
                 ]
                 .spacing(8)
                 .align_y(iced::Alignment::Center)
@@ -6128,9 +6114,6 @@ impl App {
                             svg(self.icon_grip.clone())
                                 .width(Length::Fixed(14.0))
                                 .height(Length::Fixed(14.0))
-                                .style(|_, _| svg::Style {
-                                    color: Some(style::palette::TEXT_SECONDARY),
-                                }),
                         )
                         .style(style::button_ghost)
                         .on_press(Message::DragBucketStart(Some(name_clone2))),
@@ -6873,9 +6856,6 @@ impl App {
             svg(icon_grip)
                 .width(Length::Fixed(16.0))
                 .height(Length::Fixed(16.0))
-                .style(|_, _| svg::Style {
-                    color: Some(style::palette::TEXT_SECONDARY),
-                }),
         )
         .style(style::button_ghost)
         .on_press(Message::DragStart {
@@ -6888,16 +6868,9 @@ impl App {
                 svg(icon_basket)
                     .width(Length::Fixed(14.0))
                     .height(Length::Fixed(14.0))
-                    .style(move |_, _| svg::Style {
-                        color: Some(if is_in_bucket {
-                            style::palette::ACCENT_BLUE
-                        } else {
-                            style::palette::TEXT_SECONDARY
-                        }),
-                    }),
             )
             .on_press(Message::ToggleBucketItem(pack.name.clone()))
-            .style(style::button_ghost)
+            .style(if is_in_bucket { style::button_primary } else { style::button_ghost })
             .padding(4),
             "Add/Remove from Basket",
             tooltip::Position::Top,
