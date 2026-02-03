@@ -168,3 +168,16 @@ See [GitHub](https://github.com/StarTuz/X-Addon-Oxide) for the latest source and
 
 ---
 *Developed with ❤️ for the X-Plane Community.*
+
+## Heritage & Attribution
+
+X-Addon-Oxide is an advanced evolution of the original **xaddonmanager** project. We proudly acknowledge the foundational work by **Austin Goudge**, whose original vision for non-destructive X-Plane addon management made this tool possible.
+
+For more details on our project's history and original authorship, please see [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
+
+## License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for the full text.
+
+Copyright (c) 2020 Austin Goudge  
+Copyright (c) 2026 StarTuz

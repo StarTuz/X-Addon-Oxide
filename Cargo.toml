@@ -7,6 +7,14 @@ members = [
     "crates/x-adox-bitnet",
 ]
 
+[workspace.package]
+authors = ["StarTuz"]
+license = "MIT"
+repository = "https://github.com/StarTuz/X-Addon-Oxide"
+version = "2.3.3"
+edition = "2021"
+description = "A modern addon manager for X-Plane"
+
 [workspace.dependencies]
 x-adox-core = { path = "crates/x-adox-core" }
 x-adox-bitnet = { path = "crates/x-adox-bitnet" }

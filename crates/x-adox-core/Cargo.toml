@@ -1,7 +1,11 @@
 [package]
 name = "x-adox-core"
-version = "2.3.3"
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+edition.workspace = true
 
 [dependencies]
 serde = { workspace = true }

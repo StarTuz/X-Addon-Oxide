@@ -1,4 +1,8 @@
 use std::process::{Command, Stdio};
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use iced::widget::{
     button, checkbox, column, container, horizontal_space, image, mouse_area, pick_list,
     progress_bar, responsive, row, scrollable, slider, stack, svg, text, text_editor, text_input,
