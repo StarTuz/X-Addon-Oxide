@@ -82,6 +82,7 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
                 tiles: Vec::new(),
                 tags: Vec::new(),
                 descriptor: crate::scenery::SceneryDescriptor::default(),
+                region: None,
             });
         }
     }
@@ -188,7 +189,7 @@ pub fn write_ini(
                     // Normalize for INI
                     final_path = final_path.replace('\\', "/");
                 }
-                
+
                 if !final_path.ends_with('/') {
                     final_path.push('/');
                 }

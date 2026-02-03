@@ -650,3 +650,23 @@ pub fn text_input_primary(_theme: &Theme, _status: text_input::Status) -> text_i
         selection: palette::ACCENT_BLUE,
     }
 }
+pub fn button_region_header(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::SURFACE_VARIANT)),
+        text_color: palette::TEXT_PRIMARY,
+        border: Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: palette::BORDER,
+        },
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
+            ..base
+        },
+        _ => base,
+    }
+}

@@ -164,7 +164,11 @@ enum Message {
     WindowResized(iced::Size),
     TogglePack(String),
     PackToggled(Result<(), String>),
-
+    ToggleRegionView,
+    ToggleRegion(String),
+    SetRegionEnabled(String, bool),
+    SetRegionInBucket(String, bool),
+    UpdatePackPin(String, bool),
     // Aircraft & Plugins
     AircraftLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     ToggleAircraft(PathBuf, bool),
@@ -357,6 +361,7 @@ enum Message {
     AircraftSearchPrev,
     AircraftSearchSubmit,
     ExportAircraftList,
+    RemoveAircraftTag(String, String), // (AircraftName, Tag)
     ToggleBucketItem(String),
     ClearBucket,
     ToggleBucket,
@@ -597,6 +602,8 @@ struct App {
 
     // Smart View State
     smart_view_expanded: std::collections::BTreeSet<String>,
+    use_region_view: bool,
+    region_expanded: std::collections::BTreeSet<String>,
 
     // Icon Overrides
     icon_overrides: std::collections::BTreeMap<PathBuf, PathBuf>,
@@ -692,6 +699,9 @@ impl App {
         let mut app = Self {
             active_tab: Tab::Scenery,
             use_smart_view: false,
+            use_region_view: false,
+            region_expanded: std::collections::BTreeSet::new(),
+            smart_view_expanded: std::collections::BTreeSet::new(),
             packs: Arc::new(Vec::new()),
             aircraft: Arc::new(Vec::new()),
             aircraft_tree: None,
@@ -788,7 +798,6 @@ impl App {
             fallback_helicopter: image::Handle::from_bytes(
                 include_bytes!("../assets/fallback_helicopter.png").to_vec(),
             ),
-            smart_view_expanded: std::collections::BTreeSet::new(),
             icon_overrides: std::collections::BTreeMap::new(),
             scan_exclusions: Vec::new(),
             scan_inclusions: Vec::new(),
@@ -2163,6 +2172,65 @@ impl App {
                 }
                 Task::none()
             }
+            Message::UpdatePackPin(name, pinned) => {
+                let mut config = (*self.heuristics_model.config).clone();
+                if pinned {
+                    config.overrides.insert(name, 10);
+                } else {
+                    config.overrides.remove(&name);
+                }
+                self.heuristics_model.update_config(config);
+                let _ = self.heuristics_model.save();
+                self.sync_active_profile_scenery();
+                Task::none()
+            }
+            Message::ToggleRegionView => {
+                self.use_region_view = !self.use_region_view;
+                Task::none()
+            }
+            Message::ToggleRegion(region) => {
+                if self.region_expanded.contains(&region) {
+                    self.region_expanded.remove(&region);
+                } else {
+                    self.region_expanded.insert(region);
+                }
+                Task::none()
+            }
+            Message::SetRegionEnabled(region, enabled) => {
+                let mut states = std::collections::HashMap::new();
+                for pack in self.packs.iter() {
+                    if pack.get_region() == region {
+                        states.insert(pack.name.clone(), enabled);
+                    }
+                }
+
+                if let Some(root) = &self.xplane_root {
+                    let root_clone = root.clone();
+                    self.scenery_is_saving = true;
+                    return Task::perform(
+                        async move {
+                            ModManager::set_bulk_scenery_enabled(&root_clone, &states)
+                                .map_err(|e| e.to_string())
+                        },
+                        |r| Message::PackToggled(r),
+                    );
+                }
+                Task::none()
+            }
+            Message::SetRegionInBucket(region, in_bucket) => {
+                let mut current_bucket: std::collections::HashSet<String> = self.scenery_bucket.iter().cloned().collect();
+                for pack in self.packs.iter() {
+                    if pack.get_region() == region {
+                        if in_bucket {
+                            current_bucket.insert(pack.name.clone());
+                        } else {
+                            current_bucket.remove(&pack.name);
+                        }
+                    }
+                }
+                self.scenery_bucket = current_bucket.into_iter().collect();
+                Task::none()
+            }
             Message::PackToggled(result) => {
                 self.scenery_is_saving = false;
                 match result {
@@ -2614,6 +2682,18 @@ impl App {
                 let _ = self.heuristics_model.save();
 
                 // Refresh to show changes
+                Task::done(Message::Refresh)
+            }
+            Message::RemoveAircraftTag(name, tag) => {
+                let mut current_tags = self.selected_aircraft_tags.clone();
+                current_tags.retain(|t| t != &tag);
+
+                Arc::make_mut(&mut self.heuristics_model.config)
+                    .aircraft_overrides
+                    .insert(name, current_tags);
+                self.heuristics_model.refresh_regex_set();
+                let _ = self.heuristics_model.save();
+
                 Task::done(Message::Refresh)
             }
             Message::Refresh => {
@@ -6205,46 +6285,94 @@ impl App {
         let drag_id = self.drag_context.as_ref().map(|ctx| ctx.source_index);
         let hover_id = self.drag_context.as_ref().and_then(|ctx| ctx.hover_target_index);
         let is_dragging = self.drag_context.is_some();
+        let use_region_view = self.use_region_view;
+        let region_expanded = self.region_expanded.clone();
 
         let current_search_match = self.scenery_search_index
             .and_then(|idx| self.scenery_search_matches.get(idx).cloned());
 
         let bucket = self.scenery_bucket.clone();
 
+        // 5. Region View Grouping (Pre-calculated for lazy widget)
+        let mut region_groups: std::collections::BTreeMap<String, Vec<(usize, SceneryPack)>> = std::collections::BTreeMap::new();
+        if self.use_region_view {
+            for (idx, pack) in self.packs.iter().enumerate() {
+                let region = pack.get_region();
+                region_groups.entry(region).or_default().push((idx, pack.clone()));
+            }
+        }
+        let region_groups = Arc::new(region_groups);
+
         let list_container = scrollable(lazy(
-            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket),
-            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket)| {
+            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups),
+            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups)| {
                 let mut items = Vec::new();
 
-                for (idx, pack) in packs.iter().enumerate() {
-                    // Pre-item gap
-                    if is_dragging {
-                        items.push(Self::view_drop_gap(idx, *hover_id == Some(idx)));
+                if *use_region_view {
+                    for (region, region_packs) in region_groups.iter() {
+                        let is_expanded = region_expanded.contains(region);
+                        let is_any_enabled = region_packs.iter().any(|(_, p)| p.status == SceneryPackType::Active);
+                        let is_any_in_bucket = region_packs.iter().any(|(_, p)| bucket.contains(&p.name));
+
+                        items.push(Self::render_region_header(
+                            region.to_string(),
+                            region_packs.len(),
+                            is_expanded,
+                            is_any_enabled,
+                            is_any_in_bucket,
+                        ));
+
+                        if is_expanded {
+                            for (idx, pack) in region_packs {
+                                let is_being_dragged = *drag_id == Some(*idx);
+                                let is_search_match = *current_search_match == Some(*idx);
+                                let is_in_bucket = bucket.contains(&pack.name);
+
+                                items.push(container(Self::render_scenery_card(
+                                    pack,
+                                    selected.as_ref() == Some(&pack.name),
+                                    overrides.contains_key(&pack.name),
+                                    *idx,
+                                    is_being_dragged,
+                                    is_search_match,
+                                    is_in_bucket,
+                                    !bucket.is_empty(),
+                                    icons.clone(),
+                                )).padding(iced::Padding { left: 20.0, ..iced::Padding::default() }).into());
+                            }
+                        }
+                    }
+                } else {
+                    for (idx, pack) in packs.iter().enumerate() {
+                        // Pre-item gap
+                        if is_dragging {
+                            items.push(Self::view_drop_gap(idx, *hover_id == Some(idx)));
+                        }
+
+                        let is_being_dragged = *drag_id == Some(idx);
+                        let is_search_match = *current_search_match == Some(idx);
+                        let is_in_bucket = bucket.contains(&pack.name);
+
+                        items.push(Self::render_scenery_card(
+                            pack,
+                            selected.as_ref() == Some(&pack.name),
+                            overrides.contains_key(&pack.name),
+                            idx,
+                            is_being_dragged,
+                            is_search_match,
+                            is_in_bucket,
+                            !bucket.is_empty(),
+                            icons.clone(),
+                        ));
                     }
 
-                    let is_being_dragged = *drag_id == Some(idx);
-                    let is_search_match = *current_search_match == Some(idx);
-                    let is_in_bucket = bucket.contains(&pack.name);
-
-                    items.push(Self::render_scenery_card(
-                        pack,
-                        selected.as_ref() == Some(&pack.name),
-                        overrides.contains_key(&pack.name),
-                        idx,
-                        is_being_dragged,
-                        is_search_match,
-                        is_in_bucket,
-                        !bucket.is_empty(),
-                        icons.clone(),
-                    ));
+                    // Final gap at the very bottom
+                    if is_dragging {
+                        items.push(Self::view_drop_gap(packs.len(), *hover_id == Some(packs.len())));
+                    }
                 }
 
-                // Final gap at the very bottom
-                if is_dragging {
-                    items.push(Self::view_drop_gap(packs.len(), *hover_id == Some(packs.len())));
-                }
-
-                Element::from(column(items).spacing(2)) // Tighter spacing because gaps add padding
+                Element::from(column(items).spacing(2))
             },
         ))
         .id(self.scenery_scroll_id.clone());
@@ -6361,7 +6489,34 @@ impl App {
                         style::button_secondary
                     })
                     .padding([6, 12])
-                }
+                },
+                button(
+                    Row::<Message, Theme, Renderer>::new()
+                        .push(
+                            svg(self.icon_scenery.clone())
+                                .width(14)
+                                .height(14)
+                                .style(move |_, _| svg::Style {
+                                    color: Some(if self.use_region_view {
+                                        Color::WHITE
+                                    } else {
+                                        style::palette::TEXT_SECONDARY
+                                    }),
+                                }),
+                        )
+                        .push(
+                            text(if self.use_region_view { "Flat View" } else { "Region View" }).size(12)
+                        )
+                        .spacing(8)
+                        .align_y(iced::Alignment::Center)
+                )
+                .on_press(Message::ToggleRegionView)
+                .style(if self.use_region_view {
+                    style::button_primary
+                } else {
+                    style::button_secondary
+                })
+                .padding([6, 12])
             ]
             .spacing(10)
             .align_y(iced::Alignment::Center)
@@ -7043,6 +7198,64 @@ impl App {
             .into()
     }
 
+    fn render_region_header(
+        region: String,
+        count: usize,
+        is_expanded: bool,
+        is_any_enabled: bool,
+        is_any_in_bucket: bool,
+    ) -> Element<'static, Message> {
+        let region_for_toggle = region.clone();
+        let region_for_enabled = region.clone();
+        let region_for_bucket = region.clone();
+        
+        let content = row![
+            text(if is_expanded { "▼" } else { "▶" })
+                .size(14)
+                .width(Length::Fixed(20.0)),
+            text(region).size(16).width(Length::Fill),
+            text(format!("({} packs)", count))
+                .size(12)
+                .color(style::palette::TEXT_SECONDARY),
+            horizontal_space(),
+            button(
+                text(if is_any_in_bucket {
+                    "Remove from Bucket"
+                } else {
+                    "Add to Bucket"
+                })
+                .size(10)
+            )
+            .on_press(Message::SetRegionInBucket(region_for_bucket, !is_any_in_bucket))
+            .style(style::button_secondary)
+            .padding([4, 8]),
+            button(
+                text(if is_any_enabled {
+                    "Disable All"
+                } else {
+                    "Enable All"
+                })
+                .size(10)
+            )
+            .on_press(Message::SetRegionEnabled(region_for_enabled, !is_any_enabled))
+            .style(if is_any_enabled {
+                style::button_danger
+            } else {
+                style::button_enable_all
+            })
+            .padding([4, 8]),
+        ]
+        .spacing(10)
+        .align_y(iced::Alignment::Center)
+        .padding(10);
+
+        button(content)
+            .on_press(Message::ToggleRegion(region_for_toggle))
+            .style(style::button_region_header)
+            .width(Length::Fill)
+            .into()
+    }
+
     fn render_scenery_card(
         pack: &SceneryPack,
         is_selected: bool,
@@ -7654,16 +7867,30 @@ impl App {
         ];
 
         let preview: Element<'_, Message> = if let Some(icon) = &self.selected_aircraft_icon {
-            let tags_row = row(self
-                .selected_aircraft_tags
-                .iter()
-                .map(|t| {
-                    container(text(t).size(12).color(style::palette::TEXT_PRIMARY))
+            let tags_row = row(if let Some(name) = &self.selected_aircraft_name {
+                let name = name.clone();
+                self.selected_aircraft_tags
+                    .iter()
+                    .map(|t| {
+                        container(
+                            row![
+                                text(t).size(12).color(style::palette::TEXT_PRIMARY),
+                                button(text("×").size(12).color(style::palette::TEXT_PRIMARY))
+                                    .on_press(Message::RemoveAircraftTag(name.clone(), t.clone()))
+                                    .style(style::button_ghost)
+                                    .padding(0)
+                            ]
+                            .spacing(4)
+                            .align_y(iced::Alignment::Center)
+                        )
                         .padding([4, 8])
                         .style(style::container_card)
                         .into()
-                })
-                .collect::<Vec<_>>())
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                vec![]
+            })
             .spacing(5)
             .wrap();
 

@@ -16,6 +16,7 @@ fn create_test_pack(name: &str) -> SceneryPack {
         tiles: Vec::new(),
         tags: Vec::new(),
         descriptor: SceneryDescriptor::default(),
+        region: None,
     }
 }
 
