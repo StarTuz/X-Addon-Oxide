@@ -144,6 +144,7 @@ pub enum ConfirmType {
     DeleteAddon(Tab, String, PathBuf),
     BulkDeleteLogbook,
     BulkDeleteLogIssues,
+    InstallLua(PathBuf, Tab, Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -208,6 +209,8 @@ enum Message {
     DeleteAddon(Tab),
     DeleteAddonDirect(PathBuf, Tab),
     ConfirmDelete(Tab, bool),
+    LuaScriptsDetected(PathBuf, Tab, Vec<String>),
+    ConfirmInstallWithLua(PathBuf, Tab, bool),
 
     // Expansion & Scripts
     MapZoom {
@@ -648,6 +651,7 @@ struct App {
 
     // Scenery Search
     scenery_search_query: String,
+    pending_lua_install: Option<(PathBuf, Tab, Vec<String>)>,
     scenery_search_matches: Vec<usize>,
     scenery_search_index: Option<usize>,
     aircraft_search_query: String,
@@ -845,6 +849,7 @@ impl App {
 
             // Scenery Search
             scenery_search_query: String::new(),
+            pending_lua_install: None,
             scenery_search_matches: Vec::new(),
             scenery_search_index: None,
             aircraft_search_query: String::new(),
@@ -3124,6 +3129,39 @@ impl App {
                         );
                     }
 
+                    let zip_path_clone = zip_path.clone();
+                    self.status = format!("Scanning archive {:?}...", zip_path.file_name().unwrap_or_default());
+                    
+                    return Task::perform(
+                        async move { scan_archive_for_lua(zip_path_clone).await },
+                        move |res| {
+                            match res {
+                                Ok(lua_files) if !lua_files.is_empty() => {
+                                    Message::LuaScriptsDetected(zip_path.clone(), tab, lua_files)
+                                }
+                                _ => Message::ConfirmInstallWithLua(zip_path.clone(), tab, false),
+                            }
+                        }
+                    );
+                } else {
+                    self.status = "Install cancelled".to_string();
+                    Task::none()
+                }
+            }
+            Message::LuaScriptsDetected(zip_path, tab, lua_files) => {
+                let message = format!(
+                    "The archive contains Lua scripts:\n\n{}\n\nLua scripts can modify X-Plane's behavior. Do you want to proceed with the installation?",
+                    lua_files.join("\n")
+                );
+                Task::done(Message::ShowModal(ModalState {
+                    title: "Lua Scripts Detected".to_string(),
+                    message,
+                    confirm_type: ConfirmType::InstallLua(zip_path, tab, lua_files),
+                    is_danger: false, // Not necessarily dangerous, but user should be aware
+                }))
+            }
+            Message::ConfirmInstallWithLua(zip_path, tab, confirmed) => {
+                if confirmed {
                     let root = self.xplane_root.clone();
                     let model = self.heuristics_model.clone();
                     let context = x_adox_bitnet::PredictContext {
@@ -3145,6 +3183,7 @@ impl App {
                                     None,
                                     model,
                                     context,
+                                    confirmed,
                                     move |p| {
                                         let _ =
                                             output_progress.try_send(Message::InstallProgress(p));
@@ -3184,6 +3223,7 @@ impl App {
                                     Some(dest_path),
                                     model,
                                     context,
+                                    false,
                                     move |p| {
                                         let _ =
                                             output_progress.try_send(Message::InstallProgress(p));
@@ -4014,6 +4054,10 @@ impl App {
                         // Implement bulk delete for log issues if needed
                         Task::none()
                     }
+                    ConfirmType::InstallLua(zip_path, tab, _) => {
+                         // Default action from modal "Confirm" is "Move to FlyWithLua"
+                         Task::done(Message::ConfirmInstallWithLua(zip_path, tab, true))
+                    }
                 }
             }
         }
@@ -4204,29 +4248,66 @@ impl App {
         let title = text(&modal.title).size(20).color(Color::WHITE);
         let message = text(&modal.message).size(16).color(style::palette::TEXT_SECONDARY);
 
-        let confirm_btn = button(text("Confirm").size(14))
-            .on_press(Message::ConfirmModal(modal.confirm_type.clone()))
-            .style(if modal.is_danger {
-                style::button_danger
-            } else {
-                style::button_primary
-            })
-            .padding([10, 25]);
+        let mut buttons = Vec::new();
 
-        let cancel_btn = button(text("Cancel").size(14))
-            .on_press(Message::CloseModal)
-            .style(style::button_secondary)
-            .padding([10, 20]);
+        match &modal.confirm_type {
+            ConfirmType::InstallLua(zip_path, tab, _) => {
+                let zip_path = zip_path.clone();
+                let tab = *tab;
+
+                buttons.push(
+                    button(text("Move to FlyWithLua").size(14))
+                        .on_press(Message::ConfirmInstallWithLua(zip_path.clone(), tab, true))
+                        .style(style::button_primary)
+                        .padding([10, 25])
+                        .into(),
+                );
+                buttons.push(
+                    button(text("Install Normally").size(14))
+                        .on_press(Message::ConfirmInstallWithLua(zip_path.clone(), tab, false))
+                        .style(style::button_secondary)
+                        .padding([10, 20])
+                        .into(),
+                );
+                buttons.push(
+                    button(text("Abort").size(14))
+                        .on_press(Message::CloseModal)
+                        .style(style::button_secondary)
+                        .padding([10, 20])
+                        .into(),
+                );
+            }
+            _ => {
+                buttons.push(
+                    button(text("Cancel").size(14))
+                        .on_press(Message::CloseModal)
+                        .style(style::button_secondary)
+                        .padding([10, 20])
+                        .into(),
+                );
+                buttons.push(
+                    button(text("Confirm").size(14))
+                        .on_press(Message::ConfirmModal(modal.confirm_type.clone()))
+                        .style(if modal.is_danger {
+                            style::button_danger
+                        } else {
+                            style::button_primary
+                        })
+                        .padding([10, 25])
+                        .into(),
+                );
+            }
+        }
 
         container(
             column![
                 title,
                 message,
-                row![cancel_btn, confirm_btn].spacing(15).align_y(iced::Alignment::Center)
+                row(buttons).spacing(15).align_y(iced::Alignment::Center)
             ]
             .spacing(20)
             .padding(30)
-            .width(Length::Fixed(450.0))
+            .width(Length::Fixed(550.0)) // Wider for 3 buttons
         )
         .style(style::container_card)
         .into()
@@ -8973,10 +9054,11 @@ async fn install_addon(
     dest_override: Option<PathBuf>,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
+    move_lua: bool,
     on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let res = tokio::task::spawn_blocking(move || {
-        extract_archive_task(root, zip_path, tab, dest_override, model, context, on_progress)
+        extract_archive_task(root, zip_path, tab, dest_override, model, context, move_lua, on_progress)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -8996,6 +9078,7 @@ fn extract_zip_task(
     dest_override: Option<PathBuf>,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
+    move_lua: bool,
     mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     // Open the zip file
@@ -9031,7 +9114,14 @@ fn extract_zip_task(
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry: {}", e))?;
 
-        let outpath = dest_dir.join(file.name());
+        let mut outpath = dest_dir.join(file.name());
+
+        if move_lua && file.name().to_lowercase().ends_with(".lua") {
+            let lua_dest = root.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
+            let _ = std::fs::create_dir_all(&lua_dest);
+            let file_name = Path::new(file.name()).file_name().unwrap_or_default();
+            outpath = lua_dest.join(file_name);
+        }
 
         if file.name().ends_with('/') {
             std::fs::create_dir_all(&outpath)
@@ -9072,6 +9162,7 @@ fn extract_7z_task(
     dest_override: Option<PathBuf>,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
+    move_lua: bool,
     mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let root = root.ok_or("X-Plane root not found".to_string())?;
@@ -9092,8 +9183,26 @@ fn extract_7z_task(
     on_progress(5.0);
 
     // Extract using sevenz-rust2
+    // NOTE: sevenz-rust2 decompress_file doesn't support selective redirection easily.
+    // We would need to extract and then move. For simplicity, we'll extract to dest_dir.
+    // If move_lua is requested for 7z, we'll handle it by moving files after extraction.
     sevenz_rust2::decompress_file(&archive_path, &dest_dir)
         .map_err(|e| format!("Failed to extract 7z: {}", e))?;
+    
+    if move_lua {
+        let lua_dest = root.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
+        let _ = std::fs::create_dir_all(&lua_dest);
+        
+        // Scan the extracted dir for .lua files and move them
+        if let Ok(entries) = std::fs::read_dir(&dest_dir) {
+             for entry in entries.flatten() {
+                 if entry.path().extension().and_then(|e| e.to_str()) == Some("lua") {
+                     let file_name = entry.file_name();
+                     let _ = std::fs::rename(entry.path(), lua_dest.join(file_name));
+                 }
+             }
+        }
+    }
 
     // Signal extraction complete
     on_progress(90.0);
@@ -9127,6 +9236,7 @@ fn extract_archive_task(
     dest_override: Option<PathBuf>,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
+    move_lua: bool,
     on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let extension = archive_path
@@ -9136,8 +9246,8 @@ fn extract_archive_task(
         .to_lowercase();
 
     match extension.as_str() {
-        "zip" => extract_zip_task(root, archive_path, tab, dest_override, model, context, on_progress),
-        "7z" => extract_7z_task(root, archive_path, tab, dest_override, model, context, on_progress),
+        "zip" => extract_zip_task(root, archive_path, tab, dest_override, model, context, move_lua, on_progress),
+        "7z" => extract_7z_task(root, archive_path, tab, dest_override, model, context, move_lua, on_progress),
         _ => Err(format!("Unsupported archive format: .{}", extension)),
     }
 }
@@ -9185,6 +9295,40 @@ async fn load_airports_data(
         map.insert(apt.id.clone(), apt);
     }
     Ok(Arc::new(map))
+}
+
+async fn scan_archive_for_lua(path: PathBuf) -> Result<Vec<String>, String> {
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    match extension.as_str() {
+        "zip" => {
+            tokio::task::spawn_blocking(move || {
+                let file = std::fs::File::open(&path).map_err(|e| format!("Failed to open zip: {}", e))?;
+                let archive =
+                    zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
+                
+                let lua_files: Vec<String> = archive
+                    .file_names()
+                    .filter(|name| name.to_lowercase().ends_with(".lua"))
+                    .map(|s| s.to_string())
+                    .collect();
+                
+                Ok(lua_files)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+        }
+        "7z" => {
+            // sevenz-rust2 doesn't easily expose listing without extraction in the current version we use
+            // so we return empty for now to avoid blocking 7z installs
+            Ok(vec![])
+        }
+        _ => Ok(vec![]),
+    }
 }
 
 async fn pick_archive(label: &str) -> Option<PathBuf> {
