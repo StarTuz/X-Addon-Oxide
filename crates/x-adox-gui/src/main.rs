@@ -4799,23 +4799,19 @@ impl App {
         .style(style::button_primary)
         .padding([6, 12]);
 
+        let delete_btn = button(
+            text("Delete...")
+                .size(12)
+                .align_x(iced::alignment::Horizontal::Center),
+        )
+        .padding([6, 12]);
+
         let delete_btn = if has_selection {
-            button(
-                text("Delete...")
-                    .size(12)
-                    .align_x(iced::alignment::Horizontal::Center),
-            )
-            .on_press(delete_msg)
-            .style(style::button_danger)
-            .padding([6, 12])
+            delete_btn
+                .on_press(delete_msg)
+                .style(style::button_danger)
         } else {
-            button(
-                text("Delete...")
-                    .size(12)
-                    .align_x(iced::alignment::Horizontal::Center),
-            )
-            .style(style::button_secondary)
-            .padding([6, 12])
+            delete_btn.style(style::button_secondary)
         };
 
         let refresh_btn = button(
@@ -7070,9 +7066,9 @@ impl App {
 
                             let is_selected = selected_path.as_ref() == Some(&addon.path);
                             let style = if is_selected {
-                                style::button_sidebar_active
+                                style::button_primary
                             } else {
-                                style::button_sidebar_inactive
+                                style::button_ghost
                             };
 
                             let path = addon.path.clone();
@@ -7110,6 +7106,7 @@ impl App {
                                     .padding(4),
                                 ]
                                 .spacing(5)
+                                .width(Length::Fill)
                                 .into()
                             } else {
                                 button(
@@ -7424,9 +7421,14 @@ impl App {
             node.name.clone()
         };
 
-        let is_selected = selected_aircraft.as_ref() == Some(&node.path);
+        let is_selected = if let Some(sel_path) = selected_aircraft {
+            sel_path == &node.path && !node.path.as_os_str().is_empty()
+        } else {
+            false
+        };
+
         let style = if is_selected {
-            button::primary
+            style::button_primary
         } else {
             style::button_ghost
         };
@@ -7443,15 +7445,21 @@ impl App {
 
             row![
                 button(text(icon).size(14))
-                    .on_press(Message::ToggleAircraftFolder(path))
+                    .on_press(Message::ToggleAircraftFolder(path.clone()))
                     .padding([4, 8])
                     .style(style::button_ghost),
                 button(text(display_name.clone()).size(14).color(label_color))
-                    .on_press(Message::SelectAircraft(path_for_select))
+                    .on_press(if !node.path.as_os_str().is_empty() {
+                        Message::SelectAircraft(path_for_select)
+                    } else {
+                        Message::ToggleAircraftFolder(path)
+                    })
                     .style(style)
                     .padding([4, 8])
+                    .width(Length::Fill)
             ]
             .spacing(5)
+            .width(Length::Fill)
             .into()
         } else {
             let path = node.path.clone();
@@ -7493,6 +7501,7 @@ impl App {
                 .padding(4),
             ]
             .spacing(10)
+            .width(Length::Fill)
             .into()
         };
 
