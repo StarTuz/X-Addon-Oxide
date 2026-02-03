@@ -2633,10 +2633,10 @@ impl App {
                 self.sync_active_profile_aircraft();
 
                 self.xplane_root = Some(path.clone());
-                let root_ref = self.xplane_root.as_ref().unwrap(); // Safe as we just set it
                 
                 self.save_app_config();
-                self.profile_manager = Some(ProfileManager::new(root_ref));
+                self.load_scan_config(); // Reload exclusions/inclusions for this root
+                self.profile_manager = Some(ProfileManager::new(&path));
                 
                 // Reload profiles for the newly selected root
                 if let Some(pm) = &self.profile_manager {
@@ -7876,10 +7876,10 @@ impl App {
     }
 
     fn load_scan_config(&mut self) {
+        let mut loaded = false;
         if let Some(path) = self.get_scan_config_path() {
-            if let Ok(file) = std::fs::File::open(path) {
+            if let Ok(file) = std::fs::File::open(&path) {
                 let reader = std::io::BufReader::new(file);
-                // Define a struct for serialization matching what we want
                 #[derive(serde::Deserialize)]
                 struct ScanConfig {
                     exclusions: Vec<PathBuf>,
@@ -7894,8 +7894,39 @@ impl App {
                         .map(|p| p.canonicalize().unwrap_or(p))
                         .collect();
                     self.scan_inclusions = config.inclusions;
-                    println!("Loaded {} excluded paths", self.scan_exclusions.len());
+                    println!("Loaded {} excluded paths from scoped config", self.scan_exclusions.len());
+                    loaded = true;
                 }
+            }
+        }
+
+        // Fallback to global config if scoped config failed or didn't exist
+        if !loaded {
+            let global_path = x_adox_core::get_config_root().join("scan_config.json");
+            if global_path.exists() {
+                if let Ok(file) = std::fs::File::open(global_path) {
+                    let reader = std::io::BufReader::new(file);
+                    #[derive(serde::Deserialize)]
+                    struct ScanConfig {
+                        exclusions: Vec<PathBuf>,
+                        #[serde(default)]
+                        inclusions: Vec<PathBuf>,
+                    }
+
+                    if let Ok(config) = serde_json::from_reader::<_, ScanConfig>(reader) {
+                        self.scan_exclusions = config
+                            .exclusions
+                            .into_iter()
+                            .map(|p| p.canonicalize().unwrap_or(p))
+                            .collect();
+                        self.scan_inclusions = config.inclusions;
+                        println!("Loaded {} excluded paths from global config (fallback)", self.scan_exclusions.len());
+                    }
+                }
+            } else {
+                // Reset to empty if no config found at all
+                self.scan_exclusions = Vec::new();
+                self.scan_inclusions = Vec::new();
             }
         }
     }
