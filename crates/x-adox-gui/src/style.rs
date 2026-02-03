@@ -102,18 +102,6 @@ pub fn container_ghost(_theme: &Theme) -> container::Style {
     }
 }
 
-pub fn container_drop_zone(_theme: &Theme) -> container::Style {
-    container::Style {
-        background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.03))),
-        border: Border {
-            color: palette::ACCENT_BLUE,
-            width: 1.0,
-            radius: 8.0.into(),
-        },
-        ..Default::default()
-    }
-}
-
 pub fn container_drop_gap_active(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(palette::ACCENT_BLUE)),

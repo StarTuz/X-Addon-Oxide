@@ -644,8 +644,9 @@ struct App {
     scenery_search_matches: Vec<usize>,
     scenery_search_index: Option<usize>,
     aircraft_search_query: String,
-    aircraft_search_matches: Vec<PathBuf>,
+    aircraft_search_matches: Vec<String>,
     aircraft_search_index: Option<usize>,
+    selected_smart_target: Option<String>,
     aircraft_scroll_id: scrollable::Id,
     pub scenery_bucket: Vec<String>,
     pub scenery_last_bucket_index: Option<usize>,
@@ -840,6 +841,7 @@ impl App {
             aircraft_search_query: String::new(),
             aircraft_search_matches: Vec::new(),
             aircraft_search_index: None,
+            selected_smart_target: None,
             aircraft_scroll_id: scrollable::Id::unique(),
             scenery_bucket: Vec::new(),
             scenery_last_bucket_index: None,
@@ -1016,29 +1018,42 @@ impl App {
         }
     }
 
-    fn expand_smart_view_for_aircraft(&mut self, target_path: &std::path::Path) {
-        for (category, aircraft_list) in &self.smart_groups {
-            if aircraft_list.iter().any(|a| &a.path == target_path) {
-                self.smart_view_expanded.insert(category.clone());
-                return;
+    fn expand_smart_view_for_target(&mut self, target: &str) {
+        if target.starts_with("tag:") || target.starts_with("model:") {
+            self.smart_view_expanded.insert(target.to_string());
+            if target.starts_with("model:") {
+                let parts: Vec<&str> = target.split(':').collect();
+                if parts.len() >= 2 {
+                    self.smart_view_expanded.insert(format!("tag:{}", parts[1]));
+                }
             }
-        }
-        for (category, model_map) in &self.smart_model_groups {
-            for (model, aircraft_list) in model_map {
-                if aircraft_list.iter().any(|a| &a.path == target_path) {
-                    self.smart_view_expanded.insert(category.clone());
-                    self.smart_view_expanded.insert(format!("{}/{}", category, model));
+        } else {
+            // It's a path
+            let target_path = std::path::Path::new(target);
+            for (category, aircraft_list) in &self.smart_groups {
+                if aircraft_list.iter().any(|a| a.path == target_path) {
+                    self.smart_view_expanded.insert(format!("tag:{}", category));
                     return;
+                }
+            }
+            for (category, model_map) in &self.smart_model_groups {
+                for (model, aircraft_list) in model_map {
+                    if aircraft_list.iter().any(|a| a.path == target_path) {
+                        self.smart_view_expanded.insert(format!("tag:{}", category));
+                        self.smart_view_expanded.insert(format!("model:{}:{}", category, model));
+                        return;
+                    }
                 }
             }
         }
     }
 
-    fn scroll_to_aircraft(&self, target_path: &std::path::Path) -> Task<Message> {
+    fn scroll_to_aircraft(&self, target: &str) -> Task<Message> {
         let mut count = 0usize;
         let found = if self.use_smart_view {
-            false // Smart View scrolling depends on group rendering order
+            self.calculate_smart_offset(target, &mut count)
         } else if let Some(ref tree) = self.aircraft_tree {
+            let target_path = std::path::Path::new(target);
             Self::calculate_node_offset(tree, target_path, &mut count)
         } else {
             false
@@ -1046,7 +1061,8 @@ impl App {
 
         if found {
             // Row height: padding 4+4 + text 14 + spacing 2 = ~24px
-            let offset = count as f32 * 24.0; 
+            // Categories in Smart View are slightly taller (size 16) but ~24-30 is close
+            let offset = count as f32 * 26.0; 
             scrollable::scroll_to(
                 self.aircraft_scroll_id.clone(),
                 scrollable::AbsoluteOffset { x: 0.0, y: offset },
@@ -1054,6 +1070,50 @@ impl App {
         } else {
             Task::none()
         }
+    }
+
+    fn calculate_smart_offset(&self, target_id: &str, count: &mut usize) -> bool {
+        for (tag, aircraft) in &self.smart_groups {
+            let tag_id = format!("tag:{}", tag);
+            if tag_id == target_id {
+                return true;
+            }
+            *count += 1;
+
+            if !self.smart_view_expanded.contains(&tag_id) {
+                continue;
+            }
+
+            let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
+            if is_manufacturer {
+                if let Some(model_groups) = self.smart_model_groups.get(tag) {
+                    for (model, acs) in model_groups {
+                        let model_id = format!("model:{}:{}", tag, model);
+                        if model_id == target_id {
+                            return true;
+                        }
+                        *count += 1;
+
+                        if self.smart_view_expanded.contains(&model_id) {
+                            for ac in acs {
+                                if ac.path.to_string_lossy() == target_id {
+                                    return true;
+                                }
+                                *count += 1;
+                            }
+                        }
+                    }
+                }
+            } else {
+                for ac in aircraft {
+                    if ac.path.to_string_lossy() == target_id {
+                        return true;
+                    }
+                    *count += 1;
+                }
+            }
+        }
+        false
     }
 
     fn calculate_node_offset(node: &AircraftNode, target_path: &std::path::Path, count: &mut usize) -> bool {
@@ -2847,6 +2907,7 @@ impl App {
             }
             Message::SelectAircraft(path) => {
                 self.selected_aircraft = Some(path.clone());
+                self.selected_smart_target = None;
                 self.selected_aircraft_name =
                     path.file_name().map(|n| n.to_string_lossy().to_string());
 
@@ -3393,21 +3454,7 @@ impl App {
                             collect_search_matches(tree, &q, &mut matches);
                         }
                     } else {
-                        // Fallback to flat list for Smart View for now, 
-                        // as Smart View search needs different traversal
-                        let q_low = q.to_lowercase();
-                        matches = self.aircraft
-                            .iter()
-                            .filter(|a| {
-                                a.name.to_lowercase().contains(&q_low) || 
-                                if let AddonType::Aircraft { acf_name, .. } = &a.addon_type {
-                                    acf_name.to_lowercase().contains(&q_low)
-                                } else {
-                                    false
-                                }
-                            })
-                            .map(|a| a.path.clone())
-                            .collect();
+                        collect_smart_search_matches(&self.smart_groups, &self.smart_model_groups, &q, &mut matches);
                     }
 
                     self.aircraft_search_matches = matches;
@@ -3416,16 +3463,23 @@ impl App {
                         self.aircraft_search_index = None;
                     } else {
                         self.aircraft_search_index = Some(0);
-                        let target_path = self.aircraft_search_matches[0].clone();
-                        self.selected_aircraft = Some(target_path.clone());
+                        let target = self.aircraft_search_matches[0].clone();
+                        
+                        if target.starts_with("tag:") || target.starts_with("model:") {
+                            self.selected_smart_target = Some(target.clone());
+                            self.selected_aircraft = None;
+                        } else {
+                            self.selected_smart_target = None;
+                            self.selected_aircraft = Some(PathBuf::from(target.clone()));
+                        }
                         
                         // Auto-expand to show the result
                         if self.use_smart_view {
-                            self.expand_smart_view_for_aircraft(&target_path);
+                            self.expand_smart_view_for_target(&target);
                         } else if let Some(ref mut tree) = self.aircraft_tree {
-                            expand_to_aircraft_path(Arc::make_mut(tree), &target_path);
+                            expand_to_aircraft_path(Arc::make_mut(tree), Path::new(&target));
                         }
-                        return self.scroll_to_aircraft(&target_path);
+                        return self.scroll_to_aircraft(&target);
                     }
                 }
                 Task::none()
@@ -3435,16 +3489,23 @@ impl App {
                     if !self.aircraft_search_matches.is_empty() {
                         let next = (current + 1) % self.aircraft_search_matches.len();
                         self.aircraft_search_index = Some(next);
-                        let target_path = self.aircraft_search_matches[next].clone();
-                        self.selected_aircraft = Some(target_path.clone());
+                        let target = self.aircraft_search_matches[next].clone();
+
+                        if target.starts_with("tag:") || target.starts_with("model:") {
+                            self.selected_smart_target = Some(target.clone());
+                            self.selected_aircraft = None;
+                        } else {
+                            self.selected_smart_target = None;
+                            self.selected_aircraft = Some(PathBuf::from(target.clone()));
+                        }
 
                         // Auto-expand to show the result
                         if self.use_smart_view {
-                            self.expand_smart_view_for_aircraft(&target_path);
+                            self.expand_smart_view_for_target(&target);
                         } else if let Some(ref mut tree) = self.aircraft_tree {
-                            expand_to_aircraft_path(Arc::make_mut(tree), &target_path);
+                            expand_to_aircraft_path(Arc::make_mut(tree), Path::new(&target));
                         }
-                        return self.scroll_to_aircraft(&target_path);
+                        return self.scroll_to_aircraft(&target);
                     }
                 }
                 Task::none()
@@ -3458,16 +3519,23 @@ impl App {
                             current - 1
                         };
                         self.aircraft_search_index = Some(prev);
-                        let target_path = self.aircraft_search_matches[prev].clone();
-                        self.selected_aircraft = Some(target_path.clone());
+                        let target = self.aircraft_search_matches[prev].clone();
+
+                        if target.starts_with("tag:") || target.starts_with("model:") {
+                            self.selected_smart_target = Some(target.clone());
+                            self.selected_aircraft = None;
+                        } else {
+                            self.selected_smart_target = None;
+                            self.selected_aircraft = Some(PathBuf::from(target.clone()));
+                        }
 
                         // Auto-expand to show the result
                         if self.use_smart_view {
-                            self.expand_smart_view_for_aircraft(&target_path);
+                            self.expand_smart_view_for_target(&target);
                         } else if let Some(ref mut tree) = self.aircraft_tree {
-                            expand_to_aircraft_path(Arc::make_mut(tree), &target_path);
+                            expand_to_aircraft_path(Arc::make_mut(tree), Path::new(&target));
                         }
-                        return self.scroll_to_aircraft(&target_path);
+                        return self.scroll_to_aircraft(&target);
                     }
                 }
                 Task::none()
@@ -7490,6 +7558,7 @@ impl App {
             let use_smart = self.use_smart_view;
             let tree = self.aircraft_tree.clone();
             let selected = self.selected_aircraft.clone();
+            let selected_smart = self.selected_smart_target.clone();
             let smart_groups = self.smart_groups.clone();
             let smart_model_groups = self.smart_model_groups.clone();
             let icon_trash = self.icon_trash.clone();
@@ -7499,24 +7568,26 @@ impl App {
                     use_smart,
                     tree,
                     selected,
+                    selected_smart,
                     self.smart_view_expanded.clone(),
                     smart_groups,
                     smart_model_groups,
                     icon_trash,
                 ),
-                move |(use_smart, tree, selected, expanded, smart_groups, smart_model_groups, icon_trash)| {
+                move |(use_smart, tree, selected, selected_smart, expanded, smart_groups, smart_model_groups, icon_trash)| {
                     let items: Vec<Element<'_, Message, Theme, Renderer>> = if *use_smart {
                         Self::collect_smart_nodes(
                             smart_groups,
                             smart_model_groups,
                             selected,
+                            selected_smart,
                             expanded,
                             icon_trash.clone(),
                         )
                     } else {
                         match tree {
                             Some(t) => Self::collect_tree_nodes(t, 0, selected, icon_trash.clone()),
-                            None => vec![Element::from(text("Loading aircraft...").size(14))],
+                            None => vec![],
                         }
                     };
                     Element::from(column(items).spacing(2))
@@ -7861,6 +7932,7 @@ impl App {
             std::collections::BTreeMap<String, Vec<AircraftNode>>,
         >,
         selected_aircraft: &Option<std::path::PathBuf>,
+        selected_smart: &Option<String>,
         expanded_smart: &std::collections::BTreeSet<String>,
         icon_trash: svg::Handle,
     ) -> Vec<Element<'static, Message>> {
@@ -7871,18 +7943,33 @@ impl App {
             let is_expanded = expanded_smart.contains(&tag_id);
             let icon = if is_expanded { "v" } else { ">" };
 
+            let is_selected = if let Some(sel) = selected_smart {
+                sel == &tag_id
+            } else {
+                false
+            };
+
+            let style = if is_selected {
+                style::button_primary
+            } else {
+                style::button_ghost
+            };
+
             result.push(
                 row![
                     button(text(icon).size(14))
-                        .on_press(Message::ToggleSmartFolder(tag_id))
+                        .on_press(Message::ToggleSmartFolder(tag_id.clone()))
                         .padding([4, 8])
                         .style(style::button_ghost),
-                    container(text(tag.clone()).size(16)).padding(iced::Padding {
+                    button(container(text(tag.clone()).size(16)).padding(iced::Padding {
                         top: 5.0,
                         right: 5.0,
                         bottom: 5.0,
                         left: 5.0,
-                    })
+                    }))
+                    .on_press(Message::ToggleSmartFolder(tag_id))
+                    .style(style)
+                    .width(Length::Fill)
                 ]
                 .align_y(iced::Alignment::Center)
                 .into(),
@@ -7899,6 +7986,18 @@ impl App {
                     for (model, acs) in model_groups {
                         let model_id = format!("model:{}:{}", tag, model);
                         let model_expanded = expanded_smart.contains(&model_id);
+
+                        let is_selected = if let Some(sel) = selected_smart {
+                            sel == &model_id
+                        } else {
+                            false
+                        };
+
+                        let style = if is_selected {
+                            style::button_primary
+                        } else {
+                            style::button_ghost
+                        };
 
                         let folder = AircraftNode {
                             name: model.clone(),
@@ -7925,14 +8024,17 @@ impl App {
                                 container(text("")).width(Length::Fixed(indent)),
                                 row![
                                     button(text(icon).size(14))
-                                        .on_press(Message::ToggleSmartFolder(model_id))
+                                        .on_press(Message::ToggleSmartFolder(model_id.clone()))
                                         .padding([4, 8])
                                         .style(style::button_ghost),
                                     button(text(folder.name).size(14).color(label_color))
-                                        .style(style::button_ghost)
+                                        .on_press(Message::ToggleSmartFolder(model_id))
+                                        .style(style)
                                         .padding([4, 8])
+                                        .width(Length::Fill)
                                 ]
                                 .spacing(5)
+                                .width(Length::Fill)
                             ]
                             .into(),
                         );
@@ -7948,7 +8050,9 @@ impl App {
                 }
             } else {
                 for ac in aircraft {
-                    result.push(Self::render_aircraft_row(ac, 1, selected_aircraft, icon_trash.clone()));
+                    let mut ac = ac.clone();
+                    ac.acf_file = None;
+                    result.push(Self::render_aircraft_row(&ac, 1, selected_aircraft, icon_trash.clone()));
                 }
             }
         }
@@ -8571,7 +8675,7 @@ fn expand_to_aircraft_path(node: &mut AircraftNode, target_path: &std::path::Pat
     false
 }
 
-fn collect_search_matches(node: &AircraftNode, query: &str, matches: &mut Vec<PathBuf>) {
+fn collect_search_matches(node: &AircraftNode, query: &str, matches: &mut Vec<String>) {
     let q = query.to_lowercase();
     let name_match = node.name.to_lowercase().contains(&q);
     let acf_match = node
@@ -8581,11 +8685,57 @@ fn collect_search_matches(node: &AircraftNode, query: &str, matches: &mut Vec<Pa
         .unwrap_or(false);
 
     if name_match || acf_match {
-        matches.push(node.path.clone());
+        matches.push(node.path.to_string_lossy().to_string());
     }
 
     for child in &node.children {
         collect_search_matches(child, query, matches);
+    }
+}
+
+fn collect_smart_search_matches(
+    smart_groups: &std::collections::BTreeMap<String, Vec<AircraftNode>>,
+    smart_model_groups: &std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<String, Vec<AircraftNode>>,
+    >,
+    query: &str,
+    matches: &mut Vec<String>,
+) {
+    let q = query.to_lowercase();
+
+    for (tag, aircraft) in smart_groups {
+        let tag_id = format!("tag:{}", tag);
+        if tag.to_lowercase().contains(&q) {
+            matches.push(tag_id.clone());
+        }
+
+        let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
+        if is_manufacturer {
+            if let Some(model_groups) = smart_model_groups.get(tag) {
+                for (model, acs) in model_groups {
+                    let model_id = format!("model:{}:{}", tag, model);
+                    if model.to_lowercase().contains(&q) {
+                        matches.push(model_id);
+                    }
+                    for ac in acs {
+                        let name_match = ac.name.to_lowercase().contains(&q);
+                        let acf_match = ac.acf_file.as_ref().map(|f| f.to_lowercase().contains(&q)).unwrap_or(false);
+                        if name_match || acf_match {
+                            matches.push(ac.path.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        } else {
+            for ac in aircraft {
+                let name_match = ac.name.to_lowercase().contains(&q);
+                let acf_match = ac.acf_file.as_ref().map(|f| f.to_lowercase().contains(&q)).unwrap_or(false);
+                if name_match || acf_match {
+                    matches.push(ac.path.to_string_lossy().to_string());
+                }
+            }
+        }
     }
 }
 
