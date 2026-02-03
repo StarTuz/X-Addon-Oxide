@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
 use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
-use x_adox_core::management::ModManager;
+use x_adox_core::management::{AddonType as ManagementAddonType, ModManager};
 use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};
 use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType};
 use x_adox_core::XPlaneManager;
@@ -8451,86 +8451,15 @@ fn extract_archive_task(
 fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), String> {
     let root = root.ok_or("X-Plane root not found")?;
 
-    // Resolve the path
-    let full_path = if path.is_relative() {
-        root.join(&path)
-    } else {
-        path.clone()
+    let addon_type = match tab {
+        Tab::Scenery => ManagementAddonType::Scenery,
+        Tab::Aircraft => ManagementAddonType::Aircraft,
+        Tab::Plugins => ManagementAddonType::Plugins,
+        Tab::CSLs => ManagementAddonType::CSLs,
+        _ => return Err("Invalid tab for deletion".to_string()),
     };
 
-    // Safety check - make sure we're deleting from the right folder
-    let is_csl = tab == Tab::CSLs;
-
-    if is_csl {
-        // CSL can be in CSL or CSL (disabled) under any of the standard CSL roots
-        let csl_roots = [
-            root.join("Resources")
-                .join("plugins")
-                .join("X-Ivap Resources"),
-            root.join("Resources")
-                .join("plugins")
-                .join("xPilot")
-                .join("Resources"),
-            root.join("Custom Data"),
-        ];
-
-        let mut allowed = false;
-        for csl_root in csl_roots {
-            let csl_enabled = csl_root.join("CSL");
-            let csl_disabled = csl_root.join("CSL (disabled)");
-            if full_path.starts_with(&csl_enabled) || full_path.starts_with(&csl_disabled) {
-                allowed = true;
-                break;
-            }
-        }
-
-        if !allowed {
-            return Err(format!(
-                "Safety check failed: {} is not inside CSL folders",
-                full_path.display()
-            ));
-        }
-    } else {
-        let allowed_dir = match tab {
-            Tab::Scenery => root.join("Custom Scenery"),
-            Tab::Aircraft => root.join("Aircraft"),
-            Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::CSLs | Tab::Heuristics | Tab::Issues | Tab::Settings | Tab::Utilities => {
-                unreachable!()
-            }
-        };
-
-        if !full_path.starts_with(&allowed_dir) {
-            return Err(format!(
-                "Safety check failed: {} is not inside {}",
-                full_path.display(),
-                allowed_dir.display()
-            ));
-        }
-    }
-
-    // Delete the folder/file
-    if full_path.exists() {
-        if full_path.is_dir() {
-            std::fs::remove_dir_all(&full_path)
-                .map_err(|e| format!("Failed to delete dir: {}", e))?;
-        } else {
-            std::fs::remove_file(&full_path)
-                .map_err(|e| format!("Failed to delete file: {}", e))?;
-        }
-    }
-
-    // Special handling for Scenery: remove from scenery_packs.ini
-    if matches!(tab, Tab::Scenery) {
-        let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
-        let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
-        let _ = sm.load();
-
-        sm.packs.retain(|p| p.path != path);
-        sm.save(None).map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
+    ModManager::delete_addon(&root, &path, addon_type)
 }
 
 async fn load_logbook_data(

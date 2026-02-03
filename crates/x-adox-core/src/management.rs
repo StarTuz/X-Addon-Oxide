@@ -1,9 +1,18 @@
 use crate::profiles::{ProfileCollection, ProfileManager};
 use crate::scenery::SceneryManager;
+use crate::XPlaneManager;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use x_adox_bitnet::BitNetModel;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AddonType {
+    Scenery,
+    Aircraft,
+    Plugins,
+    CSLs,
+}
 
 pub struct ModManager;
 
@@ -115,6 +124,93 @@ impl ModManager {
         }
 
         Ok(target_path)
+    }
+
+    /// Deletes an addon and performs necessary cleanup (e.g. removing scenery from INI).
+    pub fn delete_addon(
+        xplane_root: &Path,
+        path: &Path,
+        addon_type: AddonType,
+    ) -> Result<(), String> {
+        // Resolve the path
+        let full_path = if path.is_relative() {
+            xplane_root.join(path)
+        } else {
+            path.to_path_buf()
+        };
+
+        // Safety check - make sure we're deleting from the right folder
+        if matches!(addon_type, AddonType::CSLs) {
+            // CSL can be in CSL or CSL (disabled) under any of the standard CSL roots
+            let csl_roots = [
+                xplane_root
+                    .join("Resources")
+                    .join("plugins")
+                    .join("X-Ivap Resources"),
+                xplane_root
+                    .join("Resources")
+                    .join("plugins")
+                    .join("xPilot")
+                    .join("Resources"),
+                xplane_root.join("Custom Data"),
+            ];
+
+            let mut allowed = false;
+            for csl_root in csl_roots {
+                let csl_enabled = csl_root.join("CSL");
+                let csl_disabled = csl_root.join("CSL (disabled)");
+                if full_path.starts_with(&csl_enabled) || full_path.starts_with(&csl_disabled) {
+                    allowed = true;
+                    break;
+                }
+            }
+
+            if !allowed {
+                return Err(format!(
+                    "Safety check failed: {} is not inside CSL folders",
+                    full_path.display()
+                ));
+            }
+        } else {
+            let allowed_dir = match addon_type {
+                AddonType::Scenery => xplane_root.join("Custom Scenery"),
+                AddonType::Aircraft => xplane_root.join("Aircraft"),
+                AddonType::Plugins => xplane_root.join("Resources").join("plugins"),
+                AddonType::CSLs => unreachable!(),
+            };
+
+            if !full_path.starts_with(&allowed_dir) {
+                return Err(format!(
+                    "Safety check failed: {} is not inside {}",
+                    full_path.display(),
+                    allowed_dir.display()
+                ));
+            }
+        }
+
+        // Delete the folder/file
+        if full_path.exists() {
+            if full_path.is_dir() {
+                fs::remove_dir_all(&full_path)
+                    .map_err(|e| format!("Failed to delete dir: {}", e))?;
+            } else {
+                fs::remove_file(&full_path).map_err(|e| format!("Failed to delete file: {}", e))?;
+            }
+        }
+
+        // Special handling for Scenery: remove from scenery_packs.ini
+        if matches!(addon_type, AddonType::Scenery) {
+            if let Ok(xpm) = XPlaneManager::new(xplane_root) {
+                let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
+                let _ = sm.load();
+
+                // We use the 'path' as provided to the function (which is relative to Custom Scenery in the INI)
+                sm.packs.retain(|p| p.path != path);
+                sm.save(None).map_err(|e| e.to_string())?;
+            }
+        }
+
+        Ok(())
     }
 }
 
