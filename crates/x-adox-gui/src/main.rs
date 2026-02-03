@@ -135,6 +135,21 @@ pub enum ResizeEdge {
     BottomRight,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfirmType {
+    DeleteAddon(Tab, String, PathBuf),
+    BulkDeleteLogbook,
+    BulkDeleteLogIssues,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModalState {
+    pub title: String,
+    pub message: String,
+    pub confirm_type: ConfirmType,
+    pub is_danger: bool,
+}
+
 #[derive(Debug, Clone)]
 enum Message {
     // Tab navigation
@@ -353,6 +368,11 @@ enum Message {
     RestoreUserData,
     BackupComplete(Result<PathBuf, String>),
     RestoreComplete(Result<String, String>),
+
+    // Modal
+    ShowModal(ModalState),
+    CloseModal,
+    ConfirmModal(ConfirmType),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -630,6 +650,9 @@ struct App {
     pub autopin_enabled: bool,
     pub scenery_is_saving: bool,
     pub scenery_save_pending: bool,
+
+    // Modal
+    active_modal: Option<ModalState>,
 }
 
 impl App {
@@ -821,6 +844,7 @@ impl App {
             autopin_enabled: true, // Enabled by default as it's a "Smart" feature
             scenery_is_saving: false,
             scenery_save_pending: false,
+            active_modal: None,
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -1479,17 +1503,19 @@ impl App {
                 Task::none()
             }
             Message::AddCompanionApp => {
-                if !self.new_companion_name.is_empty() && self.new_companion_path.is_some() {
-                    let app = CompanionApp {
-                        name: self.new_companion_name.clone(),
-                        path: self.new_companion_path.clone().unwrap(),
-                        auto_launch: false,
-                    };
-                    self.companion_apps.push(app);
-                    self.new_companion_name.clear();
-                    self.new_companion_path = None;
-                    self.save_app_config();
-                    self.selected_companion_app = Some(self.companion_apps.len() - 1);
+                if let (Some(path), name) = (self.new_companion_path.clone(), self.new_companion_name.clone()) {
+                    if !name.is_empty() {
+                        let app = CompanionApp {
+                            name,
+                            path,
+                            auto_launch: false,
+                        };
+                        self.companion_apps.push(app);
+                        self.new_companion_name.clear();
+                        self.new_companion_path = None;
+                        self.save_app_config();
+                        self.selected_companion_app = Some(self.companion_apps.len() - 1);
+                    }
                 }
                 Task::none()
             }
@@ -2606,8 +2632,8 @@ impl App {
                 self.sync_active_profile_plugins();
                 self.sync_active_profile_aircraft();
 
-                self.xplane_root = Some(path);
-                let root_ref = self.xplane_root.as_ref().unwrap();
+                self.xplane_root = Some(path.clone());
+                let root_ref = self.xplane_root.as_ref().unwrap(); // Safe as we just set it
                 
                 self.save_app_config();
                 self.profile_manager = Some(ProfileManager::new(root_ref));
@@ -2975,66 +3001,44 @@ impl App {
                 Task::none()
             }
             Message::DeleteAddon(tab) => {
-                let name_opt = match tab {
-                    Tab::Scenery => self.selected_scenery.clone(),
-                    Tab::Aircraft => self
-                        .selected_aircraft
-                        .as_ref()
-                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
-                    Tab::Plugins => self
-                        .selected_plugin
-                        .as_ref()
-                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
-                    Tab::CSLs => self
-                        .selected_csl
-                        .as_ref()
-                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
-                    Tab::Heuristics | Tab::Issues | Tab::Settings | Tab::Utilities => None,
+                let (name_opt, path) = match tab {
+                    Tab::Scenery => (self.selected_scenery.clone(), PathBuf::new()),
+                    Tab::Aircraft => {
+                        let p = self.selected_aircraft.clone();
+                        let n = p.as_ref().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
+                        (n, p.unwrap_or_default())
+                    }
+                    Tab::Plugins => {
+                        let p = self.selected_plugin.clone();
+                        let n = p.as_ref().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
+                        (n, p.unwrap_or_default())
+                    }
+                    Tab::CSLs => {
+                        let p = self.selected_csl.clone();
+                        let n = p.as_ref().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
+                        (n, p.unwrap_or_default())
+                    }
+                    _ => (None, PathBuf::new()),
                 };
 
                 if let Some(name) = name_opt {
-                    use native_dialog::{MessageDialog, MessageType};
-                    let confirmed = MessageDialog::new()
-                        .set_title("Confirm Deletion")
-                        .set_text(&format!(
-                            "Are you sure you want to permanently delete '{}'?",
-                            name
-                        ))
-                        .set_type(MessageType::Warning)
-                        .show_confirm()
-                        .unwrap_or(false);
-
-                    if confirmed {
-                        return Task::done(Message::ConfirmDelete(tab, true));
-                    }
+                    return Task::done(Message::ShowModal(ModalState {
+                        title: "Confirm Deletion".to_string(),
+                        message: format!("Are you sure you want to permanently delete '{}'?", name),
+                        confirm_type: ConfirmType::DeleteAddon(tab, name, path),
+                        is_danger: true,
+                    }));
                 }
                 Task::none()
             }
             Message::DeleteAddonDirect(path, tab) => {
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Unknown".to_string());
-                use native_dialog::{MessageDialog, MessageType};
-                let confirmed = MessageDialog::new()
-                    .set_title("Confirm Deletion")
-                    .set_text(&format!(
-                        "Are you sure you want to permanently delete '{}'?",
-                        name
-                    ))
-                    .set_type(MessageType::Warning)
-                    .show_confirm()
-                    .unwrap_or(false);
-
-                if confirmed {
-                    // Set global selection so ConfirmDelete correctly picks it up if it falls back to them
-                    match tab {
-                        Tab::Scenery => self.selected_scenery = Some(name),
-                        Tab::Aircraft => self.selected_aircraft = Some(path.clone()),
-                        Tab::Plugins => self.selected_plugin = Some(path.clone()),
-                        Tab::CSLs => self.selected_csl = Some(path.clone()),
-                        _ => {}
-                    }
-                    return Task::done(Message::ConfirmDelete(tab, true));
-                }
-                Task::none()
+                Task::done(Message::ShowModal(ModalState {
+                    title: "Confirm Deletion".to_string(),
+                    message: format!("Are you sure you want to permanently delete '{}'?", name),
+                    confirm_type: ConfirmType::DeleteAddon(tab, name, path),
+                    is_danger: true,
+                }))
             }
             Message::ConfirmDelete(tab, confirmed) => {
                 self.show_delete_confirm = false;
@@ -3217,19 +3221,24 @@ impl App {
             Message::BrowseForIcon(path) => {
                 Task::perform(
                     async move {
+                        log::debug!("Opening icon picker for aircraft: {:?}", path);
                         let icon_path = rfd::AsyncFileDialog::new()
                             .set_title("Select Custom Aircraft Icon")
                             .add_filter("Images", &["png", "jpg", "jpeg", "webp"])
                             .pick_file()
                             .await
                             .map(|f| f.path().to_path_buf());
-                        icon_path.map(|icon| (path, icon))
+                        icon_path.map(|icon| {
+                            log::info!("Selected aircraft icon: {:?}", icon);
+                            (path, icon)
+                        })
                     },
                     |res| {
                         if let Some((path, icon)) = res {
                             Message::IconSelected(path, icon)
                         } else {
-                            Message::Refresh // No-op
+                            log::debug!("Icon selection cancelled");
+                            Message::Refresh
                         }
                     },
                 )
@@ -3647,6 +3656,39 @@ impl App {
                     Task::batch(tasks)
                 }
             }
+
+            Message::ShowModal(state) => {
+                self.active_modal = Some(state);
+                Task::none()
+            }
+            Message::CloseModal => {
+                self.active_modal = None;
+                Task::none()
+            }
+            Message::ConfirmModal(confirm_type) => {
+                self.active_modal = None;
+                match confirm_type {
+                    ConfirmType::DeleteAddon(tab, _name, path) => {
+                        // For direct deletion, we ensure selection is set so ConfirmDelete works
+                        match tab {
+                            Tab::Scenery => {
+                                // Scenery deletion uses selected_scenery string
+                                self.selected_scenery = Some(_name);
+                            }
+                            Tab::Aircraft => self.selected_aircraft = Some(path),
+                            Tab::Plugins => self.selected_plugin = Some(path),
+                            Tab::CSLs => self.selected_csl = Some(path),
+                            _ => {}
+                        }
+                        Task::done(Message::ConfirmDelete(tab, true))
+                    }
+                    ConfirmType::BulkDeleteLogbook => Task::done(Message::ConfirmLogbookBulkDelete),
+                    ConfirmType::BulkDeleteLogIssues => {
+                        // Implement bulk delete for log issues if needed
+                        Task::none()
+                    }
+                }
+            }
         }
     }
 
@@ -3813,8 +3855,54 @@ impl App {
                 final_view = final_view.push(ghost);
             }
 
+            if let Some(modal) = &self.active_modal {
+                let modal_content = container(self.view_modal(modal))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .style(|_| container::Style {
+                        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.85))),
+                        ..Default::default()
+                    });
+
+                final_view = final_view.push(modal_content);
+            }
+
             final_view.into()
         }
+    }
+
+    fn view_modal<'a>(&self, modal: &'a ModalState) -> Element<'a, Message> {
+        let title = text(&modal.title).size(20).color(Color::WHITE);
+        let message = text(&modal.message).size(16).color(style::palette::TEXT_SECONDARY);
+
+        let confirm_btn = button(text("Confirm").size(14))
+            .on_press(Message::ConfirmModal(modal.confirm_type.clone()))
+            .style(if modal.is_danger {
+                style::button_danger
+            } else {
+                style::button_primary
+            })
+            .padding([10, 25]);
+
+        let cancel_btn = button(text("Cancel").size(14))
+            .on_press(Message::CloseModal)
+            .style(style::button_secondary)
+            .padding([10, 20]);
+
+        container(
+            column![
+                title,
+                message,
+                row![cancel_btn, confirm_btn].spacing(15).align_y(iced::Alignment::Center)
+            ]
+            .spacing(20)
+            .padding(30)
+            .width(Length::Fixed(450.0))
+        )
+        .style(style::container_card)
+        .into()
     }
 
     fn view_ghost(&self, ctx: &DragContext) -> Element<'static, Message> {
@@ -8477,20 +8565,32 @@ async fn load_airports_data(
 }
 
 async fn pick_archive(label: &str) -> Option<PathBuf> {
+    log::debug!("Opening archive picker for {}", label);
     rfd::AsyncFileDialog::new()
         .set_title(&format!("Select {} Package (.zip, .7z)", label))
         .add_filter("Archives", &["zip", "7z"])
         .pick_file()
         .await
-        .map(|f| f.path().to_path_buf())
+        .map(|f| {
+            let p = f.path().to_path_buf();
+            log::info!("Selected archive for {}: {:?}", label, p);
+            p
+        })
 }
 
 async fn pick_folder(title: &str, start_dir: Option<PathBuf>) -> Option<PathBuf> {
+    log::debug!("Opening folder picker: {}", title);
     let mut dialog = rfd::AsyncFileDialog::new().set_title(title);
     if let Some(path) = start_dir {
-        dialog = dialog.set_directory(&path);
+        if path.exists() {
+            dialog = dialog.set_directory(&path);
+        }
     }
-    dialog.pick_folder().await.map(|f| f.path().to_path_buf())
+    dialog.pick_folder().await.map(|f| {
+        let p = f.path().to_path_buf();
+        log::info!("Selected folder for {}: {:?}", title, p);
+        p
+    })
 }
 
 fn load_log_issues(root: Option<PathBuf>) -> Result<Arc<Vec<x_adox_core::LogIssue>>, String> {
