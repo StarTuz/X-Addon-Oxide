@@ -66,10 +66,13 @@ pub fn sort_packs(
                 // Secondary Sort Rules (SimHeaven only)
                 if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
                     if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
-                        if cont_a == cont_b {
-                            return layer_a
-                                .partial_cmp(&layer_b)
-                                .unwrap_or(std::cmp::Ordering::Equal);
+                        match cont_a.cmp(&cont_b) {
+                            std::cmp::Ordering::Equal => {
+                                return layer_a
+                                    .partial_cmp(&layer_b)
+                                    .unwrap_or(std::cmp::Ordering::Equal);
+                            }
+                            ord => return ord,
                         }
                     }
                 }
