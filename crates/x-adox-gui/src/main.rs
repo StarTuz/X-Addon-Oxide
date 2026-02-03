@@ -352,6 +352,11 @@ enum Message {
     ScenerySearchNext,
     ScenerySearchPrev,
     ScenerySearchSubmit,
+    AircraftSearchChanged(String),
+    AircraftSearchNext,
+    AircraftSearchPrev,
+    AircraftSearchSubmit,
+    ExportAircraftList,
     ToggleBucketItem(String),
     ClearBucket,
     ToggleBucket,
@@ -638,6 +643,9 @@ struct App {
     scenery_search_query: String,
     scenery_search_matches: Vec<usize>,
     scenery_search_index: Option<usize>,
+    aircraft_search_query: String,
+    aircraft_search_matches: Vec<PathBuf>,
+    aircraft_search_index: Option<usize>,
     pub scenery_bucket: Vec<String>,
     pub scenery_last_bucket_index: Option<usize>,
     pub keyboard_modifiers: keyboard::Modifiers,
@@ -828,6 +836,9 @@ impl App {
             scenery_search_query: String::new(),
             scenery_search_matches: Vec::new(),
             scenery_search_index: None,
+            aircraft_search_query: String::new(),
+            aircraft_search_matches: Vec::new(),
+            aircraft_search_index: None,
             scenery_bucket: Vec::new(),
             scenery_last_bucket_index: None,
             keyboard_modifiers: keyboard::Modifiers::default(),
@@ -3311,6 +3322,70 @@ impl App {
                 Task::none()
             }
             Message::ScenerySearchSubmit => Task::done(Message::ScenerySearchNext),
+            Message::AircraftSearchChanged(query) => {
+                self.aircraft_search_query = query;
+                if self.aircraft_search_query.is_empty() {
+                    self.aircraft_search_matches.clear();
+                    self.aircraft_search_index = None;
+                } else {
+                    let q = self.aircraft_search_query.to_lowercase();
+                    self.aircraft_search_matches = self
+                        .aircraft
+                        .iter()
+                        .filter(|a| a.name.to_lowercase().contains(&q))
+                        .map(|a| a.path.clone())
+                        .collect();
+
+                    if self.aircraft_search_matches.is_empty() {
+                        self.aircraft_search_index = None;
+                    } else {
+                        self.aircraft_search_index = Some(0);
+                        let target_path = self.aircraft_search_matches[0].clone();
+                        self.selected_aircraft = Some(target_path);
+                    }
+                }
+                Task::none()
+            }
+            Message::AircraftSearchNext => {
+                if let Some(current) = self.aircraft_search_index {
+                    if !self.aircraft_search_matches.is_empty() {
+                        let next = (current + 1) % self.aircraft_search_matches.len();
+                        self.aircraft_search_index = Some(next);
+                        let target_path = self.aircraft_search_matches[next].clone();
+                        self.selected_aircraft = Some(target_path);
+                    }
+                }
+                Task::none()
+            }
+            Message::AircraftSearchPrev => {
+                if let Some(current) = self.aircraft_search_index {
+                    if !self.aircraft_search_matches.is_empty() {
+                        let prev = if current == 0 {
+                            self.aircraft_search_matches.len() - 1
+                        } else {
+                            current - 1
+                        };
+                        self.aircraft_search_index = Some(prev);
+                        let target_path = self.aircraft_search_matches[prev].clone();
+                        self.selected_aircraft = Some(target_path);
+                    }
+                }
+                Task::none()
+            }
+            Message::AircraftSearchSubmit => Task::done(Message::AircraftSearchNext),
+            Message::ExportAircraftList => {
+                let aircraft = self.aircraft.clone();
+                Task::perform(
+                    async move { export_aircraft_task(aircraft).await },
+                    |res| match res {
+                        Ok(path) => Message::StatusChanged(format!(
+                            "Aircraft list exported to {}",
+                            path.display()
+                        )),
+                        Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
+                    },
+                )
+            }
             Message::BackupUserData => {
                 let xplane_root = self.xplane_root.clone();
                 match xplane_root {
@@ -7150,7 +7225,7 @@ impl App {
                     let list: Column<Message, Theme, Renderer> =
                         addons.iter().fold(Column::new().spacing(4), |col, addon| {
                             let type_label = match &addon.addon_type {
-                                AddonType::Aircraft(acf) => format!("• {}", acf),
+                                AddonType::Aircraft { acf_name, .. } => format!("• {}", acf_name),
                                 AddonType::Scenery { .. } => "• Scenery".to_string(),
                                 AddonType::Plugin { .. } => "• Plugin".to_string(),
                                 AddonType::CSL(_) => "• CSL".to_string(),
@@ -7352,15 +7427,57 @@ impl App {
         };
 
         let list_pane = column![
-            row![text("Aircraft Library").size(18), toggle_view]
-                .spacing(10)
+            row![
+                text("Aircraft Library").size(18).width(Length::Fill),
+                button(text("Export List").size(12))
+                    .on_press(Message::ExportAircraftList)
+                    .style(style::button_secondary)
+                    .padding([4, 8]),
+                toggle_view
+            ]
+            .spacing(10)
+            .align_y(iced::Alignment::Center)
+            .padding(10),
+            row![
+                text_input("Search aircraft...", &self.aircraft_search_query)
+                    .on_input(Message::AircraftSearchChanged)
+                    .on_submit(Message::AircraftSearchSubmit)
+                    .padding(8)
+                    .width(Length::Fill),
+                row![
+                    button(text("<").size(12))
+                        .on_press(Message::AircraftSearchPrev)
+                        .style(style::button_secondary)
+                        .padding([6, 10]),
+                    container(
+                        text(if self.aircraft_search_matches.is_empty() {
+                            "0 / 0".to_string()
+                        } else {
+                            format!(
+                                "{} / {}",
+                                self.aircraft_search_index.unwrap_or(0) + 1,
+                                self.aircraft_search_matches.len()
+                            )
+                        })
+                        .size(12)
+                        .color(style::palette::TEXT_SECONDARY)
+                    )
+                    .padding([0, 10]),
+                    button(text(">").size(12))
+                        .on_press(Message::AircraftSearchNext)
+                        .style(style::button_secondary)
+                        .padding([6, 10]),
+                ]
+                .spacing(5)
                 .align_y(iced::Alignment::Center)
-                .padding(iced::Padding {
-                    top: 0.0,
-                    right: 0.0,
-                    bottom: 10.0,
-                    left: 0.0,
-                }),
+            ]
+            .spacing(10)
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 10.0,
+                bottom: 10.0,
+                left: 10.0,
+            }),
             tree_content
         ];
 
@@ -7411,10 +7528,35 @@ impl App {
                 column![].into()
             };
 
+            let livery_info = if let Some(path) = &self.selected_aircraft {
+                self.aircraft
+                    .iter()
+                    .find(|a| &a.path == path)
+                    .and_then(|a| {
+                        if let AddonType::Aircraft { livery_count, .. } = &a.addon_type {
+                            Some(*livery_count)
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|count| {
+                        container(text(format!("Liveries: {}", count)).size(14).color(style::palette::TEXT_PRIMARY))
+                            .padding([6, 12])
+                            .style(style::container_card)
+                    })
+            } else {
+                None
+            };
+
             container(
                 column![
                     iced::widget::image(icon.clone()),
                     change_icon_btn,
+                    if let Some(info) = livery_info {
+                        Element::from(info)
+                    } else {
+                        column![].into()
+                    },
                     tags_row,
                     category_selector
                 ]
@@ -8718,4 +8860,63 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
         .map_err(|e| format!("Failed to write file: {}", e))?;
 
     Ok(path)
+}
+
+fn export_aircraft_task(aircraft: Arc<Vec<DiscoveredAddon>>) -> impl std::future::Future<Output = Result<PathBuf, String>> {
+    async move {
+        use std::fs::File;
+        use std::io::Write;
+
+        let initial_location = directories::UserDirs::new()
+            .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
+            .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
+            .unwrap_or_else(|| PathBuf::from("."));
+
+        let path = rfd::AsyncFileDialog::new()
+            .add_filter("CSV File", &["csv"])
+            .add_filter("Text File", &["txt"])
+            .set_file_name("x_plane_aircraft_library.csv")
+            .set_directory(&initial_location)
+            .save_file()
+            .await
+            .ok_or("Export cancelled".to_string())?
+            .path()
+            .to_path_buf();
+
+        let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+
+        let mut content = String::new();
+        if is_csv {
+            content.push_str("Aircraft Name,Type,Livery Count,Enabled,Path\n");
+            for addon in aircraft.iter() {
+                if let AddonType::Aircraft { acf_name, livery_count } = &addon.addon_type {
+                    let name = addon.name.replace('"', "\"\"");
+                    let type_str = acf_name.replace('"', "\"\"");
+                    let enabled = if addon.is_enabled { "Yes" } else { "No" };
+                    let path_str = addon.path.display().to_string().replace('"', "\"\"");
+                    content.push_str(&format!("\"{}\",\"{}\",{},\"{}\",\"{}\"\n", name, type_str, livery_count, enabled, path_str));
+                }
+            }
+        } else {
+            content.push_str("X-Plane Aircraft Library\n");
+            content.push_str("======================\n\n");
+            for addon in aircraft.iter() {
+                if let AddonType::Aircraft { acf_name, livery_count } = &addon.addon_type {
+                    content.push_str(&format!("Name:         {}\n", addon.name));
+                    content.push_str(&format!("Type:         {}\n", acf_name));
+                    content.push_str(&format!("Liveries:     {}\n", livery_count));
+                    content.push_str(&format!("Enabled:      {}\n", if addon.is_enabled { "Yes" } else { "No" }));
+                    content.push_str(&format!("Path:         {}\n", addon.path.display()));
+                    content.push_str("----------------------\n");
+                }
+            }
+            content.push_str(&format!("\nTotal Aircraft: {}\n", aircraft.len()));
+        }
+
+        let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+        file.write_all(content.as_bytes())
+            .map_err(|e| format!("Failed to write file: {}", e))?;
+
+        Ok(path)
+    }
 }

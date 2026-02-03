@@ -12,9 +12,16 @@ pub struct PythonScript {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
 pub enum AddonType {
-    Scenery { airports: Vec<String> },
-    Aircraft(String), // String name of the .acf file
-    Plugin { scripts: Vec<PythonScript> },
+    Scenery {
+        airports: Vec<String>,
+    },
+    Aircraft {
+        acf_name: String,
+        livery_count: usize,
+    },
+    Plugin {
+        scripts: Vec<PythonScript>,
+    },
     CSL(bool), // bool is_enabled
 }
 
@@ -110,9 +117,12 @@ impl DiscoveryManager {
                             {
                                 let tags = bitnet.predict_aircraft_tags(&name, &path);
                                 folder_results.push(DiscoveredAddon {
-                                    path,
-                                    name,
-                                    addon_type: AddonType::Aircraft(acf_name),
+                                    path: path.clone(),
+                                    name: name.clone(),
+                                    addon_type: AddonType::Aircraft {
+                                        acf_name,
+                                        livery_count: DiscoveryManager::count_liveries(&path),
+                                    },
                                     is_enabled,
                                     tags,
                                 });
@@ -453,6 +463,18 @@ impl DiscoveryManager {
 
         results.sort_by(|a, b| a.name.cmp(&b.name));
         results
+    }
+
+    pub fn count_liveries(aircraft_path: &Path) -> usize {
+        let liveries_path = aircraft_path.join("liveries");
+        if !liveries_path.exists() || !liveries_path.is_dir() {
+            return 0;
+        }
+
+        match std::fs::read_dir(liveries_path) {
+            Ok(entries) => entries.flatten().filter(|e| e.path().is_dir()).count(),
+            Err(_) => 0,
+        }
     }
 }
 
