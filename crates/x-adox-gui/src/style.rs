@@ -622,17 +622,37 @@ pub fn button_neumorphic(_theme: &Theme, status: button::Status) -> button::Styl
     }
 }
 
-pub fn pick_list_primary(_theme: &Theme, _status: pick_list::Status) -> pick_list::Style {
-    pick_list::Style {
+pub fn pick_list_primary(_theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+    let base = pick_list::Style {
         text_color: palette::TEXT_PRIMARY,
         placeholder_color: palette::TEXT_SECONDARY,
         handle_color: palette::TEXT_PRIMARY,
         background: Background::Color(palette::SURFACE),
         border: Border {
-            radius: 6.0.into(),
-            width: 1.0,
+            radius: 8.0.into(),
+            width: 1.1,
             color: palette::BORDER,
         },
+    };
+
+    match status {
+        pick_list::Status::Hovered => pick_list::Style {
+            border: Border {
+                color: palette::ACCENT_BLUE,
+                width: 1.1,
+                radius: 8.0.into(),
+            },
+            ..base
+        },
+        pick_list::Status::Opened => pick_list::Style {
+            border: Border {
+                color: palette::ACCENT_BLUE,
+                width: 1.1,
+                radius: 8.0.into(),
+            },
+            ..base
+        },
+        _ => base,
     }
 }
 
@@ -652,19 +672,38 @@ pub fn text_input_primary(_theme: &Theme, _status: text_input::Status) -> text_i
 }
 pub fn button_region_header(_theme: &Theme, status: button::Status) -> button::Style {
     let base = button::Style {
-        background: Some(Background::Color(palette::SURFACE_VARIANT)),
+        background: Some(Background::Color(palette::SURFACE)),
         text_color: palette::TEXT_PRIMARY,
         border: Border {
-            radius: 4.0.into(),
+            radius: 8.0.into(),
             width: 1.0,
             color: palette::BORDER,
         },
-        shadow: Shadow::default(),
+        shadow: Shadow {
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.3),
+            offset: iced::Vector::new(0.0, 2.0),
+            blur_radius: 8.0,
+        },
     };
 
     match status {
         button::Status::Hovered => button::Style {
-            background: Some(Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
+            background: Some(Background::Color(Color::from_rgb(0.22, 0.22, 0.22))),
+            border: Border {
+                color: palette::ACCENT_BLUE,
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.23, 0.51, 0.96, 0.15),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 12.0,
+            },
+            ..base
+        },
+        button::Status::Pressed => button::Style {
+            background: Some(Background::Color(palette::BACKGROUND)),
+            shadow: Shadow::default(),
             ..base
         },
         _ => base,

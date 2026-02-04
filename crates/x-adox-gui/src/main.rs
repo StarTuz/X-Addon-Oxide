@@ -601,6 +601,8 @@ struct App {
     icon_arrow_down: svg::Handle,
     icon_edit: svg::Handle,
     icon_trash: svg::Handle,
+    icon_chevron_right: svg::Handle,
+    icon_chevron_down: svg::Handle,
 
     // Fallback Icons
     fallback_airliner: image::Handle,
@@ -790,6 +792,12 @@ impl App {
             ),
             icon_trash: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/trash.svg").to_vec(),
+            ),
+            icon_chevron_right: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/chevron_right.svg").to_vec(),
+            ),
+            icon_chevron_down: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/arrow_down.svg").to_vec(),
             ),
             icon_grip: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/grab_hand.svg").to_vec(),
@@ -2210,11 +2218,20 @@ impl App {
             }
             Message::SetRegionEnabled(region, enabled) => {
                 let mut states = std::collections::HashMap::new();
-                for pack in self.packs.iter() {
+                let mut new_packs = (*self.packs).clone();
+                let target_status = if enabled {
+                    SceneryPackType::Active
+                } else {
+                    SceneryPackType::Disabled
+                };
+
+                for pack in new_packs.iter_mut() {
                     if pack.get_region() == region {
+                        pack.status = target_status.clone();
                         states.insert(pack.name.clone(), enabled);
                     }
                 }
+                self.packs = Arc::new(new_packs);
 
                 if let Some(root) = &self.xplane_root {
                     let root_clone = root.clone();
@@ -6461,9 +6478,12 @@ impl App {
         }
         let region_groups = Arc::new(region_groups);
 
+        let icon_chevron_right = self.icon_chevron_right.clone();
+        let icon_chevron_down = self.icon_chevron_down.clone();
+        
         let list_container = scrollable(lazy(
-            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups),
-            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups)| {
+            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups, icon_chevron_right, icon_chevron_down),
+            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups, icon_chevron_right, icon_chevron_down)| {
                 let mut items = Vec::new();
 
                 if *use_region_view {
@@ -6478,6 +6498,7 @@ impl App {
                             is_expanded,
                             is_any_enabled,
                             is_any_in_bucket,
+                            (icon_chevron_right.clone(), icon_chevron_down.clone()),
                         ));
 
                         if is_expanded {
@@ -7362,15 +7383,24 @@ impl App {
         is_expanded: bool,
         is_any_enabled: bool,
         is_any_in_bucket: bool,
+        icons: (svg::Handle, svg::Handle),
     ) -> Element<'static, Message> {
+        let (icon_right, icon_down) = icons;
         let region_for_toggle = region.clone();
         let region_for_enabled = region.clone();
         let region_for_bucket = region.clone();
         
         let content = row![
-            text(if is_expanded { "▼" } else { "▶" })
-                .size(14)
-                .width(Length::Fixed(20.0)),
+            svg(if is_expanded { icon_down } else { icon_right })
+                .width(16)
+                .height(16)
+                .style(move |_, _| svg::Style {
+                    color: if is_expanded { 
+                        Some(style::palette::ACCENT_BLUE) 
+                    } else { 
+                        Some(style::palette::TEXT_PRIMARY) 
+                    },
+                }),
             text(region).size(16).width(Length::Fill),
             text(format!("({} packs)", count))
                 .size(12)
