@@ -145,6 +145,7 @@ pub enum ConfirmType {
     BulkDeleteLogbook,
     BulkDeleteLogIssues,
     InstallLua(PathBuf, Tab, Vec<String>),
+    PasswordRequired(PathBuf, Tab, Option<Vec<String>>),
 }
 
 #[derive(Debug, Clone)]
@@ -249,6 +250,10 @@ enum Message {
     ),
     ApplySort(Arc<Vec<SceneryPack>>),
     CancelSort,
+
+    // Archive & Password
+    ArchivePasswordRequired(PathBuf, Tab, Option<Vec<String>>),
+    PasswordInputChanged(String),
 
     // Simulation Report interactions
     AutoFixIssue(String),        // Fixes all issues of a type
@@ -652,6 +657,7 @@ struct App {
     // Scenery Search
     scenery_search_query: String,
     pending_lua_install: Option<(PathBuf, Tab, Vec<String>)>,
+    archive_password_input: String,
     scenery_search_matches: Vec<usize>,
     scenery_search_index: Option<usize>,
     aircraft_search_query: String,
@@ -850,6 +856,7 @@ impl App {
             // Scenery Search
             scenery_search_query: String::new(),
             pending_lua_install: None,
+            archive_password_input: String::new(),
             scenery_search_matches: Vec::new(),
             scenery_search_index: None,
             aircraft_search_query: String::new(),
@@ -3131,13 +3138,17 @@ impl App {
 
                     let zip_path_clone = zip_path.clone();
                     self.status = format!("Scanning archive {:?}...", zip_path.file_name().unwrap_or_default());
+                    let password = if self.archive_password_input.is_empty() { None } else { Some(self.archive_password_input.clone()) };
                     
                     return Task::perform(
-                        async move { scan_archive_for_lua(zip_path_clone).await },
+                        async move { scan_archive_for_lua(zip_path_clone, password).await },
                         move |res| {
                             match res {
                                 Ok(lua_files) if !lua_files.is_empty() => {
                                     Message::LuaScriptsDetected(zip_path.clone(), tab, lua_files)
+                                }
+                                Err(e) if e == "PASSWORD_REQUIRED" => {
+                                    Message::ArchivePasswordRequired(zip_path.clone(), tab, None)
                                 }
                                 _ => Message::ConfirmInstallWithLua(zip_path.clone(), tab, false),
                             }
@@ -3161,44 +3172,51 @@ impl App {
                 }))
             }
             Message::ConfirmInstallWithLua(zip_path, tab, confirmed) => {
-                if confirmed {
-                    let root = self.xplane_root.clone();
-                    let model = self.heuristics_model.clone();
-                    let context = x_adox_bitnet::PredictContext {
-                        region_focus: self.region_focus.clone(),
-                        ..Default::default()
-                    };
-                    self.status = format!("Installing to {:?}...", tab);
-                    self.install_progress = Some(0.0);
+                self.active_modal = None;
+                let root = self.xplane_root.clone();
+                let model = self.heuristics_model.clone();
+                let context = x_adox_bitnet::PredictContext {
+                    region_focus: self.region_focus.clone(),
+                    ..Default::default()
+                };
+                let password = if self.archive_password_input.is_empty() { None } else { Some(self.archive_password_input.clone()) };
+                self.status = format!("Installing to {:?}...", tab);
+                self.install_progress = Some(0.0);
 
-                    return Task::run(
-                        iced::stream::channel(
-                            10,
-                            move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-                                let mut output_progress = output.clone();
-                                let res = install_addon(
-                                    root,
-                                    zip_path,
-                                    tab,
-                                    None,
-                                    model,
-                                    context,
-                                    confirmed,
-                                    move |p| {
-                                        let _ =
-                                            output_progress.try_send(Message::InstallProgress(p));
-                                    },
-                                )
-                                .await;
-                                let _ = output.try_send(Message::InstallComplete(res));
-                            },
-                        ),
-                        |msg| msg,
-                    );
-                } else {
-                    self.status = "Install cancelled".to_string();
-                    Task::none()
-                }
+                return Task::run(
+                    iced::stream::channel(
+                        10,
+                        move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+                            let mut output_progress = output.clone();
+                            let zip_path_inner = zip_path.clone(); // Clone for potential error reporting
+                            let tab_inner = tab;
+                            let res = install_addon(
+                                root,
+                                zip_path,
+                                tab,
+                                None,
+                                model,
+                                context,
+                                confirmed,
+                                password,
+                                move |p| {
+                                    let _ =
+                                        output_progress.try_send(Message::InstallProgress(p));
+                                },
+                            )
+                            .await;
+                            
+                            if let Err(ref e) = res {
+                                if e == "PASSWORD_REQUIRED" {
+                                    let _ = output.try_send(Message::ArchivePasswordRequired(zip_path_inner, tab_inner, None));
+                                    return;
+                                }
+                            }
+                            let _ = output.try_send(Message::InstallComplete(res));
+                        },
+                    ),
+                    |msg| msg,
+                );
             }
             Message::InstallAircraftDestPicked(zip_path, dest_opt) => {
                 if let Some(dest_path) = dest_opt {
@@ -3208,6 +3226,7 @@ impl App {
                         region_focus: self.region_focus.clone(),
                         ..Default::default()
                     };
+                    let password = if self.archive_password_input.is_empty() { None } else { Some(self.archive_password_input.clone()) };
                     self.status = format!("Installing to {}...", dest_path.display());
                     self.install_progress = Some(0.0);
 
@@ -3216,6 +3235,7 @@ impl App {
                             10,
                             move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
                                 let mut output_progress = output.clone();
+                                let zip_path_inner = zip_path.clone();
                                 let res = install_addon(
                                     root,
                                     zip_path,
@@ -3224,12 +3244,19 @@ impl App {
                                     model,
                                     context,
                                     false,
+                                    password,
                                     move |p| {
                                         let _ =
                                             output_progress.try_send(Message::InstallProgress(p));
                                     },
                                 )
                                 .await;
+                                if let Err(ref e) = res {
+                                    if e == "PASSWORD_REQUIRED" {
+                                        let _ = output.try_send(Message::ArchivePasswordRequired(zip_path_inner, Tab::Aircraft, None));
+                                        return;
+                                    }
+                                }
                                 let _ = output.try_send(Message::InstallComplete(res));
                             },
                         ),
@@ -3252,6 +3279,19 @@ impl App {
                     }
                 }
                 Task::none()
+            }
+            Message::PasswordInputChanged(pass) => {
+                self.archive_password_input = pass;
+                Task::none()
+            }
+            Message::ArchivePasswordRequired(path, tab, lua_files) => {
+                self.archive_password_input.clear();
+                Task::done(Message::ShowModal(ModalState {
+                    title: "Password Protected Archive".to_string(),
+                    message: format!("The archive {} is password protected. Please enter the password:", path.display()),
+                    confirm_type: ConfirmType::PasswordRequired(path, tab, lua_files),
+                    is_danger: false,
+                }))
             }
             Message::DeleteAddon(tab) => {
                 let (name_opt, path) = match tab {
@@ -4058,6 +4098,13 @@ impl App {
                          // Default action from modal "Confirm" is "Move to FlyWithLua"
                          Task::done(Message::ConfirmInstallWithLua(zip_path, tab, true))
                     }
+                    ConfirmType::PasswordRequired(path, tab, lua_files) => {
+                        if let Some(lua) = lua_files {
+                             Task::done(Message::LuaScriptsDetected(path, tab, lua))
+                        } else {
+                             Task::done(Message::InstallPicked(tab, Some(path)))
+                        }
+                    }
                 }
             }
         }
@@ -4277,6 +4324,22 @@ impl App {
                         .into(),
                 );
             }
+            ConfirmType::PasswordRequired(_, _, _) => {
+                buttons.push(
+                    button(text("Cancel").size(14))
+                        .on_press(Message::CloseModal)
+                        .style(style::button_secondary)
+                        .padding([10, 20])
+                        .into(),
+                );
+                buttons.push(
+                    button(text("Unlock").size(14))
+                        .on_press(Message::ConfirmModal(modal.confirm_type.clone()))
+                        .style(style::button_primary)
+                        .padding([10, 25])
+                        .into(),
+                );
+            }
             _ => {
                 buttons.push(
                     button(text("Cancel").size(14))
@@ -4303,6 +4366,20 @@ impl App {
             column![
                 title,
                 message,
+                if matches!(modal.confirm_type, ConfirmType::PasswordRequired(_, _, _)) {
+                    iced::Element::from(
+                        column![
+                            text_input("Password", &self.archive_password_input)
+                                .on_input(Message::PasswordInputChanged)
+                                .secure(true)
+                                .padding(10)
+                                .style(style::text_input_primary)
+                                .width(Length::Fill)
+                        ].spacing(10)
+                    )
+                } else {
+                    iced::Element::from(iced::widget::Space::with_height(0.0))
+                },
                 row(buttons).spacing(15).align_y(iced::Alignment::Center)
             ]
             .spacing(20)
@@ -9055,10 +9132,11 @@ async fn install_addon(
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
     move_lua: bool,
+    password: Option<String>,
     on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let res = tokio::task::spawn_blocking(move || {
-        extract_archive_task(root, zip_path, tab, dest_override, model, context, move_lua, on_progress)
+        extract_archive_task(root, zip_path, tab, dest_override, model, context, move_lua, password, on_progress)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -9079,45 +9157,74 @@ fn extract_zip_task(
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
     move_lua: bool,
+    password: Option<String>,
     mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
-    // Open the zip file
-    let file = std::fs::File::open(&zip_path).map_err(|e| format!("Failed to open zip: {}", e))?;
-    let mut archive =
-        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
-
-    // Determine the top-level folder name from the zip
-    let top_folder = if let Some(first) = archive.file_names().next() {
-        first.split('/').next().unwrap_or("Unknown").to_string()
-    } else {
-        return Err("Empty zip archive".to_string());
-    };
-
-    let root = root.ok_or("X-Plane root not found".to_string())?;
+    let root_val = root.ok_or("X-Plane root not found".to_string())?;
 
     let dest_dir = if let Some(dest) = dest_override {
         dest
     } else {
         match tab {
-            Tab::Aircraft => root.join("Aircraft"),
-            Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::Scenery => root.join("Custom Scenery"),
-            Tab::CSLs => root.join("Resources").join("plugins"),
+            Tab::Aircraft => root_val.join("Aircraft"),
+            Tab::Plugins => root_val.join("Resources").join("plugins"),
+            Tab::Scenery => root_val.join("Custom Scenery"),
+            Tab::CSLs => root_val.join("Resources").join("plugins"),
             _ => return Err("Unsupported install tab".to_string()),
         }
     };
 
+    // Open the zip file
+    let file = std::fs::File::open(&zip_path).map_err(|e| format!("Failed to open zip: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
+
+    // Detect if the zip is flat or has a single top-level folder
+    let mut root_folders = std::collections::HashSet::new();
+    let mut root_files = false;
+    for name in archive.file_names() {
+        if let Some(pos) = name.find('/') {
+            root_folders.insert(&name[..pos]);
+        } else if !name.is_empty() {
+            root_files = true;
+        }
+    }
+
+    let is_flat = root_files || root_folders.len() != 1;
+    let archive_stem = zip_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Unknown".to_string());
+    
+    let (target_dir, top_folder) = if is_flat {
+        (dest_dir.join(&archive_stem), archive_stem)
+    } else {
+        let folder = root_folders.into_iter().next().unwrap_or("Unknown").to_string();
+        (dest_dir.clone(), folder)
+    };
+
+    let _ = std::fs::create_dir_all(&target_dir);
+
     // Extract to destination
     let total_files = archive.len();
     for i in 0..total_files {
-        let mut file = archive
-            .by_index(i)
-            .map_err(|e| format!("Failed to read zip entry: {}", e))?;
+        let is_encrypted = {
+            let file = archive.by_index(i).map_err(|e| format!("Failed to read zip entry: {}", e))?;
+            file.encrypted()
+        };
 
-        let mut outpath = dest_dir.join(file.name());
+        let mut file = if is_encrypted {
+            if let Some(pass) = &password {
+                archive.by_index_decrypt(i, pass.as_bytes())
+                    .map_err(|e| format!("Password incorrect or failed to decrypt zip entry: {}", e))?
+            } else {
+                return Err("PASSWORD_REQUIRED".to_string());
+            }
+        } else {
+            archive.by_index(i).map_err(|e| format!("Failed to read zip entry: {}", e))?
+        };
+
+        let mut outpath = target_dir.join(file.name());
 
         if move_lua && file.name().to_lowercase().ends_with(".lua") {
-            let lua_dest = root.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
+            let lua_dest = root_val.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
             let _ = std::fs::create_dir_all(&lua_dest);
             let file_name = Path::new(file.name()).file_name().unwrap_or_default();
             outpath = lua_dest.join(file_name);
@@ -9143,7 +9250,7 @@ fn extract_zip_task(
 
     // Special handling for Scenery: add to scenery_packs.ini
     if matches!(tab, Tab::Scenery) {
-        let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+        let xpm = XPlaneManager::new(&root_val).map_err(|e| e.to_string())?;
         let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
         sm.load().map_err(|e| e.to_string())?;
         
@@ -9163,66 +9270,103 @@ fn extract_7z_task(
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
     move_lua: bool,
+    password: Option<String>,
     mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
-    let root = root.ok_or("X-Plane root not found".to_string())?;
+    let root_val = root.clone().ok_or("X-Plane root not found".to_string())?;
 
     let dest_dir = if let Some(dest) = dest_override {
         dest
     } else {
         match tab {
-            Tab::Aircraft => root.join("Aircraft"),
-            Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::Scenery => root.join("Custom Scenery"),
-            Tab::CSLs => root.join("Resources").join("plugins"),
+            Tab::Aircraft => root_val.join("Aircraft"),
+            Tab::Plugins => root_val.join("Resources").join("plugins"),
+            Tab::Scenery => root_val.join("Custom Scenery"),
+            Tab::CSLs => root_val.join("Resources").join("plugins"),
             _ => return Err("Unsupported install tab".to_string()),
         }
     };
 
-    // Signal start of extraction
     on_progress(5.0);
 
-    // Extract using sevenz-rust2
-    // NOTE: sevenz-rust2 decompress_file doesn't support selective redirection easily.
-    // We would need to extract and then move. For simplicity, we'll extract to dest_dir.
-    // If move_lua is requested for 7z, we'll handle it by moving files after extraction.
-    sevenz_rust2::decompress_file(&archive_path, &dest_dir)
-        .map_err(|e| format!("Failed to extract 7z: {}", e))?;
+    let archive_stem = archive_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Unknown".to_string());
+    let temp_dir = dest_dir.join(format!(".oxide_tmp_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
+    let _ = std::fs::create_dir_all(&temp_dir);
+
+    if let Some(pass) = &password {
+        let p = sevenz_rust2::Password::from(pass.as_str());
+        sevenz_rust2::decompress_file_with_password(&archive_path, &temp_dir, p)
+            .map_err(|e| format!("Failed to extract 7z: {}", e))?;
+    } else {
+        match sevenz_rust2::decompress_file(&archive_path, &temp_dir) {
+            Ok(_) => {},
+            Err(e) if e.to_string().contains("Password") || e.to_string().contains("encrypted") => {
+                let _ = std::fs::remove_dir_all(&temp_dir);
+                return Err("PASSWORD_REQUIRED".to_string());
+            }
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&temp_dir);
+                return Err(format!("Failed to extract 7z: {}", e));
+            }
+        }
+    }
     
-    if move_lua {
-        let lua_dest = root.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
-        let _ = std::fs::create_dir_all(&lua_dest);
-        
-        // Scan the extracted dir for .lua files and move them
-        if let Ok(entries) = std::fs::read_dir(&dest_dir) {
-             for entry in entries.flatten() {
-                 if entry.path().extension().and_then(|e| e.to_str()) == Some("lua") {
-                     let file_name = entry.file_name();
-                     let _ = std::fs::rename(entry.path(), lua_dest.join(file_name));
-                 }
-             }
+    // Reconcile and handle move_lua
+    let mut root_folders = Vec::new();
+    let mut root_files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&temp_dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                root_folders.push(entry.path());
+            } else {
+                root_files.push(entry.path());
+            }
         }
     }
 
-    // Signal extraction complete
-    on_progress(90.0);
+    let is_flat = !root_files.is_empty() || root_folders.len() != 1;
+    let (target_dir, top_folder) = if is_flat {
+        let t = dest_dir.join(&archive_stem);
+        let _ = std::fs::create_dir_all(&t);
+        (t, archive_stem)
+    } else {
+        let folder = root_folders[0].file_name().unwrap_or_default().to_string_lossy().to_string();
+        (dest_dir.clone(), folder)
+    };
 
-    // Determine the top-level folder name from the archive filename
-    let top_folder = archive_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("Unknown")
-        .to_string();
+    // Move files recursively to target_dir, handling move_lua
+    fn move_recursively(src: &Path, dst: &Path, move_lua: bool, root: &Path) -> std::io::Result<()> {
+        if src.is_dir() {
+            for entry in std::fs::read_dir(src)? {
+                let entry = entry?;
+                let name = entry.file_name();
+                move_recursively(&entry.path(), &dst.join(name), move_lua, root)?;
+            }
+        } else {
+            let mut final_dst = dst.to_path_buf();
+            if move_lua && src.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()) == Some("lua".to_string()) {
+                let lua_dest = root.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
+                let _ = std::fs::create_dir_all(&lua_dest);
+                final_dst = lua_dest.join(src.file_name().unwrap_or_default());
+            } else {
+                if let Some(parent) = final_dst.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+            }
+            let _ = std::fs::rename(src, final_dst);
+        }
+        Ok(())
+    }
 
-    // Special handling for Scenery: add to scenery_packs.ini
+    let _ = move_recursively(&temp_dir, &target_dir, move_lua, &root_val);
+    let _ = std::fs::remove_dir_all(&temp_dir);
+
     if matches!(tab, Tab::Scenery) {
-        let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+        let xpm = XPlaneManager::new(&root_val).map_err(|e| e.to_string())?;
         let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
-        sm.load().map_err(|e| e.to_string())?;
-
-        // Auto-sort every time a new pack is installed
+        let _ = sm.load();
         sm.sort(Some(&model), &context);
-        sm.save(Some(&model)).map_err(|e| e.to_string())?;
+        let _ = sm.save(Some(&model));
     }
 
     on_progress(100.0);
@@ -9237,7 +9381,8 @@ fn extract_archive_task(
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
     move_lua: bool,
-    on_progress: impl FnMut(f32) + Send + 'static,
+    password: Option<String>,
+    mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let extension = archive_path
         .extension()
@@ -9246,10 +9391,110 @@ fn extract_archive_task(
         .to_lowercase();
 
     match extension.as_str() {
-        "zip" => extract_zip_task(root, archive_path, tab, dest_override, model, context, move_lua, on_progress),
-        "7z" => extract_7z_task(root, archive_path, tab, dest_override, model, context, move_lua, on_progress),
+        "zip" => extract_zip_task(root, archive_path, tab, dest_override, model, context, move_lua, password, on_progress),
+        "7z" => extract_7z_task(root, archive_path, tab, dest_override, model, context, move_lua, password, on_progress),
+        "rar" => extract_rar_task(root, archive_path, tab, dest_override, model, context, move_lua, password, on_progress),
         _ => Err(format!("Unsupported archive format: .{}", extension)),
     }
+}
+
+fn extract_rar_task(
+    root: Option<PathBuf>,
+    archive_path: PathBuf,
+    tab: Tab,
+    dest_override: Option<PathBuf>,
+    model: BitNetModel,
+    context: x_adox_bitnet::PredictContext,
+    move_lua: bool,
+    password: Option<String>,
+    mut on_progress: impl FnMut(f32) + Send + 'static,
+) -> Result<String, String> {
+    let root_val = root.ok_or("X-Plane root not found".to_string())?;
+
+    let dest_dir = if let Some(dest) = dest_override {
+        dest
+    } else {
+        match tab {
+            Tab::Aircraft => root_val.join("Aircraft"),
+            Tab::Plugins => root_val.join("Resources").join("plugins"),
+            Tab::Scenery => root_val.join("Custom Scenery"),
+            Tab::CSLs => root_val.join("Resources").join("plugins"),
+            _ => return Err("Unsupported install tab".to_string()),
+        }
+    };
+
+    on_progress(5.0);
+
+    let mut archive = if let Some(p) = &password {
+        unrar::Archive::with_password(&archive_path, p)
+    } else {
+        unrar::Archive::new(&archive_path)
+    };
+    
+    let mut process = archive.open_for_processing()
+        .map_err(|e| format!("Failed to open RAR: {}", e))?;
+
+    let archive_stem = archive_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Unknown".to_string());
+    let mut top_folder = archive_stem.clone();
+    
+    // Scan headers first to check if flat
+    let mut root_folders = std::collections::HashSet::new();
+    let mut root_files = false;
+    {
+        let mut scan_archive = if let Some(p) = &password {
+            unrar::Archive::with_password(&archive_path, p)
+        } else {
+            unrar::Archive::new(&archive_path)
+        };
+        let scan_process = scan_archive.open_for_listing()
+            .map_err(|e| format!("Failed to scan RAR: {}", e))?;
+        for entry in scan_process {
+            let entry = entry.map_err(|e| format!("RAR Scan Error: {}", e))?;
+            let name = entry.filename.to_string_lossy();
+            if let Some(pos) = name.find('/') {
+                root_folders.insert(name[..pos].to_string());
+            } else if !name.is_empty() {
+                root_files = true;
+            }
+        }
+    }
+
+    let is_flat = root_files || root_folders.len() != 1;
+    let (target_dir, detected_top) = if is_flat {
+        (dest_dir.join(&archive_stem), archive_stem)
+    } else {
+        let folder = root_folders.into_iter().next().unwrap_or("Unknown".to_string());
+        (dest_dir.clone(), folder)
+    };
+    top_folder = detected_top;
+    
+    let _ = std::fs::create_dir_all(&target_dir);
+
+    while let Some(header_cursor) = process.read_header().map_err(|e| format!("RAR Error: {}", e))? {
+        let name = header_cursor.entry().filename.to_string_lossy().to_string();
+        let mut outpath = target_dir.join(&name);
+
+        if move_lua && name.to_lowercase().ends_with(".lua") {
+            let lua_dest = root_val.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
+            let _ = std::fs::create_dir_all(&lua_dest);
+            let file_name = Path::new(&name).file_name().unwrap_or_default();
+            outpath = lua_dest.join(file_name);
+        }
+
+        process = header_cursor.extract_to(&outpath)
+            .map_err(|e| format!("Failed to extract RAR entry {}: {}", name, e))?;
+    }
+
+    if matches!(tab, Tab::Scenery) {
+        let xpm = XPlaneManager::new(&root_val).map_err(|e| e.to_string())?;
+        let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
+        sm.load().map_err(|e| e.to_string())?;
+        sm.sort(Some(&model), &context);
+        sm.save(Some(&model)).map_err(|e| e.to_string())?;
+    }
+
+    on_progress(100.0);
+    Ok(top_folder)
 }
 
 fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), String> {
@@ -9297,7 +9542,7 @@ async fn load_airports_data(
     Ok(Arc::new(map))
 }
 
-async fn scan_archive_for_lua(path: PathBuf) -> Result<Vec<String>, String> {
+async fn scan_archive_for_lua(path: PathBuf, password: Option<String>) -> Result<Vec<String>, String> {
     let extension = path
         .extension()
         .and_then(|e| e.to_str())
@@ -9308,14 +9553,25 @@ async fn scan_archive_for_lua(path: PathBuf) -> Result<Vec<String>, String> {
         "zip" => {
             tokio::task::spawn_blocking(move || {
                 let file = std::fs::File::open(&path).map_err(|e| format!("Failed to open zip: {}", e))?;
-                let archive =
+                let mut archive =
                     zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
                 
-                let lua_files: Vec<String> = archive
-                    .file_names()
-                    .filter(|name| name.to_lowercase().ends_with(".lua"))
-                    .map(|s| s.to_string())
-                    .collect();
+                let mut lua_files = Vec::new();
+                for i in 0..archive.len() {
+                    let file = match archive.by_index(i) {
+                        Ok(f) => f,
+                        Err(zip::result::ZipError::InvalidPassword) => return Err("PASSWORD_REQUIRED".to_string()),
+                        Err(e) => return Err(format!("Failed to read zip entry: {}", e)),
+                    };
+                    
+                    if file.encrypted() && password.is_none() {
+                        return Err("PASSWORD_REQUIRED".to_string());
+                    }
+
+                    if file.name().to_lowercase().ends_with(".lua") {
+                        lua_files.push(file.name().to_string());
+                    }
+                }
                 
                 Ok(lua_files)
             })
@@ -9323,9 +9579,40 @@ async fn scan_archive_for_lua(path: PathBuf) -> Result<Vec<String>, String> {
             .map_err(|e| e.to_string())?
         }
         "7z" => {
-            // sevenz-rust2 doesn't easily expose listing without extraction in the current version we use
-            // so we return empty for now to avoid blocking 7z installs
-            Ok(vec![])
+            tokio::task::spawn_blocking(move || {
+                // sevenz-rust2 doesn't easily expose listing with password without opening.
+                if password.is_none() {
+                     // We can't know if it's encrypted without trying, but let's assume it might be.
+                }
+
+                Ok(vec![])
+            })
+            .await
+            .map_err(|e: tokio::task::JoinError| e.to_string())?
+        }
+        "rar" => {
+            tokio::task::spawn_blocking(move || {
+                let archive = unrar::Archive::new(&path);
+                let open_archive = archive.open_for_listing()
+                    .map_err(|e: unrar::error::UnrarError| {
+                        if e.to_string().to_lowercase().contains("password") || e.to_string().to_lowercase().contains("encrypted") {
+                            "PASSWORD_REQUIRED".to_string()
+                        } else {
+                            format!("Failed to open RAR: {}", e)
+                        }
+                    })?;
+                
+                let mut lua_files = Vec::new();
+                for result in open_archive {
+                    let entry = result.map_err(|e| format!("Failed to read RAR entry: {}", e))?;
+                    if entry.filename.to_string_lossy().to_lowercase().ends_with(".lua") {
+                        lua_files.push(entry.filename.display().to_string());
+                    }
+                }
+                Ok(lua_files)
+            })
+            .await
+            .map_err(|e: tokio::task::JoinError| e.to_string())?
         }
         _ => Ok(vec![]),
     }
@@ -9334,8 +9621,8 @@ async fn scan_archive_for_lua(path: PathBuf) -> Result<Vec<String>, String> {
 async fn pick_archive(label: &str) -> Option<PathBuf> {
     log::debug!("Opening archive picker for {}", label);
     rfd::AsyncFileDialog::new()
-        .set_title(&format!("Select {} Package (.zip, .7z)", label))
-        .add_filter("Archives", &["zip", "7z"])
+        .set_title(&format!("Select {} Package (.zip, .7z, .rar)", label))
+        .add_filter("Archives", &["zip", "7z", "rar"])
         .pick_file()
         .await
         .map(|f| {
