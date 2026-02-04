@@ -644,7 +644,8 @@ impl BitNetModel {
             "mosquito",
             "comet",
         ]);
-        let is_fokker = matches_any(&["fokker", "f27", "f50", "f70", "f100"]);
+        let is_fokker = matches_any(&["fokker", "f27", "f70", "f100"])
+            || (name_lower.contains("f50") && !name_lower.contains("sf50"));
         let is_tupolev = matches_any(&[
             "tupolev", "tu-134", "tu-154", "tu-204", "tu-214", "tu-160", "tu-95",
         ]);
@@ -870,6 +871,7 @@ impl BitNetModel {
             "hawker",
             "hondajet",
             "cirrus sf50",
+            "sf50",
             "eclipse 500",
             "mustang",
             // Military Jets provided in is_military check mostly cover this, but explicitly:
@@ -1032,6 +1034,8 @@ impl BitNetModel {
             "hawker",
             "bizjet",
             "business jet",
+            "sf50",
+            "sf-50",
         ]);
 
         // --- Step 5: Assign Final Tags ---
@@ -1055,7 +1059,7 @@ impl BitNetModel {
 
             // BizJets are GA per user rules, but we tag them as BizJet + GA
 
-            let likely_airliner = is_airliner || (is_jet && !is_bizjet);
+            let likely_airliner = (is_airliner || is_jet) && !is_bizjet;
 
             if likely_airliner {
                 tags.push("Airliner".to_string());
@@ -1565,5 +1569,28 @@ mod tests {
         assert!(tags_after.contains(&"Jet".to_string()));
         assert!(!tags_after.contains(&"Boeing".to_string()));
         assert!(!tags_after.contains(&"Airliner".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_cirrus_sf50_no_fokker() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Cirrus Vision SF50", Path::new("test"));
+
+        // Should have Cirrus, GA, Jet tags
+        assert!(
+            tags.contains(&"Cirrus".to_string()),
+            "Should have Cirrus tag"
+        );
+        assert!(
+            tags.contains(&"General Aviation".to_string()),
+            "Should be GA"
+        );
+        assert!(tags.contains(&"Jet".to_string()), "Should be Jet");
+
+        // CRITICAL: Should NOT have Fokker tag
+        assert!(
+            !tags.contains(&"Fokker".to_string()),
+            "Should NOT have Fokker tag"
+        );
     }
 }
