@@ -18,6 +18,7 @@ pub enum AddonType {
     Aircraft {
         acf_name: String,
         livery_count: usize,
+        livery_names: Vec<String>,
     },
     Plugin {
         scripts: Vec<PythonScript>,
@@ -122,6 +123,7 @@ impl DiscoveryManager {
                                     addon_type: AddonType::Aircraft {
                                         acf_name,
                                         livery_count: DiscoveryManager::count_liveries(&path),
+                                        livery_names: DiscoveryManager::get_livery_names(&path),
                                     },
                                     is_enabled,
                                     tags,
@@ -474,6 +476,26 @@ impl DiscoveryManager {
         match std::fs::read_dir(liveries_path) {
             Ok(entries) => entries.flatten().filter(|e| e.path().is_dir()).count(),
             Err(_) => 0,
+        }
+    }
+
+    pub fn get_livery_names(aircraft_path: &Path) -> Vec<String> {
+        let liveries_path = aircraft_path.join("liveries");
+        if !liveries_path.exists() || !liveries_path.is_dir() {
+            return Vec::new();
+        }
+
+        match std::fs::read_dir(liveries_path) {
+            Ok(entries) => {
+                let mut names: Vec<_> = entries
+                    .flatten()
+                    .filter(|e| e.path().is_dir())
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .collect();
+                names.sort();
+                names
+            }
+            Err(_) => Vec::new(),
         }
     }
 }

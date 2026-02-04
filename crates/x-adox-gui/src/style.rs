@@ -118,6 +118,42 @@ pub fn container_drop_gap_active(_theme: &Theme) -> container::Style {
     }
 }
 
+pub fn container_badge_blue(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgba(0.23, 0.51, 0.96, 0.1))),
+        border: Border {
+            color: Color::from_rgba(0.23, 0.51, 0.96, 0.3),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+pub fn container_badge_purple(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgba(0.66, 0.33, 0.97, 0.1))),
+        border: Border {
+            color: Color::from_rgba(0.66, 0.33, 0.97, 0.3),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+pub fn container_badge_green(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgba(0.2, 0.7, 0.3, 0.1))),
+        border: Border {
+            color: Color::from_rgba(0.2, 0.7, 0.3, 0.3),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
 // Button Styles
 pub fn button_primary(_theme: &Theme, status: button::Status) -> button::Style {
     let base = button::Style {
@@ -429,6 +465,7 @@ pub fn button_card(_theme: &Theme, status: button::Status) -> button::Style {
 
     match status {
         button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.2, 0.2, 0.2))),
             border: Border {
                 color: palette::ACCENT_BLUE,
                 width: 1.0,
@@ -441,11 +478,62 @@ pub fn button_card(_theme: &Theme, status: button::Status) -> button::Style {
             },
             ..base
         },
-        button::Status::Active => button::Style {
+        button::Status::Active | button::Status::Pressed => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.2, 0.2, 0.2))),
+            border: Border {
+                color: palette::ACCENT_BLUE,
+                width: 1.2,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.23, 0.51, 0.96, 0.4),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 15.0,
+            },
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_aircraft_card(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(Color::from_rgba(0.22, 0.22, 0.22, 0.5))),
+        text_color: palette::TEXT_PRIMARY,
+        border: Border {
+            color: Color::from_rgba(1.0, 1.0, 1.0, 0.05),
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgba(0.25, 0.25, 0.25, 0.7))),
+            border: Border {
+                color: Color::from_rgba(0.23, 0.51, 0.96, 0.4),
+                width: 1.0,
+                radius: 10.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.23, 0.51, 0.96, 0.15),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 12.0,
+            },
+            ..base
+        },
+        button::Status::Active | button::Status::Pressed => button::Style {
+            background: Some(Background::Color(Color::from_rgba(0.25, 0.25, 0.25, 0.8))),
             border: Border {
                 color: palette::ACCENT_BLUE,
                 width: 1.0,
-                radius: 8.0.into(),
+                radius: 10.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.23, 0.51, 0.96, 0.3),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
             },
             ..base
         },

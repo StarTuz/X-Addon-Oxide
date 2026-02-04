@@ -144,8 +144,6 @@ pub enum ConfirmType {
     DeleteAddon(Tab, String, PathBuf),
     BulkDeleteLogbook,
     BulkDeleteLogIssues,
-    InstallLua(PathBuf, Tab, Vec<String>),
-    PasswordRequired(PathBuf, Tab, Option<Vec<String>>),
 }
 
 #[derive(Debug, Clone)]
@@ -170,7 +168,7 @@ enum Message {
     ToggleRegion(String),
     SetRegionEnabled(String, bool),
     SetRegionInBucket(String, bool),
-    UpdatePackPin(String, bool),
+
     // Aircraft & Plugins
     AircraftLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     ToggleAircraft(PathBuf, bool),
@@ -210,8 +208,6 @@ enum Message {
     DeleteAddon(Tab),
     DeleteAddonDirect(PathBuf, Tab),
     ConfirmDelete(Tab, bool),
-    LuaScriptsDetected(PathBuf, Tab, Vec<String>),
-    ConfirmInstallWithLua(PathBuf, Tab, bool),
 
     // Expansion & Scripts
     MapZoom {
@@ -250,10 +246,6 @@ enum Message {
     ),
     ApplySort(Arc<Vec<SceneryPack>>),
     CancelSort,
-
-    // Archive & Password
-    ArchivePasswordRequired(PathBuf, Tab, Option<Vec<String>>),
-    PasswordInputChanged(String),
 
     // Simulation Report interactions
     AutoFixIssue(String),        // Fixes all issues of a type
@@ -369,7 +361,8 @@ enum Message {
     AircraftSearchPrev,
     AircraftSearchSubmit,
     ExportAircraftList,
-    RemoveAircraftTag(String, String), // (AircraftName, Tag)
+    ToggleExportIncludeLiveries(bool),
+    ToggleExportExpandedFormat(bool),
     ToggleBucketItem(String),
     ClearBucket,
     ToggleBucket,
@@ -601,8 +594,6 @@ struct App {
     icon_arrow_down: svg::Handle,
     icon_edit: svg::Handle,
     icon_trash: svg::Handle,
-    icon_chevron_right: svg::Handle,
-    icon_chevron_down: svg::Handle,
 
     // Fallback Icons
     fallback_airliner: image::Handle,
@@ -658,15 +649,11 @@ struct App {
 
     // Scenery Search
     scenery_search_query: String,
-    pending_lua_install: Option<(PathBuf, Tab, Vec<String>)>,
-    archive_password_input: String,
     scenery_search_matches: Vec<usize>,
     scenery_search_index: Option<usize>,
     aircraft_search_query: String,
-    aircraft_search_matches: Vec<String>,
+    aircraft_search_matches: Vec<PathBuf>,
     aircraft_search_index: Option<usize>,
-    selected_smart_target: Option<String>,
-    aircraft_scroll_id: scrollable::Id,
     pub scenery_bucket: Vec<String>,
     pub scenery_last_bucket_index: Option<usize>,
     pub keyboard_modifiers: keyboard::Modifiers,
@@ -683,6 +670,8 @@ struct App {
     pub autopin_enabled: bool,
     pub scenery_is_saving: bool,
     pub scenery_save_pending: bool,
+    export_include_liveries: bool,
+    export_expanded_format: bool,
 
     // Modal
     active_modal: Option<ModalState>,
@@ -711,9 +700,6 @@ impl App {
         let mut app = Self {
             active_tab: Tab::Scenery,
             use_smart_view: false,
-            use_region_view: false,
-            region_expanded: std::collections::BTreeSet::new(),
-            smart_view_expanded: std::collections::BTreeSet::new(),
             packs: Arc::new(Vec::new()),
             aircraft: Arc::new(Vec::new()),
             aircraft_tree: None,
@@ -793,12 +779,6 @@ impl App {
             icon_trash: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/trash.svg").to_vec(),
             ),
-            icon_chevron_right: svg::Handle::from_memory(
-                include_bytes!("../assets/icons/chevron_right.svg").to_vec(),
-            ),
-            icon_chevron_down: svg::Handle::from_memory(
-                include_bytes!("../assets/icons/arrow_down.svg").to_vec(),
-            ),
             icon_grip: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/grab_hand.svg").to_vec(),
             ),
@@ -816,6 +796,9 @@ impl App {
             fallback_helicopter: image::Handle::from_bytes(
                 include_bytes!("../assets/fallback_helicopter.png").to_vec(),
             ),
+            smart_view_expanded: std::collections::BTreeSet::new(),
+            use_region_view: false,
+            region_expanded: std::collections::BTreeSet::new(),
             icon_overrides: std::collections::BTreeMap::new(),
             scan_exclusions: Vec::new(),
             scan_inclusions: Vec::new(),
@@ -863,15 +846,11 @@ impl App {
 
             // Scenery Search
             scenery_search_query: String::new(),
-            pending_lua_install: None,
-            archive_password_input: String::new(),
             scenery_search_matches: Vec::new(),
             scenery_search_index: None,
             aircraft_search_query: String::new(),
             aircraft_search_matches: Vec::new(),
             aircraft_search_index: None,
-            selected_smart_target: None,
-            aircraft_scroll_id: scrollable::Id::unique(),
             scenery_bucket: Vec::new(),
             scenery_last_bucket_index: None,
             keyboard_modifiers: keyboard::Modifiers::default(),
@@ -892,6 +871,8 @@ impl App {
             autopin_enabled: true, // Enabled by default as it's a "Smart" feature
             scenery_is_saving: false,
             scenery_save_pending: false,
+            export_include_liveries: true,
+            export_expanded_format: false,
             active_modal: None,
         };
 
@@ -1045,119 +1026,6 @@ impl App {
         if let Some(ref pm) = self.profile_manager {
             let _ = pm.save(&self.profiles);
         }
-    }
-
-    fn expand_smart_view_for_target(&mut self, target: &str) {
-        if target.starts_with("tag:") || target.starts_with("model:") {
-            self.smart_view_expanded.insert(target.to_string());
-            if target.starts_with("model:") {
-                let parts: Vec<&str> = target.split(':').collect();
-                if parts.len() >= 2 {
-                    self.smart_view_expanded.insert(format!("tag:{}", parts[1]));
-                }
-            }
-        } else {
-            // It's a path
-            let target_path = std::path::Path::new(target);
-            for (category, aircraft_list) in &self.smart_groups {
-                if aircraft_list.iter().any(|a| a.path == target_path) {
-                    self.smart_view_expanded.insert(format!("tag:{}", category));
-                    return;
-                }
-            }
-            for (category, model_map) in &self.smart_model_groups {
-                for (model, aircraft_list) in model_map {
-                    if aircraft_list.iter().any(|a| a.path == target_path) {
-                        self.smart_view_expanded.insert(format!("tag:{}", category));
-                        self.smart_view_expanded.insert(format!("model:{}:{}", category, model));
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    fn scroll_to_aircraft(&self, target: &str) -> Task<Message> {
-        let mut count = 0usize;
-        let found = if self.use_smart_view {
-            self.calculate_smart_offset(target, &mut count)
-        } else if let Some(ref tree) = self.aircraft_tree {
-            let target_path = std::path::Path::new(target);
-            Self::calculate_node_offset(tree, target_path, &mut count)
-        } else {
-            false
-        };
-
-        if found {
-            // Row height: padding 4+4 + text 14 + spacing 2 = ~24px
-            // Categories in Smart View are slightly taller (size 16) but ~24-30 is close
-            let offset = count as f32 * 26.0; 
-            scrollable::scroll_to(
-                self.aircraft_scroll_id.clone(),
-                scrollable::AbsoluteOffset { x: 0.0, y: offset },
-            )
-        } else {
-            Task::none()
-        }
-    }
-
-    fn calculate_smart_offset(&self, target_id: &str, count: &mut usize) -> bool {
-        for (tag, aircraft) in &self.smart_groups {
-            let tag_id = format!("tag:{}", tag);
-            if tag_id == target_id {
-                return true;
-            }
-            *count += 1;
-
-            if !self.smart_view_expanded.contains(&tag_id) {
-                continue;
-            }
-
-            let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
-            if is_manufacturer {
-                if let Some(model_groups) = self.smart_model_groups.get(tag) {
-                    for (model, acs) in model_groups {
-                        let model_id = format!("model:{}:{}", tag, model);
-                        if model_id == target_id {
-                            return true;
-                        }
-                        *count += 1;
-
-                        if self.smart_view_expanded.contains(&model_id) {
-                            for ac in acs {
-                                if ac.path.to_string_lossy() == target_id {
-                                    return true;
-                                }
-                                *count += 1;
-                            }
-                        }
-                    }
-                }
-            } else {
-                for ac in aircraft {
-                    if ac.path.to_string_lossy() == target_id {
-                        return true;
-                    }
-                    *count += 1;
-                }
-            }
-        }
-        false
-    }
-
-    fn calculate_node_offset(node: &AircraftNode, target_path: &std::path::Path, count: &mut usize) -> bool {
-        if node.path == target_path {
-            return true;
-        }
-        *count += 1;
-        if node.is_expanded {
-            for child in &node.children {
-                if Self::calculate_node_offset(child, target_path, count) {
-                    return true;
-                }
-            }
-        }
-        false
     }
 
     fn scroll_to_scenery_index(&self, index: usize) -> Task<Message> {
@@ -2192,18 +2060,6 @@ impl App {
                 }
                 Task::none()
             }
-            Message::UpdatePackPin(name, pinned) => {
-                let mut config = (*self.heuristics_model.config).clone();
-                if pinned {
-                    config.overrides.insert(name, 10);
-                } else {
-                    config.overrides.remove(&name);
-                }
-                self.heuristics_model.update_config(config);
-                let _ = self.heuristics_model.save();
-                self.sync_active_profile_scenery();
-                Task::none()
-            }
             Message::ToggleRegionView => {
                 self.use_region_view = !self.use_region_view;
                 Task::none()
@@ -2218,20 +2074,11 @@ impl App {
             }
             Message::SetRegionEnabled(region, enabled) => {
                 let mut states = std::collections::HashMap::new();
-                let mut new_packs = (*self.packs).clone();
-                let target_status = if enabled {
-                    SceneryPackType::Active
-                } else {
-                    SceneryPackType::Disabled
-                };
-
-                for pack in new_packs.iter_mut() {
+                for pack in self.packs.iter() {
                     if pack.get_region() == region {
-                        pack.status = target_status.clone();
                         states.insert(pack.name.clone(), enabled);
                     }
                 }
-                self.packs = Arc::new(new_packs);
 
                 if let Some(root) = &self.xplane_root {
                     let root_clone = root.clone();
@@ -2268,7 +2115,9 @@ impl App {
                         if self.scenery_save_pending {
                             return self.trigger_scenery_save();
                         }
-                        Task::none()
+                        // Reload scenery to reflect changes in UI
+                        let root = self.xplane_root.clone();
+                        Task::perform(async move { load_packs(root) }, Message::SceneryLoaded)
                     }
                     Err(e) => {
                         self.status = format!("Error saving scenery: {}", e);
@@ -2713,18 +2562,6 @@ impl App {
                 // Refresh to show changes
                 Task::done(Message::Refresh)
             }
-            Message::RemoveAircraftTag(name, tag) => {
-                let mut current_tags = self.selected_aircraft_tags.clone();
-                current_tags.retain(|t| t != &tag);
-
-                Arc::make_mut(&mut self.heuristics_model.config)
-                    .aircraft_overrides
-                    .insert(name, current_tags);
-                self.heuristics_model.refresh_regex_set();
-                let _ = self.heuristics_model.save();
-
-                Task::done(Message::Refresh)
-            }
             Message::Refresh => {
                 self.status = "Refreshing...".to_string();
                 let root = self.xplane_root.clone();
@@ -3016,7 +2853,6 @@ impl App {
             }
             Message::SelectAircraft(path) => {
                 self.selected_aircraft = Some(path.clone());
-                self.selected_smart_target = None;
                 self.selected_aircraft_name =
                     path.file_name().map(|n| n.to_string_lossy().to_string());
 
@@ -3153,87 +2989,42 @@ impl App {
                         );
                     }
 
-                    let zip_path_clone = zip_path.clone();
-                    self.status = format!("Scanning archive {:?}...", zip_path.file_name().unwrap_or_default());
-                    let password = if self.archive_password_input.is_empty() { None } else { Some(self.archive_password_input.clone()) };
-                    
-                    return Task::perform(
-                        async move { scan_archive_for_lua(zip_path_clone, password).await },
-                        move |res| {
-                            match res {
-                                Ok(lua_files) if !lua_files.is_empty() => {
-                                    Message::LuaScriptsDetected(zip_path.clone(), tab, lua_files)
-                                }
-                                Err(e) if e == "PASSWORD_REQUIRED" => {
-                                    Message::ArchivePasswordRequired(zip_path.clone(), tab, None)
-                                }
-                                _ => Message::ConfirmInstallWithLua(zip_path.clone(), tab, false),
-                            }
-                        }
+                    let root = self.xplane_root.clone();
+                    let model = self.heuristics_model.clone();
+                    let context = x_adox_bitnet::PredictContext {
+                        region_focus: self.region_focus.clone(),
+                        ..Default::default()
+                    };
+                    self.status = format!("Installing to {:?}...", tab);
+                    self.install_progress = Some(0.0);
+
+                    return Task::run(
+                        iced::stream::channel(
+                            10,
+                            move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+                                let mut output_progress = output.clone();
+                                let res = install_addon(
+                                    root,
+                                    zip_path,
+                                    tab,
+                                    None,
+                                    model,
+                                    context,
+                                    move |p| {
+                                        let _ =
+                                            output_progress.try_send(Message::InstallProgress(p));
+                                    },
+                                )
+                                .await;
+                                let _ = output.try_send(Message::InstallComplete(res));
+                            },
+                        ),
+                        |msg| msg,
                     );
                 } else {
                     self.status = "Install cancelled".to_string();
                     Task::none()
                 }
-            }
-            Message::LuaScriptsDetected(zip_path, tab, lua_files) => {
-                let message = format!(
-                    "The archive contains Lua scripts:\n\n{}\n\nLua scripts can modify X-Plane's behavior. Do you want to proceed with the installation?",
-                    lua_files.join("\n")
-                );
-                Task::done(Message::ShowModal(ModalState {
-                    title: "Lua Scripts Detected".to_string(),
-                    message,
-                    confirm_type: ConfirmType::InstallLua(zip_path, tab, lua_files),
-                    is_danger: false, // Not necessarily dangerous, but user should be aware
-                }))
-            }
-            Message::ConfirmInstallWithLua(zip_path, tab, confirmed) => {
-                self.active_modal = None;
-                let root = self.xplane_root.clone();
-                let model = self.heuristics_model.clone();
-                let context = x_adox_bitnet::PredictContext {
-                    region_focus: self.region_focus.clone(),
-                    ..Default::default()
-                };
-                let password = if self.archive_password_input.is_empty() { None } else { Some(self.archive_password_input.clone()) };
-                self.status = format!("Installing to {:?}...", tab);
-                self.install_progress = Some(0.0);
-
-                return Task::run(
-                    iced::stream::channel(
-                        10,
-                        move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-                            let mut output_progress = output.clone();
-                            let zip_path_inner = zip_path.clone(); // Clone for potential error reporting
-                            let tab_inner = tab;
-                            let res = install_addon(
-                                root,
-                                zip_path,
-                                tab,
-                                None,
-                                model,
-                                context,
-                                confirmed,
-                                password,
-                                move |p| {
-                                    let _ =
-                                        output_progress.try_send(Message::InstallProgress(p));
-                                },
-                            )
-                            .await;
-                            
-                            if let Err(ref e) = res {
-                                if e == "PASSWORD_REQUIRED" {
-                                    let _ = output.try_send(Message::ArchivePasswordRequired(zip_path_inner, tab_inner, None));
-                                    return;
-                                }
-                            }
-                            let _ = output.try_send(Message::InstallComplete(res));
-                        },
-                    ),
-                    |msg| msg,
-                );
             }
             Message::InstallAircraftDestPicked(zip_path, dest_opt) => {
                 if let Some(dest_path) = dest_opt {
@@ -3243,7 +3034,6 @@ impl App {
                         region_focus: self.region_focus.clone(),
                         ..Default::default()
                     };
-                    let password = if self.archive_password_input.is_empty() { None } else { Some(self.archive_password_input.clone()) };
                     self.status = format!("Installing to {}...", dest_path.display());
                     self.install_progress = Some(0.0);
 
@@ -3252,7 +3042,6 @@ impl App {
                             10,
                             move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
                                 let mut output_progress = output.clone();
-                                let zip_path_inner = zip_path.clone();
                                 let res = install_addon(
                                     root,
                                     zip_path,
@@ -3260,20 +3049,12 @@ impl App {
                                     Some(dest_path),
                                     model,
                                     context,
-                                    false,
-                                    password,
                                     move |p| {
                                         let _ =
                                             output_progress.try_send(Message::InstallProgress(p));
                                     },
                                 )
                                 .await;
-                                if let Err(ref e) = res {
-                                    if e == "PASSWORD_REQUIRED" {
-                                        let _ = output.try_send(Message::ArchivePasswordRequired(zip_path_inner, Tab::Aircraft, None));
-                                        return;
-                                    }
-                                }
                                 let _ = output.try_send(Message::InstallComplete(res));
                             },
                         ),
@@ -3296,19 +3077,6 @@ impl App {
                     }
                 }
                 Task::none()
-            }
-            Message::PasswordInputChanged(pass) => {
-                self.archive_password_input = pass;
-                Task::none()
-            }
-            Message::ArchivePasswordRequired(path, tab, lua_files) => {
-                self.archive_password_input.clear();
-                Task::done(Message::ShowModal(ModalState {
-                    title: "Password Protected Archive".to_string(),
-                    message: format!("The archive {} is password protected. Please enter the password:", path.display()),
-                    confirm_type: ConfirmType::PasswordRequired(path, tab, lua_files),
-                    is_danger: false,
-                }))
             }
             Message::DeleteAddon(tab) => {
                 let (name_opt, path) = match tab {
@@ -3623,40 +3391,20 @@ impl App {
                     self.aircraft_search_matches.clear();
                     self.aircraft_search_index = None;
                 } else {
-                    let q = self.aircraft_search_query.clone();
-                    let mut matches = Vec::new();
-
-                    if !self.use_smart_view {
-                        if let Some(ref tree) = self.aircraft_tree {
-                            collect_search_matches(tree, &q, &mut matches);
-                        }
-                    } else {
-                        collect_smart_search_matches(&self.smart_groups, &self.smart_model_groups, &q, &mut matches);
-                    }
-
-                    self.aircraft_search_matches = matches;
+                    let q = self.aircraft_search_query.to_lowercase();
+                    self.aircraft_search_matches = self
+                        .aircraft
+                        .iter()
+                        .filter(|a| a.name.to_lowercase().contains(&q))
+                        .map(|a| a.path.clone())
+                        .collect();
 
                     if self.aircraft_search_matches.is_empty() {
                         self.aircraft_search_index = None;
                     } else {
                         self.aircraft_search_index = Some(0);
-                        let target = self.aircraft_search_matches[0].clone();
-                        
-                        if target.starts_with("tag:") || target.starts_with("model:") {
-                            self.selected_smart_target = Some(target.clone());
-                            self.selected_aircraft = None;
-                        } else {
-                            self.selected_smart_target = None;
-                            self.selected_aircraft = Some(PathBuf::from(target.clone()));
-                        }
-                        
-                        // Auto-expand to show the result
-                        if self.use_smart_view {
-                            self.expand_smart_view_for_target(&target);
-                        } else if let Some(ref mut tree) = self.aircraft_tree {
-                            expand_to_aircraft_path(Arc::make_mut(tree), Path::new(&target));
-                        }
-                        return self.scroll_to_aircraft(&target);
+                        let target_path = self.aircraft_search_matches[0].clone();
+                        self.selected_aircraft = Some(target_path);
                     }
                 }
                 Task::none()
@@ -3666,23 +3414,8 @@ impl App {
                     if !self.aircraft_search_matches.is_empty() {
                         let next = (current + 1) % self.aircraft_search_matches.len();
                         self.aircraft_search_index = Some(next);
-                        let target = self.aircraft_search_matches[next].clone();
-
-                        if target.starts_with("tag:") || target.starts_with("model:") {
-                            self.selected_smart_target = Some(target.clone());
-                            self.selected_aircraft = None;
-                        } else {
-                            self.selected_smart_target = None;
-                            self.selected_aircraft = Some(PathBuf::from(target.clone()));
-                        }
-
-                        // Auto-expand to show the result
-                        if self.use_smart_view {
-                            self.expand_smart_view_for_target(&target);
-                        } else if let Some(ref mut tree) = self.aircraft_tree {
-                            expand_to_aircraft_path(Arc::make_mut(tree), Path::new(&target));
-                        }
-                        return self.scroll_to_aircraft(&target);
+                        let target_path = self.aircraft_search_matches[next].clone();
+                        self.selected_aircraft = Some(target_path);
                     }
                 }
                 Task::none()
@@ -3696,23 +3429,8 @@ impl App {
                             current - 1
                         };
                         self.aircraft_search_index = Some(prev);
-                        let target = self.aircraft_search_matches[prev].clone();
-
-                        if target.starts_with("tag:") || target.starts_with("model:") {
-                            self.selected_smart_target = Some(target.clone());
-                            self.selected_aircraft = None;
-                        } else {
-                            self.selected_smart_target = None;
-                            self.selected_aircraft = Some(PathBuf::from(target.clone()));
-                        }
-
-                        // Auto-expand to show the result
-                        if self.use_smart_view {
-                            self.expand_smart_view_for_target(&target);
-                        } else if let Some(ref mut tree) = self.aircraft_tree {
-                            expand_to_aircraft_path(Arc::make_mut(tree), Path::new(&target));
-                        }
-                        return self.scroll_to_aircraft(&target);
+                        let target_path = self.aircraft_search_matches[prev].clone();
+                        self.selected_aircraft = Some(target_path);
                     }
                 }
                 Task::none()
@@ -3720,8 +3438,10 @@ impl App {
             Message::AircraftSearchSubmit => Task::done(Message::AircraftSearchNext),
             Message::ExportAircraftList => {
                 let aircraft = self.aircraft.clone();
+                let include_liveries = self.export_include_liveries;
+                let expanded_format = self.export_expanded_format;
                 Task::perform(
-                    async move { export_aircraft_task(aircraft).await },
+                    async move { export_aircraft_task(aircraft, include_liveries, expanded_format).await },
                     |res| match res {
                         Ok(path) => Message::StatusChanged(format!(
                             "Aircraft list exported to {}",
@@ -3730,6 +3450,14 @@ impl App {
                         Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
                     },
                 )
+            }
+            Message::ToggleExportIncludeLiveries(v) => {
+                self.export_include_liveries = v;
+                Task::none()
+            }
+            Message::ToggleExportExpandedFormat(v) => {
+                self.export_expanded_format = v;
+                Task::none()
             }
             Message::BackupUserData => {
                 let xplane_root = self.xplane_root.clone();
@@ -4111,17 +3839,6 @@ impl App {
                         // Implement bulk delete for log issues if needed
                         Task::none()
                     }
-                    ConfirmType::InstallLua(zip_path, tab, _) => {
-                         // Default action from modal "Confirm" is "Move to FlyWithLua"
-                         Task::done(Message::ConfirmInstallWithLua(zip_path, tab, true))
-                    }
-                    ConfirmType::PasswordRequired(path, tab, lua_files) => {
-                        if let Some(lua) = lua_files {
-                             Task::done(Message::LuaScriptsDetected(path, tab, lua))
-                        } else {
-                             Task::done(Message::InstallPicked(tab, Some(path)))
-                        }
-                    }
                 }
             }
         }
@@ -4312,96 +4029,29 @@ impl App {
         let title = text(&modal.title).size(20).color(Color::WHITE);
         let message = text(&modal.message).size(16).color(style::palette::TEXT_SECONDARY);
 
-        let mut buttons = Vec::new();
+        let confirm_btn = button(text("Confirm").size(14))
+            .on_press(Message::ConfirmModal(modal.confirm_type.clone()))
+            .style(if modal.is_danger {
+                style::button_danger
+            } else {
+                style::button_primary
+            })
+            .padding([10, 25]);
 
-        match &modal.confirm_type {
-            ConfirmType::InstallLua(zip_path, tab, _) => {
-                let zip_path = zip_path.clone();
-                let tab = *tab;
-
-                buttons.push(
-                    button(text("Move to FlyWithLua").size(14))
-                        .on_press(Message::ConfirmInstallWithLua(zip_path.clone(), tab, true))
-                        .style(style::button_primary)
-                        .padding([10, 25])
-                        .into(),
-                );
-                buttons.push(
-                    button(text("Install Normally").size(14))
-                        .on_press(Message::ConfirmInstallWithLua(zip_path.clone(), tab, false))
-                        .style(style::button_secondary)
-                        .padding([10, 20])
-                        .into(),
-                );
-                buttons.push(
-                    button(text("Abort").size(14))
-                        .on_press(Message::CloseModal)
-                        .style(style::button_secondary)
-                        .padding([10, 20])
-                        .into(),
-                );
-            }
-            ConfirmType::PasswordRequired(_, _, _) => {
-                buttons.push(
-                    button(text("Cancel").size(14))
-                        .on_press(Message::CloseModal)
-                        .style(style::button_secondary)
-                        .padding([10, 20])
-                        .into(),
-                );
-                buttons.push(
-                    button(text("Unlock").size(14))
-                        .on_press(Message::ConfirmModal(modal.confirm_type.clone()))
-                        .style(style::button_primary)
-                        .padding([10, 25])
-                        .into(),
-                );
-            }
-            _ => {
-                buttons.push(
-                    button(text("Cancel").size(14))
-                        .on_press(Message::CloseModal)
-                        .style(style::button_secondary)
-                        .padding([10, 20])
-                        .into(),
-                );
-                buttons.push(
-                    button(text("Confirm").size(14))
-                        .on_press(Message::ConfirmModal(modal.confirm_type.clone()))
-                        .style(if modal.is_danger {
-                            style::button_danger
-                        } else {
-                            style::button_primary
-                        })
-                        .padding([10, 25])
-                        .into(),
-                );
-            }
-        }
+        let cancel_btn = button(text("Cancel").size(14))
+            .on_press(Message::CloseModal)
+            .style(style::button_secondary)
+            .padding([10, 20]);
 
         container(
             column![
                 title,
                 message,
-                if matches!(modal.confirm_type, ConfirmType::PasswordRequired(_, _, _)) {
-                    iced::Element::from(
-                        column![
-                            text_input("Password", &self.archive_password_input)
-                                .on_input(Message::PasswordInputChanged)
-                                .secure(true)
-                                .padding(10)
-                                .style(style::text_input_primary)
-                                .width(Length::Fill)
-                        ].spacing(10)
-                    )
-                } else {
-                    iced::Element::from(iced::widget::Space::with_height(0.0))
-                },
-                row(buttons).spacing(15).align_y(iced::Alignment::Center)
+                row![cancel_btn, confirm_btn].spacing(15).align_y(iced::Alignment::Center)
             ]
             .spacing(20)
             .padding(30)
-            .width(Length::Fixed(550.0)) // Wider for 3 buttons
+            .width(Length::Fixed(450.0))
         )
         .style(style::container_card)
         .into()
@@ -6460,15 +6110,15 @@ impl App {
         let drag_id = self.drag_context.as_ref().map(|ctx| ctx.source_index);
         let hover_id = self.drag_context.as_ref().and_then(|ctx| ctx.hover_target_index);
         let is_dragging = self.drag_context.is_some();
-        let use_region_view = self.use_region_view;
-        let region_expanded = self.region_expanded.clone();
 
         let current_search_match = self.scenery_search_index
             .and_then(|idx| self.scenery_search_matches.get(idx).cloned());
 
         let bucket = self.scenery_bucket.clone();
+        let use_region_view = self.use_region_view;
+        let region_expanded = self.region_expanded.clone();
 
-        // 5. Region View Grouping (Pre-calculated for lazy widget)
+        // Region View Grouping (Pre-calculated for lazy widget)
         let mut region_groups: std::collections::BTreeMap<String, Vec<(usize, SceneryPack)>> = std::collections::BTreeMap::new();
         if self.use_region_view {
             for (idx, pack) in self.packs.iter().enumerate() {
@@ -6476,14 +6126,11 @@ impl App {
                 region_groups.entry(region).or_default().push((idx, pack.clone()));
             }
         }
-        let region_groups = Arc::new(region_groups);
+        let region_groups = std::sync::Arc::new(region_groups);
 
-        let icon_chevron_right = self.icon_chevron_right.clone();
-        let icon_chevron_down = self.icon_chevron_down.clone();
-        
         let list_container = scrollable(lazy(
-            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups, icon_chevron_right, icon_chevron_down),
-            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups, icon_chevron_right, icon_chevron_down)| {
+            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups),
+            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups)| {
                 let mut items = Vec::new();
 
                 if *use_region_view {
@@ -6498,7 +6145,6 @@ impl App {
                             is_expanded,
                             is_any_enabled,
                             is_any_in_bucket,
-                            (icon_chevron_right.clone(), icon_chevron_down.clone()),
                         ));
 
                         if is_expanded {
@@ -6670,24 +6316,12 @@ impl App {
                     .padding([6, 12])
                 },
                 button(
-                    Row::<Message, Theme, Renderer>::new()
-                        .push(
-                            svg(self.icon_scenery.clone())
-                                .width(14)
-                                .height(14)
-                                .style(move |_, _| svg::Style {
-                                    color: Some(if self.use_region_view {
-                                        Color::WHITE
-                                    } else {
-                                        style::palette::TEXT_SECONDARY
-                                    }),
-                                }),
-                        )
-                        .push(
-                            text(if self.use_region_view { "Flat View" } else { "Region View" }).size(12)
-                        )
-                        .spacing(8)
-                        .align_y(iced::Alignment::Center)
+                    text(if self.use_region_view {
+                        "Flat View"
+                    } else {
+                        "Group by Region"
+                    })
+                    .size(12)
                 )
                 .on_press(Message::ToggleRegionView)
                 .style(if self.use_region_view {
@@ -7064,6 +6698,32 @@ impl App {
         .on_press(Message::AddExclusion)
         .padding(10)
         .style(style::button_primary);
+        
+        // 2. Export Settings Section
+        let export_settings: Element<'_, Message> = container(
+            column![
+                text("Aircraft Export Settings").size(18),
+                text("Customize the format and content of your aircraft library exports.")
+                    .size(12)
+                    .color(style::palette::TEXT_SECONDARY),
+                column![
+                    checkbox("Include Livery Names", self.export_include_liveries)
+                        .on_toggle(Message::ToggleExportIncludeLiveries)
+                        .size(18)
+                        .text_size(14),
+                    checkbox("Expanded Format (Power User: One row per livery)", self.export_expanded_format)
+                        .on_toggle(Message::ToggleExportExpandedFormat)
+                        .size(18)
+                        .text_size(14)
+                ]
+                .spacing(10)
+            ]
+            .spacing(10),
+        )
+        .padding(20)
+        .style(style::container_card)
+        .width(Length::Fill)
+        .into();
 
         // 3. Map Filter Section
         let mut filter_content = Column::<'_, Message, Theme, Renderer>::new().spacing(5);
@@ -7173,6 +6833,7 @@ impl App {
                 .align_y(iced::Alignment::Center),
                 
                 backup_section,
+                export_settings,
 
                 iced::widget::horizontal_rule(1.0),
 
@@ -7383,24 +7044,15 @@ impl App {
         is_expanded: bool,
         is_any_enabled: bool,
         is_any_in_bucket: bool,
-        icons: (svg::Handle, svg::Handle),
     ) -> Element<'static, Message> {
-        let (icon_right, icon_down) = icons;
         let region_for_toggle = region.clone();
         let region_for_enabled = region.clone();
         let region_for_bucket = region.clone();
         
         let content = row![
-            svg(if is_expanded { icon_down } else { icon_right })
-                .width(16)
-                .height(16)
-                .style(move |_, _| svg::Style {
-                    color: if is_expanded { 
-                        Some(style::palette::ACCENT_BLUE) 
-                    } else { 
-                        Some(style::palette::TEXT_PRIMARY) 
-                    },
-                }),
+            text(if is_expanded { "v" } else { ">" })
+                .size(14)
+                .width(Length::Fixed(20.0)),
             text(region).size(16).width(Length::Fill),
             text(format!("({} packs)", count))
                 .size(12)
@@ -7959,7 +7611,6 @@ impl App {
             let use_smart = self.use_smart_view;
             let tree = self.aircraft_tree.clone();
             let selected = self.selected_aircraft.clone();
-            let selected_smart = self.selected_smart_target.clone();
             let smart_groups = self.smart_groups.clone();
             let smart_model_groups = self.smart_model_groups.clone();
             let icon_trash = self.icon_trash.clone();
@@ -7969,33 +7620,30 @@ impl App {
                     use_smart,
                     tree,
                     selected,
-                    selected_smart,
                     self.smart_view_expanded.clone(),
                     smart_groups,
                     smart_model_groups,
                     icon_trash,
                 ),
-                move |(use_smart, tree, selected, selected_smart, expanded, smart_groups, smart_model_groups, icon_trash)| {
+                move |(use_smart, tree, selected, expanded, smart_groups, smart_model_groups, icon_trash)| {
                     let items: Vec<Element<'_, Message, Theme, Renderer>> = if *use_smart {
                         Self::collect_smart_nodes(
                             smart_groups,
                             smart_model_groups,
                             selected,
-                            selected_smart,
                             expanded,
                             icon_trash.clone(),
                         )
                     } else {
                         match tree {
                             Some(t) => Self::collect_tree_nodes(t, 0, selected, icon_trash.clone()),
-                            None => vec![],
+                            None => vec![Element::from(text("Loading aircraft...").size(14))],
                         }
                     };
                     Element::from(column(items).spacing(2))
                 },
             ))
             .height(Length::Fill)
-            .id(self.aircraft_scroll_id.clone())
             .into()
         };
 
@@ -8055,30 +7703,16 @@ impl App {
         ];
 
         let preview: Element<'_, Message> = if let Some(icon) = &self.selected_aircraft_icon {
-            let tags_row = row(if let Some(name) = &self.selected_aircraft_name {
-                let name = name.clone();
-                self.selected_aircraft_tags
-                    .iter()
-                    .map(|t| {
-                        container(
-                            row![
-                                text(t).size(12).color(style::palette::TEXT_PRIMARY),
-                                button(text("×").size(12).color(style::palette::TEXT_PRIMARY))
-                                    .on_press(Message::RemoveAircraftTag(name.clone(), t.clone()))
-                                    .style(style::button_ghost)
-                                    .padding(0)
-                            ]
-                            .spacing(4)
-                            .align_y(iced::Alignment::Center)
-                        )
+            let tags_row = row(self
+                .selected_aircraft_tags
+                .iter()
+                .map(|t| {
+                    container(text(t).size(12).color(style::palette::TEXT_PRIMARY))
                         .padding([4, 8])
                         .style(style::container_card)
                         .into()
-                    })
-                    .collect::<Vec<_>>()
-            } else {
-                vec![]
-            })
+                })
+                .collect::<Vec<_>>())
             .spacing(5)
             .wrap();
 
@@ -8198,14 +7832,21 @@ impl App {
         selected_aircraft: &Option<std::path::PathBuf>,
         icon_trash: svg::Handle,
     ) -> Vec<Element<'static, Message>> {
-        let mut result = vec![Self::render_aircraft_row(node, depth, selected_aircraft, icon_trash.clone())];
+        let mut result = Vec::new();
+        
+        // Skip rendering the root "Addon Library" node - show children directly
+        let is_root = node.path.as_os_str().is_empty() || node.name == "Addon Library";
+        
+        if !is_root {
+            result.push(Self::render_aircraft_row(node, depth, selected_aircraft, icon_trash.clone()));
+        }
 
-        // Collect children if expanded
-        if node.is_expanded {
+        // Collect children if expanded (root is always treated as expanded)
+        if node.is_expanded || is_root {
             for child in &node.children {
                 result.extend(Self::collect_tree_nodes(
                     child,
-                    depth + 1,
+                    if is_root { 0 } else { depth + 1 },
                     selected_aircraft,
                     icon_trash.clone(),
                 ));
@@ -8347,7 +7988,6 @@ impl App {
             std::collections::BTreeMap<String, Vec<AircraftNode>>,
         >,
         selected_aircraft: &Option<std::path::PathBuf>,
-        selected_smart: &Option<String>,
         expanded_smart: &std::collections::BTreeSet<String>,
         icon_trash: svg::Handle,
     ) -> Vec<Element<'static, Message>> {
@@ -8358,33 +7998,18 @@ impl App {
             let is_expanded = expanded_smart.contains(&tag_id);
             let icon = if is_expanded { "v" } else { ">" };
 
-            let is_selected = if let Some(sel) = selected_smart {
-                sel == &tag_id
-            } else {
-                false
-            };
-
-            let style = if is_selected {
-                style::button_primary
-            } else {
-                style::button_ghost
-            };
-
             result.push(
                 row![
                     button(text(icon).size(14))
-                        .on_press(Message::ToggleSmartFolder(tag_id.clone()))
+                        .on_press(Message::ToggleSmartFolder(tag_id))
                         .padding([4, 8])
                         .style(style::button_ghost),
-                    button(container(text(tag.clone()).size(16)).padding(iced::Padding {
+                    container(text(tag.clone()).size(16)).padding(iced::Padding {
                         top: 5.0,
                         right: 5.0,
                         bottom: 5.0,
                         left: 5.0,
-                    }))
-                    .on_press(Message::ToggleSmartFolder(tag_id))
-                    .style(style)
-                    .width(Length::Fill)
+                    })
                 ]
                 .align_y(iced::Alignment::Center)
                 .into(),
@@ -8401,18 +8026,6 @@ impl App {
                     for (model, acs) in model_groups {
                         let model_id = format!("model:{}:{}", tag, model);
                         let model_expanded = expanded_smart.contains(&model_id);
-
-                        let is_selected = if let Some(sel) = selected_smart {
-                            sel == &model_id
-                        } else {
-                            false
-                        };
-
-                        let style = if is_selected {
-                            style::button_primary
-                        } else {
-                            style::button_ghost
-                        };
 
                         let folder = AircraftNode {
                             name: model.clone(),
@@ -8439,17 +8052,14 @@ impl App {
                                 container(text("")).width(Length::Fixed(indent)),
                                 row![
                                     button(text(icon).size(14))
-                                        .on_press(Message::ToggleSmartFolder(model_id.clone()))
+                                        .on_press(Message::ToggleSmartFolder(model_id))
                                         .padding([4, 8])
                                         .style(style::button_ghost),
                                     button(text(folder.name).size(14).color(label_color))
-                                        .on_press(Message::ToggleSmartFolder(model_id))
-                                        .style(style)
+                                        .style(style::button_ghost)
                                         .padding([4, 8])
-                                        .width(Length::Fill)
                                 ]
                                 .spacing(5)
-                                .width(Length::Fill)
                             ]
                             .into(),
                         );
@@ -8465,9 +8075,7 @@ impl App {
                 }
             } else {
                 for ac in aircraft {
-                    let mut ac = ac.clone();
-                    ac.acf_file = None;
-                    result.push(Self::render_aircraft_row(&ac, 1, selected_aircraft, icon_trash.clone()));
+                    result.push(Self::render_aircraft_row(ac, 1, selected_aircraft, icon_trash.clone()));
                 }
             }
         }
@@ -9069,91 +8677,6 @@ fn toggle_folder_at_path(node: &mut AircraftNode, target_path: &std::path::Path)
     }
 }
 
-fn expand_to_aircraft_path(node: &mut AircraftNode, target_path: &std::path::Path) -> bool {
-    if node.path == target_path {
-        return true;
-    }
-
-    if target_path.starts_with(&node.path) {
-        let mut found = false;
-        for child in &mut node.children {
-            if expand_to_aircraft_path(child, target_path) {
-                found = true;
-                break;
-            }
-        }
-        if found {
-            node.is_expanded = true;
-            return true;
-        }
-    }
-    false
-}
-
-fn collect_search_matches(node: &AircraftNode, query: &str, matches: &mut Vec<String>) {
-    let q = query.to_lowercase();
-    let name_match = node.name.to_lowercase().contains(&q);
-    let acf_match = node
-        .acf_file
-        .as_ref()
-        .map(|f| f.to_lowercase().contains(&q))
-        .unwrap_or(false);
-
-    if name_match || acf_match {
-        matches.push(node.path.to_string_lossy().to_string());
-    }
-
-    for child in &node.children {
-        collect_search_matches(child, query, matches);
-    }
-}
-
-fn collect_smart_search_matches(
-    smart_groups: &std::collections::BTreeMap<String, Vec<AircraftNode>>,
-    smart_model_groups: &std::collections::BTreeMap<
-        String,
-        std::collections::BTreeMap<String, Vec<AircraftNode>>,
-    >,
-    query: &str,
-    matches: &mut Vec<String>,
-) {
-    let q = query.to_lowercase();
-
-    for (tag, aircraft) in smart_groups {
-        let tag_id = format!("tag:{}", tag);
-        if tag.to_lowercase().contains(&q) {
-            matches.push(tag_id.clone());
-        }
-
-        let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
-        if is_manufacturer {
-            if let Some(model_groups) = smart_model_groups.get(tag) {
-                for (model, acs) in model_groups {
-                    let model_id = format!("model:{}:{}", tag, model);
-                    if model.to_lowercase().contains(&q) {
-                        matches.push(model_id);
-                    }
-                    for ac in acs {
-                        let name_match = ac.name.to_lowercase().contains(&q);
-                        let acf_match = ac.acf_file.as_ref().map(|f| f.to_lowercase().contains(&q)).unwrap_or(false);
-                        if name_match || acf_match {
-                            matches.push(ac.path.to_string_lossy().to_string());
-                        }
-                    }
-                }
-            }
-        } else {
-            for ac in aircraft {
-                let name_match = ac.name.to_lowercase().contains(&q);
-                let acf_match = ac.acf_file.as_ref().map(|f| f.to_lowercase().contains(&q)).unwrap_or(false);
-                if name_match || acf_match {
-                    matches.push(ac.path.to_string_lossy().to_string());
-                }
-            }
-        }
-    }
-}
-
 async fn install_addon(
     root: Option<PathBuf>,
     zip_path: PathBuf,
@@ -9161,12 +8684,10 @@ async fn install_addon(
     dest_override: Option<PathBuf>,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
-    move_lua: bool,
-    password: Option<String>,
     on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let res = tokio::task::spawn_blocking(move || {
-        extract_archive_task(root, zip_path, tab, dest_override, model, context, move_lua, password, on_progress)
+        extract_archive_task(root, zip_path, tab, dest_override, model, context, on_progress)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -9186,79 +8707,42 @@ fn extract_zip_task(
     dest_override: Option<PathBuf>,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
-    move_lua: bool,
-    password: Option<String>,
     mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
-    let root_val = root.ok_or("X-Plane root not found".to_string())?;
-
-    let dest_dir = if let Some(dest) = dest_override {
-        dest
-    } else {
-        match tab {
-            Tab::Aircraft => root_val.join("Aircraft"),
-            Tab::Plugins => root_val.join("Resources").join("plugins"),
-            Tab::Scenery => root_val.join("Custom Scenery"),
-            Tab::CSLs => root_val.join("Resources").join("plugins"),
-            _ => return Err("Unsupported install tab".to_string()),
-        }
-    };
-
     // Open the zip file
     let file = std::fs::File::open(&zip_path).map_err(|e| format!("Failed to open zip: {}", e))?;
     let mut archive =
         zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
 
-    // Detect if the zip is flat or has a single top-level folder
-    let mut root_folders = std::collections::HashSet::new();
-    let mut root_files = false;
-    for name in archive.file_names() {
-        if let Some(pos) = name.find('/') {
-            root_folders.insert(&name[..pos]);
-        } else if !name.is_empty() {
-            root_files = true;
-        }
-    }
-
-    let is_flat = root_files || root_folders.len() != 1;
-    let archive_stem = zip_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Unknown".to_string());
-    
-    let (target_dir, top_folder) = if is_flat {
-        (dest_dir.join(&archive_stem), archive_stem)
+    // Determine the top-level folder name from the zip
+    let top_folder = if let Some(first) = archive.file_names().next() {
+        first.split('/').next().unwrap_or("Unknown").to_string()
     } else {
-        let folder = root_folders.into_iter().next().unwrap_or("Unknown").to_string();
-        (dest_dir.clone(), folder)
+        return Err("Empty zip archive".to_string());
     };
 
-    let _ = std::fs::create_dir_all(&target_dir);
+    let root = root.ok_or("X-Plane root not found".to_string())?;
+
+    let dest_dir = if let Some(dest) = dest_override {
+        dest
+    } else {
+        match tab {
+            Tab::Aircraft => root.join("Aircraft"),
+            Tab::Plugins => root.join("Resources").join("plugins"),
+            Tab::Scenery => root.join("Custom Scenery"),
+            Tab::CSLs => root.join("Resources").join("plugins"),
+            _ => return Err("Unsupported install tab".to_string()),
+        }
+    };
 
     // Extract to destination
     let total_files = archive.len();
     for i in 0..total_files {
-        let is_encrypted = {
-            let file = archive.by_index(i).map_err(|e| format!("Failed to read zip entry: {}", e))?;
-            file.encrypted()
-        };
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read zip entry: {}", e))?;
 
-        let mut file = if is_encrypted {
-            if let Some(pass) = &password {
-                archive.by_index_decrypt(i, pass.as_bytes())
-                    .map_err(|e| format!("Password incorrect or failed to decrypt zip entry: {}", e))?
-            } else {
-                return Err("PASSWORD_REQUIRED".to_string());
-            }
-        } else {
-            archive.by_index(i).map_err(|e| format!("Failed to read zip entry: {}", e))?
-        };
-
-        let mut outpath = target_dir.join(file.name());
-
-        if move_lua && file.name().to_lowercase().ends_with(".lua") {
-            let lua_dest = root_val.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
-            let _ = std::fs::create_dir_all(&lua_dest);
-            let file_name = Path::new(file.name()).file_name().unwrap_or_default();
-            outpath = lua_dest.join(file_name);
-        }
+        let outpath = dest_dir.join(file.name());
 
         if file.name().ends_with('/') {
             std::fs::create_dir_all(&outpath)
@@ -9280,7 +8764,7 @@ fn extract_zip_task(
 
     // Special handling for Scenery: add to scenery_packs.ini
     if matches!(tab, Tab::Scenery) {
-        let xpm = XPlaneManager::new(&root_val).map_err(|e| e.to_string())?;
+        let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
         let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
         sm.load().map_err(|e| e.to_string())?;
         
@@ -9299,104 +8783,48 @@ fn extract_7z_task(
     dest_override: Option<PathBuf>,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
-    move_lua: bool,
-    password: Option<String>,
     mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
-    let root_val = root.clone().ok_or("X-Plane root not found".to_string())?;
+    let root = root.ok_or("X-Plane root not found".to_string())?;
 
     let dest_dir = if let Some(dest) = dest_override {
         dest
     } else {
         match tab {
-            Tab::Aircraft => root_val.join("Aircraft"),
-            Tab::Plugins => root_val.join("Resources").join("plugins"),
-            Tab::Scenery => root_val.join("Custom Scenery"),
-            Tab::CSLs => root_val.join("Resources").join("plugins"),
+            Tab::Aircraft => root.join("Aircraft"),
+            Tab::Plugins => root.join("Resources").join("plugins"),
+            Tab::Scenery => root.join("Custom Scenery"),
+            Tab::CSLs => root.join("Resources").join("plugins"),
             _ => return Err("Unsupported install tab".to_string()),
         }
     };
 
+    // Signal start of extraction
     on_progress(5.0);
 
-    let archive_stem = archive_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Unknown".to_string());
-    let temp_dir = dest_dir.join(format!(".oxide_tmp_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
-    let _ = std::fs::create_dir_all(&temp_dir);
+    // Extract using sevenz-rust2
+    sevenz_rust2::decompress_file(&archive_path, &dest_dir)
+        .map_err(|e| format!("Failed to extract 7z: {}", e))?;
 
-    if let Some(pass) = &password {
-        let p = sevenz_rust2::Password::from(pass.as_str());
-        sevenz_rust2::decompress_file_with_password(&archive_path, &temp_dir, p)
-            .map_err(|e| format!("Failed to extract 7z: {}", e))?;
-    } else {
-        match sevenz_rust2::decompress_file(&archive_path, &temp_dir) {
-            Ok(_) => {},
-            Err(e) if e.to_string().contains("Password") || e.to_string().contains("encrypted") => {
-                let _ = std::fs::remove_dir_all(&temp_dir);
-                return Err("PASSWORD_REQUIRED".to_string());
-            }
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&temp_dir);
-                return Err(format!("Failed to extract 7z: {}", e));
-            }
-        }
-    }
-    
-    // Reconcile and handle move_lua
-    let mut root_folders = Vec::new();
-    let mut root_files = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&temp_dir) {
-        for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                root_folders.push(entry.path());
-            } else {
-                root_files.push(entry.path());
-            }
-        }
-    }
+    // Signal extraction complete
+    on_progress(90.0);
 
-    let is_flat = !root_files.is_empty() || root_folders.len() != 1;
-    let (target_dir, top_folder) = if is_flat {
-        let t = dest_dir.join(&archive_stem);
-        let _ = std::fs::create_dir_all(&t);
-        (t, archive_stem)
-    } else {
-        let folder = root_folders[0].file_name().unwrap_or_default().to_string_lossy().to_string();
-        (dest_dir.clone(), folder)
-    };
+    // Determine the top-level folder name from the archive filename
+    let top_folder = archive_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
 
-    // Move files recursively to target_dir, handling move_lua
-    fn move_recursively(src: &Path, dst: &Path, move_lua: bool, root: &Path) -> std::io::Result<()> {
-        if src.is_dir() {
-            for entry in std::fs::read_dir(src)? {
-                let entry = entry?;
-                let name = entry.file_name();
-                move_recursively(&entry.path(), &dst.join(name), move_lua, root)?;
-            }
-        } else {
-            let mut final_dst = dst.to_path_buf();
-            if move_lua && src.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()) == Some("lua".to_string()) {
-                let lua_dest = root.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
-                let _ = std::fs::create_dir_all(&lua_dest);
-                final_dst = lua_dest.join(src.file_name().unwrap_or_default());
-            } else {
-                if let Some(parent) = final_dst.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-            }
-            let _ = std::fs::rename(src, final_dst);
-        }
-        Ok(())
-    }
-
-    let _ = move_recursively(&temp_dir, &target_dir, move_lua, &root_val);
-    let _ = std::fs::remove_dir_all(&temp_dir);
-
+    // Special handling for Scenery: add to scenery_packs.ini
     if matches!(tab, Tab::Scenery) {
-        let xpm = XPlaneManager::new(&root_val).map_err(|e| e.to_string())?;
+        let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
         let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
-        let _ = sm.load();
+        sm.load().map_err(|e| e.to_string())?;
+
+        // Auto-sort every time a new pack is installed
         sm.sort(Some(&model), &context);
-        let _ = sm.save(Some(&model));
+        sm.save(Some(&model)).map_err(|e| e.to_string())?;
     }
 
     on_progress(100.0);
@@ -9410,9 +8838,7 @@ fn extract_archive_task(
     dest_override: Option<PathBuf>,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
-    move_lua: bool,
-    password: Option<String>,
-    mut on_progress: impl FnMut(f32) + Send + 'static,
+    on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let extension = archive_path
         .extension()
@@ -9421,110 +8847,10 @@ fn extract_archive_task(
         .to_lowercase();
 
     match extension.as_str() {
-        "zip" => extract_zip_task(root, archive_path, tab, dest_override, model, context, move_lua, password, on_progress),
-        "7z" => extract_7z_task(root, archive_path, tab, dest_override, model, context, move_lua, password, on_progress),
-        "rar" => extract_rar_task(root, archive_path, tab, dest_override, model, context, move_lua, password, on_progress),
+        "zip" => extract_zip_task(root, archive_path, tab, dest_override, model, context, on_progress),
+        "7z" => extract_7z_task(root, archive_path, tab, dest_override, model, context, on_progress),
         _ => Err(format!("Unsupported archive format: .{}", extension)),
     }
-}
-
-fn extract_rar_task(
-    root: Option<PathBuf>,
-    archive_path: PathBuf,
-    tab: Tab,
-    dest_override: Option<PathBuf>,
-    model: BitNetModel,
-    context: x_adox_bitnet::PredictContext,
-    move_lua: bool,
-    password: Option<String>,
-    mut on_progress: impl FnMut(f32) + Send + 'static,
-) -> Result<String, String> {
-    let root_val = root.ok_or("X-Plane root not found".to_string())?;
-
-    let dest_dir = if let Some(dest) = dest_override {
-        dest
-    } else {
-        match tab {
-            Tab::Aircraft => root_val.join("Aircraft"),
-            Tab::Plugins => root_val.join("Resources").join("plugins"),
-            Tab::Scenery => root_val.join("Custom Scenery"),
-            Tab::CSLs => root_val.join("Resources").join("plugins"),
-            _ => return Err("Unsupported install tab".to_string()),
-        }
-    };
-
-    on_progress(5.0);
-
-    let mut archive = if let Some(p) = &password {
-        unrar::Archive::with_password(&archive_path, p)
-    } else {
-        unrar::Archive::new(&archive_path)
-    };
-    
-    let mut process = archive.open_for_processing()
-        .map_err(|e| format!("Failed to open RAR: {}", e))?;
-
-    let archive_stem = archive_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Unknown".to_string());
-    let mut top_folder = archive_stem.clone();
-    
-    // Scan headers first to check if flat
-    let mut root_folders = std::collections::HashSet::new();
-    let mut root_files = false;
-    {
-        let mut scan_archive = if let Some(p) = &password {
-            unrar::Archive::with_password(&archive_path, p)
-        } else {
-            unrar::Archive::new(&archive_path)
-        };
-        let scan_process = scan_archive.open_for_listing()
-            .map_err(|e| format!("Failed to scan RAR: {}", e))?;
-        for entry in scan_process {
-            let entry = entry.map_err(|e| format!("RAR Scan Error: {}", e))?;
-            let name = entry.filename.to_string_lossy();
-            if let Some(pos) = name.find('/') {
-                root_folders.insert(name[..pos].to_string());
-            } else if !name.is_empty() {
-                root_files = true;
-            }
-        }
-    }
-
-    let is_flat = root_files || root_folders.len() != 1;
-    let (target_dir, detected_top) = if is_flat {
-        (dest_dir.join(&archive_stem), archive_stem)
-    } else {
-        let folder = root_folders.into_iter().next().unwrap_or("Unknown".to_string());
-        (dest_dir.clone(), folder)
-    };
-    top_folder = detected_top;
-    
-    let _ = std::fs::create_dir_all(&target_dir);
-
-    while let Some(header_cursor) = process.read_header().map_err(|e| format!("RAR Error: {}", e))? {
-        let name = header_cursor.entry().filename.to_string_lossy().to_string();
-        let mut outpath = target_dir.join(&name);
-
-        if move_lua && name.to_lowercase().ends_with(".lua") {
-            let lua_dest = root_val.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
-            let _ = std::fs::create_dir_all(&lua_dest);
-            let file_name = Path::new(&name).file_name().unwrap_or_default();
-            outpath = lua_dest.join(file_name);
-        }
-
-        process = header_cursor.extract_to(&outpath)
-            .map_err(|e| format!("Failed to extract RAR entry {}: {}", name, e))?;
-    }
-
-    if matches!(tab, Tab::Scenery) {
-        let xpm = XPlaneManager::new(&root_val).map_err(|e| e.to_string())?;
-        let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
-        sm.load().map_err(|e| e.to_string())?;
-        sm.sort(Some(&model), &context);
-        sm.save(Some(&model)).map_err(|e| e.to_string())?;
-    }
-
-    on_progress(100.0);
-    Ok(top_folder)
 }
 
 fn delete_addon(root: Option<PathBuf>, path: PathBuf, tab: Tab) -> Result<(), String> {
@@ -9572,87 +8898,11 @@ async fn load_airports_data(
     Ok(Arc::new(map))
 }
 
-async fn scan_archive_for_lua(path: PathBuf, password: Option<String>) -> Result<Vec<String>, String> {
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    match extension.as_str() {
-        "zip" => {
-            tokio::task::spawn_blocking(move || {
-                let file = std::fs::File::open(&path).map_err(|e| format!("Failed to open zip: {}", e))?;
-                let mut archive =
-                    zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
-                
-                let mut lua_files = Vec::new();
-                for i in 0..archive.len() {
-                    let file = match archive.by_index(i) {
-                        Ok(f) => f,
-                        Err(zip::result::ZipError::InvalidPassword) => return Err("PASSWORD_REQUIRED".to_string()),
-                        Err(e) => return Err(format!("Failed to read zip entry: {}", e)),
-                    };
-                    
-                    if file.encrypted() && password.is_none() {
-                        return Err("PASSWORD_REQUIRED".to_string());
-                    }
-
-                    if file.name().to_lowercase().ends_with(".lua") {
-                        lua_files.push(file.name().to_string());
-                    }
-                }
-                
-                Ok(lua_files)
-            })
-            .await
-            .map_err(|e| e.to_string())?
-        }
-        "7z" => {
-            tokio::task::spawn_blocking(move || {
-                // sevenz-rust2 doesn't easily expose listing with password without opening.
-                if password.is_none() {
-                     // We can't know if it's encrypted without trying, but let's assume it might be.
-                }
-
-                Ok(vec![])
-            })
-            .await
-            .map_err(|e: tokio::task::JoinError| e.to_string())?
-        }
-        "rar" => {
-            tokio::task::spawn_blocking(move || {
-                let archive = unrar::Archive::new(&path);
-                let open_archive = archive.open_for_listing()
-                    .map_err(|e: unrar::error::UnrarError| {
-                        if e.to_string().to_lowercase().contains("password") || e.to_string().to_lowercase().contains("encrypted") {
-                            "PASSWORD_REQUIRED".to_string()
-                        } else {
-                            format!("Failed to open RAR: {}", e)
-                        }
-                    })?;
-                
-                let mut lua_files = Vec::new();
-                for result in open_archive {
-                    let entry = result.map_err(|e| format!("Failed to read RAR entry: {}", e))?;
-                    if entry.filename.to_string_lossy().to_lowercase().ends_with(".lua") {
-                        lua_files.push(entry.filename.display().to_string());
-                    }
-                }
-                Ok(lua_files)
-            })
-            .await
-            .map_err(|e: tokio::task::JoinError| e.to_string())?
-        }
-        _ => Ok(vec![]),
-    }
-}
-
 async fn pick_archive(label: &str) -> Option<PathBuf> {
     log::debug!("Opening archive picker for {}", label);
     rfd::AsyncFileDialog::new()
-        .set_title(&format!("Select {} Package (.zip, .7z, .rar)", label))
-        .add_filter("Archives", &["zip", "7z", "rar"])
+        .set_title(&format!("Select {} Package (.zip, .7z)", label))
+        .add_filter("Archives", &["zip", "7z"])
         .pick_file()
         .await
         .map(|f| {
@@ -9840,7 +9090,11 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
     Ok(path)
 }
 
-fn export_aircraft_task(aircraft: Arc<Vec<DiscoveredAddon>>) -> impl std::future::Future<Output = Result<PathBuf, String>> {
+fn export_aircraft_task(
+    aircraft: Arc<Vec<DiscoveredAddon>>,
+    include_liveries: bool,
+    expanded_format: bool,
+) -> impl std::future::Future<Output = Result<PathBuf, String>> {
     async move {
         use std::fs::File;
         use std::io::Write;
@@ -9865,30 +9119,72 @@ fn export_aircraft_task(aircraft: Arc<Vec<DiscoveredAddon>>) -> impl std::future
 
         let mut content = String::new();
         if is_csv {
-            content.push_str("Aircraft Name,Type,Livery Count,Enabled,Path\n");
+            content.push_str("Manufacturer/Category,Aircraft Name,ACF File,Status,Livery Count,Liveries,Path\n");
             for addon in aircraft.iter() {
-                if let AddonType::Aircraft { acf_name, livery_count } = &addon.addon_type {
+                if let AddonType::Aircraft {
+                    acf_name,
+                    livery_count,
+                    livery_names,
+                } = &addon.addon_type
+                {
+                    // 1. Extract Manufacturer/Category from tags
+                    let category = addon.tags.iter()
+                        .find(|t| MANUFACTURERS.contains(&t.as_str()) || AIRCRAFT_CATEGORIES.contains(&t.as_str()))
+                        .map(|s| s.as_str())
+                        .unwrap_or("Uncategorized");
+
                     let name = addon.name.replace('"', "\"\"");
-                    let type_str = acf_name.replace('"', "\"\"");
-                    let enabled = if addon.is_enabled { "Yes" } else { "No" };
+                    let acf = acf_name.replace('"', "\"\"");
+                    let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
                     let path_str = addon.path.display().to_string().replace('"', "\"\"");
-                    content.push_str(&format!("\"{}\",\"{}\",{},\"{}\",\"{}\"\n", name, type_str, livery_count, enabled, path_str));
+
+                    if expanded_format && !livery_names.is_empty() {
+                        // Power User: One row per livery
+                        for livery in livery_names {
+                            let livery_clean = livery.replace('"', "\"\"");
+                            content.push_str(&format!(
+                                "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"\n",
+                                category, name, acf, status, livery_count, livery_clean, path_str
+                            ));
+                        }
+                    } else {
+                        // Flattened format
+                        let liveries_val = if include_liveries {
+                            livery_names.join(" | ").replace('"', "\"\"")
+                        } else {
+                            String::new()
+                        };
+                        content.push_str(&format!(
+                            "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"\n",
+                            category, name, acf, status, livery_count, liveries_val, path_str
+                        ));
+                    }
                 }
             }
         } else {
-            content.push_str("X-Plane Aircraft Library\n");
-            content.push_str("======================\n\n");
+            content.push_str("X-Plane Aircraft Library Report\n");
+            content.push_str("==============================\n\n");
             for addon in aircraft.iter() {
-                if let AddonType::Aircraft { acf_name, livery_count } = &addon.addon_type {
-                    content.push_str(&format!("Name:         {}\n", addon.name));
-                    content.push_str(&format!("Type:         {}\n", acf_name));
-                    content.push_str(&format!("Liveries:     {}\n", livery_count));
-                    content.push_str(&format!("Enabled:      {}\n", if addon.is_enabled { "Yes" } else { "No" }));
-                    content.push_str(&format!("Path:         {}\n", addon.path.display()));
-                    content.push_str("----------------------\n");
+                if let AddonType::Aircraft {
+                    acf_name,
+                    livery_count,
+                    livery_names,
+                } = &addon.addon_type
+                {
+                    content.push_str(&format!("Aircraft:    {}\n", addon.name));
+                    content.push_str(&format!("ACF File:    {}\n", acf_name));
+                    content.push_str(&format!("Status:      {}\n", if addon.is_enabled { "Enabled" } else { "Disabled" }));
+                    content.push_str(&format!("Liveries:    {}\n", livery_count));
+                    if include_liveries && !livery_names.is_empty() {
+                        content.push_str("Livery List: ");
+                        content.push_str(&livery_names.join(", "));
+                        content.push_str("\n");
+                    }
+                    content.push_str(&format!("System Path: {}\n", addon.path.display()));
+                    content.push_str("------------------------------\n");
                 }
             }
-            content.push_str(&format!("\nTotal Aircraft: {}\n", aircraft.len()));
+            content.push_str(&format!("\nTotal Aircraft Count: {}\n", aircraft.len()));
         }
 
         let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
