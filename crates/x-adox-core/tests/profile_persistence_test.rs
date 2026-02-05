@@ -3,7 +3,7 @@
 // Copyright (c) 2026 StarTuz
 
 use std::fs;
-use std::path::Path;
+
 use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};
 
 #[test]
