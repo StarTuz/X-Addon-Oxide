@@ -2,11 +2,17 @@
 // Copyright (c) 2026 StarTuz
 
 use std::fs;
+use std::sync::Mutex;
 use tempfile::tempdir;
 use x_adox_core::{calculate_legacy_hash, calculate_stable_hash, get_scoped_config_root};
 
+// Tests that mutate X_ADOX_CONFIG_DIR must not run in parallel since env vars are process-global.
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
 #[test]
 fn test_hashing_migration() {
+    let _lock = ENV_MUTEX.lock().unwrap();
+
     let dir = tempdir().unwrap();
     let config_dir = dir.path().join(".xad_oxide");
     fs::create_dir_all(&config_dir).unwrap();
@@ -72,6 +78,8 @@ fn test_hashing_stability_normalized() {
 
 #[test]
 fn test_migration_both_folders_exist_prefers_legacy_data() {
+    let _lock = ENV_MUTEX.lock().unwrap();
+
     // This tests the scenario where dd58f05 created an empty stable folder
     // before migration logic existed, leaving user's profiles stranded in legacy.
 
@@ -89,6 +97,13 @@ fn test_migration_both_folders_exist_prefers_legacy_data() {
     let legacy_folder = config_dir.join("installs").join(&legacy_hash);
     let stable_folder = config_dir.join("installs").join(&stable_hash);
 
+    // Verify hashes are different (key assumption for migration tests)
+    assert_ne!(
+        legacy_hash, stable_hash,
+        "Regression: Legacy and stable hashes collided! Path: {:?}",
+        xplane_root
+    );
+
     // Setup: Legacy has meaningful data (Winter profile with pins)
     fs::create_dir_all(&legacy_folder).unwrap();
     fs::write(
@@ -104,16 +119,24 @@ fn test_migration_both_folders_exist_prefers_legacy_data() {
     ).unwrap();
 
     // Execute: get_scoped_config_root should detect empty stable and copy from legacy
-    let _scoped_root = get_scoped_config_root(&xplane_root);
+    let scoped_root = get_scoped_config_root(&xplane_root);
+    assert_eq!(
+        scoped_root, stable_folder,
+        "Scoped root should be the stable folder"
+    );
 
     // Verify: Stable should now have the Winter profile from legacy
     let stable_content = fs::read_to_string(stable_folder.join("profiles.json")).unwrap();
     assert!(
         stable_content.contains("Winter"),
-        "Winter profile should have been copied from legacy to stable"
+        "Winter profile was NOT copied from legacy ({}) to stable ({}). Stable content: {}",
+        legacy_hash,
+        stable_hash,
+        stable_content
     );
     assert!(
         stable_content.contains("Pack A"),
-        "Pins should have been preserved in migration"
+        "Pins should have been preserved in migration. Stable content: {}",
+        stable_content
     );
 }
