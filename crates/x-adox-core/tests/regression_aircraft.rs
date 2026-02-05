@@ -4,7 +4,7 @@
 
 use std::fs;
 use tempfile::tempdir;
-use x_adox_core::discovery::{AddonType, DiscoveryManager};
+use x_adox_core::discovery::DiscoveryManager;
 
 #[test]
 fn test_aircraft_livery_counting() {
@@ -47,7 +47,6 @@ fn test_aircraft_no_liveries() {
 fn test_cirrus_sf50_classification() {
     use std::path::Path;
     use x_adox_bitnet::BitNetModel;
-    use x_adox_bitnet::PredictContext;
 
     let model = BitNetModel::new().expect("Failed to load BitNet model");
     let mock_path = Path::new("/test/sf50");
