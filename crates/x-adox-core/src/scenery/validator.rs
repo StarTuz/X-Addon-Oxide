@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use crate::scenery::{SceneryCategory, SceneryPack};
 use serde::{Deserialize, Serialize};
 

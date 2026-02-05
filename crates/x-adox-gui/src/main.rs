@@ -164,6 +164,10 @@ enum Message {
     WindowResized(iced::Size),
     TogglePack(String),
     PackToggled(Result<(), String>),
+    ToggleRegionView,
+    ToggleRegion(String),
+    SetRegionEnabled(String, bool),
+    SetRegionInBucket(String, bool),
 
     // Aircraft & Plugins
     AircraftLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
@@ -357,6 +361,11 @@ enum Message {
     AircraftSearchPrev,
     AircraftSearchSubmit,
     ExportAircraftList,
+    ExportSceneryList,
+    ExportPluginList,
+    ExportCSLList,
+    ToggleExportIncludeLiveries(bool),
+    ToggleExportExpandedFormat(bool),
     ToggleBucketItem(String),
     ClearBucket,
     ToggleBucket,
@@ -382,6 +391,7 @@ enum Message {
     ShowModal(ModalState),
     CloseModal,
     ConfirmModal(ConfirmType),
+    NoOp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -597,6 +607,8 @@ struct App {
 
     // Smart View State
     smart_view_expanded: std::collections::BTreeSet<String>,
+    use_region_view: bool,
+    region_expanded: std::collections::BTreeSet<String>,
 
     // Icon Overrides
     icon_overrides: std::collections::BTreeMap<PathBuf, PathBuf>,
@@ -644,10 +656,8 @@ struct App {
     scenery_search_matches: Vec<usize>,
     scenery_search_index: Option<usize>,
     aircraft_search_query: String,
-    aircraft_search_matches: Vec<String>,
+    aircraft_search_matches: Vec<PathBuf>,
     aircraft_search_index: Option<usize>,
-    selected_smart_target: Option<String>,
-    aircraft_scroll_id: scrollable::Id,
     pub scenery_bucket: Vec<String>,
     pub scenery_last_bucket_index: Option<usize>,
     pub keyboard_modifiers: keyboard::Modifiers,
@@ -664,6 +674,8 @@ struct App {
     pub autopin_enabled: bool,
     pub scenery_is_saving: bool,
     pub scenery_save_pending: bool,
+    export_include_liveries: bool,
+    export_expanded_format: bool,
 
     // Modal
     active_modal: Option<ModalState>,
@@ -789,6 +801,8 @@ impl App {
                 include_bytes!("../assets/fallback_helicopter.png").to_vec(),
             ),
             smart_view_expanded: std::collections::BTreeSet::new(),
+            use_region_view: false,
+            region_expanded: std::collections::BTreeSet::new(),
             icon_overrides: std::collections::BTreeMap::new(),
             scan_exclusions: Vec::new(),
             scan_inclusions: Vec::new(),
@@ -841,8 +855,6 @@ impl App {
             aircraft_search_query: String::new(),
             aircraft_search_matches: Vec::new(),
             aircraft_search_index: None,
-            selected_smart_target: None,
-            aircraft_scroll_id: scrollable::Id::unique(),
             scenery_bucket: Vec::new(),
             scenery_last_bucket_index: None,
             keyboard_modifiers: keyboard::Modifiers::default(),
@@ -863,24 +875,51 @@ impl App {
             autopin_enabled: true, // Enabled by default as it's a "Smart" feature
             scenery_is_saving: false,
             scenery_save_pending: false,
+            export_include_liveries: true,
+            export_expanded_format: false,
             active_modal: None,
         };
 
         if let Some(pm) = &app.profile_manager {
             if let Ok(collection) = pm.load() {
                 app.profiles = collection;
-                
-                // Apply active profile's pins on startup
-                if let Some(active_name) = &app.profiles.active_profile {
-                    if let Some(profile) = app.profiles.profiles.iter().find(|p| p.name == *active_name) {
-                        let overrides = profile.scenery_overrides.iter()
-                            .map(|(k, v)| (k.clone(), *v))
-                            .collect::<std::collections::BTreeMap<_, _>>();
-                        app.heuristics_model.apply_overrides(overrides);
+
+                // Safe Startup Sync:
+                // If the active profile has NO pins but heuristics.json DOES, migrate pins to the profile.
+                // This prevents accidental erasure of pins when upgrading from pre-profile versions.
+                // Simple rule: profile empty + heuristics has pins = always migrate (safe for upgrades)
+                let active_name_opt = app.profiles.active_profile.clone();
+                let has_heuristics_pins = !app.heuristics_model.config.overrides.is_empty();
+
+                if let Some(active_name) = active_name_opt {
+                    if let Some(profile) = app.profiles.profiles.iter_mut().find(|p| p.name == active_name) {
+                        let should_migrate = profile.scenery_overrides.is_empty() && has_heuristics_pins;
+
+                        if should_migrate {
+                            log::info!(
+                                "[Startup] Migrating {} pins from heuristics.json to profile '{}'",
+                                app.heuristics_model.config.overrides.len(),
+                                active_name
+                            );
+                            profile.scenery_overrides = app.heuristics_model.config.overrides.iter()
+                                .map(|(k, v)| (k.clone(), *v))
+                                .collect();
+                        } else {
+                            // Standard path: Profile pins take priority
+                            let overrides = profile.scenery_overrides.iter()
+                                .map(|(k, v)| (k.clone(), *v))
+                                .collect::<std::collections::BTreeMap<_, _>>();
+                            log::debug!(
+                                "[Startup] Applying {} pins from profile '{}' to heuristics",
+                                overrides.len(),
+                                active_name
+                            );
+                            app.heuristics_model.apply_overrides(overrides);
+                        }
                     }
                 }
 
-                // Initial sync to capture any existing heuristics.json overrides into the active profile
+                // Sync back to ensure profiles are up to date and saved
                 app.sync_active_profile_scenery();
             }
         }
@@ -1016,119 +1055,6 @@ impl App {
         if let Some(ref pm) = self.profile_manager {
             let _ = pm.save(&self.profiles);
         }
-    }
-
-    fn expand_smart_view_for_target(&mut self, target: &str) {
-        if target.starts_with("tag:") || target.starts_with("model:") {
-            self.smart_view_expanded.insert(target.to_string());
-            if target.starts_with("model:") {
-                let parts: Vec<&str> = target.split(':').collect();
-                if parts.len() >= 2 {
-                    self.smart_view_expanded.insert(format!("tag:{}", parts[1]));
-                }
-            }
-        } else {
-            // It's a path
-            let target_path = std::path::Path::new(target);
-            for (category, aircraft_list) in &self.smart_groups {
-                if aircraft_list.iter().any(|a| a.path == target_path) {
-                    self.smart_view_expanded.insert(format!("tag:{}", category));
-                    return;
-                }
-            }
-            for (category, model_map) in &self.smart_model_groups {
-                for (model, aircraft_list) in model_map {
-                    if aircraft_list.iter().any(|a| a.path == target_path) {
-                        self.smart_view_expanded.insert(format!("tag:{}", category));
-                        self.smart_view_expanded.insert(format!("model:{}:{}", category, model));
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    fn scroll_to_aircraft(&self, target: &str) -> Task<Message> {
-        let mut count = 0usize;
-        let found = if self.use_smart_view {
-            self.calculate_smart_offset(target, &mut count)
-        } else if let Some(ref tree) = self.aircraft_tree {
-            let target_path = std::path::Path::new(target);
-            Self::calculate_node_offset(tree, target_path, &mut count)
-        } else {
-            false
-        };
-
-        if found {
-            // Row height: padding 4+4 + text 14 + spacing 2 = ~24px
-            // Categories in Smart View are slightly taller (size 16) but ~24-30 is close
-            let offset = count as f32 * 26.0; 
-            scrollable::scroll_to(
-                self.aircraft_scroll_id.clone(),
-                scrollable::AbsoluteOffset { x: 0.0, y: offset },
-            )
-        } else {
-            Task::none()
-        }
-    }
-
-    fn calculate_smart_offset(&self, target_id: &str, count: &mut usize) -> bool {
-        for (tag, aircraft) in &self.smart_groups {
-            let tag_id = format!("tag:{}", tag);
-            if tag_id == target_id {
-                return true;
-            }
-            *count += 1;
-
-            if !self.smart_view_expanded.contains(&tag_id) {
-                continue;
-            }
-
-            let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
-            if is_manufacturer {
-                if let Some(model_groups) = self.smart_model_groups.get(tag) {
-                    for (model, acs) in model_groups {
-                        let model_id = format!("model:{}:{}", tag, model);
-                        if model_id == target_id {
-                            return true;
-                        }
-                        *count += 1;
-
-                        if self.smart_view_expanded.contains(&model_id) {
-                            for ac in acs {
-                                if ac.path.to_string_lossy() == target_id {
-                                    return true;
-                                }
-                                *count += 1;
-                            }
-                        }
-                    }
-                }
-            } else {
-                for ac in aircraft {
-                    if ac.path.to_string_lossy() == target_id {
-                        return true;
-                    }
-                    *count += 1;
-                }
-            }
-        }
-        false
-    }
-
-    fn calculate_node_offset(node: &AircraftNode, target_path: &std::path::Path, count: &mut usize) -> bool {
-        if node.path == target_path {
-            return true;
-        }
-        *count += 1;
-        if node.is_expanded {
-            for child in &node.children {
-                if Self::calculate_node_offset(child, target_path, count) {
-                    return true;
-                }
-            }
-        }
-        false
     }
 
     fn scroll_to_scenery_index(&self, index: usize) -> Task<Message> {
@@ -1803,6 +1729,11 @@ impl App {
                     log::debug!("Switching Profile: Applying {} overrides from profile '{}'", new_overrides.len(), name);
                     self.heuristics_model.apply_overrides(new_overrides);
 
+                    // Update editor content so the UI reflects the new profile's active rules
+                    if let Ok(json) = serde_json::to_string_pretty(self.heuristics_model.config.as_ref()) {
+                         self.heuristics_json = text_editor::Content::with_text(&json);
+                    }
+
                     self.status = format!("Switching to profile {}...", name);
                     let model = self.heuristics_model.clone();
                     Task::perform(
@@ -2163,6 +2094,53 @@ impl App {
                 }
                 Task::none()
             }
+            Message::ToggleRegionView => {
+                self.use_region_view = !self.use_region_view;
+                Task::none()
+            }
+            Message::ToggleRegion(region) => {
+                if self.region_expanded.contains(&region) {
+                    self.region_expanded.remove(&region);
+                } else {
+                    self.region_expanded.insert(region);
+                }
+                Task::none()
+            }
+            Message::SetRegionEnabled(region, enabled) => {
+                let mut states = std::collections::HashMap::new();
+                for pack in self.packs.iter() {
+                    if pack.get_region() == region {
+                        states.insert(pack.name.clone(), enabled);
+                    }
+                }
+
+                if let Some(root) = &self.xplane_root {
+                    let root_clone = root.clone();
+                    self.scenery_is_saving = true;
+                    return Task::perform(
+                        async move {
+                            ModManager::set_bulk_scenery_enabled(&root_clone, &states)
+                                .map_err(|e| e.to_string())
+                        },
+                        |r| Message::PackToggled(r),
+                    );
+                }
+                Task::none()
+            }
+            Message::SetRegionInBucket(region, in_bucket) => {
+                let mut current_bucket: std::collections::HashSet<String> = self.scenery_bucket.iter().cloned().collect();
+                for pack in self.packs.iter() {
+                    if pack.get_region() == region {
+                        if in_bucket {
+                            current_bucket.insert(pack.name.clone());
+                        } else {
+                            current_bucket.remove(&pack.name);
+                        }
+                    }
+                }
+                self.scenery_bucket = current_bucket.into_iter().collect();
+                Task::none()
+            }
             Message::PackToggled(result) => {
                 self.scenery_is_saving = false;
                 match result {
@@ -2171,7 +2149,9 @@ impl App {
                         if self.scenery_save_pending {
                             return self.trigger_scenery_save();
                         }
-                        Task::none()
+                        // Reload scenery to reflect changes in UI
+                        let root = self.xplane_root.clone();
+                        Task::perform(async move { load_packs(root) }, Message::SceneryLoaded)
                     }
                     Err(e) => {
                         self.status = format!("Error saving scenery: {}", e);
@@ -2780,12 +2760,24 @@ impl App {
                             self.status = format!("Failed to load profiles: {}", e);
                             self.profiles = ProfileCollection::default();
                         }
+                        }
                     }
-                }
-
                 // Force reload of heuristics for the new install location
                 if let Some(r) = &self.xplane_root {
                     self.heuristics_model = Self::initialize_heuristics(r);
+                    self.heuristics_error = None;
+                    
+                    // Update editor content
+                    let config = x_adox_bitnet::BitNetModel::at_path(
+                        x_adox_core::get_scoped_config_root(r).join("heuristics.json"),
+                    )
+                    .config
+                    .as_ref()
+                    .clone();
+                    match serde_json::to_string_pretty(&config) {
+                        Ok(json) => self.heuristics_json = text_editor::Content::with_text(&json),
+                        Err(_) => self.heuristics_json = text_editor::Content::new(),
+                    }
                     
                     // Apply the pins from the newly loaded profile
                     if let Some(active_name) = &self.profiles.active_profile {
@@ -2907,7 +2899,6 @@ impl App {
             }
             Message::SelectAircraft(path) => {
                 self.selected_aircraft = Some(path.clone());
-                self.selected_smart_target = None;
                 self.selected_aircraft_name =
                     path.file_name().map(|n| n.to_string_lossy().to_string());
 
@@ -3446,40 +3437,20 @@ impl App {
                     self.aircraft_search_matches.clear();
                     self.aircraft_search_index = None;
                 } else {
-                    let q = self.aircraft_search_query.clone();
-                    let mut matches = Vec::new();
-
-                    if !self.use_smart_view {
-                        if let Some(ref tree) = self.aircraft_tree {
-                            collect_search_matches(tree, &q, &mut matches);
-                        }
-                    } else {
-                        collect_smart_search_matches(&self.smart_groups, &self.smart_model_groups, &q, &mut matches);
-                    }
-
-                    self.aircraft_search_matches = matches;
+                    let q = self.aircraft_search_query.to_lowercase();
+                    self.aircraft_search_matches = self
+                        .aircraft
+                        .iter()
+                        .filter(|a| a.name.to_lowercase().contains(&q))
+                        .map(|a| a.path.clone())
+                        .collect();
 
                     if self.aircraft_search_matches.is_empty() {
                         self.aircraft_search_index = None;
                     } else {
                         self.aircraft_search_index = Some(0);
-                        let target = self.aircraft_search_matches[0].clone();
-                        
-                        if target.starts_with("tag:") || target.starts_with("model:") {
-                            self.selected_smart_target = Some(target.clone());
-                            self.selected_aircraft = None;
-                        } else {
-                            self.selected_smart_target = None;
-                            self.selected_aircraft = Some(PathBuf::from(target.clone()));
-                        }
-                        
-                        // Auto-expand to show the result
-                        if self.use_smart_view {
-                            self.expand_smart_view_for_target(&target);
-                        } else if let Some(ref mut tree) = self.aircraft_tree {
-                            expand_to_aircraft_path(Arc::make_mut(tree), Path::new(&target));
-                        }
-                        return self.scroll_to_aircraft(&target);
+                        let target_path = self.aircraft_search_matches[0].clone();
+                        self.selected_aircraft = Some(target_path);
                     }
                 }
                 Task::none()
@@ -3489,23 +3460,8 @@ impl App {
                     if !self.aircraft_search_matches.is_empty() {
                         let next = (current + 1) % self.aircraft_search_matches.len();
                         self.aircraft_search_index = Some(next);
-                        let target = self.aircraft_search_matches[next].clone();
-
-                        if target.starts_with("tag:") || target.starts_with("model:") {
-                            self.selected_smart_target = Some(target.clone());
-                            self.selected_aircraft = None;
-                        } else {
-                            self.selected_smart_target = None;
-                            self.selected_aircraft = Some(PathBuf::from(target.clone()));
-                        }
-
-                        // Auto-expand to show the result
-                        if self.use_smart_view {
-                            self.expand_smart_view_for_target(&target);
-                        } else if let Some(ref mut tree) = self.aircraft_tree {
-                            expand_to_aircraft_path(Arc::make_mut(tree), Path::new(&target));
-                        }
-                        return self.scroll_to_aircraft(&target);
+                        let target_path = self.aircraft_search_matches[next].clone();
+                        self.selected_aircraft = Some(target_path);
                     }
                 }
                 Task::none()
@@ -3519,23 +3475,8 @@ impl App {
                             current - 1
                         };
                         self.aircraft_search_index = Some(prev);
-                        let target = self.aircraft_search_matches[prev].clone();
-
-                        if target.starts_with("tag:") || target.starts_with("model:") {
-                            self.selected_smart_target = Some(target.clone());
-                            self.selected_aircraft = None;
-                        } else {
-                            self.selected_smart_target = None;
-                            self.selected_aircraft = Some(PathBuf::from(target.clone()));
-                        }
-
-                        // Auto-expand to show the result
-                        if self.use_smart_view {
-                            self.expand_smart_view_for_target(&target);
-                        } else if let Some(ref mut tree) = self.aircraft_tree {
-                            expand_to_aircraft_path(Arc::make_mut(tree), Path::new(&target));
-                        }
-                        return self.scroll_to_aircraft(&target);
+                        let target_path = self.aircraft_search_matches[prev].clone();
+                        self.selected_aircraft = Some(target_path);
                     }
                 }
                 Task::none()
@@ -3543,8 +3484,10 @@ impl App {
             Message::AircraftSearchSubmit => Task::done(Message::AircraftSearchNext),
             Message::ExportAircraftList => {
                 let aircraft = self.aircraft.clone();
+                let include_liveries = self.export_include_liveries;
+                let expanded_format = self.export_expanded_format;
                 Task::perform(
-                    async move { export_aircraft_task(aircraft).await },
+                    async move { export_aircraft_task(aircraft, include_liveries, expanded_format).await },
                     |res| match res {
                         Ok(path) => Message::StatusChanged(format!(
                             "Aircraft list exported to {}",
@@ -3553,6 +3496,53 @@ impl App {
                         Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
                     },
                 )
+            }
+            Message::ExportSceneryList => {
+                let packs = self.packs.clone();
+                Task::perform(
+                    async move { export_scenery_task(packs).await },
+                    |res| match res {
+                        Ok(path) => Message::StatusChanged(format!(
+                            "Scenery list exported to {}",
+                            path.display()
+                        )),
+                        Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
+                    },
+                )
+            }
+            Message::ExportPluginList => {
+                let plugins = self.plugins.clone();
+                Task::perform(
+                    async move { export_plugins_task(plugins).await },
+                    |res| match res {
+                        Ok(path) => Message::StatusChanged(format!(
+                            "Plugin list exported to {}",
+                            path.display()
+                        )),
+                        Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
+                    },
+                )
+            }
+            Message::ExportCSLList => {
+                let csls = self.csls.clone();
+                Task::perform(
+                    async move { export_csls_task(csls).await },
+                    |res| match res {
+                        Ok(path) => Message::StatusChanged(format!(
+                            "CSL package list exported to {}",
+                            path.display()
+                        )),
+                        Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
+                    },
+                )
+            }
+            Message::ToggleExportIncludeLiveries(v) => {
+                self.export_include_liveries = v;
+                Task::none()
+            }
+            Message::ToggleExportExpandedFormat(v) => {
+                self.export_expanded_format = v;
+                Task::none()
             }
             Message::BackupUserData => {
                 let xplane_root = self.xplane_root.clone();
@@ -3936,6 +3926,7 @@ impl App {
                     }
                 }
             }
+            Message::NoOp => Task::none(),
         }
     }
 
@@ -4000,6 +3991,7 @@ impl App {
             || self.drag_context.is_some()
             || self.is_basket_dragging
             || self.active_resize_edge.is_some()
+            || self.tile_manager.has_pending()
         {
             time::every(std::time::Duration::from_millis(16)).map(Message::Tick)
         } else {
@@ -5083,8 +5075,42 @@ impl App {
         let content = match self.active_tab {
             Tab::Scenery => self.view_scenery(),
             Tab::Aircraft => self.view_aircraft_tree(),
-            Tab::Plugins => self.view_addon_list(&self.plugins, "Plugin"),
-            Tab::CSLs => self.view_addon_list(&self.csls, "CSL Package"),
+            Tab::Plugins => {
+                column![
+                    row![
+                        text("Plugin Library").size(18).width(Length::Fill),
+                        button(text("Export List").size(12))
+                            .on_press(Message::ExportPluginList)
+                            .style(style::button_secondary)
+                            .padding([4, 8]),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Alignment::Center),
+                    scrollable(self.view_addon_list(&self.plugins, "Plugin"))
+                        .height(Length::Fill),
+                ]
+                .spacing(15)
+                .height(Length::Fill)
+                .into()
+            }
+            Tab::CSLs => {
+                column![
+                    row![
+                        text("CSL Library").size(18).width(Length::Fill),
+                        button(text("Export List").size(12))
+                            .on_press(Message::ExportCSLList)
+                            .style(style::button_secondary)
+                            .padding([4, 8]),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Alignment::Center),
+                    scrollable(self.view_addon_list(&self.csls, "CSL Package"))
+                        .height(Length::Fill),
+                ]
+                .spacing(15)
+                .height(Length::Fill)
+                .into()
+            }
             Tab::Heuristics => self.view_heuristics_editor(),
             Tab::Issues => self.view_issues(),
             Tab::Utilities => self.view_utilities(),
@@ -6210,41 +6236,89 @@ impl App {
             .and_then(|idx| self.scenery_search_matches.get(idx).cloned());
 
         let bucket = self.scenery_bucket.clone();
+        let use_region_view = self.use_region_view;
+        let region_expanded = self.region_expanded.clone();
+
+        // Region View Grouping (Pre-calculated for lazy widget)
+        let mut region_groups: std::collections::BTreeMap<String, Vec<(usize, SceneryPack)>> = std::collections::BTreeMap::new();
+        if self.use_region_view {
+            for (idx, pack) in self.packs.iter().enumerate() {
+                let region = pack.get_region();
+                region_groups.entry(region).or_default().push((idx, pack.clone()));
+            }
+        }
+        let region_groups = std::sync::Arc::new(region_groups);
 
         let list_container = scrollable(lazy(
-            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket),
-            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket)| {
+            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups),
+            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups)| {
                 let mut items = Vec::new();
 
-                for (idx, pack) in packs.iter().enumerate() {
-                    // Pre-item gap
-                    if is_dragging {
-                        items.push(Self::view_drop_gap(idx, *hover_id == Some(idx)));
+                if *use_region_view {
+                    for (region, region_packs) in region_groups.iter() {
+                        let is_expanded = region_expanded.contains(region);
+                        let is_any_enabled = region_packs.iter().any(|(_, p)| p.status == SceneryPackType::Active);
+                        let is_any_in_bucket = region_packs.iter().any(|(_, p)| bucket.contains(&p.name));
+
+                        items.push(Self::render_region_header(
+                            region.to_string(),
+                            region_packs.len(),
+                            is_expanded,
+                            is_any_enabled,
+                            is_any_in_bucket,
+                        ));
+
+                        if is_expanded {
+                            for (idx, pack) in region_packs {
+                                let is_being_dragged = *drag_id == Some(*idx);
+                                let is_search_match = *current_search_match == Some(*idx);
+                                let is_in_bucket = bucket.contains(&pack.name);
+
+                                items.push(container(Self::render_scenery_card(
+                                    pack,
+                                    selected.as_ref() == Some(&pack.name),
+                                    overrides.contains_key(&pack.name),
+                                    *idx,
+                                    is_being_dragged,
+                                    is_search_match,
+                                    is_in_bucket,
+                                    !bucket.is_empty(),
+                                    icons.clone(),
+                                )).padding(iced::Padding { left: 20.0, ..iced::Padding::default() }).into());
+                            }
+                        }
+                    }
+                } else {
+                    for (idx, pack) in packs.iter().enumerate() {
+                        // Pre-item gap
+                        if is_dragging {
+                            items.push(Self::view_drop_gap(idx, *hover_id == Some(idx)));
+                        }
+
+                        let is_being_dragged = *drag_id == Some(idx);
+                        let is_search_match = *current_search_match == Some(idx);
+                        let is_in_bucket = bucket.contains(&pack.name);
+
+                        items.push(Self::render_scenery_card(
+                            pack,
+                            selected.as_ref() == Some(&pack.name),
+                            overrides.contains_key(&pack.name),
+                            idx,
+                            is_being_dragged,
+                            is_search_match,
+                            is_in_bucket,
+                            !bucket.is_empty(),
+                            icons.clone(),
+                        ));
                     }
 
-                    let is_being_dragged = *drag_id == Some(idx);
-                    let is_search_match = *current_search_match == Some(idx);
-                    let is_in_bucket = bucket.contains(&pack.name);
-
-                    items.push(Self::render_scenery_card(
-                        pack,
-                        selected.as_ref() == Some(&pack.name),
-                        overrides.contains_key(&pack.name),
-                        idx,
-                        is_being_dragged,
-                        is_search_match,
-                        is_in_bucket,
-                        !bucket.is_empty(),
-                        icons.clone(),
-                    ));
+                    // Final gap at the very bottom
+                    if is_dragging {
+                        items.push(Self::view_drop_gap(packs.len(), *hover_id == Some(packs.len())));
+                    }
                 }
 
-                // Final gap at the very bottom
-                if is_dragging {
-                    items.push(Self::view_drop_gap(packs.len(), *hover_id == Some(packs.len())));
-                }
-
-                Element::from(column(items).spacing(2)) // Tighter spacing because gaps add padding
+                Element::from(column(items).spacing(2))
             },
         ))
         .id(self.scenery_scroll_id.clone());
@@ -6361,7 +6435,29 @@ impl App {
                         style::button_secondary
                     })
                     .padding([6, 12])
-                }
+                },
+                button(
+                    text("Export List")
+                        .size(12)
+                )
+                .on_press(Message::ExportSceneryList)
+                .style(style::button_secondary)
+                .padding([6, 12]),
+                button(
+                    text(if self.use_region_view {
+                        "Flat View"
+                    } else {
+                        "Group by Region"
+                    })
+                    .size(12)
+                )
+                .on_press(Message::ToggleRegionView)
+                .style(if self.use_region_view {
+                    style::button_primary
+                } else {
+                    style::button_secondary
+                })
+                .padding([6, 12])
             ]
             .spacing(10)
             .align_y(iced::Alignment::Center)
@@ -6566,7 +6662,7 @@ impl App {
         .width(Length::Fixed(self.basket_size.x))
         .height(Length::Fixed(self.basket_size.y));
 
-        main_basket.into()
+        mouse_area(main_basket).on_press(Message::NoOp).into()
     }
 
     fn view_heuristics_editor(&self) -> Element<'_, Message> {
@@ -6730,6 +6826,32 @@ impl App {
         .on_press(Message::AddExclusion)
         .padding(10)
         .style(style::button_primary);
+        
+        // 2. Export Settings Section
+        let export_settings: Element<'_, Message> = container(
+            column![
+                text("Aircraft Export Settings").size(18),
+                text("Customize the format and content of your aircraft library exports.")
+                    .size(12)
+                    .color(style::palette::TEXT_SECONDARY),
+                column![
+                    checkbox("Include Livery Names", self.export_include_liveries)
+                        .on_toggle(Message::ToggleExportIncludeLiveries)
+                        .size(18)
+                        .text_size(14),
+                    checkbox("Expanded Format (Power User: One row per livery)", self.export_expanded_format)
+                        .on_toggle(Message::ToggleExportExpandedFormat)
+                        .size(18)
+                        .text_size(14)
+                ]
+                .spacing(10)
+            ]
+            .spacing(10),
+        )
+        .padding(20)
+        .style(style::container_card)
+        .width(Length::Fill)
+        .into();
 
         // 3. Map Filter Section
         let mut filter_content = Column::<'_, Message, Theme, Renderer>::new().spacing(5);
@@ -6839,6 +6961,7 @@ impl App {
                 .align_y(iced::Alignment::Center),
                 
                 backup_section,
+                export_settings,
 
                 iced::widget::horizontal_rule(1.0),
 
@@ -7040,6 +7163,64 @@ impl App {
             .width(Length::Fill)
             .height(Length::Fill)
             .style(style::container_main_content)
+            .into()
+    }
+
+    fn render_region_header(
+        region: String,
+        count: usize,
+        is_expanded: bool,
+        is_any_enabled: bool,
+        is_any_in_bucket: bool,
+    ) -> Element<'static, Message> {
+        let region_for_toggle = region.clone();
+        let region_for_enabled = region.clone();
+        let region_for_bucket = region.clone();
+        
+        let content = row![
+            text(if is_expanded { "v" } else { ">" })
+                .size(14)
+                .width(Length::Fixed(20.0)),
+            text(region).size(16).width(Length::Fill),
+            text(format!("({} packs)", count))
+                .size(12)
+                .color(style::palette::TEXT_SECONDARY),
+            horizontal_space(),
+            button(
+                text(if is_any_in_bucket {
+                    "Remove from Bucket"
+                } else {
+                    "Add to Bucket"
+                })
+                .size(10)
+            )
+            .on_press(Message::SetRegionInBucket(region_for_bucket, !is_any_in_bucket))
+            .style(style::button_secondary)
+            .padding([4, 8]),
+            button(
+                text(if is_any_enabled {
+                    "Disable All"
+                } else {
+                    "Enable All"
+                })
+                .size(10)
+            )
+            .on_press(Message::SetRegionEnabled(region_for_enabled, !is_any_enabled))
+            .style(if is_any_enabled {
+                style::button_danger
+            } else {
+                style::button_enable_all
+            })
+            .padding([4, 8]),
+        ]
+        .spacing(10)
+        .align_y(iced::Alignment::Center)
+        .padding(10);
+
+        button(content)
+            .on_press(Message::ToggleRegion(region_for_toggle))
+            .style(style::button_region_header)
+            .width(Length::Fill)
             .into()
     }
 
@@ -7558,7 +7739,6 @@ impl App {
             let use_smart = self.use_smart_view;
             let tree = self.aircraft_tree.clone();
             let selected = self.selected_aircraft.clone();
-            let selected_smart = self.selected_smart_target.clone();
             let smart_groups = self.smart_groups.clone();
             let smart_model_groups = self.smart_model_groups.clone();
             let icon_trash = self.icon_trash.clone();
@@ -7568,33 +7748,30 @@ impl App {
                     use_smart,
                     tree,
                     selected,
-                    selected_smart,
                     self.smart_view_expanded.clone(),
                     smart_groups,
                     smart_model_groups,
                     icon_trash,
                 ),
-                move |(use_smart, tree, selected, selected_smart, expanded, smart_groups, smart_model_groups, icon_trash)| {
+                move |(use_smart, tree, selected, expanded, smart_groups, smart_model_groups, icon_trash)| {
                     let items: Vec<Element<'_, Message, Theme, Renderer>> = if *use_smart {
                         Self::collect_smart_nodes(
                             smart_groups,
                             smart_model_groups,
                             selected,
-                            selected_smart,
                             expanded,
                             icon_trash.clone(),
                         )
                     } else {
                         match tree {
                             Some(t) => Self::collect_tree_nodes(t, 0, selected, icon_trash.clone()),
-                            None => vec![],
+                            None => vec![Element::from(text("Loading aircraft...").size(14))],
                         }
                     };
                     Element::from(column(items).spacing(2))
                 },
             ))
             .height(Length::Fill)
-            .id(self.aircraft_scroll_id.clone())
             .into()
         };
 
@@ -7783,14 +7960,21 @@ impl App {
         selected_aircraft: &Option<std::path::PathBuf>,
         icon_trash: svg::Handle,
     ) -> Vec<Element<'static, Message>> {
-        let mut result = vec![Self::render_aircraft_row(node, depth, selected_aircraft, icon_trash.clone())];
+        let mut result = Vec::new();
+        
+        // Skip rendering the root "Addon Library" node - show children directly
+        let is_root = node.path.as_os_str().is_empty() || node.name == "Addon Library";
+        
+        if !is_root {
+            result.push(Self::render_aircraft_row(node, depth, selected_aircraft, icon_trash.clone()));
+        }
 
-        // Collect children if expanded
-        if node.is_expanded {
+        // Collect children if expanded (root is always treated as expanded)
+        if node.is_expanded || is_root {
             for child in &node.children {
                 result.extend(Self::collect_tree_nodes(
                     child,
-                    depth + 1,
+                    if is_root { 0 } else { depth + 1 },
                     selected_aircraft,
                     icon_trash.clone(),
                 ));
@@ -7932,7 +8116,6 @@ impl App {
             std::collections::BTreeMap<String, Vec<AircraftNode>>,
         >,
         selected_aircraft: &Option<std::path::PathBuf>,
-        selected_smart: &Option<String>,
         expanded_smart: &std::collections::BTreeSet<String>,
         icon_trash: svg::Handle,
     ) -> Vec<Element<'static, Message>> {
@@ -7943,33 +8126,18 @@ impl App {
             let is_expanded = expanded_smart.contains(&tag_id);
             let icon = if is_expanded { "v" } else { ">" };
 
-            let is_selected = if let Some(sel) = selected_smart {
-                sel == &tag_id
-            } else {
-                false
-            };
-
-            let style = if is_selected {
-                style::button_primary
-            } else {
-                style::button_ghost
-            };
-
             result.push(
                 row![
                     button(text(icon).size(14))
-                        .on_press(Message::ToggleSmartFolder(tag_id.clone()))
+                        .on_press(Message::ToggleSmartFolder(tag_id))
                         .padding([4, 8])
                         .style(style::button_ghost),
-                    button(container(text(tag.clone()).size(16)).padding(iced::Padding {
+                    container(text(tag.clone()).size(16)).padding(iced::Padding {
                         top: 5.0,
                         right: 5.0,
                         bottom: 5.0,
                         left: 5.0,
-                    }))
-                    .on_press(Message::ToggleSmartFolder(tag_id))
-                    .style(style)
-                    .width(Length::Fill)
+                    })
                 ]
                 .align_y(iced::Alignment::Center)
                 .into(),
@@ -7986,18 +8154,6 @@ impl App {
                     for (model, acs) in model_groups {
                         let model_id = format!("model:{}:{}", tag, model);
                         let model_expanded = expanded_smart.contains(&model_id);
-
-                        let is_selected = if let Some(sel) = selected_smart {
-                            sel == &model_id
-                        } else {
-                            false
-                        };
-
-                        let style = if is_selected {
-                            style::button_primary
-                        } else {
-                            style::button_ghost
-                        };
 
                         let folder = AircraftNode {
                             name: model.clone(),
@@ -8024,17 +8180,14 @@ impl App {
                                 container(text("")).width(Length::Fixed(indent)),
                                 row![
                                     button(text(icon).size(14))
-                                        .on_press(Message::ToggleSmartFolder(model_id.clone()))
+                                        .on_press(Message::ToggleSmartFolder(model_id))
                                         .padding([4, 8])
                                         .style(style::button_ghost),
                                     button(text(folder.name).size(14).color(label_color))
-                                        .on_press(Message::ToggleSmartFolder(model_id))
-                                        .style(style)
+                                        .style(style::button_ghost)
                                         .padding([4, 8])
-                                        .width(Length::Fill)
                                 ]
                                 .spacing(5)
-                                .width(Length::Fill)
                             ]
                             .into(),
                         );
@@ -8050,9 +8203,7 @@ impl App {
                 }
             } else {
                 for ac in aircraft {
-                    let mut ac = ac.clone();
-                    ac.acf_file = None;
-                    result.push(Self::render_aircraft_row(&ac, 1, selected_aircraft, icon_trash.clone()));
+                    result.push(Self::render_aircraft_row(ac, 1, selected_aircraft, icon_trash.clone()));
                 }
             }
         }
@@ -8654,91 +8805,6 @@ fn toggle_folder_at_path(node: &mut AircraftNode, target_path: &std::path::Path)
     }
 }
 
-fn expand_to_aircraft_path(node: &mut AircraftNode, target_path: &std::path::Path) -> bool {
-    if node.path == target_path {
-        return true;
-    }
-
-    if target_path.starts_with(&node.path) {
-        let mut found = false;
-        for child in &mut node.children {
-            if expand_to_aircraft_path(child, target_path) {
-                found = true;
-                break;
-            }
-        }
-        if found {
-            node.is_expanded = true;
-            return true;
-        }
-    }
-    false
-}
-
-fn collect_search_matches(node: &AircraftNode, query: &str, matches: &mut Vec<String>) {
-    let q = query.to_lowercase();
-    let name_match = node.name.to_lowercase().contains(&q);
-    let acf_match = node
-        .acf_file
-        .as_ref()
-        .map(|f| f.to_lowercase().contains(&q))
-        .unwrap_or(false);
-
-    if name_match || acf_match {
-        matches.push(node.path.to_string_lossy().to_string());
-    }
-
-    for child in &node.children {
-        collect_search_matches(child, query, matches);
-    }
-}
-
-fn collect_smart_search_matches(
-    smart_groups: &std::collections::BTreeMap<String, Vec<AircraftNode>>,
-    smart_model_groups: &std::collections::BTreeMap<
-        String,
-        std::collections::BTreeMap<String, Vec<AircraftNode>>,
-    >,
-    query: &str,
-    matches: &mut Vec<String>,
-) {
-    let q = query.to_lowercase();
-
-    for (tag, aircraft) in smart_groups {
-        let tag_id = format!("tag:{}", tag);
-        if tag.to_lowercase().contains(&q) {
-            matches.push(tag_id.clone());
-        }
-
-        let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
-        if is_manufacturer {
-            if let Some(model_groups) = smart_model_groups.get(tag) {
-                for (model, acs) in model_groups {
-                    let model_id = format!("model:{}:{}", tag, model);
-                    if model.to_lowercase().contains(&q) {
-                        matches.push(model_id);
-                    }
-                    for ac in acs {
-                        let name_match = ac.name.to_lowercase().contains(&q);
-                        let acf_match = ac.acf_file.as_ref().map(|f| f.to_lowercase().contains(&q)).unwrap_or(false);
-                        if name_match || acf_match {
-                            matches.push(ac.path.to_string_lossy().to_string());
-                        }
-                    }
-                }
-            }
-        } else {
-            for ac in aircraft {
-                let name_match = ac.name.to_lowercase().contains(&q);
-                let acf_match = ac.acf_file.as_ref().map(|f| f.to_lowercase().contains(&q)).unwrap_or(false);
-                if name_match || acf_match {
-                    matches.push(ac.path.to_string_lossy().to_string());
-                }
-            }
-        }
-    }
-}
-
 async fn install_addon(
     root: Option<PathBuf>,
     zip_path: PathBuf,
@@ -9152,7 +9218,144 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
     Ok(path)
 }
 
-fn export_aircraft_task(aircraft: Arc<Vec<DiscoveredAddon>>) -> impl std::future::Future<Output = Result<PathBuf, String>> {
+async fn export_scenery_task(
+    packs: Arc<Vec<SceneryPack>>,
+) -> Result<PathBuf, String> {
+    use std::fs::File;
+    use std::io::Write;
+
+    let initial_location = directories::UserDirs::new()
+        .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
+        .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let path = rfd::AsyncFileDialog::new()
+        .add_filter("CSV File", &["csv"])
+        .add_filter("XML File", &["xml"])
+        .add_filter("Text File", &["txt"])
+        .set_file_name("x_plane_scenery_library.csv")
+        .set_directory(&initial_location)
+        .save_file()
+        .await
+        .ok_or("Export cancelled".to_string())?
+        .path()
+        .to_path_buf();
+
+    let is_xml = path.extension().map_or(false, |ext| ext == "xml");
+    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+
+    let mut content = String::new();
+
+    if is_xml {
+        content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        content.push_str("<SceneryLibrary version=\"2.3.3\">\n");
+        
+        let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
+        for pack in packs.iter() {
+            let reg = pack.region.clone().unwrap_or_else(|| "Global / Unsorted".to_string());
+            regions.entry(reg).or_default().push(pack);
+        }
+
+        for (region_name, region_packs) in regions {
+            content.push_str(&format!("  <Region name=\"{}\">\n", html_escape::encode_text(&region_name)));
+            for pack in region_packs {
+                let status = format!("{:?}", pack.status);
+                let category = format!("{:?}", pack.category);
+                let name = html_escape::encode_text(&pack.name);
+                let path_str = pack.path.display().to_string();
+                let path_esc = html_escape::encode_text(&path_str);
+
+                content.push_str(&format!(
+                    "    <Pack name=\"{}\" status=\"{}\" type=\"{}\">\n",
+                    name, status, category
+                ));
+                content.push_str(&format!("      <Path>{}</Path>\n", path_esc));
+                
+                if !pack.airports.is_empty() {
+                    content.push_str("      <Airports>\n");
+                    for apt in &pack.airports {
+                        let apt_name = html_escape::encode_text(&apt.name);
+                        let id = html_escape::encode_text(&apt.id);
+                        let lat = apt.lat.map(|l| l.to_string()).unwrap_or_default();
+                        let lon = apt.lon.map(|l| l.to_string()).unwrap_or_default();
+                        content.push_str(&format!(
+                            "        <Airport icao=\"{}\" name=\"{}\" lat=\"{}\" lon=\"{}\" />\n",
+                            id, apt_name, lat, lon
+                        ));
+                    }
+                    content.push_str("      </Airports>\n");
+                }
+                
+                if !pack.tags.is_empty() {
+                    content.push_str("      <Tags>\n");
+                    for tag in &pack.tags {
+                        content.push_str(&format!("        <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                    }
+                    content.push_str("      </Tags>\n");
+                }
+                
+                content.push_str("    </Pack>\n");
+            }
+            content.push_str("  </Region>\n");
+        }
+        content.push_str("</SceneryLibrary>\n");
+    } else if is_csv {
+        content.push_str("Name,Type,Status,Region,Airports,Path\n");
+        for pack in packs.iter() {
+            let name = pack.name.replace('"', "\"\"");
+            let category = format!("{:?}", pack.category);
+            let status = format!("{:?}", pack.status);
+            let region = pack.region.as_deref().unwrap_or("Unsorted").replace('"', "\"\"");
+            let airports = pack.airports.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join("; ");
+            let path_str = pack.path.display().to_string().replace('"', "\"\"");
+
+            content.push_str(&format!(
+                "\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"\n",
+                name, category, status, region, airports, path_str
+            ));
+        }
+    } else {
+        content.push_str("X-Plane Scenery Library Report\n");
+        content.push_str("==============================\n\n");
+        
+        let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
+        for pack in packs.iter() {
+            let reg = pack.region.clone().unwrap_or_else(|| "Global / Unsorted".to_string());
+            regions.entry(reg).or_default().push(pack);
+        }
+
+        for (region_name, region_packs) in regions {
+            content.push_str(&format!("Region: {}\n", region_name));
+            content.push_str(&("-".repeat(region_name.len() + 8)));
+            content.push_str("\n");
+            for pack in region_packs {
+                content.push_str(&format!("  [{}] {} ({:?})\n", 
+                    if matches!(pack.status, SceneryPackType::Active) { "X" } else { " " },
+                    pack.name,
+                    pack.category
+                ));
+                if !pack.airports.is_empty() {
+                    let apts = pack.airports.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join(", ");
+                    content.push_str(&format!("      Airports: {}\n", apts));
+                }
+            }
+            content.push_str("\n");
+        }
+        content.push_str(&format!("Total Scenery Packs: {}\n", packs.len()));
+    }
+
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(path)
+}
+
+fn export_aircraft_task(
+    aircraft: Arc<Vec<DiscoveredAddon>>,
+    include_liveries: bool,
+    expanded_format: bool,
+) -> impl std::future::Future<Output = Result<PathBuf, String>> {
     async move {
         use std::fs::File;
         use std::io::Write;
@@ -9164,6 +9367,7 @@ fn export_aircraft_task(aircraft: Arc<Vec<DiscoveredAddon>>) -> impl std::future
 
         let path = rfd::AsyncFileDialog::new()
             .add_filter("CSV File", &["csv"])
+            .add_filter("XML File", &["xml"])
             .add_filter("Text File", &["txt"])
             .set_file_name("x_plane_aircraft_library.csv")
             .set_directory(&initial_location)
@@ -9173,34 +9377,120 @@ fn export_aircraft_task(aircraft: Arc<Vec<DiscoveredAddon>>) -> impl std::future
             .path()
             .to_path_buf();
 
+        let is_xml = path.extension().map_or(false, |ext| ext == "xml");
         let is_csv = path.extension().map_or(false, |ext| ext == "csv");
 
         let mut content = String::new();
-        if is_csv {
-            content.push_str("Aircraft Name,Type,Livery Count,Enabled,Path\n");
+        if is_xml {
+            content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+            content.push_str("<AircraftLibrary version=\"2.3.3\">\n");
             for addon in aircraft.iter() {
-                if let AddonType::Aircraft { acf_name, livery_count } = &addon.addon_type {
+                if let AddonType::Aircraft {
+                    acf_name,
+                    livery_count,
+                    livery_names,
+                } = &addon.addon_type
+                {
+                    let category = addon.tags.iter()
+                        .find(|t| MANUFACTURERS.contains(&t.as_str()) || AIRCRAFT_CATEGORIES.contains(&t.as_str()))
+                        .map(|s| s.as_str())
+                        .unwrap_or("Uncategorized");
+
+                    let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+                    let name = html_escape::encode_text(&addon.name);
+                    let acf = html_escape::encode_text(acf_name);
+                    let category_esc = html_escape::encode_text(category);
+                    let path_str = addon.path.display().to_string();
+                    let path_esc = html_escape::encode_text(&path_str);
+
+                    content.push_str(&format!(
+                        "  <Aircraft name=\"{}\" category=\"{}\" status=\"{}\">\n",
+                        name, category_esc, status
+                    ));
+                    content.push_str(&format!("    <Path>{}</Path>\n", path_esc));
+                    content.push_str("    <Tags>\n");
+                    for tag in &addon.tags {
+                        content.push_str(&format!("      <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                    }
+                    content.push_str("    </Tags>\n");
+                    content.push_str(&format!("    <Model acf=\"{}\" liveryCount=\"{}\">\n", acf, livery_count));
+                    if include_liveries {
+                        for livery in livery_names {
+                            content.push_str(&format!("      <Livery name=\"{}\" />\n", html_escape::encode_text(livery)));
+                        }
+                    }
+                    content.push_str("    </Model>\n");
+                    content.push_str("  </Aircraft>\n");
+                }
+            }
+            content.push_str("</AircraftLibrary>\n");
+        } else if is_csv {
+            content.push_str("Manufacturer/Category,Aircraft Name,ACF File,Status,Livery Count,Liveries,Path\n");
+            for addon in aircraft.iter() {
+                if let AddonType::Aircraft {
+                    acf_name,
+                    livery_count,
+                    livery_names,
+                } = &addon.addon_type
+                {
+                    // 1. Extract Manufacturer/Category from tags
+                    let category = addon.tags.iter()
+                        .find(|t| MANUFACTURERS.contains(&t.as_str()) || AIRCRAFT_CATEGORIES.contains(&t.as_str()))
+                        .map(|s| s.as_str())
+                        .unwrap_or("Uncategorized");
+
                     let name = addon.name.replace('"', "\"\"");
-                    let type_str = acf_name.replace('"', "\"\"");
-                    let enabled = if addon.is_enabled { "Yes" } else { "No" };
+                    let acf = acf_name.replace('"', "\"\"");
+                    let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
                     let path_str = addon.path.display().to_string().replace('"', "\"\"");
-                    content.push_str(&format!("\"{}\",\"{}\",{},\"{}\",\"{}\"\n", name, type_str, livery_count, enabled, path_str));
+
+                    if expanded_format && !livery_names.is_empty() {
+                        // Power User: One row per livery
+                        for livery in livery_names {
+                            let livery_clean = livery.replace('"', "\"\"");
+                            content.push_str(&format!(
+                                "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"\n",
+                                category, name, acf, status, livery_count, livery_clean, path_str
+                            ));
+                        }
+                    } else {
+                        // Flattened format
+                        let liveries_val = if include_liveries {
+                            livery_names.join(" | ").replace('"', "\"\"")
+                        } else {
+                            String::new()
+                        };
+                        content.push_str(&format!(
+                            "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"\n",
+                            category, name, acf, status, livery_count, liveries_val, path_str
+                        ));
+                    }
                 }
             }
         } else {
-            content.push_str("X-Plane Aircraft Library\n");
-            content.push_str("======================\n\n");
+            content.push_str("X-Plane Aircraft Library Report\n");
+            content.push_str("==============================\n\n");
             for addon in aircraft.iter() {
-                if let AddonType::Aircraft { acf_name, livery_count } = &addon.addon_type {
-                    content.push_str(&format!("Name:         {}\n", addon.name));
-                    content.push_str(&format!("Type:         {}\n", acf_name));
-                    content.push_str(&format!("Liveries:     {}\n", livery_count));
-                    content.push_str(&format!("Enabled:      {}\n", if addon.is_enabled { "Yes" } else { "No" }));
-                    content.push_str(&format!("Path:         {}\n", addon.path.display()));
-                    content.push_str("----------------------\n");
+                if let AddonType::Aircraft {
+                    acf_name,
+                    livery_count,
+                    livery_names,
+                } = &addon.addon_type
+                {
+                    content.push_str(&format!("Aircraft:    {}\n", addon.name));
+                    content.push_str(&format!("ACF File:    {}\n", acf_name));
+                    content.push_str(&format!("Status:      {}\n", if addon.is_enabled { "Enabled" } else { "Disabled" }));
+                    content.push_str(&format!("Liveries:    {}\n", livery_count));
+                    if include_liveries && !livery_names.is_empty() {
+                        content.push_str("Livery List: ");
+                        content.push_str(&livery_names.join(", "));
+                        content.push_str("\n");
+                    }
+                    content.push_str(&format!("System Path: {}\n", addon.path.display()));
+                    content.push_str("------------------------------\n");
                 }
             }
-            content.push_str(&format!("\nTotal Aircraft: {}\n", aircraft.len()));
+            content.push_str(&format!("\nTotal Aircraft Count: {}\n", aircraft.len()));
         }
 
         let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
@@ -9209,4 +9499,213 @@ fn export_aircraft_task(aircraft: Arc<Vec<DiscoveredAddon>>) -> impl std::future
 
         Ok(path)
     }
+}
+
+async fn export_plugins_task(
+    addons: Arc<Vec<DiscoveredAddon>>,
+) -> Result<PathBuf, String> {
+    use std::fs::File;
+    use std::io::Write;
+    use x_adox_core::discovery::AddonType;
+
+    let initial_location = directories::UserDirs::new()
+        .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
+        .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let path = rfd::AsyncFileDialog::new()
+        .add_filter("CSV File", &["csv"])
+        .add_filter("XML File", &["xml"])
+        .add_filter("Text File", &["txt"])
+        .set_file_name("x_plane_plugin_library.csv")
+        .set_directory(&initial_location)
+        .save_file()
+        .await
+        .ok_or("Export cancelled".to_string())?
+        .path()
+        .to_path_buf();
+
+    let is_xml = path.extension().map_or(false, |ext| ext == "xml");
+    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+
+    let mut content = String::new();
+
+    if is_xml {
+        content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        content.push_str("<PluginLibrary version=\"2.3.3\">\n");
+        
+        for addon in addons.iter() {
+            let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+            let name = html_escape::encode_text(&addon.name);
+            let path_str = addon.path.display().to_string();
+            let path_esc = html_escape::encode_text(&path_str);
+
+            content.push_str(&format!(
+                "  <Plugin name=\"{}\" status=\"{}\">\n",
+                name, status
+            ));
+            content.push_str(&format!("    <Path>{}</Path>\n", path_esc));
+            
+            if let AddonType::Plugin { scripts } = &addon.addon_type {
+                if !scripts.is_empty() {
+                    content.push_str("    <Scripts>\n");
+                    for script in scripts {
+                        let script_name = html_escape::encode_text(&script.name);
+                        let script_status = if script.is_enabled { "Enabled" } else { "Disabled" };
+                        content.push_str(&format!(
+                            "      <Script name=\"{}\" status=\"{}\" />\n",
+                            script_name, script_status
+                        ));
+                    }
+                    content.push_str("    </Scripts>\n");
+                }
+            }
+            
+            if !addon.tags.is_empty() {
+                content.push_str("    <Tags>\n");
+                for tag in &addon.tags {
+                    content.push_str(&format!("      <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                }
+                content.push_str("    </Tags>\n");
+            }
+            
+            content.push_str("  </Plugin>\n");
+        }
+        content.push_str("</PluginLibrary>\n");
+    } else if is_csv {
+        content.push_str("Name,Status,Scripts,Path\n");
+        for addon in addons.iter() {
+            let name = addon.name.replace('"', "\"\"");
+            let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+            let path_str = addon.path.display().to_string().replace('"', "\"\"");
+            
+            let scripts_val = if let AddonType::Plugin { scripts } = &addon.addon_type {
+                scripts.iter()
+                    .map(|s| format!("{} ({})", s.name, if s.is_enabled { "on" } else { "off" }))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            } else {
+                String::new()
+            };
+
+            content.push_str(&format!(
+                "\"{}\",\"{}\",\"{}\",\"{}\"\n",
+                name, status, scripts_val.replace('"', "\"\""), path_str
+            ));
+        }
+    } else {
+        content.push_str("X-Plane Plugin Library Report\n");
+        content.push_str("==============================\n\n");
+        
+        for addon in addons.iter() {
+            content.push_str(&format!("[{}] {}\n", 
+                if addon.is_enabled { "X" } else { " " },
+                addon.name
+            ));
+            
+            if let AddonType::Plugin { scripts } = &addon.addon_type {
+                for script in scripts {
+                    content.push_str(&format!("    - [{}] {}\n",
+                        if script.is_enabled { "X" } else { " " },
+                        script.name
+                    ));
+                }
+            }
+            content.push_str("\n");
+        }
+        content.push_str(&format!("Total Plugins: {}\n", addons.len()));
+    }
+
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(path)
+}
+
+async fn export_csls_task(
+    addons: Arc<Vec<DiscoveredAddon>>,
+) -> Result<PathBuf, String> {
+    use std::fs::File;
+    use std::io::Write;
+
+    let initial_location = directories::UserDirs::new()
+        .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
+        .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let path = rfd::AsyncFileDialog::new()
+        .add_filter("CSV File", &["csv"])
+        .add_filter("XML File", &["xml"])
+        .add_filter("Text File", &["txt"])
+        .set_file_name("x_plane_csl_library.csv")
+        .set_directory(&initial_location)
+        .save_file()
+        .await
+        .ok_or("Export cancelled".to_string())?
+        .path()
+        .to_path_buf();
+
+    let is_xml = path.extension().map_or(false, |ext| ext == "xml");
+    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+
+    let mut content = String::new();
+
+    if is_xml {
+        content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        content.push_str("<CSLLibrary version=\"2.3.3\">\n");
+        
+        for addon in addons.iter() {
+            let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+            let name = html_escape::encode_text(&addon.name);
+            let path_str = addon.path.display().to_string();
+            let path_esc = html_escape::encode_text(&path_str);
+
+            content.push_str(&format!(
+                "  <Package name=\"{}\" status=\"{}\">\n",
+                name, status
+            ));
+            content.push_str(&format!("    <Path>{}</Path>\n", path_esc));
+            
+            if !addon.tags.is_empty() {
+                content.push_str("    <Tags>\n");
+                for tag in &addon.tags {
+                    content.push_str(&format!("      <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                }
+                content.push_str("    </Tags>\n");
+            }
+            
+            content.push_str("  </Package>\n");
+        }
+        content.push_str("</CSLLibrary>\n");
+    } else if is_csv {
+        content.push_str("Name,Status,Path\n");
+        for addon in addons.iter() {
+            let name = addon.name.replace('"', "\"\"");
+            let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+            let path_str = addon.path.display().to_string().replace('"', "\"\"");
+
+            content.push_str(&format!(
+                "\"{}\",\"{}\",\"{}\"\n",
+                name, status, path_str
+            ));
+        }
+    } else {
+        content.push_str("X-Plane CSL Package Library Report\n");
+        content.push_str("==============================\n\n");
+        
+        for addon in addons.iter() {
+            content.push_str(&format!("[{}] {}\n", 
+                if addon.is_enabled { "X" } else { " " },
+                addon.name
+            ));
+        }
+        content.push_str(&format!("\nTotal CSL Packages: {}\n", addons.len()));
+    }
+
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(path)
 }

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use std::path::PathBuf;
 use tempfile::tempdir;
 use x_adox_bitnet::{BitNetModel, PredictContext};
@@ -16,6 +20,7 @@ fn create_test_pack(name: &str) -> SceneryPack {
         tiles: Vec::new(),
         tags: Vec::new(),
         descriptor: SceneryDescriptor::default(),
+        region: None,
     }
 }
 

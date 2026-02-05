@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use crate::scenery::SceneryDescriptor;
 use std::fs::File;
 use std::io::Read;

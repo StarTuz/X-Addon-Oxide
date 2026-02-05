@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use std::fs;
 use tempfile::tempdir;
 use x_adox_core::scenery::{discover_airports_in_pack, discover_tiles_in_pack};

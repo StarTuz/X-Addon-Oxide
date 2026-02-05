@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use std::collections::HashMap;
 use std::fs;
 use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};

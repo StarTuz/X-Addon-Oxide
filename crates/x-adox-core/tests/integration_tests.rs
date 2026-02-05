@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use std::fs;
 use tempfile::TempDir;
 use x_adox_core::XPlaneManager;

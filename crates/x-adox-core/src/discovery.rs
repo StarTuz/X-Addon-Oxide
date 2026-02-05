@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -18,6 +22,7 @@ pub enum AddonType {
     Aircraft {
         acf_name: String,
         livery_count: usize,
+        livery_names: Vec<String>,
     },
     Plugin {
         scripts: Vec<PythonScript>,
@@ -122,6 +127,7 @@ impl DiscoveryManager {
                                     addon_type: AddonType::Aircraft {
                                         acf_name,
                                         livery_count: DiscoveryManager::count_liveries(&path),
+                                        livery_names: DiscoveryManager::get_livery_names(&path),
                                     },
                                     is_enabled,
                                     tags,
@@ -279,12 +285,21 @@ impl DiscoveryManager {
                         || path.join("lin_x64").exists();
 
                     if has_xpl {
+                        // Determine script type based on plugin
+                        let scripts = if name == "FlyWithLua" || name == "X-Lua" {
+                            DiscoveryManager::scan_lua_scripts(&path)
+                        } else if name == "XPPython3" {
+                            DiscoveryManager::scan_python_scripts(root, "XPPython3")
+                        } else if name == "PythonInterface" {
+                            DiscoveryManager::scan_python_scripts(root, "PythonInterface")
+                        } else {
+                            Vec::new()
+                        };
+
                         dir_results.push(DiscoveredAddon {
                             path: path.clone(),
                             name: name.clone(),
-                            addon_type: AddonType::Plugin {
-                                scripts: DiscoveryManager::scan_python_scripts(root, "XPPython3"),
-                            },
+                            addon_type: AddonType::Plugin { scripts },
                             is_enabled: enabled,
                             tags: Vec::new(),
                         });
@@ -465,6 +480,38 @@ impl DiscoveryManager {
         results
     }
 
+    /// Scans for Lua scripts in a FlyWithLua/X-Lua plugin folder.
+    pub fn scan_lua_scripts(plugin_path: &Path) -> Vec<PythonScript> {
+        let mut results = Vec::new();
+        let script_dir = plugin_path.join("Scripts");
+
+        if !script_dir.exists() {
+            return results;
+        }
+
+        if let Ok(entries) = std::fs::read_dir(&script_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+
+                if path.is_file() && (name.ends_with(".lua") || name.ends_with(".lua.disabled")) {
+                    results.push(PythonScript {
+                        name: name.clone(),
+                        path: path.clone(),
+                        is_enabled: name.ends_with(".lua"),
+                    });
+                }
+            }
+        }
+
+        results.sort_by(|a, b| a.name.cmp(&b.name));
+        results
+    }
+
     pub fn count_liveries(aircraft_path: &Path) -> usize {
         let liveries_path = aircraft_path.join("liveries");
         if !liveries_path.exists() || !liveries_path.is_dir() {
@@ -474,6 +521,26 @@ impl DiscoveryManager {
         match std::fs::read_dir(liveries_path) {
             Ok(entries) => entries.flatten().filter(|e| e.path().is_dir()).count(),
             Err(_) => 0,
+        }
+    }
+
+    pub fn get_livery_names(aircraft_path: &Path) -> Vec<String> {
+        let liveries_path = aircraft_path.join("liveries");
+        if !liveries_path.exists() || !liveries_path.is_dir() {
+            return Vec::new();
+        }
+
+        match std::fs::read_dir(liveries_path) {
+            Ok(entries) => {
+                let mut names: Vec<_> = entries
+                    .flatten()
+                    .filter(|e| e.path().is_dir())
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .collect();
+                names.sort();
+                names
+            }
+            Err(_) => Vec::new(),
         }
     }
 }

@@ -261,14 +261,19 @@ impl BitNetModel {
     }
 
     fn load_config(path: &Path) -> Result<HeuristicsConfig> {
+        let abs_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        log::debug!("[BitNet] Loading heuristics from: {:?}", abs_path);
         if path.exists() {
             let content = fs::read_to_string(path)?;
-            let mut config: HeuristicsConfig = serde_json::from_str(&content)?;
+            let mut config: HeuristicsConfig = serde_json::from_str(&content).map_err(|e| {
+                log::error!("[BitNet] JSON Parse error for {:?}: {}", path, e);
+                e
+            })?;
 
             // Migration: If schema version is outdated, clear overrides (they may be from buggy AutoFix)
             if config.schema_version < CURRENT_SCHEMA_VERSION {
-                println!(
-                    "[BitNet] Migrating heuristics.json from schema v{} to v{}. Clearing overrides.",
+                log::info!(
+                    "[BitNet] Migrating heuristics.json from schema v{} to v{}. (Clearing overrides removed)",
                     config.schema_version, CURRENT_SCHEMA_VERSION
                 );
                 config.schema_version = CURRENT_SCHEMA_VERSION;
@@ -282,8 +287,16 @@ impl BitNetModel {
                 );
             }
 
+            log::debug!(
+                "[BitNet] Successfully loaded {} overrides",
+                config.overrides.len()
+            );
             Ok(config)
         } else {
+            log::debug!(
+                "[BitNet] No heuristics file found at {:?}, using defaults",
+                path
+            );
             Ok(HeuristicsConfig::default())
         }
     }
@@ -304,11 +317,21 @@ impl BitNetModel {
     }
 
     pub fn save(&self) -> Result<()> {
+        let abs_path = self
+            .config_path
+            .canonicalize()
+            .unwrap_or_else(|_| self.config_path.clone());
+        log::debug!(
+            "[BitNet] Saving {} overrides to {:?}",
+            self.config.overrides.len(),
+            abs_path
+        );
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(self.config.as_ref())?;
         fs::write(&self.config_path, content)?;
+        log::debug!("[BitNet] Save complete");
         Ok(())
     }
 
@@ -531,31 +554,34 @@ impl BitNetModel {
             "707-", "717-", "727-", "737-", "747-", "757-", "767-", "777-", "787-", "b-17", "b-29",
             "b-52", "c-17", "f-15", "f/a-18", "apache", "chinook",
         ]);
-        let is_airbus = matches_any(&[
-            "airbus",
-            "a300",
-            "a310",
-            "a318",
-            "a319",
-            "a320",
-            "a321",
-            "a330",
-            "a340",
-            "a350",
-            "a380",
-            "a220",
-            "beluga",
-            "a400m",
-            "c295",
-            "h125",
-            "h135",
-            "h145",
-            "h160",
-            "h175",
-            "h225",
-            "eurofighter",
-            "typhoon",
-        ]);
+        let is_airbus = matches_any(&["airbus"])
+            || (matches_any(&[
+                "a300",
+                "a310",
+                "a318",
+                "a319",
+                "a320",
+                "a321",
+                "a330",
+                "a340",
+                "a350",
+                "a380",
+                "a220",
+                "beluga",
+                "a400m",
+                "c295",
+                "h125",
+                "h135",
+                "h145",
+                "h160",
+                "h175",
+                "h225",
+                "eurofighter",
+                "typhoon",
+            ]) && !name_lower.contains("ka350")
+                && !name_lower.contains("be350")
+                && !name_lower.contains("king air")
+                && !name_lower.contains("kingair"));
         let is_mcdonnell = matches_any(&[
             "mcdonnell",
             "douglas",
@@ -641,7 +667,8 @@ impl BitNetModel {
             "mosquito",
             "comet",
         ]);
-        let is_fokker = matches_any(&["fokker", "f27", "f50", "f70", "f100"]);
+        let is_fokker = matches_any(&["fokker", "f27", "f70", "f100"])
+            || (name_lower.contains("f50") && !name_lower.contains("sf50"));
         let is_tupolev = matches_any(&[
             "tupolev", "tu-134", "tu-154", "tu-204", "tu-214", "tu-160", "tu-95",
         ]);
@@ -867,6 +894,7 @@ impl BitNetModel {
             "hawker",
             "hondajet",
             "cirrus sf50",
+            "sf50",
             "eclipse 500",
             "mustang",
             // Military Jets provided in is_military check mostly cover this, but explicitly:
@@ -1029,6 +1057,8 @@ impl BitNetModel {
             "hawker",
             "bizjet",
             "business jet",
+            "sf50",
+            "sf-50",
         ]);
 
         // --- Step 5: Assign Final Tags ---
@@ -1052,7 +1082,7 @@ impl BitNetModel {
 
             // BizJets are GA per user rules, but we tag them as BizJet + GA
 
-            let likely_airliner = is_airliner || (is_jet && !is_bizjet);
+            let likely_airliner = (is_airliner || is_jet) && !is_bizjet;
 
             if likely_airliner {
                 tags.push("Airliner".to_string());
@@ -1562,5 +1592,28 @@ mod tests {
         assert!(tags_after.contains(&"Jet".to_string()));
         assert!(!tags_after.contains(&"Boeing".to_string()));
         assert!(!tags_after.contains(&"Airliner".to_string()));
+    }
+
+    #[test]
+    fn test_predict_tags_cirrus_sf50_no_fokker() {
+        let model = BitNetModel::default();
+        let tags = model.predict_aircraft_tags("Cirrus Vision SF50", Path::new("test"));
+
+        // Should have Cirrus, GA, Jet tags
+        assert!(
+            tags.contains(&"Cirrus".to_string()),
+            "Should have Cirrus tag"
+        );
+        assert!(
+            tags.contains(&"General Aviation".to_string()),
+            "Should be GA"
+        );
+        assert!(tags.contains(&"Jet".to_string()), "Should be Jet");
+
+        // CRITICAL: Should NOT have Fokker tag
+        assert!(
+            !tags.contains(&"Fokker".to_string()),
+            "Should NOT have Fokker tag"
+        );
     }
 }

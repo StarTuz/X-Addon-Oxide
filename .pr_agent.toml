@@ -1,0 +1,20 @@
+[pr_code_suggestions]
+# Focus on important bugs and security issues
+num_code_suggestions = 4
+focus_on = ["bugs", "security", "performance"]
+
+[pr_description]
+# Auto-generate a description for the PR
+publish_labels = true
+publish_description_as_comment = false
+
+[pr_reviewer]
+# rigorous review
+require_score_review = true
+require_tests_review = true
+require_security_review = true
+
+[config]
+# General settings
+model = "gpt-4-turbo"
+fallback_model = "gpt-3.5-turbo"

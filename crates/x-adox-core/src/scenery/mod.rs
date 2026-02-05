@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 pub mod classifier;
 pub mod dsf_peek;
 pub mod ini_handler;
@@ -126,6 +130,9 @@ pub struct SceneryPack {
     pub tags: Vec<String>,
     #[serde(default)]
     pub descriptor: SceneryDescriptor,
+    /// Geographic region for continent grouping (e.g., "Europe", "North America")
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 impl SceneryPack {
@@ -250,6 +257,72 @@ impl SceneryPack {
         }
 
         score.min(100)
+    }
+
+    /// Returns the geographic region (continent) for this pack.
+    /// Priority: 1) Cached `self.region`, 2) SimHeaven naming, 3) Coordinate lookup
+    pub fn get_region(&self) -> String {
+        // 1. Return cached region if already set
+        if let Some(ref r) = self.region {
+            return r.clone();
+        }
+
+        // 2. Try extracting from SimHeaven naming convention
+        let name_lower = self.name.to_lowercase();
+        if name_lower.contains("x-world") || name_lower.contains("simheaven") {
+            if name_lower.contains("africa") {
+                return "Africa".to_string();
+            } else if name_lower.contains("america") {
+                return "North America".to_string();
+            } else if name_lower.contains("south_america") || name_lower.contains("south-america") {
+                return "South America".to_string();
+            } else if name_lower.contains("europe") {
+                return "Europe".to_string();
+            } else if name_lower.contains("asia") {
+                return "Asia".to_string();
+            } else if name_lower.contains("australia") || name_lower.contains("oceania") {
+                return "Oceania".to_string();
+            } else if name_lower.contains("antarctica") {
+                return "Antarctica".to_string();
+            }
+        }
+
+        // 3. Derive from coordinates (centroid)
+        if let Some((lat, lon)) = self.get_centroid() {
+            return coords_to_region(lat, lon);
+        }
+
+        // 4. Libraries/Global scenery
+        if self.category == SceneryCategory::Library
+            || self.category == SceneryCategory::GlobalAirport
+            || self.category == SceneryCategory::GlobalBase
+        {
+            return "Other / Global".to_string();
+        }
+
+        "Other / Global".to_string()
+    }
+}
+
+/// Coarse bounding-box lookup to map lat/lon to a continent name.
+pub fn coords_to_region(lat: f64, lon: f64) -> String {
+    // Very simplified continent bounds - good enough for grouping
+    if lat > 35.0 && lon > -25.0 && lon < 60.0 {
+        "Europe".to_string()
+    } else if lat > 15.0 && lat < 72.0 && lon > -170.0 && lon < -50.0 {
+        "North America".to_string()
+    } else if lat < 15.0 && lat > -60.0 && lon > -90.0 && lon < -30.0 {
+        "South America".to_string()
+    } else if lat > -40.0 && lat < 40.0 && lon > -20.0 && lon < 55.0 {
+        "Africa".to_string()
+    } else if lat > -10.0 && lat < 80.0 && lon > 60.0 && lon < 180.0 {
+        "Asia".to_string()
+    } else if lat > -50.0 && lat < 0.0 && lon > 110.0 && lon < 180.0 {
+        "Oceania".to_string()
+    } else if lat < -60.0 {
+        "Antarctica".to_string()
+    } else {
+        "Other / Global".to_string()
     }
 }
 
@@ -520,6 +593,9 @@ impl SceneryManager {
                     !pack.tiles.is_empty(),
                     &pack.descriptor,
                 );
+
+                // 5. Region Classification
+                pack.region = Some(pack.get_region());
 
                 (pack, cache_entry)
             })
@@ -1212,6 +1288,7 @@ mod tests {
             tiles: vec![(40, 50), (41, 51)],
             tags: vec![],
             descriptor: SceneryDescriptor::default(),
+            region: None,
         };
 
         // Should favor airports: (10 + 20) / 2 = 15, (20 + 30) / 2 = 25
@@ -1292,6 +1369,7 @@ mod tests {
             tiles: Vec::new(),
             tags: Vec::new(),
             descriptor: SceneryDescriptor::default(),
+            region: None,
         });
 
         manager.save(None).expect("Failed to save");
@@ -1341,6 +1419,7 @@ mod tests {
                 tiles: Vec::new(),
                 tags: Vec::new(),
                 descriptor: SceneryDescriptor::default(),
+                region: None,
             },
             SceneryPack {
                 name: "Bravo_Airport".to_string(),
@@ -1352,6 +1431,7 @@ mod tests {
                 tiles: Vec::new(),
                 tags: Vec::new(),
                 descriptor: SceneryDescriptor::default(),
+                region: None,
             },
             SceneryPack {
                 name: "Alpha_Airport (1)".to_string(),
@@ -1363,6 +1443,7 @@ mod tests {
                 tiles: Vec::new(),
                 tags: Vec::new(),
                 descriptor: SceneryDescriptor::default(),
+                region: None,
             },
         ];
 

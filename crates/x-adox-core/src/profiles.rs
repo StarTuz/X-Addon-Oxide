@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -65,6 +69,7 @@ impl ProfileCollection {
             if p.scenery_states.is_empty()
                 && p.plugin_states.is_empty()
                 && p.aircraft_states.is_empty()
+                && p.scenery_overrides.is_empty()
             {
                 return true;
             }

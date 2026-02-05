@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use crate::Message;
 use iced::advanced::{self, layout, renderer, widget, Layout, Widget};
 use iced::widget::image;
@@ -64,6 +68,11 @@ impl TileManager {
     pub fn get_tile(&self, coords: TileCoords) -> Option<image::Handle> {
         let mut tiles = self.tiles.lock().unwrap();
         tiles.get(&coords).cloned()
+    }
+
+    pub fn has_pending(&self) -> bool {
+        let pending = self.pending.lock().unwrap();
+        !pending.is_empty()
     }
 
     pub fn request_tile(&self, coords: TileCoords) {

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use crate::discovery::DiscoveredAddon;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -17,7 +21,7 @@ pub struct CacheEntry {
     pub descriptor: crate::scenery::SceneryDescriptor,
 }
 
-const CURRENT_CACHE_VERSION: u32 = 5;
+const CURRENT_CACHE_VERSION: u32 = 6;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveryCache {

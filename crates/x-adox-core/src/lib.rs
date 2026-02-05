@@ -41,20 +41,55 @@ pub fn get_config_root() -> PathBuf {
 }
 
 pub fn calculate_path_hash(path: &Path) -> String {
+    calculate_stable_hash(path)
+}
+
+/// Legacy hash implementation using DefaultHasher (non-deterministic across restarts/versions)
+pub fn calculate_legacy_hash(path: &Path) -> String {
     let mut s = DefaultHasher::new();
-    // Canonicalize to ensure same path always has same hash (handle trailing slashes/symlinks)
     let p = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     p.hash(&mut s);
-    format!("{:016x}", s.finish())
+    let hash = format!("{:016x}", s.finish());
+    log::debug!("[Hash-Legacy] Path {:?} -> Hash {}", p, hash);
+    hash
+}
+
+/// Deterministic FNV-1a hash for cross-platform stability.
+pub fn calculate_stable_hash(path: &Path) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+
+    // Use canonical path for hashing consistency
+    let p = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+
+    // Normalize: strip trailing separators to ensure /path/to/xp == /path/to/xp/
+    let p_str = p.to_string_lossy();
+    let trimmed = p_str.trim_end_matches(['/', '\\']);
+
+    for &b in trimmed.as_bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+
+    let hash = format!("{:016x}", h);
+    log::debug!("[Hash-Stable] Path {:?} -> Hash {}", p, hash);
+    hash
 }
 
 /// Normalizes an X-Plane installation path by checking against the global registry files.
 /// This ensures that aliases (e.g. symlinks, different mount points) that resolve to the same
 /// physical installation are treated as the SAME config scope.
 pub fn normalize_install_path(path: &Path) -> PathBuf {
+    log::debug!("[Normalize] Input: {:?}", path);
     // If the path is not absolute or doesn't exist, we can't do much.
     // Try canonicalizing first.
     let canonical_input = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+
+    // Normalize: strip trailing separators
+    let p_str = canonical_input.to_string_lossy();
+    let trimmed = p_str.trim_end_matches(['/', '\\']);
+    let normalized_input = PathBuf::from(trimmed);
+
+    log::debug!("[Normalize] Canonical Normalized: {:?}", normalized_input);
 
     // Registry files to check
     let filenames = ["x-plane_install_12.txt", "x-plane_install_11.txt"];
@@ -86,24 +121,31 @@ pub fn normalize_install_path(path: &Path) -> PathBuf {
     for dir in candidate_dirs {
         for filename in &filenames {
             let config_path = dir.join(filename);
-            if let Ok(content) = fs::read_to_string(config_path) {
+            if let Ok(content) = fs::read_to_string(&config_path) {
                 for line in content.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() || trimmed.starts_with('#') {
+                    let trimmed_line = line.trim();
+                    if trimmed_line.is_empty() || trimmed_line.starts_with('#') {
                         continue;
                     }
 
-                    let registry_path = PathBuf::from(trimmed);
-                    // Check if this registry entry matches our input
-                    // We check both raw and canonical equality
-                    if registry_path == *path || registry_path == canonical_input {
+                    let registry_path = PathBuf::from(trimmed_line);
+                    // Match check: Registry path vs normalized input (both should be stripped of trailers)
+                    let reg_str = registry_path.to_string_lossy();
+                    let reg_trimmed = PathBuf::from(reg_str.trim_end_matches(['/', '\\']));
+
+                    if reg_trimmed == normalized_input {
+                        log::debug!(
+                            "[Normalize] Direct match found in registry: {:?}",
+                            registry_path
+                        );
                         return registry_path;
                     }
 
                     if let Ok(registry_canonical) = registry_path.canonicalize() {
-                        if registry_canonical == canonical_input {
-                            // MATCH FOUND! Return the registry version of the path.
-                            // This guarantees the hash will match what is stored in the registry.
+                        let rc_str = registry_canonical.to_string_lossy();
+                        let rc_trimmed = PathBuf::from(rc_str.trim_end_matches(['/', '\\']));
+                        if rc_trimmed == normalized_input {
+                            log::debug!("[Normalize] Canonical match found in registry: {:?} (for input {:?})", registry_path, path);
                             return registry_path;
                         }
                     }
@@ -112,29 +154,95 @@ pub fn normalize_install_path(path: &Path) -> PathBuf {
         }
     }
 
-    // Default: return canonical input if no match found
-    canonical_input
+    // Default: return normalized input if no match found
+    log::debug!("[Normalize] No registry match found, using normalized path");
+    normalized_input
 }
 
 pub fn get_scoped_config_root(xplane_root: &Path) -> PathBuf {
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // CRITICAL ARCHITECTURE REQUIREMENT: PATH NORMALIZATION
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // We MUST normalize the installation path using the X-Plane Registry (install_xx.txt).
-    // Failing to do this results in DATA LOSS (Profile Reversal) because different aliases
-    // (e.g., /home/user/XP12 vs /mnt/data/XP12) will produce different hashes, treating
-    // the same physical installation as two separate buckets.
-    //
-    // DO NOT REMOVE `normalize_install_path` CALL UNDER ANY CIRCUMSTANCES.
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     let normalized = normalize_install_path(xplane_root);
 
-    let hash = calculate_path_hash(&normalized);
-    let path = get_config_root().join("installs").join(hash);
-    if !path.exists() {
-        let _ = fs::create_dir_all(&path);
+    let stable_hash = calculate_stable_hash(&normalized);
+    let legacy_hash = calculate_legacy_hash(&normalized);
+
+    let installs_dir = get_config_root().join("installs");
+    let stable_path = installs_dir.join(&stable_hash);
+    let legacy_path = installs_dir.join(&legacy_hash);
+
+    // MIGRATION LOGIC:
+    // If stable doesn't exist but legacy does, move/rename legacy to stable.
+    if !stable_path.exists() && legacy_path.exists() && stable_hash != legacy_hash {
+        log::info!(
+            "[Migration] Moving legacy config folder {} to stable folder {}",
+            legacy_hash,
+            stable_hash
+        );
+        if let Err(e) = fs::rename(&legacy_path, &stable_path) {
+            log::error!("[Migration] Failed to rename legacy folder: {}", e);
+        }
+    } else if stable_path.exists() && legacy_path.exists() && stable_hash != legacy_hash {
+        // Both exist - check if we should migrate profiles from legacy to stable.
+        // This handles the case where dd58f05 created an empty stable folder before
+        // migration logic existed, leaving user's profiles stranded in legacy folder.
+        let stable_profiles = stable_path.join("profiles.json");
+        let legacy_profiles = legacy_path.join("profiles.json");
+
+        if legacy_profiles.exists() {
+            let should_copy_profiles = if stable_profiles.exists() {
+                // Check if stable profiles is essentially empty/default
+                if let Ok(content) = fs::read_to_string(&stable_profiles) {
+                    if let Ok(collection) = serde_json::from_str::<crate::profiles::ProfileCollection>(&content) {
+                        // If stable has only 1 profile with no scenery_overrides, prefer legacy
+                        collection.profiles.len() <= 1
+                            && collection.profiles.iter().all(|p| p.scenery_overrides.is_empty())
+                    } else {
+                        false // Can't parse, don't overwrite
+                    }
+                } else {
+                    true // Can't read, safe to copy
+                }
+            } else {
+                true // Stable profiles doesn't exist, safe to copy
+            };
+
+            if should_copy_profiles {
+                log::info!(
+                    "[Migration] Copying profiles.json from legacy ({}) to stable ({})",
+                    legacy_hash,
+                    stable_hash
+                );
+                if let Err(e) = fs::copy(&legacy_profiles, &stable_profiles) {
+                    log::error!("[Migration] Failed to copy profiles.json: {}", e);
+                }
+            }
+        }
+
+        // Also migrate heuristics.json if stable doesn't have one or it's empty
+        let stable_heuristics = stable_path.join("heuristics.json");
+        let legacy_heuristics = legacy_path.join("heuristics.json");
+
+        if legacy_heuristics.exists() && !stable_heuristics.exists() {
+            log::info!(
+                "[Migration] Copying heuristics.json from legacy ({}) to stable ({})",
+                legacy_hash,
+                stable_hash
+            );
+            if let Err(e) = fs::copy(&legacy_heuristics, &stable_heuristics) {
+                log::error!("[Migration] Failed to copy heuristics.json: {}", e);
+            }
+        }
     }
-    path
+
+    if !stable_path.exists() {
+        let _ = fs::create_dir_all(&stable_path);
+    }
+
+    log::debug!(
+        "[Config] Scoped config root for {:?} is {:?}",
+        xplane_root,
+        stable_path
+    );
+    stable_path
 }
 
 #[derive(Error, Debug)]

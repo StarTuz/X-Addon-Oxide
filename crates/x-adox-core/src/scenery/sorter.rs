@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use crate::scenery::{SceneryCategory, SceneryPack};
 
 impl SceneryCategory {
@@ -186,6 +190,7 @@ mod tests {
             tiles: Vec::new(),
             tags: Vec::new(),
             descriptor: crate::scenery::SceneryDescriptor::default(),
+            region: None,
         };
         // Re-classify using the same heuristic as the manager
         pack.category =
