@@ -49,6 +49,73 @@ impl ModManager {
         Ok(target_path)
     }
 
+    /// Enables or disables a plugin sub-script by moving it between
+    /// `Scripts/` and `Scripts (disabled)/` within the plugin folder.
+    /// Follows FlyWithLua's native convention for script management.
+    pub fn set_script_enabled(
+        script_path: &Path,
+        enabled: bool,
+    ) -> Result<PathBuf, std::io::Error> {
+        let script_name = script_path.file_name().ok_or(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Invalid script path",
+        ))?;
+
+        // Walk up from the script to find the plugin root.
+        // Script lives in: <plugin>/Scripts/<file> or <plugin>/Scripts (disabled)/.../<file>
+        let mut plugin_root = None;
+        let mut ancestor = script_path.parent();
+        while let Some(dir) = ancestor {
+            let dir_name = dir
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_lowercase();
+            if dir_name == "scripts" || dir_name == "scripts (disabled)" {
+                plugin_root = dir.parent();
+                break;
+            }
+            ancestor = dir.parent();
+        }
+
+        let plugin_root = plugin_root.ok_or(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Cannot determine plugin root from script path",
+        ))?;
+
+        let scripts_dir = plugin_root.join("Scripts");
+        let disabled_dir = plugin_root.join("Scripts (disabled)");
+
+        let target_dir = if enabled { &scripts_dir } else { &disabled_dir };
+
+        if !target_dir.exists() {
+            fs::create_dir_all(target_dir)?;
+        }
+
+        let target_path = target_dir.join(script_name);
+
+        if script_path != target_path {
+            fs::rename(script_path, &target_path)?;
+        }
+
+        // Clean up empty parent directories in the source tree
+        if let Some(parent) = script_path.parent() {
+            let parent_name = parent
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_lowercase();
+            // Only clean up subdirectories within Scripts (disabled), not the root dirs
+            if parent_name != "scripts" && parent_name != "scripts (disabled)" {
+                if parent.read_dir()?.next().is_none() {
+                    let _ = fs::remove_dir(parent);
+                }
+            }
+        }
+
+        Ok(target_path)
+    }
+
     /// Enables or disables a scenery pack by modifying `scenery_packs.ini`.
     pub fn set_scenery_enabled(
         xplane_root: &Path,

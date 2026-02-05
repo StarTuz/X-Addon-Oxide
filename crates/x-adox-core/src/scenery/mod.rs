@@ -569,8 +569,9 @@ impl SceneryManager {
                     match pack.category {
                         SceneryCategory::GlobalAirport
                         | SceneryCategory::Library
-                        | SceneryCategory::GlobalBase => {
-                            // Keep existing system category
+                        | SceneryCategory::GlobalBase
+                        | SceneryCategory::Landmark => {
+                            // Keep existing system/structural category
                         }
                         _ => {
                             // Promote to Custom Airport
@@ -583,6 +584,17 @@ impl SceneryManager {
                         pack.category = SceneryCategory::OrthoBase;
                     } else {
                         pack.category = SceneryCategory::RegionalOverlay;
+                    }
+                }
+
+                // 3b. Structural Library Detection
+                // If heuristic classification couldn't determine the type, check for
+                // library.txt — the X-Plane standard for declaring a scenery library.
+                // Catches community libraries like world-models, Sea_Life, ruscenery
+                // that don't follow *_Library naming conventions.
+                if pack.category == SceneryCategory::Unknown {
+                    if pack.path.join("library.txt").exists() {
+                        pack.category = SceneryCategory::Library;
                     }
                 }
 

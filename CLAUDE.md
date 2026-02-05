@@ -39,6 +39,8 @@ git tag v2.x.x && git push origin v2.x.x
 
 ## Architecture
 
+Rust stable toolchain (nightly not required). Release profile uses `lto = "fat"`, `codegen-units = 1`, `strip = true`, `panic = "abort"` — note that `panic = "abort"` means no stack unwinding in release builds, so `catch_unwind` won't work and panics are immediate process termination.
+
 Rust workspace with 4 crates:
 
 ```
@@ -59,10 +61,14 @@ crates/
 - `profiles.rs` - Profile management for switching hangar configurations (root-specific isolation)
 - `cache.rs` - Disk-backed caching for scenery bounds and metadata (mtime-based invalidation, versioned schema)
 - `logbook.rs` - X-Plane Pilot.txt parsing (character-perfect for X-Plane 12)
+- `apt_dat.rs` - Parser for X-Plane `apt.dat` airport data files (runways, coordinates, ICAO codes)
+- `groups.rs` - User-defined tag/group management for scenery packs (persisted per-config)
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
   - `ini_handler.rs` - Reads/writes `scenery_packs.ini` with raw_path round-trip preservation
   - `sorter.rs` - Smart sort using stable `sort_by` to preserve manual pins
   - `classifier.rs` - Heuristic categorization, content-aware "healing" of misclassifications
+  - `validator.rs` - Scenery order validation (e.g., SimHeaven below Global Airports detection)
+  - `dsf_peek.rs` - Minimal DSF binary parser for scenery type identification (uncompressed DSFs only)
 
 ### x-adox-bitnet
 

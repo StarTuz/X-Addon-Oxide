@@ -127,50 +127,52 @@ impl SceneryValidator {
     }
 
     fn check_mesh_ordering(packs: &[SceneryPack], report: &mut ValidationReport) {
-        // Simplified position-based check:
-        // If the list is already sorted such that mesh-like packs are at the bottom,
-        // don't report issues even if their category labels are wrong.
-        //
-        // Strategy: Check if any pack with "mesh", "ortho", "z_ao_" in the name
-        // appears before a pack that looks like an airport/overlay by name.
+        // Category-based position check:
+        // Uses resolved pack categories (post-healing) instead of raw name matching.
+        // Libraries are excluded — their position in the INI is irrelevant to X-Plane.
 
-        let is_mesh_by_name = |name: &str| -> bool {
-            let lower = name.to_lowercase();
-            lower.contains("mesh")
-                || lower.contains("z_ao_")
-                || lower.contains("z_autoortho")
-                || lower.contains("ortho4xp")
-                || (lower.contains("orthos") && !lower.contains("overlay"))
-                || lower.starts_with("zzz")
+        let is_mesh_category = |cat: &SceneryCategory| -> bool {
+            matches!(
+                cat,
+                SceneryCategory::Mesh
+                    | SceneryCategory::SpecificMesh
+                    | SceneryCategory::OrthoBase
+            )
         };
 
-        let is_overlay_by_name = |name: &str| -> bool {
-            let lower = name.to_lowercase();
-            // Check for definitive overlay/airport patterns
-            lower.contains("airport")
-                || lower.contains("_overlay")
-                || lower.contains("landmarks")
-                || lower.contains("global_airports")
-                || lower.contains("simheaven")
-                || lower.contains("library")
+        let is_position_sensitive = |cat: &SceneryCategory| -> bool {
+            // Categories where INI position matters for X-Plane rendering.
+            // Libraries are deliberately excluded — they load regardless of position.
+            matches!(
+                cat,
+                SceneryCategory::CustomAirport
+                    | SceneryCategory::OrbxAirport
+                    | SceneryCategory::GlobalAirport
+                    | SceneryCategory::Landmark
+                    | SceneryCategory::RegionalOverlay
+                    | SceneryCategory::RegionalFluff
+                    | SceneryCategory::AirportOverlay
+                    | SceneryCategory::LowImpactOverlay
+                    | SceneryCategory::AutoOrthoOverlay
+            )
         };
 
-        // Find first mesh-by-name pack
+        // Find first mesh pack by resolved category
         let mut first_mesh_idx = None;
         let mut first_mesh_name = String::new();
         for (i, pack) in packs.iter().enumerate() {
-            if is_mesh_by_name(&pack.name) {
+            if is_mesh_category(&pack.category) {
                 first_mesh_idx = Some(i);
                 first_mesh_name = pack.name.clone();
                 break;
             }
         }
 
-        // Find last overlay-by-name pack
+        // Find last position-sensitive pack by resolved category
         let mut last_overlay_idx = None;
         let mut last_overlay_name = String::new();
         for (i, pack) in packs.iter().enumerate() {
-            if is_overlay_by_name(&pack.name) {
+            if is_position_sensitive(&pack.category) {
                 last_overlay_idx = Some(i);
                 last_overlay_name = pack.name.clone();
             }

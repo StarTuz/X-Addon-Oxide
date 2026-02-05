@@ -481,15 +481,31 @@ impl DiscoveryManager {
     }
 
     /// Scans for Lua scripts in a FlyWithLua/X-Lua plugin folder.
+    /// Detects scripts in both `Scripts/` (enabled) and `Scripts (disabled)/` (disabled).
+    /// Also detects the `.lua.disabled` suffix convention within `Scripts/`.
     pub fn scan_lua_scripts(plugin_path: &Path) -> Vec<AddonScript> {
         let mut results = Vec::new();
-        let script_dir = plugin_path.join("Scripts");
 
-        if !script_dir.exists() {
-            return results;
+        // 1. Scan active Scripts/ folder
+        let script_dir = plugin_path.join("Scripts");
+        if script_dir.exists() {
+            Self::collect_lua_files(&script_dir, true, &mut results);
         }
 
-        if let Ok(entries) = std::fs::read_dir(&script_dir) {
+        // 2. Scan disabled Scripts (disabled)/ folder (FlyWithLua native convention)
+        let disabled_dir = plugin_path.join("Scripts (disabled)");
+        if disabled_dir.exists() {
+            Self::collect_lua_files(&disabled_dir, false, &mut results);
+        }
+
+        results.sort_by(|a, b| a.name.cmp(&b.name));
+        results
+    }
+
+    /// Recursively collects `.lua` files from a directory.
+    /// Files with `.lua.disabled` suffix in an enabled dir are treated as disabled.
+    fn collect_lua_files(dir: &Path, dir_is_enabled: bool, results: &mut Vec<AddonScript>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 let name = path
@@ -498,18 +514,19 @@ impl DiscoveryManager {
                     .to_string_lossy()
                     .to_string();
 
-                if path.is_file() && (name.ends_with(".lua") || name.ends_with(".lua.disabled")) {
+                if path.is_dir() {
+                    // Recurse into subdirectories (e.g. Scripts (disabled)/Custom/)
+                    Self::collect_lua_files(&path, dir_is_enabled, results);
+                } else if name.ends_with(".lua") || name.ends_with(".lua.disabled") {
+                    let is_enabled = dir_is_enabled && name.ends_with(".lua");
                     results.push(AddonScript {
                         name: name.clone(),
                         path: path.clone(),
-                        is_enabled: name.ends_with(".lua"),
+                        is_enabled,
                     });
                 }
             }
         }
-
-        results.sort_by(|a, b| a.name.cmp(&b.name));
-        results
     }
 
     pub fn count_liveries(aircraft_path: &Path) -> usize {

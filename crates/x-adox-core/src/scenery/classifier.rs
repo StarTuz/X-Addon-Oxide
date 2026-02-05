@@ -33,9 +33,7 @@ impl Classifier {
             || name_lower.contains("opensceneryx")
             || name_lower.contains("worldjetways")
         {
-            if !name_lower.contains("vegetation_library") {
-                return SceneryCategory::Library;
-            }
+            return SceneryCategory::Library;
         }
 
         // 3. Global Airports (Level 3 - Score 90)
@@ -59,7 +57,6 @@ impl Classifier {
 
         // 6. Regional Detail Layers (Level 5 - Score 85)
         if name_lower.contains("simheaven_x-world")
-            || name_lower.contains("vegetation_library")
             || (name_lower.starts_with("orbx_b_") || name_lower.starts_with("orbx_c_"))
                 && name_lower.contains("overlay")
         {

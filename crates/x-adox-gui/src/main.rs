@@ -18,7 +18,7 @@ use iced::mouse;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
-use x_adox_core::discovery::{AddonType, DiscoveredAddon, DiscoveryManager};
+use x_adox_core::discovery::{AddonScript, AddonType, DiscoveredAddon, DiscoveryManager};
 use x_adox_core::management::{AddonType as ManagementAddonType, ModManager};
 use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};
 use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType};
@@ -177,6 +177,9 @@ enum Message {
     PluginsLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     TogglePlugin(PathBuf, bool),
     PluginToggled(Result<(), String>),
+    ToggleScript(PathBuf, bool),
+    ScriptToggled(Result<(), String>),
+    TogglePluginScripts(PathBuf), // Expand/collapse script sub-tree
     CSLsLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     ToggleCSL(PathBuf, bool),
 
@@ -521,6 +524,7 @@ struct App {
     packs: Arc<Vec<SceneryPack>>,
     aircraft: Arc<Vec<DiscoveredAddon>>,
     aircraft_tree: Option<Arc<AircraftNode>>,
+    aircraft_expanded_paths: std::collections::HashSet<PathBuf>,
     plugins: Arc<Vec<DiscoveredAddon>>,
     csls: Arc<Vec<DiscoveredAddon>>,
     status: String,
@@ -532,6 +536,7 @@ struct App {
     selected_aircraft_icon: Option<image::Handle>,
     selected_aircraft_tags: Vec<String>,
     selected_plugin: Option<PathBuf>,
+    expanded_plugin_scripts: std::collections::HashSet<PathBuf>, // Plugin paths with expanded script views
     selected_csl: Option<PathBuf>,
     show_delete_confirm: bool,
     show_csl_tab: bool,
@@ -709,6 +714,7 @@ impl App {
             packs: Arc::new(Vec::new()),
             aircraft: Arc::new(Vec::new()),
             aircraft_tree: None,
+            aircraft_expanded_paths: std::collections::HashSet::new(),
             plugins: Arc::new(Vec::new()),
             csls: Arc::new(Vec::new()),
             status: "Loading...".to_string(),
@@ -720,6 +726,7 @@ impl App {
             selected_aircraft_icon: None,
             selected_aircraft_tags: Vec::new(),
             selected_plugin: None,
+            expanded_plugin_scripts: std::collections::HashSet::new(),
             selected_csl: None,
             show_delete_confirm: false,
             show_csl_tab: false,
@@ -1279,6 +1286,16 @@ impl App {
                 match result {
                     Ok(tree) => {
                         self.aircraft_tree = Some(tree);
+                        // Restore folder expansion state from before the rebuild
+                        if !self.aircraft_expanded_paths.is_empty() {
+                            if let Some(ref mut tree) = self.aircraft_tree {
+                                restore_expanded_paths(
+                                    Arc::make_mut(tree),
+                                    &self.aircraft_expanded_paths,
+                                );
+                            }
+                            self.aircraft_expanded_paths.clear();
+                        }
                         self.update_smart_view_cache();
                         if !self.loading_state.is_loading {
                             if self.active_tab == Tab::Aircraft {
@@ -1682,6 +1699,41 @@ impl App {
                     Task::none()
                 }
             },
+            Message::ToggleScript(path, enable) => {
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                self.status = format!(
+                    "{} Script {}...",
+                    if enable { "Enabling" } else { "Disabling" },
+                    name
+                );
+                Task::perform(
+                    async move { toggle_script(path, enable) },
+                    Message::ScriptToggled,
+                )
+            }
+            Message::ScriptToggled(result) => match result {
+                Ok(_) => {
+                    self.status = "Script toggled!".to_string();
+                    let root = self.xplane_root.clone();
+                    Task::perform(async move { load_plugins(root) }, Message::PluginsLoaded)
+                }
+                Err(e) => {
+                    self.status = format!("Error toggling script: {}", e);
+                    Task::none()
+                }
+            },
+            Message::TogglePluginScripts(path) => {
+                if self.expanded_plugin_scripts.contains(&path) {
+                    self.expanded_plugin_scripts.remove(&path);
+                } else {
+                    self.expanded_plugin_scripts.insert(path);
+                }
+                Task::none()
+            }
             Message::SwitchProfile(name) => {
                 if let Some(profile) = self
                     .profiles
@@ -2029,6 +2081,11 @@ impl App {
             Message::AircraftToggled(result) => match result {
                 Ok(_) => {
                     self.status = "Aircraft toggled!".to_string();
+                    // Snapshot expanded folder paths so they survive the tree rebuild
+                    self.aircraft_expanded_paths.clear();
+                    if let Some(ref tree) = self.aircraft_tree {
+                        collect_expanded_paths(tree, &mut self.aircraft_expanded_paths);
+                    }
                     Task::done(Message::Refresh)
                 }
                 Err(e) => {
@@ -2582,6 +2639,12 @@ impl App {
                     .insert(name, tags);
                 self.heuristics_model.refresh_regex_set();
                 let _ = self.heuristics_model.save();
+
+                // Snapshot expanded folder paths before refresh
+                self.aircraft_expanded_paths.clear();
+                if let Some(ref tree) = self.aircraft_tree {
+                    collect_expanded_paths(tree, &mut self.aircraft_expanded_paths);
+                }
 
                 // Refresh to show changes
                 Task::done(Message::Refresh)
@@ -7602,6 +7665,8 @@ impl App {
             _ => self.selected_aircraft.clone(),
         };
         let show_delete_confirm = self.show_delete_confirm;
+        let expanded_scripts: Vec<PathBuf> =
+            self.expanded_plugin_scripts.iter().cloned().collect();
 
         lazy(
             (
@@ -7611,8 +7676,9 @@ impl App {
                 active_tab,
                 label_owned,
                 self.icon_trash.clone(),
+                expanded_scripts.clone(),
             ),
-            move |(addons, selected_path, show_delete_confirm, active_tab, label, icon_trash)| {
+            move |(addons, selected_path, show_delete_confirm, active_tab, label, icon_trash, expanded_scripts)| {
                 let is_plugins = label == "Plugin";
                 let is_csls = label == "CSL Package";
 
@@ -7650,13 +7716,28 @@ impl App {
                             };
 
                             let path = addon.path.clone();
+
+                            // Extract scripts for plugins
+                            let scripts: Vec<AddonScript> = if is_plugins {
+                                if let AddonType::Plugin { ref scripts } = addon.addon_type {
+                                    scripts.clone()
+                                } else {
+                                    Vec::new()
+                                }
+                            } else {
+                                Vec::new()
+                            };
+                            let has_scripts = !scripts.is_empty();
+                            let is_expanded_scripts = has_scripts
+                                && expanded_scripts.contains(&addon.path);
+
                             let row_content: Element<'_, Message, Theme, Renderer> = if is_csls
                                 || is_plugins
                             {
                                 let is_enabled = addon.is_enabled;
                                 let path_for_toggle = path.clone();
 
-                                row![
+                                let mut plugin_row = row![
                                     checkbox("", is_enabled)
                                         .on_toggle(move |e| if is_plugins {
                                             Message::TogglePlugin(path_for_toggle.clone(), e)
@@ -7664,6 +7745,24 @@ impl App {
                                             Message::ToggleCSL(path_for_toggle.clone(), e)
                                         })
                                         .text_size(14),
+                                ]
+                                .spacing(5)
+                                .width(Length::Fill)
+                                .align_y(iced::Alignment::Center);
+
+                                // Add expand/collapse arrow for plugins with scripts
+                                if has_scripts {
+                                    let arrow = if is_expanded_scripts { "▼" } else { "▶" };
+                                    let path_for_expand = path.clone();
+                                    plugin_row = plugin_row.push(
+                                        button(text(arrow).size(12))
+                                            .on_press(Message::TogglePluginScripts(path_for_expand))
+                                            .style(style::button_ghost)
+                                            .padding([2, 4]),
+                                    );
+                                }
+
+                                plugin_row = plugin_row.push(
                                     button(text(addon.name.clone()).size(14).width(Length::Fill))
                                         .on_press(if is_plugins {
                                             Message::SelectPlugin(path.clone())
@@ -7673,6 +7772,19 @@ impl App {
                                         .style(style)
                                         .padding([4, 8])
                                         .width(Length::Fill),
+                                );
+
+                                if has_scripts {
+                                    let script_count = scripts.len();
+                                    let enabled_count = scripts.iter().filter(|s| s.is_enabled).count();
+                                    plugin_row = plugin_row.push(
+                                        text(format!("{}/{}", enabled_count, script_count))
+                                            .size(11)
+                                            .color(style::palette::TEXT_SECONDARY),
+                                    );
+                                }
+
+                                plugin_row = plugin_row.push(
                                     button(
                                         svg(icon_trash.clone())
                                             .width(14)
@@ -7682,10 +7794,9 @@ impl App {
                                     .on_press(Message::DeleteAddonDirect(path.clone(), if is_plugins { Tab::Plugins } else { Tab::CSLs }))
                                     .style(style::button_ghost)
                                     .padding(4),
-                                ]
-                                .spacing(5)
-                                .width(Length::Fill)
-                                .into()
+                                );
+
+                                plugin_row.into()
                             } else {
                                 button(
                                     row![
@@ -7713,7 +7824,43 @@ impl App {
                                 .into()
                             };
 
-                            col.push(row_content)
+                            let col = col.push(row_content);
+
+                            // Render expanded script sub-tree for plugins
+                            if is_expanded_scripts {
+                                scripts.iter().fold(col, |col, script| {
+                                    let script_path = script.path.clone();
+                                    let script_enabled = script.is_enabled;
+                                    let script_name = script.name.clone();
+
+                                    let color = if script_enabled {
+                                        style::palette::TEXT_PRIMARY
+                                    } else {
+                                        style::palette::TEXT_SECONDARY
+                                    };
+
+                                    let script_row: Element<'_, Message, Theme, Renderer> = row![
+                                        horizontal_space().width(32),
+                                        checkbox("", script_enabled)
+                                            .on_toggle({
+                                                let sp = script_path.clone();
+                                                move |e| Message::ToggleScript(sp.clone(), e)
+                                            })
+                                            .text_size(12),
+                                        text(script_name)
+                                            .size(12)
+                                            .color(color),
+                                    ]
+                                    .spacing(4)
+                                    .align_y(iced::Alignment::Center)
+                                    .width(Length::Fill)
+                                    .into();
+
+                                    col.push(script_row)
+                                })
+                            } else {
+                                col
+                            }
                         });
 
                     scrollable(list)
@@ -8665,6 +8812,11 @@ fn toggle_plugin(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(
     Ok(())
 }
 
+fn toggle_script(path: PathBuf, enable: bool) -> Result<(), String> {
+    ModManager::set_script_enabled(&path, enable).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 fn load_aircraft(
     root: Option<PathBuf>,
     exclusions: Vec<PathBuf>,
@@ -8864,6 +9016,24 @@ fn toggle_folder_at_path(node: &mut AircraftNode, target_path: &std::path::Path)
 
     for child in &mut node.children {
         toggle_folder_at_path(child, target_path);
+    }
+}
+
+fn collect_expanded_paths(node: &AircraftNode, paths: &mut std::collections::HashSet<PathBuf>) {
+    if node.is_folder && node.is_expanded {
+        paths.insert(node.path.clone());
+    }
+    for child in &node.children {
+        collect_expanded_paths(child, paths);
+    }
+}
+
+fn restore_expanded_paths(node: &mut AircraftNode, paths: &std::collections::HashSet<PathBuf>) {
+    if node.is_folder && paths.contains(&node.path) {
+        node.is_expanded = true;
+    }
+    for child in &mut node.children {
+        restore_expanded_paths(child, paths);
     }
 }
 
