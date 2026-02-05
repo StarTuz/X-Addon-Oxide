@@ -369,6 +369,7 @@ enum Message {
     ToggleExportExpandedFormat(bool),
     ToggleBucketItem(String),
     ClearBucket,
+    BulkDisableSelectedBasket,
     ToggleBucket,
     ToggleBasketSelection(String),
     ToggleAutopin(bool),
@@ -3676,6 +3677,37 @@ impl App {
                 self.selected_basket_items.clear();
                 Task::none()
             }
+            Message::BulkDisableSelectedBasket => {
+                if self.scenery_is_saving {
+                    return Task::none();
+                }
+
+                let selected = self.selected_basket_items.clone();
+                if selected.is_empty() {
+                    return Task::none();
+                }
+
+                let mut states = std::collections::HashMap::new();
+                for item in &selected {
+                    states.insert(item.clone(), false);
+                }
+
+                if let Some(root) = &self.xplane_root {
+                    let root_clone = root.clone();
+                    self.scenery_is_saving = true;
+                    self.status = format!("Disabling {} selected packs...", selected.len());
+                    self.selected_basket_items.clear();
+                    
+                    return Task::perform(
+                        async move {
+                            x_adox_core::management::ModManager::set_bulk_scenery_enabled(&root_clone, &states)
+                                .map_err(|e| e.to_string())
+                        },
+                        |r| Message::PackToggled(r),
+                    );
+                }
+                Task::none()
+            }
             Message::ToggleBucket => {
                 self.show_scenery_basket = !self.show_scenery_basket;
                 Task::none()
@@ -6582,6 +6614,21 @@ impl App {
                 .style(style::button_primary)
                 .width(Length::Fill)
             );
+
+            let mut disable_btn = button(
+                row![
+                    svg(self.icon_trash.clone()).width(14).height(14).style(|_, _| svg::Style { color: Some(Color::WHITE) }),
+                    text(format!("Disable Selected ({})", selected.len())).size(12)
+                ].spacing(8).align_y(iced::Alignment::Center)
+            )
+            .style(style::button_danger_glow)
+            .width(Length::Fill);
+
+            if !self.scenery_is_saving {
+                disable_btn = disable_btn.on_press(Message::BulkDisableSelectedBasket);
+            }
+
+            bottom_actions = bottom_actions.push(disable_btn);
         }
 
         let basket_content = mouse_area(

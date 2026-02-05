@@ -270,6 +270,40 @@ pub fn button_danger(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+pub fn button_danger_glow(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::ACCENT_RED)),
+        text_color: Color::WHITE,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: Color::from_rgba(0.93, 0.25, 0.25, 0.5),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.93, 0.25, 0.25, 0.6),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 12.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(1.0, 0.4, 0.4))),
+            shadow: Shadow {
+                color: Color::from_rgba(0.93, 0.25, 0.25, 1.0),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.8, 0.2, 0.2))),
+            ..base
+        },
+        _ => base,
+    }
+}
+
 pub fn button_ai(_theme: &Theme, status: button::Status) -> button::Style {
     let base = button::Style {
         background: None,
