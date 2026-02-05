@@ -304,6 +304,74 @@ pub fn button_danger_glow(_theme: &Theme, status: button::Status) -> button::Sty
     }
 }
 
+pub fn button_primary_glow(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::ACCENT_BLUE)),
+        text_color: Color::WHITE,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: Color::from_rgba(0.23, 0.51, 0.96, 0.5),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.23, 0.51, 0.96, 0.6),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 12.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.3, 0.6, 1.0))),
+            shadow: Shadow {
+                color: Color::from_rgba(0.23, 0.51, 0.96, 1.0),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.2, 0.4, 0.8))),
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_toggle_glow(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::ACCENT_PURPLE)),
+        text_color: Color::WHITE,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: Color::from_rgba(0.66, 0.33, 0.97, 0.5),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.66, 0.33, 0.97, 0.6),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 12.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.75, 0.45, 1.0))),
+            shadow: Shadow {
+                color: Color::from_rgba(0.66, 0.33, 0.97, 1.0),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.5, 0.2, 0.8))),
+            ..base
+        },
+        _ => base,
+    }
+}
+
 pub fn button_ai(_theme: &Theme, status: button::Status) -> button::Style {
     let base = button::Style {
         background: None,

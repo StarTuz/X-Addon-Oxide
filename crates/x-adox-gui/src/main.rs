@@ -369,7 +369,7 @@ enum Message {
     ToggleExportExpandedFormat(bool),
     ToggleBucketItem(String),
     ClearBucket,
-    BulkDisableSelectedBasket,
+    BulkToggledSelectedBasket,
     ToggleBucket,
     ToggleBasketSelection(String),
     ToggleAutopin(bool),
@@ -3677,7 +3677,7 @@ impl App {
                 self.selected_basket_items.clear();
                 Task::none()
             }
-            Message::BulkDisableSelectedBasket => {
+            Message::BulkToggledSelectedBasket => {
                 if self.scenery_is_saving {
                     return Task::none();
                 }
@@ -3688,14 +3688,18 @@ impl App {
                 }
 
                 let mut states = std::collections::HashMap::new();
-                for item in &selected {
-                    states.insert(item.clone(), false);
+                for item_name in &selected {
+                    // Find the current status of this pack to flip it
+                    if let Some(pack) = self.packs.iter().find(|p| p.name == *item_name) {
+                        let is_enabled = pack.status != x_adox_core::scenery::SceneryPackType::Disabled;
+                        states.insert(item_name.clone(), !is_enabled);
+                    }
                 }
 
                 if let Some(root) = &self.xplane_root {
                     let root_clone = root.clone();
                     self.scenery_is_saving = true;
-                    self.status = format!("Disabling {} selected packs...", selected.len());
+                    self.status = format!("Toggling {} selected packs...", selected.len());
                     self.selected_basket_items.clear();
                     
                     return Task::perform(
@@ -6603,7 +6607,29 @@ impl App {
 
         let mut bottom_actions = Column::new().spacing(10);
         if !selected.is_empty() {
-             bottom_actions = bottom_actions.push(
+            // Determine the state of the selection
+            let mut enabled_count = 0;
+            let mut disabled_count = 0;
+            
+            for item_name in &selected {
+                if let Some(pack) = self.packs.iter().find(|p| p.name == *item_name) {
+                    if pack.status == x_adox_core::scenery::SceneryPackType::Disabled {
+                        disabled_count += 1;
+                    } else {
+                        enabled_count += 1;
+                    }
+                }
+            }
+
+            let (label, style, icon): (String, fn(&Theme, button::Status) -> button::Style, _) = if enabled_count > 0 && disabled_count == 0 {
+                (format!("Disable Selected ({})", selected.len()), style::button_danger_glow, self.icon_trash.clone())
+            } else if disabled_count > 0 && enabled_count == 0 {
+                (format!("Enable Selected ({})", selected.len()), style::button_primary_glow, self.icon_grip.clone())
+            } else {
+                (format!("Toggle Selected ({})", selected.len()), style::button_toggle_glow, self.icon_grip.clone())
+            };
+
+            bottom_actions = bottom_actions.push(
                 button(
                     row![
                         svg(self.icon_grip.clone()).width(14).height(14).style(|_, _| svg::Style { color: Some(Color::WHITE) }),
@@ -6615,20 +6641,20 @@ impl App {
                 .width(Length::Fill)
             );
 
-            let mut disable_btn = button(
+            let mut toggle_btn = button(
                 row![
-                    svg(self.icon_trash.clone()).width(14).height(14).style(|_, _| svg::Style { color: Some(Color::WHITE) }),
-                    text(format!("Disable Selected ({})", selected.len())).size(12)
+                    svg(icon).width(14).height(14).style(|_, _| svg::Style { color: Some(Color::WHITE) }),
+                    text(label).size(12)
                 ].spacing(8).align_y(iced::Alignment::Center)
             )
-            .style(style::button_danger_glow)
+            .style(style)
             .width(Length::Fill);
 
             if !self.scenery_is_saving {
-                disable_btn = disable_btn.on_press(Message::BulkDisableSelectedBasket);
+                toggle_btn = toggle_btn.on_press(Message::BulkToggledSelectedBasket);
             }
 
-            bottom_actions = bottom_actions.push(disable_btn);
+            bottom_actions = bottom_actions.push(toggle_btn);
         }
 
         let basket_content = mouse_area(
