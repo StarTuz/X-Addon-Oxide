@@ -18,9 +18,6 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 use thiserror::Error;
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 pub fn get_config_root() -> PathBuf {
     // Allow overriding via environment variable for tests
     if let Ok(env_path) = env::var("X_ADOX_CONFIG_DIR") {
@@ -41,11 +38,17 @@ pub fn get_config_root() -> PathBuf {
 }
 
 pub fn calculate_path_hash(path: &Path) -> String {
-    let mut s = DefaultHasher::new();
     // Canonicalize to ensure same path always has same hash (handle trailing slashes/symlinks)
     let p = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    p.hash(&mut s);
-    format!("{:016x}", s.finish())
+
+    // Manual FNV-1a 64-bit hash (Deterministic and stable across restarts/platforms)
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in p.to_string_lossy().as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+
+    format!("{:016x}", hash)
 }
 
 /// Normalizes an X-Plane installation path by checking against the global registry files.
