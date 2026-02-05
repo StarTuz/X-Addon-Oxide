@@ -69,6 +69,7 @@ impl ProfileCollection {
             if p.scenery_states.is_empty()
                 && p.plugin_states.is_empty()
                 && p.aircraft_states.is_empty()
+                && p.scenery_overrides.is_empty()
             {
                 return true;
             }

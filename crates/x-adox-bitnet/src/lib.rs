@@ -261,14 +261,18 @@ impl BitNetModel {
     }
 
     fn load_config(path: &Path) -> Result<HeuristicsConfig> {
+        log::debug!("[BitNet] Loading heuristics from: {:?}", path);
         if path.exists() {
             let content = fs::read_to_string(path)?;
-            let mut config: HeuristicsConfig = serde_json::from_str(&content)?;
+            let mut config: HeuristicsConfig = serde_json::from_str(&content).map_err(|e| {
+                log::error!("[BitNet] JSON Parse error for {:?}: {}", path, e);
+                e
+            })?;
 
             // Migration: If schema version is outdated, clear overrides (they may be from buggy AutoFix)
             if config.schema_version < CURRENT_SCHEMA_VERSION {
-                println!(
-                    "[BitNet] Migrating heuristics.json from schema v{} to v{}. Clearing overrides.",
+                log::info!(
+                    "[BitNet] Migrating heuristics.json from schema v{} to v{}. (Clearing overrides removed)",
                     config.schema_version, CURRENT_SCHEMA_VERSION
                 );
                 config.schema_version = CURRENT_SCHEMA_VERSION;
@@ -282,8 +286,16 @@ impl BitNetModel {
                 );
             }
 
+            log::debug!(
+                "[BitNet] Successfully loaded {} overrides",
+                config.overrides.len()
+            );
             Ok(config)
         } else {
+            log::debug!(
+                "[BitNet] No heuristics file found at {:?}, using defaults",
+                path
+            );
             Ok(HeuristicsConfig::default())
         }
     }
@@ -304,11 +316,17 @@ impl BitNetModel {
     }
 
     pub fn save(&self) -> Result<()> {
+        log::debug!(
+            "[BitNet] Saving {} overrides to {:?}",
+            self.config.overrides.len(),
+            self.config_path
+        );
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(self.config.as_ref())?;
         fs::write(&self.config_path, content)?;
+        log::debug!("[BitNet] Save complete");
         Ok(())
     }
 

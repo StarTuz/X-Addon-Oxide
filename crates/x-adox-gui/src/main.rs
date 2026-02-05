@@ -883,18 +883,43 @@ impl App {
         if let Some(pm) = &app.profile_manager {
             if let Ok(collection) = pm.load() {
                 app.profiles = collection;
-                
-                // Apply active profile's pins on startup
-                if let Some(active_name) = &app.profiles.active_profile {
-                    if let Some(profile) = app.profiles.profiles.iter().find(|p| p.name == *active_name) {
-                        let overrides = profile.scenery_overrides.iter()
-                            .map(|(k, v)| (k.clone(), *v))
-                            .collect::<std::collections::BTreeMap<_, _>>();
-                        app.heuristics_model.apply_overrides(overrides);
+
+                // Safe Startup Sync:
+                // If the active profile has NO pins but heuristics.json DOES, migrate pins to the profile.
+                // This prevents accidental erasure of pins when upgrading from pre-profile versions.
+                // Simple rule: profile empty + heuristics has pins = always migrate (safe for upgrades)
+                let active_name_opt = app.profiles.active_profile.clone();
+                let has_heuristics_pins = !app.heuristics_model.config.overrides.is_empty();
+
+                if let Some(active_name) = active_name_opt {
+                    if let Some(profile) = app.profiles.profiles.iter_mut().find(|p| p.name == active_name) {
+                        let should_migrate = profile.scenery_overrides.is_empty() && has_heuristics_pins;
+
+                        if should_migrate {
+                            log::info!(
+                                "[Startup] Migrating {} pins from heuristics.json to profile '{}'",
+                                app.heuristics_model.config.overrides.len(),
+                                active_name
+                            );
+                            profile.scenery_overrides = app.heuristics_model.config.overrides.iter()
+                                .map(|(k, v)| (k.clone(), *v))
+                                .collect();
+                        } else {
+                            // Standard path: Profile pins take priority
+                            let overrides = profile.scenery_overrides.iter()
+                                .map(|(k, v)| (k.clone(), *v))
+                                .collect::<std::collections::BTreeMap<_, _>>();
+                            log::debug!(
+                                "[Startup] Applying {} pins from profile '{}' to heuristics",
+                                overrides.len(),
+                                active_name
+                            );
+                            app.heuristics_model.apply_overrides(overrides);
+                        }
                     }
                 }
 
-                // Initial sync to capture any existing heuristics.json overrides into the active profile
+                // Sync back to ensure profiles are up to date and saved
                 app.sync_active_profile_scenery();
             }
         }
