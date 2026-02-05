@@ -391,6 +391,7 @@ enum Message {
     ShowModal(ModalState),
     CloseModal,
     ConfirmModal(ConfirmType),
+    NoOp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -3883,6 +3884,7 @@ impl App {
                     }
                 }
             }
+            Message::NoOp => Task::none(),
         }
     }
 
@@ -6618,7 +6620,7 @@ impl App {
         .width(Length::Fixed(self.basket_size.x))
         .height(Length::Fixed(self.basket_size.y));
 
-        main_basket.into()
+        mouse_area(main_basket).on_press(Message::NoOp).into()
     }
 
     fn view_heuristics_editor(&self) -> Element<'_, Message> {
