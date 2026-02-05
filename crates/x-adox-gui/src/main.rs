@@ -3947,6 +3947,7 @@ impl App {
             || self.drag_context.is_some()
             || self.is_basket_dragging
             || self.active_resize_edge.is_some()
+            || self.tile_manager.has_pending()
         {
             time::every(std::time::Duration::from_millis(16)).map(Message::Tick)
         } else {

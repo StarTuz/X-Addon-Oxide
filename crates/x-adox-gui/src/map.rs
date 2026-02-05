@@ -66,6 +66,11 @@ impl TileManager {
         tiles.get(&coords).cloned()
     }
 
+    pub fn has_pending(&self) -> bool {
+        let pending = self.pending.lock().unwrap();
+        !pending.is_empty()
+    }
+
     pub fn request_tile(&self, coords: TileCoords) {
         {
             let mut pending = self.pending.lock().unwrap();
