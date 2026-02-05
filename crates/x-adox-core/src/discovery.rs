@@ -281,12 +281,21 @@ impl DiscoveryManager {
                         || path.join("lin_x64").exists();
 
                     if has_xpl {
+                        // Determine script type based on plugin
+                        let scripts = if name == "FlyWithLua" || name == "X-Lua" {
+                            DiscoveryManager::scan_lua_scripts(&path)
+                        } else if name == "XPPython3" {
+                            DiscoveryManager::scan_python_scripts(root, "XPPython3")
+                        } else if name == "PythonInterface" {
+                            DiscoveryManager::scan_python_scripts(root, "PythonInterface")
+                        } else {
+                            Vec::new()
+                        };
+
                         dir_results.push(DiscoveredAddon {
                             path: path.clone(),
                             name: name.clone(),
-                            addon_type: AddonType::Plugin {
-                                scripts: DiscoveryManager::scan_python_scripts(root, "XPPython3"),
-                            },
+                            addon_type: AddonType::Plugin { scripts },
                             is_enabled: enabled,
                             tags: Vec::new(),
                         });
@@ -458,6 +467,38 @@ impl DiscoveryManager {
                         name: name.clone(),
                         path: path.clone(),
                         is_enabled: name.ends_with(".py"),
+                    });
+                }
+            }
+        }
+
+        results.sort_by(|a, b| a.name.cmp(&b.name));
+        results
+    }
+
+    /// Scans for Lua scripts in a FlyWithLua/X-Lua plugin folder.
+    pub fn scan_lua_scripts(plugin_path: &Path) -> Vec<PythonScript> {
+        let mut results = Vec::new();
+        let script_dir = plugin_path.join("Scripts");
+
+        if !script_dir.exists() {
+            return results;
+        }
+
+        if let Ok(entries) = std::fs::read_dir(&script_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+
+                if path.is_file() && (name.ends_with(".lua") || name.ends_with(".lua.disabled")) {
+                    results.push(PythonScript {
+                        name: name.clone(),
+                        path: path.clone(),
+                        is_enabled: name.ends_with(".lua"),
                     });
                 }
             }

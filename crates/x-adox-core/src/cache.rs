@@ -17,7 +17,7 @@ pub struct CacheEntry {
     pub descriptor: crate::scenery::SceneryDescriptor,
 }
 
-const CURRENT_CACHE_VERSION: u32 = 5;
+const CURRENT_CACHE_VERSION: u32 = 6;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveryCache {
