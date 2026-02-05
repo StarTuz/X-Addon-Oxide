@@ -27,6 +27,7 @@ sevenz-rust2 = { version = "0.12", features = ["aes256", "util"] }
 unrar = "0.5"
 log = "0.4"
 simplelog = "0.12"
+html-escape = "0.2"
 
 [package.metadata.packager]
 product_name = "X-Addon-Oxide"

@@ -9106,6 +9106,7 @@ fn export_aircraft_task(
 
         let path = rfd::AsyncFileDialog::new()
             .add_filter("CSV File", &["csv"])
+            .add_filter("XML File", &["xml"])
             .add_filter("Text File", &["txt"])
             .set_file_name("x_plane_aircraft_library.csv")
             .set_directory(&initial_location)
@@ -9115,10 +9116,54 @@ fn export_aircraft_task(
             .path()
             .to_path_buf();
 
+        let is_xml = path.extension().map_or(false, |ext| ext == "xml");
         let is_csv = path.extension().map_or(false, |ext| ext == "csv");
 
         let mut content = String::new();
-        if is_csv {
+        if is_xml {
+            content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+            content.push_str("<AircraftLibrary version=\"2.3.3\">\n");
+            for addon in aircraft.iter() {
+                if let AddonType::Aircraft {
+                    acf_name,
+                    livery_count,
+                    livery_names,
+                } = &addon.addon_type
+                {
+                    let category = addon.tags.iter()
+                        .find(|t| MANUFACTURERS.contains(&t.as_str()) || AIRCRAFT_CATEGORIES.contains(&t.as_str()))
+                        .map(|s| s.as_str())
+                        .unwrap_or("Uncategorized");
+
+                    let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+                    let name = html_escape::encode_text(&addon.name);
+                    let acf = html_escape::encode_text(acf_name);
+                    let category_esc = html_escape::encode_text(category);
+                    let path_str = addon.path.display().to_string();
+                    let path_esc = html_escape::encode_text(&path_str);
+
+                    content.push_str(&format!(
+                        "  <Aircraft name=\"{}\" category=\"{}\" status=\"{}\">\n",
+                        name, category_esc, status
+                    ));
+                    content.push_str(&format!("    <Path>{}</Path>\n", path_esc));
+                    content.push_str("    <Tags>\n");
+                    for tag in &addon.tags {
+                        content.push_str(&format!("      <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                    }
+                    content.push_str("    </Tags>\n");
+                    content.push_str(&format!("    <Model acf=\"{}\" liveryCount=\"{}\">\n", acf, livery_count));
+                    if include_liveries {
+                        for livery in livery_names {
+                            content.push_str(&format!("      <Livery name=\"{}\" />\n", html_escape::encode_text(livery)));
+                        }
+                    }
+                    content.push_str("    </Model>\n");
+                    content.push_str("  </Aircraft>\n");
+                }
+            }
+            content.push_str("</AircraftLibrary>\n");
+        } else if is_csv {
             content.push_str("Manufacturer/Category,Aircraft Name,ACF File,Status,Livery Count,Liveries,Path\n");
             for addon in aircraft.iter() {
                 if let AddonType::Aircraft {
