@@ -29,6 +29,7 @@ mod style;
 use map::{MapView, TileManager};
 use simplelog::*;
 use std::fs::File;
+use std::io::{BufWriter, Write};
 
 const AIRCRAFT_CATEGORIES: &[&str] = &[
     "Airliner",
@@ -888,34 +889,17 @@ impl App {
                 // If the active profile has NO pins but heuristics.json DOES, migrate pins to the profile.
                 // This prevents accidental erasure of pins when upgrading from pre-profile versions.
                 // Simple rule: profile empty + heuristics has pins = always migrate (safe for upgrades)
-                let active_name_opt = app.profiles.active_profile.clone();
-                let has_heuristics_pins = !app.heuristics_model.config.overrides.is_empty();
-
-                if let Some(active_name) = active_name_opt {
-                    if let Some(profile) = app.profiles.profiles.iter_mut().find(|p| p.name == active_name) {
-                        let should_migrate = profile.scenery_overrides.is_empty() && has_heuristics_pins;
-
-                        if should_migrate {
-                            log::info!(
-                                "[Startup] Migrating {} pins from heuristics.json to profile '{}'",
-                                app.heuristics_model.config.overrides.len(),
-                                active_name
-                            );
-                            profile.scenery_overrides = app.heuristics_model.config.overrides.iter()
-                                .map(|(k, v)| (k.clone(), *v))
-                                .collect();
-                        } else {
-                            // Standard path: Profile pins take priority
-                            let overrides = profile.scenery_overrides.iter()
-                                .map(|(k, v)| (k.clone(), *v))
-                                .collect::<std::collections::BTreeMap<_, _>>();
-                            log::debug!(
-                                "[Startup] Applying {} pins from profile '{}' to heuristics",
-                                overrides.len(),
-                                active_name
-                            );
-                            app.heuristics_model.apply_overrides(overrides);
-                        }
+                if !app.profiles.sync_with_heuristics(&app.heuristics_model) {
+                    if let Some(profile) = app.profiles.get_active_profile() {
+                        let overrides = profile.scenery_overrides.iter()
+                            .map(|(k, v): (&String, &u8)| (k.clone(), *v))
+                            .collect::<std::collections::BTreeMap<String, u8>>();
+                        log::debug!(
+                            "[Startup] Applying {} pins from profile '{}' to heuristics",
+                            overrides.len(),
+                            profile.name
+                        );
+                        app.heuristics_model.apply_overrides(overrides);
                     }
                 }
 
@@ -2138,7 +2122,9 @@ impl App {
                         }
                     }
                 }
-                self.scenery_bucket = current_bucket.into_iter().collect();
+                let mut result_bucket: Vec<String> = current_bucket.into_iter().collect();
+                result_bucket.sort();
+                self.scenery_bucket = result_bucket;
                 Task::none()
             }
             Message::PackToggled(result) => {
@@ -9221,9 +9207,6 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
 async fn export_scenery_task(
     packs: Arc<Vec<SceneryPack>>,
 ) -> Result<PathBuf, String> {
-    use std::fs::File;
-    use std::io::Write;
-
     let initial_location = directories::UserDirs::new()
         .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
         .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
@@ -9244,12 +9227,13 @@ async fn export_scenery_task(
     let is_xml = path.extension().map_or(false, |ext| ext == "xml");
     let is_csv = path.extension().map_or(false, |ext| ext == "csv");
 
-    let mut content = String::new();
+    let file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut writer = BufWriter::new(file);
 
     if is_xml {
-        content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        content.push_str("<SceneryLibrary version=\"2.3.3\">\n");
-        
+        writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
+        writeln!(writer, "<SceneryLibrary version=\"2.3.3\">").map_err(|e| e.to_string())?;
+
         let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
         for pack in packs.iter() {
             let reg = pack.region.clone().unwrap_or_else(|| "Global / Unsorted".to_string());
@@ -9257,7 +9241,7 @@ async fn export_scenery_task(
         }
 
         for (region_name, region_packs) in regions {
-            content.push_str(&format!("  <Region name=\"{}\">\n", html_escape::encode_text(&region_name)));
+            writeln!(writer, "  <Region name=\"{}\">", html_escape::encode_text(&region_name)).map_err(|e| e.to_string())?;
             for pack in region_packs {
                 let status = format!("{:?}", pack.status);
                 let category = format!("{:?}", pack.category);
@@ -9265,42 +9249,40 @@ async fn export_scenery_task(
                 let path_str = pack.path.display().to_string();
                 let path_esc = html_escape::encode_text(&path_str);
 
-                content.push_str(&format!(
-                    "    <Pack name=\"{}\" status=\"{}\" type=\"{}\">\n",
-                    name, status, category
-                ));
-                content.push_str(&format!("      <Path>{}</Path>\n", path_esc));
-                
+                writeln!(writer, "    <Pack name=\"{}\" status=\"{}\" type=\"{}\">", name, status, category).map_err(|e| e.to_string())?;
+                writeln!(writer, "      <Path>{}</Path>", path_esc).map_err(|e| e.to_string())?;
+
                 if !pack.airports.is_empty() {
-                    content.push_str("      <Airports>\n");
+                    writeln!(writer, "      <Airports>").map_err(|e| e.to_string())?;
                     for apt in &pack.airports {
                         let apt_name = html_escape::encode_text(&apt.name);
                         let id = html_escape::encode_text(&apt.id);
                         let lat = apt.lat.map(|l| l.to_string()).unwrap_or_default();
                         let lon = apt.lon.map(|l| l.to_string()).unwrap_or_default();
-                        content.push_str(&format!(
-                            "        <Airport icao=\"{}\" name=\"{}\" lat=\"{}\" lon=\"{}\" />\n",
+                        writeln!(
+                            writer,
+                            "        <Airport icao=\"{}\" name=\"{}\" lat=\"{}\" lon=\"{}\" />",
                             id, apt_name, lat, lon
-                        ));
+                        ).map_err(|e| e.to_string())?;
                     }
-                    content.push_str("      </Airports>\n");
+                    writeln!(writer, "      </Airports>").map_err(|e| e.to_string())?;
                 }
-                
+
                 if !pack.tags.is_empty() {
-                    content.push_str("      <Tags>\n");
+                    writeln!(writer, "      <Tags>").map_err(|e| e.to_string())?;
                     for tag in &pack.tags {
-                        content.push_str(&format!("        <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                        writeln!(writer, "        <Tag>{}</Tag>", html_escape::encode_text(tag)).map_err(|e| e.to_string())?;
                     }
-                    content.push_str("      </Tags>\n");
+                    writeln!(writer, "      </Tags>").map_err(|e| e.to_string())?;
                 }
-                
-                content.push_str("    </Pack>\n");
+
+                writeln!(writer, "    </Pack>").map_err(|e| e.to_string())?;
             }
-            content.push_str("  </Region>\n");
+            writeln!(writer, "  </Region>").map_err(|e| e.to_string())?;
         }
-        content.push_str("</SceneryLibrary>\n");
+        writeln!(writer, "</SceneryLibrary>").map_err(|e| e.to_string())?;
     } else if is_csv {
-        content.push_str("Name,Type,Status,Region,Airports,Path\n");
+        writeln!(writer, "Name,Type,Status,Region,Airports,Path").map_err(|e| e.to_string())?;
         for pack in packs.iter() {
             let name = pack.name.replace('"', "\"\"");
             let category = format!("{:?}", pack.category);
@@ -9309,15 +9291,17 @@ async fn export_scenery_task(
             let airports = pack.airports.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join("; ");
             let path_str = pack.path.display().to_string().replace('"', "\"\"");
 
-            content.push_str(&format!(
-                "\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"\n",
+            writeln!(
+                writer,
+                "\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"",
                 name, category, status, region, airports, path_str
-            ));
+            ).map_err(|e| e.to_string())?;
         }
     } else {
-        content.push_str("X-Plane Scenery Library Report\n");
-        content.push_str("==============================\n\n");
-        
+        writeln!(writer, "X-Plane Scenery Library Report").map_err(|e| e.to_string())?;
+        writeln!(writer, "==============================").map_err(|e| e.to_string())?;
+        writeln!(writer, "").map_err(|e| e.to_string())?;
+
         let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
         for pack in packs.iter() {
             let reg = pack.region.clone().unwrap_or_else(|| "Global / Unsorted".to_string());
@@ -9325,29 +9309,25 @@ async fn export_scenery_task(
         }
 
         for (region_name, region_packs) in regions {
-            content.push_str(&format!("Region: {}\n", region_name));
-            content.push_str(&("-".repeat(region_name.len() + 8)));
-            content.push_str("\n");
+            writeln!(writer, "Region: {}", region_name).map_err(|e| e.to_string())?;
+            writeln!(writer, "{}", "-".repeat(region_name.len() + 8)).map_err(|e| e.to_string())?;
             for pack in region_packs {
-                content.push_str(&format!("  [{}] {} ({:?})\n", 
+                writeln!(writer, "  [{}] {} ({:?})",
                     if matches!(pack.status, SceneryPackType::Active) { "X" } else { " " },
                     pack.name,
                     pack.category
-                ));
+                ).map_err(|e| e.to_string())?;
                 if !pack.airports.is_empty() {
                     let apts = pack.airports.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join(", ");
-                    content.push_str(&format!("      Airports: {}\n", apts));
+                    writeln!(writer, "      Airports: {}", apts).map_err(|e| e.to_string())?;
                 }
             }
-            content.push_str("\n");
+            writeln!(writer, "").map_err(|e| e.to_string())?;
         }
-        content.push_str(&format!("Total Scenery Packs: {}\n", packs.len()));
+        writeln!(writer, "Total Scenery Packs: {}", packs.len()).map_err(|e| e.to_string())?;
     }
 
-    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
-    file.write_all(content.as_bytes())
-        .map_err(|e| format!("Failed to write file: {}", e))?;
-
+    writer.flush().map_err(|e| e.to_string())?;
     Ok(path)
 }
 
@@ -9357,9 +9337,6 @@ fn export_aircraft_task(
     expanded_format: bool,
 ) -> impl std::future::Future<Output = Result<PathBuf, String>> {
     async move {
-        use std::fs::File;
-        use std::io::Write;
-
         let initial_location = directories::UserDirs::new()
             .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
             .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
@@ -9380,10 +9357,12 @@ fn export_aircraft_task(
         let is_xml = path.extension().map_or(false, |ext| ext == "xml");
         let is_csv = path.extension().map_or(false, |ext| ext == "csv");
 
-        let mut content = String::new();
+        let file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+        let mut writer = BufWriter::new(file);
+
         if is_xml {
-            content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-            content.push_str("<AircraftLibrary version=\"2.3.3\">\n");
+            writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
+            writeln!(writer, "<AircraftLibrary version=\"2.3.3\">").map_err(|e| e.to_string())?;
             for addon in aircraft.iter() {
                 if let AddonType::Aircraft {
                     acf_name,
@@ -9403,29 +9382,30 @@ fn export_aircraft_task(
                     let path_str = addon.path.display().to_string();
                     let path_esc = html_escape::encode_text(&path_str);
 
-                    content.push_str(&format!(
-                        "  <Aircraft name=\"{}\" category=\"{}\" status=\"{}\">\n",
+                    writeln!(
+                        writer,
+                        "  <Aircraft name=\"{}\" category=\"{}\" status=\"{}\">",
                         name, category_esc, status
-                    ));
-                    content.push_str(&format!("    <Path>{}</Path>\n", path_esc));
-                    content.push_str("    <Tags>\n");
+                    ).map_err(|e| e.to_string())?;
+                    writeln!(writer, "    <Path>{}</Path>", path_esc).map_err(|e| e.to_string())?;
+                    writeln!(writer, "    <Tags>").map_err(|e| e.to_string())?;
                     for tag in &addon.tags {
-                        content.push_str(&format!("      <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                        writeln!(writer, "      <Tag>{}</Tag>", html_escape::encode_text(tag)).map_err(|e| e.to_string())?;
                     }
-                    content.push_str("    </Tags>\n");
-                    content.push_str(&format!("    <Model acf=\"{}\" liveryCount=\"{}\">\n", acf, livery_count));
+                    writeln!(writer, "    </Tags>").map_err(|e| e.to_string())?;
+                    writeln!(writer, "    <Model acf=\"{}\" liveryCount=\"{}\">", acf, livery_count).map_err(|e| e.to_string())?;
                     if include_liveries {
                         for livery in livery_names {
-                            content.push_str(&format!("      <Livery name=\"{}\" />\n", html_escape::encode_text(livery)));
+                            writeln!(writer, "      <Livery name=\"{}\" />", html_escape::encode_text(livery)).map_err(|e| e.to_string())?;
                         }
                     }
-                    content.push_str("    </Model>\n");
-                    content.push_str("  </Aircraft>\n");
+                    writeln!(writer, "    </Model>").map_err(|e| e.to_string())?;
+                    writeln!(writer, "  </Aircraft>").map_err(|e| e.to_string())?;
                 }
             }
-            content.push_str("</AircraftLibrary>\n");
+            writeln!(writer, "</AircraftLibrary>").map_err(|e| e.to_string())?;
         } else if is_csv {
-            content.push_str("Manufacturer/Category,Aircraft Name,ACF File,Status,Livery Count,Liveries,Path\n");
+            writeln!(writer, "Manufacturer/Category,Aircraft Name,ACF File,Status,Livery Count,Liveries,Path").map_err(|e| e.to_string())?;
             for addon in aircraft.iter() {
                 if let AddonType::Aircraft {
                     acf_name,
@@ -9433,7 +9413,6 @@ fn export_aircraft_task(
                     livery_names,
                 } = &addon.addon_type
                 {
-                    // 1. Extract Manufacturer/Category from tags
                     let category = addon.tags.iter()
                         .find(|t| MANUFACTURERS.contains(&t.as_str()) || AIRCRAFT_CATEGORIES.contains(&t.as_str()))
                         .map(|s| s.as_str())
@@ -9445,31 +9424,32 @@ fn export_aircraft_task(
                     let path_str = addon.path.display().to_string().replace('"', "\"\"");
 
                     if expanded_format && !livery_names.is_empty() {
-                        // Power User: One row per livery
                         for livery in livery_names {
                             let livery_clean = livery.replace('"', "\"\"");
-                            content.push_str(&format!(
-                                "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"\n",
+                            writeln!(
+                                writer,
+                                "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"",
                                 category, name, acf, status, livery_count, livery_clean, path_str
-                            ));
+                            ).map_err(|e| e.to_string())?;
                         }
                     } else {
-                        // Flattened format
                         let liveries_val = if include_liveries {
                             livery_names.join(" | ").replace('"', "\"\"")
                         } else {
                             String::new()
                         };
-                        content.push_str(&format!(
-                            "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"\n",
+                        writeln!(
+                            writer,
+                            "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"",
                             category, name, acf, status, livery_count, liveries_val, path_str
-                        ));
+                        ).map_err(|e| e.to_string())?;
                     }
                 }
             }
         } else {
-            content.push_str("X-Plane Aircraft Library Report\n");
-            content.push_str("==============================\n\n");
+            writeln!(writer, "X-Plane Aircraft Library Report").map_err(|e| e.to_string())?;
+            writeln!(writer, "==============================").map_err(|e| e.to_string())?;
+            writeln!(writer, "").map_err(|e| e.to_string())?;
             for addon in aircraft.iter() {
                 if let AddonType::Aircraft {
                     acf_name,
@@ -9477,25 +9457,23 @@ fn export_aircraft_task(
                     livery_names,
                 } = &addon.addon_type
                 {
-                    content.push_str(&format!("Aircraft:    {}\n", addon.name));
-                    content.push_str(&format!("ACF File:    {}\n", acf_name));
-                    content.push_str(&format!("Status:      {}\n", if addon.is_enabled { "Enabled" } else { "Disabled" }));
-                    content.push_str(&format!("Liveries:    {}\n", livery_count));
+                    writeln!(writer, "Aircraft:    {}", addon.name).map_err(|e| e.to_string())?;
+                    writeln!(writer, "ACF File:    {}", acf_name).map_err(|e| e.to_string())?;
+                    writeln!(writer, "Status:      {}", if addon.is_enabled { "Enabled" } else { "Disabled" }).map_err(|e| e.to_string())?;
+                    writeln!(writer, "Liveries:    {}", livery_count).map_err(|e| e.to_string())?;
                     if include_liveries && !livery_names.is_empty() {
-                        content.push_str("Livery List: ");
-                        content.push_str(&livery_names.join(", "));
-                        content.push_str("\n");
+                        write!(writer, "Livery List: ").map_err(|e| e.to_string())?;
+                        writeln!(writer, "{}", livery_names.join(", ")).map_err(|e| e.to_string())?;
                     }
-                    content.push_str(&format!("System Path: {}\n", addon.path.display()));
-                    content.push_str("------------------------------\n");
+                    writeln!(writer, "System Path: {}", addon.path.display()).map_err(|e| e.to_string())?;
+                    writeln!(writer, "------------------------------").map_err(|e| e.to_string())?;
                 }
             }
-            content.push_str(&format!("\nTotal Aircraft Count: {}\n", aircraft.len()));
+            writeln!(writer, "").map_err(|e| e.to_string())?;
+            writeln!(writer, "Total Aircraft Count: {}", aircraft.len()).map_err(|e| e.to_string())?;
         }
 
-        let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
-        file.write_all(content.as_bytes())
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        writer.flush().map_err(|e| e.to_string())?;
 
         Ok(path)
     }
@@ -9504,10 +9482,6 @@ fn export_aircraft_task(
 async fn export_plugins_task(
     addons: Arc<Vec<DiscoveredAddon>>,
 ) -> Result<PathBuf, String> {
-    use std::fs::File;
-    use std::io::Write;
-    use x_adox_core::discovery::AddonType;
-
     let initial_location = directories::UserDirs::new()
         .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
         .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
@@ -9528,57 +9502,52 @@ async fn export_plugins_task(
     let is_xml = path.extension().map_or(false, |ext| ext == "xml");
     let is_csv = path.extension().map_or(false, |ext| ext == "csv");
 
-    let mut content = String::new();
+    let file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut writer = BufWriter::new(file);
 
     if is_xml {
-        content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        content.push_str("<PluginLibrary version=\"2.3.3\">\n");
-        
+        writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
+        writeln!(writer, "<PluginLibrary version=\"2.3.3\">").map_err(|e| e.to_string())?;
+
         for addon in addons.iter() {
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
             let name = html_escape::encode_text(&addon.name);
             let path_str = addon.path.display().to_string();
             let path_esc = html_escape::encode_text(&path_str);
 
-            content.push_str(&format!(
-                "  <Plugin name=\"{}\" status=\"{}\">\n",
-                name, status
-            ));
-            content.push_str(&format!("    <Path>{}</Path>\n", path_esc));
-            
+            writeln!(writer, "  <Plugin name=\"{}\" status=\"{}\">", name, status).map_err(|e| e.to_string())?;
+            writeln!(writer, "    <Path>{}</Path>", path_esc).map_err(|e| e.to_string())?;
+
             if let AddonType::Plugin { scripts } = &addon.addon_type {
                 if !scripts.is_empty() {
-                    content.push_str("    <Scripts>\n");
+                    writeln!(writer, "    <Scripts>").map_err(|e| e.to_string())?;
                     for script in scripts {
                         let script_name = html_escape::encode_text(&script.name);
                         let script_status = if script.is_enabled { "Enabled" } else { "Disabled" };
-                        content.push_str(&format!(
-                            "      <Script name=\"{}\" status=\"{}\" />\n",
-                            script_name, script_status
-                        ));
+                        writeln!(writer, "      <Script name=\"{}\" status=\"{}\" />", script_name, script_status).map_err(|e| e.to_string())?;
                     }
-                    content.push_str("    </Scripts>\n");
+                    writeln!(writer, "    </Scripts>").map_err(|e| e.to_string())?;
                 }
             }
-            
+
             if !addon.tags.is_empty() {
-                content.push_str("    <Tags>\n");
+                writeln!(writer, "    <Tags>").map_err(|e| e.to_string())?;
                 for tag in &addon.tags {
-                    content.push_str(&format!("      <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                    writeln!(writer, "      <Tag>{}</Tag>", html_escape::encode_text(tag)).map_err(|e| e.to_string())?;
                 }
-                content.push_str("    </Tags>\n");
+                writeln!(writer, "    </Tags>").map_err(|e| e.to_string())?;
             }
-            
-            content.push_str("  </Plugin>\n");
+
+            writeln!(writer, "  </Plugin>").map_err(|e| e.to_string())?;
         }
-        content.push_str("</PluginLibrary>\n");
+        writeln!(writer, "</PluginLibrary>").map_err(|e| e.to_string())?;
     } else if is_csv {
-        content.push_str("Name,Status,Scripts,Path\n");
+        writeln!(writer, "Name,Status,Scripts,Path").map_err(|e| e.to_string())?;
         for addon in addons.iter() {
             let name = addon.name.replace('"', "\"\"");
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
             let path_str = addon.path.display().to_string().replace('"', "\"\"");
-            
+
             let scripts_val = if let AddonType::Plugin { scripts } = &addon.addon_type {
                 scripts.iter()
                     .map(|s| format!("{} ({})", s.name, if s.is_enabled { "on" } else { "off" }))
@@ -9588,37 +9557,37 @@ async fn export_plugins_task(
                 String::new()
             };
 
-            content.push_str(&format!(
-                "\"{}\",\"{}\",\"{}\",\"{}\"\n",
+            writeln!(
+                writer,
+                "\"{}\",\"{}\",\"{}\",\"{}\"",
                 name, status, scripts_val.replace('"', "\"\""), path_str
-            ));
+            ).map_err(|e| e.to_string())?;
         }
     } else {
-        content.push_str("X-Plane Plugin Library Report\n");
-        content.push_str("==============================\n\n");
-        
+        writeln!(writer, "X-Plane Plugin Library Report").map_err(|e| e.to_string())?;
+        writeln!(writer, "==============================").map_err(|e| e.to_string())?;
+        writeln!(writer, "").map_err(|e| e.to_string())?;
+
         for addon in addons.iter() {
-            content.push_str(&format!("[{}] {}\n", 
+            writeln!(writer, "[{}] {}",
                 if addon.is_enabled { "X" } else { " " },
                 addon.name
-            ));
-            
+            ).map_err(|e| e.to_string())?;
+
             if let AddonType::Plugin { scripts } = &addon.addon_type {
                 for script in scripts {
-                    content.push_str(&format!("    - [{}] {}\n",
+                    writeln!(writer, "    - [{}] {}",
                         if script.is_enabled { "X" } else { " " },
                         script.name
-                    ));
+                    ).map_err(|e| e.to_string())?;
                 }
             }
-            content.push_str("\n");
+            writeln!(writer, "").map_err(|e| e.to_string())?;
         }
-        content.push_str(&format!("Total Plugins: {}\n", addons.len()));
+        writeln!(writer, "Total Plugins: {}", addons.len()).map_err(|e| e.to_string())?;
     }
 
-    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
-    file.write_all(content.as_bytes())
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    writer.flush().map_err(|e| e.to_string())?;
 
     Ok(path)
 }
@@ -9626,9 +9595,6 @@ async fn export_plugins_task(
 async fn export_csls_task(
     addons: Arc<Vec<DiscoveredAddon>>,
 ) -> Result<PathBuf, String> {
-    use std::fs::File;
-    use std::io::Write;
-
     let initial_location = directories::UserDirs::new()
         .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
         .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
@@ -9649,63 +9615,62 @@ async fn export_csls_task(
     let is_xml = path.extension().map_or(false, |ext| ext == "xml");
     let is_csv = path.extension().map_or(false, |ext| ext == "csv");
 
-    let mut content = String::new();
+    let file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut writer = BufWriter::new(file);
 
     if is_xml {
-        content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        content.push_str("<CSLLibrary version=\"2.3.3\">\n");
-        
+        writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
+        writeln!(writer, "<CSLLibrary version=\"2.3.3\">").map_err(|e| e.to_string())?;
+
         for addon in addons.iter() {
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
             let name = html_escape::encode_text(&addon.name);
             let path_str = addon.path.display().to_string();
             let path_esc = html_escape::encode_text(&path_str);
 
-            content.push_str(&format!(
-                "  <Package name=\"{}\" status=\"{}\">\n",
-                name, status
-            ));
-            content.push_str(&format!("    <Path>{}</Path>\n", path_esc));
-            
+            writeln!(writer, "  <Package name=\"{}\" status=\"{}\">", name, status).map_err(|e| e.to_string())?;
+            writeln!(writer, "    <Path>{}</Path>", path_esc).map_err(|e| e.to_string())?;
+
             if !addon.tags.is_empty() {
-                content.push_str("    <Tags>\n");
+                writeln!(writer, "    <Tags>").map_err(|e| e.to_string())?;
                 for tag in &addon.tags {
-                    content.push_str(&format!("      <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                    writeln!(writer, "      <Tag>{}</Tag>", html_escape::encode_text(tag)).map_err(|e| e.to_string())?;
                 }
-                content.push_str("    </Tags>\n");
+                writeln!(writer, "    </Tags>").map_err(|e| e.to_string())?;
             }
-            
-            content.push_str("  </Package>\n");
+
+            writeln!(writer, "  </Package>").map_err(|e| e.to_string())?;
         }
-        content.push_str("</CSLLibrary>\n");
+        writeln!(writer, "</CSLLibrary>").map_err(|e| e.to_string())?;
     } else if is_csv {
-        content.push_str("Name,Status,Path\n");
+        writeln!(writer, "Name,Status,Path").map_err(|e| e.to_string())?;
         for addon in addons.iter() {
             let name = addon.name.replace('"', "\"\"");
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
             let path_str = addon.path.display().to_string().replace('"', "\"\"");
 
-            content.push_str(&format!(
-                "\"{}\",\"{}\",\"{}\"\n",
+            writeln!(
+                writer,
+                "\"{}\",\"{}\",\"{}\"",
                 name, status, path_str
-            ));
+            ).map_err(|e| e.to_string())?;
         }
     } else {
-        content.push_str("X-Plane CSL Package Library Report\n");
-        content.push_str("==============================\n\n");
-        
+        writeln!(writer, "X-Plane CSL Package Library Report").map_err(|e| e.to_string())?;
+        writeln!(writer, "==============================").map_err(|e| e.to_string())?;
+        writeln!(writer, "").map_err(|e| e.to_string())?;
+
         for addon in addons.iter() {
-            content.push_str(&format!("[{}] {}\n", 
+            writeln!(writer, "[{}] {}",
                 if addon.is_enabled { "X" } else { " " },
                 addon.name
-            ));
+            ).map_err(|e| e.to_string())?;
         }
-        content.push_str(&format!("\nTotal CSL Packages: {}\n", addons.len()));
+        writeln!(writer, "").map_err(|e| e.to_string())?;
+        writeln!(writer, "Total CSL Packages: {}", addons.len()).map_err(|e| e.to_string())?;
     }
 
-    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
-    file.write_all(content.as_bytes())
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    writer.flush().map_err(|e| e.to_string())?;
 
     Ok(path)
 }

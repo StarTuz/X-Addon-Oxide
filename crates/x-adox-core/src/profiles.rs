@@ -78,9 +78,37 @@ impl ProfileCollection {
         false
     }
 
+    pub fn get_active_profile(&self) -> Option<&Profile> {
+        self.active_profile
+            .as_ref()
+            .and_then(|name| self.profiles.iter().find(|p| p.name == *name))
+    }
+
     pub fn get_active_profile_mut(&mut self) -> Option<&mut Profile> {
-        let active_name = self.active_profile.as_ref()?;
-        self.profiles.iter_mut().find(|p| p.name == *active_name)
+        self.active_profile
+            .as_ref()
+            .and_then(|name| self.profiles.iter_mut().find(|p| p.name == *name))
+    }
+
+    /// Consolidated pin migration logic.
+    /// If the active profile has no pins but heuristics.json does, migrate them.
+    /// Returns true if pins were migrated.
+    pub fn sync_with_heuristics(&mut self, heuristics: &x_adox_bitnet::BitNetModel) -> bool {
+        let has_heuristics_pins = !heuristics.config.overrides.is_empty();
+        let mut migrated = false;
+
+        if let Some(profile) = self.get_active_profile_mut() {
+            if profile.scenery_overrides.is_empty() && has_heuristics_pins {
+                log::info!(
+                    "[Migration] Consolidating pins for profile '{}' from heuristics.json",
+                    profile.name
+                );
+                profile.scenery_overrides =
+                    heuristics.config.overrides.clone().into_iter().collect();
+                migrated = true;
+            }
+        }
+        migrated
     }
 
     pub fn update_active_scenery(&mut self, states: HashMap<String, bool>) {

@@ -8,7 +8,7 @@ use walkdir::WalkDir;
 use x_adox_bitnet::BitNetModel;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
-pub struct PythonScript {
+pub struct AddonScript {
     pub name: String,
     pub path: PathBuf,
     pub is_enabled: bool,
@@ -25,7 +25,7 @@ pub enum AddonType {
         livery_names: Vec<String>,
     },
     Plugin {
-        scripts: Vec<PythonScript>,
+        scripts: Vec<AddonScript>,
     },
     CSL(bool), // bool is_enabled
 }
@@ -445,7 +445,7 @@ impl DiscoveryManager {
     }
 
     /// Scans for Python scripts in standard script folders.
-    pub fn scan_python_scripts(root: &Path, plugin_name: &str) -> Vec<PythonScript> {
+    pub fn scan_python_scripts(root: &Path, plugin_name: &str) -> Vec<AddonScript> {
         let mut results = Vec::new();
         let script_dir = match plugin_name {
             "PythonInterface" => root.join("Resources").join("plugins").join("PythonScripts"),
@@ -467,7 +467,7 @@ impl DiscoveryManager {
                     .to_string();
 
                 if path.is_file() && (name.ends_with(".py") || name.ends_with(".py.disabled")) {
-                    results.push(PythonScript {
+                    results.push(AddonScript {
                         name: name.clone(),
                         path: path.clone(),
                         is_enabled: name.ends_with(".py"),
@@ -481,7 +481,7 @@ impl DiscoveryManager {
     }
 
     /// Scans for Lua scripts in a FlyWithLua/X-Lua plugin folder.
-    pub fn scan_lua_scripts(plugin_path: &Path) -> Vec<PythonScript> {
+    pub fn scan_lua_scripts(plugin_path: &Path) -> Vec<AddonScript> {
         let mut results = Vec::new();
         let script_dir = plugin_path.join("Scripts");
 
@@ -499,7 +499,7 @@ impl DiscoveryManager {
                     .to_string();
 
                 if path.is_file() && (name.ends_with(".lua") || name.ends_with(".lua.disabled")) {
-                    results.push(PythonScript {
+                    results.push(AddonScript {
                         name: name.clone(),
                         path: path.clone(),
                         is_enabled: name.ends_with(".lua"),

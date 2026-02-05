@@ -1,0 +1,16 @@
+# actionlint configuration for X-Addon-Oxide
+# This file suppresses "Context access might be invalid" warnings by explicitly
+# allowlisting repository secrets.
+
+self-check: true
+
+config-variables:
+  - name: secrets
+    values:
+      - APPLE_CERTIFICATE
+      - WIN_CERTIFICATE
+      - APPLE_CERTIFICATE_PASSWORD
+      - APPLE_ID
+      - APPLE_PASSWORD
+      - APPLE_TEAM_ID
+      - OPENAI_KEY

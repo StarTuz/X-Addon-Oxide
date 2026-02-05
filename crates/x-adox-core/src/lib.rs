@@ -177,8 +177,8 @@ pub fn get_scoped_config_root(xplane_root: &Path) -> PathBuf {
             legacy_hash,
             stable_hash
         );
-        if let Err(e) = fs::rename(&legacy_path, &stable_path) {
-            log::error!("[Migration] Failed to rename legacy folder: {}", e);
+        if let Err(e) = move_dir_all(&legacy_path, &stable_path) {
+            log::error!("[Migration] Failed to migrate legacy folder: {}", e);
         }
     } else if stable_path.exists() && legacy_path.exists() && stable_hash != legacy_hash {
         // Both exist - check if we should migrate profiles from legacy to stable.
@@ -191,15 +191,19 @@ pub fn get_scoped_config_root(xplane_root: &Path) -> PathBuf {
             let should_copy_profiles = if stable_profiles.exists() {
                 // Check if stable profiles is essentially empty/default
                 if let Ok(content) = fs::read_to_string(&stable_profiles) {
-                    if let Ok(collection) = serde_json::from_str::<crate::profiles::ProfileCollection>(&content) {
-                        // If stable has only 1 profile with no scenery_overrides, prefer legacy
-                        collection.profiles.len() <= 1
-                            && collection.profiles.iter().all(|p| p.scenery_overrides.is_empty())
+                    if let Ok(collection) =
+                        serde_json::from_str::<crate::profiles::ProfileCollection>(&content)
+                    {
+                        // Use the robust helper from ProfileCollection
+                        collection.is_empty_or_default()
                     } else {
-                        false // Can't parse, don't overwrite
+                        log::warn!(
+                            "[Migration] Failed to parse stable profiles.json, skipping copy"
+                        );
+                        false // Can't parse, don't overwrite to be safe
                     }
                 } else {
-                    true // Can't read, safe to copy
+                    true // Can't read stable file, safe to copy over it
                 }
             } else {
                 true // Stable profiles doesn't exist, safe to copy
@@ -217,7 +221,7 @@ pub fn get_scoped_config_root(xplane_root: &Path) -> PathBuf {
             }
         }
 
-        // Also migrate heuristics.json if stable doesn't have one or it's empty
+        // Also migrate heuristics.json if stable doesn't have one
         let stable_heuristics = stable_path.join("heuristics.json");
         let legacy_heuristics = legacy_path.join("heuristics.json");
 
@@ -243,6 +247,37 @@ pub fn get_scoped_config_root(xplane_root: &Path) -> PathBuf {
         stable_path
     );
     stable_path
+}
+
+fn move_dir_all(from: &Path, to: &Path) -> std::io::Result<()> {
+    log::debug!("[Migration] Attempting move from {:?} to {:?}", from, to);
+    if let Err(e) = fs::rename(from, to) {
+        // Error code 18 is EXDEV on Linux (Cross-device link)
+        if e.raw_os_error() == Some(18) || e.kind() == std::io::ErrorKind::Other {
+            log::info!("[Migration] Cross-device move detected, falling back to copy+remove");
+            copy_dir_all(from, to)?;
+            fs::remove_dir_all(from)?;
+            Ok(())
+        } else {
+            Err(e)
+        }
+    } else {
+        Ok(())
+    }
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
+        } else {
+            fs::copy(&entry.path(), &dst.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Error, Debug)]
