@@ -361,6 +361,7 @@ enum Message {
     AircraftSearchPrev,
     AircraftSearchSubmit,
     ExportAircraftList,
+    ExportSceneryList,
     ToggleExportIncludeLiveries(bool),
     ToggleExportExpandedFormat(bool),
     ToggleBucketItem(String),
@@ -3451,6 +3452,19 @@ impl App {
                     },
                 )
             }
+            Message::ExportSceneryList => {
+                let packs = self.packs.clone();
+                Task::perform(
+                    async move { export_scenery_task(packs).await },
+                    |res| match res {
+                        Ok(path) => Message::StatusChanged(format!(
+                            "Scenery list exported to {}",
+                            path.display()
+                        )),
+                        Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
+                    },
+                )
+            }
             Message::ToggleExportIncludeLiveries(v) => {
                 self.export_include_liveries = v;
                 Task::none()
@@ -6316,6 +6330,13 @@ impl App {
                     .padding([6, 12])
                 },
                 button(
+                    text("Export List")
+                        .size(12)
+                )
+                .on_press(Message::ExportSceneryList)
+                .style(style::button_secondary)
+                .padding([6, 12]),
+                button(
                     text(if self.use_region_view {
                         "Flat View"
                     } else {
@@ -9081,6 +9102,139 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
             content.push_str("------------------------------\n");
         }
         content.push_str(&format!("\nTotal Issues: {}\n", issues.len()));
+    }
+
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(path)
+}
+
+async fn export_scenery_task(
+    packs: Arc<Vec<SceneryPack>>,
+) -> Result<PathBuf, String> {
+    use std::fs::File;
+    use std::io::Write;
+
+    let initial_location = directories::UserDirs::new()
+        .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
+        .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let path = rfd::AsyncFileDialog::new()
+        .add_filter("CSV File", &["csv"])
+        .add_filter("XML File", &["xml"])
+        .add_filter("Text File", &["txt"])
+        .set_file_name("x_plane_scenery_library.csv")
+        .set_directory(&initial_location)
+        .save_file()
+        .await
+        .ok_or("Export cancelled".to_string())?
+        .path()
+        .to_path_buf();
+
+    let is_xml = path.extension().map_or(false, |ext| ext == "xml");
+    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+
+    let mut content = String::new();
+
+    if is_xml {
+        content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        content.push_str("<SceneryLibrary version=\"2.3.3\">\n");
+        
+        let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
+        for pack in packs.iter() {
+            let reg = pack.region.clone().unwrap_or_else(|| "Global / Unsorted".to_string());
+            regions.entry(reg).or_default().push(pack);
+        }
+
+        for (region_name, region_packs) in regions {
+            content.push_str(&format!("  <Region name=\"{}\">\n", html_escape::encode_text(&region_name)));
+            for pack in region_packs {
+                let status = format!("{:?}", pack.status);
+                let category = format!("{:?}", pack.category);
+                let name = html_escape::encode_text(&pack.name);
+                let path_str = pack.path.display().to_string();
+                let path_esc = html_escape::encode_text(&path_str);
+
+                content.push_str(&format!(
+                    "    <Pack name=\"{}\" status=\"{}\" type=\"{}\">\n",
+                    name, status, category
+                ));
+                content.push_str(&format!("      <Path>{}</Path>\n", path_esc));
+                
+                if !pack.airports.is_empty() {
+                    content.push_str("      <Airports>\n");
+                    for apt in &pack.airports {
+                        let apt_name = html_escape::encode_text(&apt.name);
+                        let id = html_escape::encode_text(&apt.id);
+                        let lat = apt.lat.map(|l| l.to_string()).unwrap_or_default();
+                        let lon = apt.lon.map(|l| l.to_string()).unwrap_or_default();
+                        content.push_str(&format!(
+                            "        <Airport icao=\"{}\" name=\"{}\" lat=\"{}\" lon=\"{}\" />\n",
+                            id, apt_name, lat, lon
+                        ));
+                    }
+                    content.push_str("      </Airports>\n");
+                }
+                
+                if !pack.tags.is_empty() {
+                    content.push_str("      <Tags>\n");
+                    for tag in &pack.tags {
+                        content.push_str(&format!("        <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                    }
+                    content.push_str("      </Tags>\n");
+                }
+                
+                content.push_str("    </Pack>\n");
+            }
+            content.push_str("  </Region>\n");
+        }
+        content.push_str("</SceneryLibrary>\n");
+    } else if is_csv {
+        content.push_str("Name,Type,Status,Region,Airports,Path\n");
+        for pack in packs.iter() {
+            let name = pack.name.replace('"', "\"\"");
+            let category = format!("{:?}", pack.category);
+            let status = format!("{:?}", pack.status);
+            let region = pack.region.as_deref().unwrap_or("Unsorted").replace('"', "\"\"");
+            let airports = pack.airports.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join("; ");
+            let path_str = pack.path.display().to_string().replace('"', "\"\"");
+
+            content.push_str(&format!(
+                "\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"\n",
+                name, category, status, region, airports, path_str
+            ));
+        }
+    } else {
+        content.push_str("X-Plane Scenery Library Report\n");
+        content.push_str("==============================\n\n");
+        
+        let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
+        for pack in packs.iter() {
+            let reg = pack.region.clone().unwrap_or_else(|| "Global / Unsorted".to_string());
+            regions.entry(reg).or_default().push(pack);
+        }
+
+        for (region_name, region_packs) in regions {
+            content.push_str(&format!("Region: {}\n", region_name));
+            content.push_str(&("-".repeat(region_name.len() + 8)));
+            content.push_str("\n");
+            for pack in region_packs {
+                content.push_str(&format!("  [{}] {} ({:?})\n", 
+                    if matches!(pack.status, SceneryPackType::Active) { "X" } else { " " },
+                    pack.name,
+                    pack.category
+                ));
+                if !pack.airports.is_empty() {
+                    let apts = pack.airports.iter().map(|a| a.id.as_str()).collect::<Vec<_>>().join(", ");
+                    content.push_str(&format!("      Airports: {}\n", apts));
+                }
+            }
+            content.push_str("\n");
+        }
+        content.push_str(&format!("Total Scenery Packs: {}\n", packs.len()));
     }
 
     let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
