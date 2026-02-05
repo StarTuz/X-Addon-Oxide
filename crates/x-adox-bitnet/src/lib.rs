@@ -261,7 +261,8 @@ impl BitNetModel {
     }
 
     fn load_config(path: &Path) -> Result<HeuristicsConfig> {
-        log::debug!("[BitNet] Loading heuristics from: {:?}", path);
+        let abs_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        log::debug!("[BitNet] Loading heuristics from: {:?}", abs_path);
         if path.exists() {
             let content = fs::read_to_string(path)?;
             let mut config: HeuristicsConfig = serde_json::from_str(&content).map_err(|e| {
@@ -316,10 +317,14 @@ impl BitNetModel {
     }
 
     pub fn save(&self) -> Result<()> {
+        let abs_path = self
+            .config_path
+            .canonicalize()
+            .unwrap_or_else(|_| self.config_path.clone());
         log::debug!(
             "[BitNet] Saving {} overrides to {:?}",
             self.config.overrides.len(),
-            self.config_path
+            abs_path
         );
         if let Some(parent) = self.config_path.parent() {
             fs::create_dir_all(parent)?;

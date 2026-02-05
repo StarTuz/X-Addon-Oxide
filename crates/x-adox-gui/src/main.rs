@@ -1729,6 +1729,11 @@ impl App {
                     log::debug!("Switching Profile: Applying {} overrides from profile '{}'", new_overrides.len(), name);
                     self.heuristics_model.apply_overrides(new_overrides);
 
+                    // Update editor content so the UI reflects the new profile's active rules
+                    if let Ok(json) = serde_json::to_string_pretty(self.heuristics_model.config.as_ref()) {
+                         self.heuristics_json = text_editor::Content::with_text(&json);
+                    }
+
                     self.status = format!("Switching to profile {}...", name);
                     let model = self.heuristics_model.clone();
                     Task::perform(
@@ -2755,12 +2760,24 @@ impl App {
                             self.status = format!("Failed to load profiles: {}", e);
                             self.profiles = ProfileCollection::default();
                         }
+                        }
                     }
-                }
-
                 // Force reload of heuristics for the new install location
                 if let Some(r) = &self.xplane_root {
                     self.heuristics_model = Self::initialize_heuristics(r);
+                    self.heuristics_error = None;
+                    
+                    // Update editor content
+                    let config = x_adox_bitnet::BitNetModel::at_path(
+                        x_adox_core::get_scoped_config_root(r).join("heuristics.json"),
+                    )
+                    .config
+                    .as_ref()
+                    .clone();
+                    match serde_json::to_string_pretty(&config) {
+                        Ok(json) => self.heuristics_json = text_editor::Content::with_text(&json),
+                        Err(_) => self.heuristics_json = text_editor::Content::new(),
+                    }
                     
                     // Apply the pins from the newly loaded profile
                     if let Some(active_name) = &self.profiles.active_profile {
