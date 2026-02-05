@@ -221,18 +221,38 @@ pub fn get_scoped_config_root(xplane_root: &Path) -> PathBuf {
             }
         }
 
-        // Also migrate heuristics.json if stable doesn't have one
+        // Also migrate heuristics.json if stable doesn't have one or is corrupt
         let stable_heuristics = stable_path.join("heuristics.json");
         let legacy_heuristics = legacy_path.join("heuristics.json");
 
-        if legacy_heuristics.exists() && !stable_heuristics.exists() {
-            log::info!(
-                "[Migration] Copying heuristics.json from legacy ({}) to stable ({})",
-                legacy_hash,
-                stable_hash
-            );
-            if let Err(e) = fs::copy(&legacy_heuristics, &stable_heuristics) {
-                log::error!("[Migration] Failed to copy heuristics.json: {}", e);
+        if legacy_heuristics.exists() {
+            let should_copy = if stable_heuristics.exists() {
+                // Verify stable heuristics is parseable; if corrupt, back it up and copy legacy
+                match fs::read_to_string(&stable_heuristics) {
+                    Ok(content) => {
+                        if serde_json::from_str::<serde_json::Value>(&content).is_err() {
+                            log::warn!("[Migration] Stable heuristics.json is corrupt, backing up and replacing with legacy");
+                            let _ = fs::rename(&stable_heuristics, stable_path.join("heuristics.json.bak"));
+                            true
+                        } else {
+                            false // Stable is valid, don't overwrite
+                        }
+                    }
+                    Err(_) => true, // Can't read stable file, safe to copy over
+                }
+            } else {
+                true // Stable doesn't exist, safe to copy
+            };
+
+            if should_copy {
+                log::info!(
+                    "[Migration] Copying heuristics.json from legacy ({}) to stable ({})",
+                    legacy_hash,
+                    stable_hash
+                );
+                if let Err(e) = fs::copy(&legacy_heuristics, &stable_heuristics) {
+                    log::error!("[Migration] Failed to copy heuristics.json: {}", e);
+                }
             }
         }
     }
@@ -252,8 +272,10 @@ pub fn get_scoped_config_root(xplane_root: &Path) -> PathBuf {
 fn move_dir_all(from: &Path, to: &Path) -> std::io::Result<()> {
     log::debug!("[Migration] Attempting move from {:?} to {:?}", from, to);
     if let Err(e) = fs::rename(from, to) {
-        // Error code 18 is EXDEV on Linux (Cross-device link)
-        if e.raw_os_error() == Some(18) || e.kind() == std::io::ErrorKind::Other {
+        let is_cross_device = e.raw_os_error() == Some(18) // EXDEV on Linux/macOS
+            || e.raw_os_error() == Some(17) // ERROR_NOT_SAME_DEVICE on Windows
+            || e.kind() == std::io::ErrorKind::CrossesDevices;
+        if is_cross_device {
             log::info!("[Migration] Cross-device move detected, falling back to copy+remove");
             copy_dir_all(from, to)?;
             fs::remove_dir_all(from)?;

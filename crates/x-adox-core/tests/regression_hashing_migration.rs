@@ -2,11 +2,17 @@
 // Copyright (c) 2026 StarTuz
 
 use std::fs;
+use std::sync::Mutex;
 use tempfile::tempdir;
 use x_adox_core::{calculate_legacy_hash, calculate_stable_hash, get_scoped_config_root};
 
+// Tests that mutate X_ADOX_CONFIG_DIR must not run in parallel since env vars are process-global.
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
 #[test]
 fn test_hashing_migration() {
+    let _lock = ENV_MUTEX.lock().unwrap();
+
     let dir = tempdir().unwrap();
     let config_dir = dir.path().join(".xad_oxide");
     fs::create_dir_all(&config_dir).unwrap();
@@ -72,6 +78,8 @@ fn test_hashing_stability_normalized() {
 
 #[test]
 fn test_migration_both_folders_exist_prefers_legacy_data() {
+    let _lock = ENV_MUTEX.lock().unwrap();
+
     // This tests the scenario where dd58f05 created an empty stable folder
     // before migration logic existed, leaving user's profiles stranded in legacy.
 

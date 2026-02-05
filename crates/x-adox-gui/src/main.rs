@@ -2123,7 +2123,10 @@ impl App {
                     }
                 }
                 let mut result_bucket: Vec<String> = current_bucket.into_iter().collect();
-                result_bucket.sort();
+                // Sort by position in self.packs to preserve discovery/INI order
+                result_bucket.sort_by_key(|name| {
+                    self.packs.iter().position(|p| &p.name == name).unwrap_or(usize::MAX)
+                });
                 self.scenery_bucket = result_bucket;
                 Task::none()
             }
