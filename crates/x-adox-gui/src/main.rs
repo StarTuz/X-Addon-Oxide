@@ -362,6 +362,8 @@ enum Message {
     AircraftSearchSubmit,
     ExportAircraftList,
     ExportSceneryList,
+    ExportPluginList,
+    ExportCSLList,
     ToggleExportIncludeLiveries(bool),
     ToggleExportExpandedFormat(bool),
     ToggleBucketItem(String),
@@ -3465,6 +3467,32 @@ impl App {
                     },
                 )
             }
+            Message::ExportPluginList => {
+                let plugins = self.plugins.clone();
+                Task::perform(
+                    async move { export_plugins_task(plugins).await },
+                    |res| match res {
+                        Ok(path) => Message::StatusChanged(format!(
+                            "Plugin list exported to {}",
+                            path.display()
+                        )),
+                        Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
+                    },
+                )
+            }
+            Message::ExportCSLList => {
+                let csls = self.csls.clone();
+                Task::perform(
+                    async move { export_csls_task(csls).await },
+                    |res| match res {
+                        Ok(path) => Message::StatusChanged(format!(
+                            "CSL package list exported to {}",
+                            path.display()
+                        )),
+                        Err(e) => Message::StatusChanged(format!("Export failed: {}", e)),
+                    },
+                )
+            }
             Message::ToggleExportIncludeLiveries(v) => {
                 self.export_include_liveries = v;
                 Task::none()
@@ -5002,8 +5030,42 @@ impl App {
         let content = match self.active_tab {
             Tab::Scenery => self.view_scenery(),
             Tab::Aircraft => self.view_aircraft_tree(),
-            Tab::Plugins => self.view_addon_list(&self.plugins, "Plugin"),
-            Tab::CSLs => self.view_addon_list(&self.csls, "CSL Package"),
+            Tab::Plugins => {
+                column![
+                    row![
+                        text("Plugin Library").size(18).width(Length::Fill),
+                        button(text("Export List").size(12))
+                            .on_press(Message::ExportPluginList)
+                            .style(style::button_secondary)
+                            .padding([4, 8]),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Alignment::Center),
+                    scrollable(self.view_addon_list(&self.plugins, "Plugin"))
+                        .height(Length::Fill),
+                ]
+                .spacing(15)
+                .height(Length::Fill)
+                .into()
+            }
+            Tab::CSLs => {
+                column![
+                    row![
+                        text("CSL Library").size(18).width(Length::Fill),
+                        button(text("Export List").size(12))
+                            .on_press(Message::ExportCSLList)
+                            .style(style::button_secondary)
+                            .padding([4, 8]),
+                    ]
+                    .spacing(10)
+                    .align_y(iced::Alignment::Center),
+                    scrollable(self.view_addon_list(&self.csls, "CSL Package"))
+                        .height(Length::Fill),
+                ]
+                .spacing(15)
+                .height(Length::Fill)
+                .into()
+            }
             Tab::Heuristics => self.view_heuristics_editor(),
             Tab::Issues => self.view_issues(),
             Tab::Utilities => self.view_utilities(),
@@ -9392,4 +9454,213 @@ fn export_aircraft_task(
 
         Ok(path)
     }
+}
+
+async fn export_plugins_task(
+    addons: Arc<Vec<DiscoveredAddon>>,
+) -> Result<PathBuf, String> {
+    use std::fs::File;
+    use std::io::Write;
+    use x_adox_core::discovery::AddonType;
+
+    let initial_location = directories::UserDirs::new()
+        .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
+        .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let path = rfd::AsyncFileDialog::new()
+        .add_filter("CSV File", &["csv"])
+        .add_filter("XML File", &["xml"])
+        .add_filter("Text File", &["txt"])
+        .set_file_name("x_plane_plugin_library.csv")
+        .set_directory(&initial_location)
+        .save_file()
+        .await
+        .ok_or("Export cancelled".to_string())?
+        .path()
+        .to_path_buf();
+
+    let is_xml = path.extension().map_or(false, |ext| ext == "xml");
+    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+
+    let mut content = String::new();
+
+    if is_xml {
+        content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        content.push_str("<PluginLibrary version=\"2.3.3\">\n");
+        
+        for addon in addons.iter() {
+            let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+            let name = html_escape::encode_text(&addon.name);
+            let path_str = addon.path.display().to_string();
+            let path_esc = html_escape::encode_text(&path_str);
+
+            content.push_str(&format!(
+                "  <Plugin name=\"{}\" status=\"{}\">\n",
+                name, status
+            ));
+            content.push_str(&format!("    <Path>{}</Path>\n", path_esc));
+            
+            if let AddonType::Plugin { scripts } = &addon.addon_type {
+                if !scripts.is_empty() {
+                    content.push_str("    <Scripts>\n");
+                    for script in scripts {
+                        let script_name = html_escape::encode_text(&script.name);
+                        let script_status = if script.is_enabled { "Enabled" } else { "Disabled" };
+                        content.push_str(&format!(
+                            "      <Script name=\"{}\" status=\"{}\" />\n",
+                            script_name, script_status
+                        ));
+                    }
+                    content.push_str("    </Scripts>\n");
+                }
+            }
+            
+            if !addon.tags.is_empty() {
+                content.push_str("    <Tags>\n");
+                for tag in &addon.tags {
+                    content.push_str(&format!("      <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                }
+                content.push_str("    </Tags>\n");
+            }
+            
+            content.push_str("  </Plugin>\n");
+        }
+        content.push_str("</PluginLibrary>\n");
+    } else if is_csv {
+        content.push_str("Name,Status,Scripts,Path\n");
+        for addon in addons.iter() {
+            let name = addon.name.replace('"', "\"\"");
+            let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+            let path_str = addon.path.display().to_string().replace('"', "\"\"");
+            
+            let scripts_val = if let AddonType::Plugin { scripts } = &addon.addon_type {
+                scripts.iter()
+                    .map(|s| format!("{} ({})", s.name, if s.is_enabled { "on" } else { "off" }))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            } else {
+                String::new()
+            };
+
+            content.push_str(&format!(
+                "\"{}\",\"{}\",\"{}\",\"{}\"\n",
+                name, status, scripts_val.replace('"', "\"\""), path_str
+            ));
+        }
+    } else {
+        content.push_str("X-Plane Plugin Library Report\n");
+        content.push_str("==============================\n\n");
+        
+        for addon in addons.iter() {
+            content.push_str(&format!("[{}] {}\n", 
+                if addon.is_enabled { "X" } else { " " },
+                addon.name
+            ));
+            
+            if let AddonType::Plugin { scripts } = &addon.addon_type {
+                for script in scripts {
+                    content.push_str(&format!("    - [{}] {}\n",
+                        if script.is_enabled { "X" } else { " " },
+                        script.name
+                    ));
+                }
+            }
+            content.push_str("\n");
+        }
+        content.push_str(&format!("Total Plugins: {}\n", addons.len()));
+    }
+
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(path)
+}
+
+async fn export_csls_task(
+    addons: Arc<Vec<DiscoveredAddon>>,
+) -> Result<PathBuf, String> {
+    use std::fs::File;
+    use std::io::Write;
+
+    let initial_location = directories::UserDirs::new()
+        .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
+        .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let path = rfd::AsyncFileDialog::new()
+        .add_filter("CSV File", &["csv"])
+        .add_filter("XML File", &["xml"])
+        .add_filter("Text File", &["txt"])
+        .set_file_name("x_plane_csl_library.csv")
+        .set_directory(&initial_location)
+        .save_file()
+        .await
+        .ok_or("Export cancelled".to_string())?
+        .path()
+        .to_path_buf();
+
+    let is_xml = path.extension().map_or(false, |ext| ext == "xml");
+    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+
+    let mut content = String::new();
+
+    if is_xml {
+        content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        content.push_str("<CSLLibrary version=\"2.3.3\">\n");
+        
+        for addon in addons.iter() {
+            let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+            let name = html_escape::encode_text(&addon.name);
+            let path_str = addon.path.display().to_string();
+            let path_esc = html_escape::encode_text(&path_str);
+
+            content.push_str(&format!(
+                "  <Package name=\"{}\" status=\"{}\">\n",
+                name, status
+            ));
+            content.push_str(&format!("    <Path>{}</Path>\n", path_esc));
+            
+            if !addon.tags.is_empty() {
+                content.push_str("    <Tags>\n");
+                for tag in &addon.tags {
+                    content.push_str(&format!("      <Tag>{}</Tag>\n", html_escape::encode_text(tag)));
+                }
+                content.push_str("    </Tags>\n");
+            }
+            
+            content.push_str("  </Package>\n");
+        }
+        content.push_str("</CSLLibrary>\n");
+    } else if is_csv {
+        content.push_str("Name,Status,Path\n");
+        for addon in addons.iter() {
+            let name = addon.name.replace('"', "\"\"");
+            let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+            let path_str = addon.path.display().to_string().replace('"', "\"\"");
+
+            content.push_str(&format!(
+                "\"{}\",\"{}\",\"{}\"\n",
+                name, status, path_str
+            ));
+        }
+    } else {
+        content.push_str("X-Plane CSL Package Library Report\n");
+        content.push_str("==============================\n\n");
+        
+        for addon in addons.iter() {
+            content.push_str(&format!("[{}] {}\n", 
+                if addon.is_enabled { "X" } else { " " },
+                addon.name
+            ));
+        }
+        content.push_str(&format!("\nTotal CSL Packages: {}\n", addons.len()));
+    }
+
+    let mut file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(path)
 }
