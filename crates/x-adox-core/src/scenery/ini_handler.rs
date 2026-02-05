@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use crate::scenery::{SceneryCategory, SceneryPack, SceneryPackType};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};

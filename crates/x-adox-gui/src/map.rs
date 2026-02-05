@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use crate::Message;
 use iced::advanced::{self, layout, renderer, widget, Layout, Widget};
 use iced::widget::image;

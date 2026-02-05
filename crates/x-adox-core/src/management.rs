@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use crate::profiles::{ProfileCollection, ProfileManager};
 use crate::scenery::SceneryManager;
 use crate::XPlaneManager;

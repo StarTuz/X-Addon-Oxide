@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 use std::path::PathBuf;
 use x_adox_core::scenery::sorter::sort_packs;
 use x_adox_core::scenery::{SceneryCategory, SceneryPack, SceneryPackType};

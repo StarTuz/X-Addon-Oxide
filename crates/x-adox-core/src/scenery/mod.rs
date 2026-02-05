@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2020 Austin Goudge
+// Copyright (c) 2026 StarTuz
+
 pub mod classifier;
 pub mod dsf_peek;
 pub mod ini_handler;
