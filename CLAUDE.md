@@ -85,6 +85,11 @@ Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct h
   - The `save_scenery_packs` helper does a "dumb write" of exact GUI state, bypassing the SceneryManager load/merge cycle for responsiveness
   - Visuals: Grip handles, drop gaps, ghost overlay, auto-scroll (`AbsoluteOffset`)
   - State managed via `DragContext` struct in `main.rs`
+- **Stateful Bulk Toggle**:
+  - Detection: View cross-references `selected_basket_items` with `App.packs` to count enabled/disabled items.
+  - States: **Disable Selected** (all enabled, ACCENT_RED), **Enable Selected** (all disabled, ACCENT_BLUE), **Toggle Selected** (mixed, ACCENT_PURPLE).
+  - Logic: `BulkToggledSelectedBasket` flips each pack's state individually.
+  - Concurrency: Button must be `on_press(None)` when `scenery_is_saving` is true to prevent race conditions during I/O.
 - **Companion Apps**: External tools (SimBrief, Navigraph) managed in Plugins tab
 - **Logbook/Utilities**: Flight path visualization on map, bulk cleanup tools
 
@@ -105,6 +110,7 @@ Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct h
 Config directories are isolated per X-Plane installation using a hash of the install path, stored under `installs/{hash}/`.
 
 **How it works** (in `lib.rs`):
+
 1. **Normalize** (`normalize_install_path`): Resolves the install path against X-Plane's own registry files (`x-plane_install_12.txt`, `x-plane_install_11.txt`) to handle symlinks, trailing slashes, and case variations
 2. **Hash** (`calculate_stable_hash`): Uses FNV-1a (deterministic across restarts, unlike Rust's `DefaultHasher`) → 16-char hex string
 3. **Migrate** (`get_scoped_config_root`): If a legacy-hash directory exists but no stable-hash directory, moves/copies config automatically. Handles cross-device moves (EXDEV fallback to copy+delete)
@@ -114,6 +120,7 @@ Config directories are isolated per X-Plane installation using a hash of the ins
 ## Scenery INI Sync Flow
 
 When the SceneryManager loads (`scenery/mod.rs`):
+
 1. Read existing INI entries (preserves order and raw_path)
 2. Scan filesystem for folders via `discovery.rs` (filesystem order, no sorting)
 3. Reconcile: match discovered folders to INI entries by name/path
@@ -150,12 +157,14 @@ Per-installation configs live in `installs/{hash}/` subdirectories (see Root-Spe
 **IMPORTANT**: Do NOT execute `git commit` without explicit user verification. Present changes first, ask for approval, then commit only after user confirms. See also `.agent/rules/commit_verification.md`.
 
 **Pre-commit checklist:**
+
 1. Run `cargo test` and show the actual terminal output (not just a claim)
 2. Show `git diff --stat` to user
 3. Wait for explicit user approval
 4. Only then commit
 
 **Verification red flags (never do these):**
+
 - Saying "tests passed" without showing output
 - Claiming "verified" without evidence
 - Committing changes without running the test suite
@@ -178,6 +187,7 @@ Follow conventional commits: `feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `release
 ## CI/CD
 
 GitHub Actions (`ci.yml`) builds on push to main and on version tags:
+
 - Matrix: Linux, Windows, macOS (all x86_64)
 - Packages via `cargo-packager`: NSIS installer (Windows), DMG (macOS), tarball (Linux)
 - Releases created automatically from `v*` tags

@@ -63,10 +63,11 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ### v2.3.3
 
-- **Interactive Drag-and-Drop**: Manually reorder your scenery library with intuitive drag handles.
-  - **Premium Feel**: Includes visual ghosting, drop gaps, and auto-scrolling.
-  - **Auto-Persistence**: Drops are physically moved, pinned in BitNet for future sorts, and immediately saved to `scenery_packs.ini` for guaranteed parity.
-- **Enhanced Scenery Discovery**: Removed non-deterministic alphabetical sorting in favor of natural filesystem order for better parity with X-Plane's own discovery logic.
+- **Interactive Drag-and-Drop**: Manually reorder your scenery library with intuitive drag handles, visual ghosting, and auto-scrolling.
+- **Stateful Bulk Toggle**: A "Smart Toggle" button in the Scenery Basket that dynamically adapts (Disable/Enable/Toggle) based on your selection, with premium color-coded glowing effects (Red/Blue/Purple).
+- **Security Hardening**: Hardened GitHub Action workflows with commit SHA pinning and restricted triggers to prevent unauthorized automation execution.
+- **Enhanced Scenery Discovery**: Removed alphabetical sorting in discovery to respect natural filesystem and INI order.
+- **Improved Migration**: Robust migration for legacy `heuristics.json` pins with automatic corruption detection and backups.
 
 ### v2.3.2
 

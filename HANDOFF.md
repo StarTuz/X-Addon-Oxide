@@ -1,21 +1,23 @@
-# Handoff: Version 2.3.3 (Drag-and-Drop)
+# Handoff: Version 2.3.3 (DND, Stateful Toggle, Hardening)
 
 **Status**: Released v2.3.3
-**Core Feature**: Interactive Scenery Drag-and-Drop
+**Major Themes**: Interactive Scenery Order + Bulk Lifecycle + Security Hardening
 
 ## Recent Changes
 
-- **Drag-and-Drop**: Implemented full DND support in `x-adox-gui`.
-  - **Parity**: Uses `save_scenery_packs` to write direct memory state to `scenery_packs.ini`, ensuring what you see is what you get.
-  - **Sorting**: We REMOVED the alphabetical sorting from `discovery.rs` to allow the simulation's natural loading order (filesystem dependent) to be the baseline, preventing "fighting" with valid INI orders.
-- **Documentation**: Updated README, User Guide, and Architecture notes.
+- **Interactive Drag-and-Drop**: Full DND support in `x-adox-gui` with physical INI parity.
+- **Stateful Bulk Toggle**: Dynamic action button (Disable/Enable/Toggle) with premium glows. Smart backend logic flips individual states.
+- **Architecture**: Migration logic for pins/heuristics moved to `x-adox-core` for better separation of concerns.
+- **Security**: Hardened GitHub Action workflows (pinned SHAs, restricted triggers).
+- **Parity**: Removed alphabetical discovery sorting to favor simulation-natural order.
 
 ## Critical Context
 
-1. **Determinism**: The previous "Alphabetical Sort" in discovery was a mistake. X-Plane reads directories in filesystem order (mostly). Our app must respect `scenery_packs.ini` above all else.
-2. **Persistence**: Dragging an item *immediately* triggers a save. This is intentional to prevent data loss, but ensure `scenery_packs.ini` doesn't get locked by X-Plane if the sim is running (we handle this gracefully via `std::fs` but be aware).
+1. **Determinism**: Alphabetical sort in discovery is gone. We now respect the raw filesystem order (DiscoveryOrder) to mirror X-Plane 12 behavior.
+2. **Persistence**: The Scenery Basket uses the same `save_scenery_packs` logic as direct toggles/DND.
+3. **Hardening**: PR Agent is now strictly configured in `.pr_agent.toml` with action-level security.
 
 ## Next Steps
 
-- Verify Linux AppImage build (CI usually handles this).
-- Monitor for reports of "fighting" sort orders if users have manually edited their INI in weird ways.
+- Final verification of the released branch.
+- Prepare production build assets (AppImage/MSI).

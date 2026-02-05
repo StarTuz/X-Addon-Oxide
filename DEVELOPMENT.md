@@ -43,9 +43,11 @@ GitHub Actions builds on push to main and on tags:
 Releases are created automatically when pushing a version tag:
 
 ```bash
-git tag v2.3.1
-git push origin v2.3.1
+git tag v2.3.3
+git push origin v2.3.3
 ```
+
+**Security**: All GitHub Action workflows are hardened using semantic version pinning (via [commit SHAs](https://docs.github.com/en/actions/using-workflows/workflow-security-hardening-for-github-actions#using-third-party-actions)) and restricted event triggers.
 
 Artifacts are collected to `dist/{platform}/` and uploaded to GitHub Releases.
 
@@ -67,8 +69,9 @@ crates/
 
 - `lib.rs` - XPlaneManager: locates X-Plane installation, parses Log.txt
 - `discovery.rs` - Scans Aircraft/, Custom Scenery/, plugins/, CSLs
-- `management.rs` - Enables/disables plugins and aircraft by moving to "(Disabled)" folders
-- `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
+- `management.rs` - Enables/disables plugins and aircraft; handles **Bulk State updates**.
+- `scenery/` - SceneryManager, INI parsing, classification, smart sorting.
+- `migration.rs` - (v2.3.3) Unified migration engine for legacy `heuristics.json` and pin data.
 
 ### x-adox-bitnet
 
