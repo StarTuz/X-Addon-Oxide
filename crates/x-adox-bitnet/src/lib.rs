@@ -116,6 +116,18 @@ impl Default for HeuristicsConfig {
                 },
                 // --- Tier 5: Generic Libraries & Fluff ---
                 Rule {
+                    name: "Other Scenery".to_string(),
+                    keywords: vec![
+                        "vfr-objects".to_string(),
+                        "vfr_objects".to_string(),
+                        "shoreline".to_string(),
+                        "aep".to_string(),
+                        "sealanes".to_string(),
+                    ],
+                    score: 40, // Regional fluff tier, matches fallback_score
+                    is_exclusion: false,
+                },
+                Rule {
                     name: "Birds".to_string(),
                     keywords: vec![
                         "birds".to_string(),
@@ -440,6 +452,16 @@ impl BitNetModel {
             }
         }
 
+        // Orbx A sub-ordering: airport-specific packs (with ICAO codes like EGLC)
+        // must sort ABOVE regional TrueEarth packs within the same Orbx A tier.
+        // Regional packs stay at 12, airport-specific get 11.
+        if let Some(ref rule_name) = matched_rule_name {
+            if rule_name == "Orbx A Custom" && has_icao {
+                score = Some(11);
+                matched_rule_name = Some("Orbx A Airport".to_string());
+            }
+        }
+
         let (final_score, rule_name) = if let Some(s) = score {
             (
                 s,
@@ -467,7 +489,10 @@ impl BitNetModel {
                 || name_lower.contains("overlay")
                 || name_lower.contains("static")
                 || name_lower.contains("orbx_a")
-                || name_lower.contains("orbx_b");
+                || name_lower.contains("orbx_b")
+                || name_lower.contains("vfr")
+                || name_lower.contains("shoreline")
+                || name_lower.contains("sealanes");
 
             if is_protected_overlay {
                 // If protected, keep it as "Other Scenery" instead of sinking it to Mesh.

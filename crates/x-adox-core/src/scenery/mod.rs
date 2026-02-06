@@ -562,7 +562,19 @@ impl SceneryManager {
                 pack.tiles = tiles;
                 pack.descriptor = descriptor;
 
-                // 3. Post-Discovery Promotion
+                // 3. Structural Library Detection (before promotion)
+                // Check for library.txt FIRST — the X-Plane standard for declaring
+                // a scenery library. This must run before airport promotion so that
+                // community libraries like world-models, Sea_Life, ruscenery that
+                // contain incidental airport data (helipads, POIs) aren't misclassified
+                // as CustomAirport.
+                if pack.category == SceneryCategory::Unknown {
+                    if pack.path.join("library.txt").exists() {
+                        pack.category = SceneryCategory::Library;
+                    }
+                }
+
+                // 3b. Post-Discovery Promotion
                 // If we FOUND actual airports, this is a Custom Airport (Score 100)
                 // UNLESS it's already a 'System' category like GlobalAirport or Library.
                 if !pack.airports.is_empty() {
@@ -584,17 +596,6 @@ impl SceneryManager {
                         pack.category = SceneryCategory::OrthoBase;
                     } else {
                         pack.category = SceneryCategory::RegionalOverlay;
-                    }
-                }
-
-                // 3b. Structural Library Detection
-                // If heuristic classification couldn't determine the type, check for
-                // library.txt — the X-Plane standard for declaring a scenery library.
-                // Catches community libraries like world-models, Sea_Life, ruscenery
-                // that don't follow *_Library naming conventions.
-                if pack.category == SceneryCategory::Unknown {
-                    if pack.path.join("library.txt").exists() {
-                        pack.category = SceneryCategory::Library;
                     }
                 }
 

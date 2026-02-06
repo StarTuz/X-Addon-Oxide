@@ -3,7 +3,7 @@
 // Copyright (c) 2026 StarTuz
 
 use std::path::Path;
-use x_adox_bitnet::{BitNetModel, PredictContext};
+use x_adox_bitnet::{BitNetModel, HeuristicsConfig, PredictContext};
 
 #[test]
 fn test_critical_scenery_ordering_pairs() {
@@ -108,6 +108,24 @@ fn test_critical_scenery_ordering_pairs() {
             "FlyTampa_Amsterdam_3_mesh",
             "User Regression: FlyTampa Mesh must NOT be promoted to Top Priority (remains below Global Airports)",
         ),
+        // VFR-Objects must be above Mesh/Terrain
+        (
+            "VFR-Objects_GK_+47+007__+48+007_D_Schwarzwald",
+            "FlyTampa_Amsterdam_3_mesh",
+            "VFR-Objects must be above mesh packs (regional fluff, not terrain)",
+        ),
+        // Shoreline must be above Mesh
+        (
+            "Shoreline_Objects",
+            "FlyTampa_Amsterdam_3_mesh",
+            "Shoreline packs must be above mesh (regional fluff)",
+        ),
+        // Orbx A sub-ordering: airport-specific packs must be above regional TrueEarth packs
+        (
+            "Orbx_A_EGLC_LondonCity",
+            "Orbx_A_GB_South_TrueEarth_Custom",
+            "Orbx A airport-specific (EGLC) must be above Orbx A regional (TrueEarth)",
+        ),
     ];
 
     let dummy_path = Path::new("/dummy/path");
@@ -142,4 +160,103 @@ fn test_critical_scenery_ordering_pairs() {
             score_low
         );
     }
+}
+
+#[test]
+fn test_vfr_objects_not_healed_to_mesh() {
+    // VFR-Objects packs with tiles should NOT be scored as "Mesh/Terrain (Healed)".
+    // They should be protected by the is_protected_overlay whitelist.
+    let mut model = BitNetModel::new().unwrap();
+    model.update_config(HeuristicsConfig::default());
+
+    let dummy_path = Path::new("/dummy/path");
+
+    // Context: pack has tiles but no airports (the healing trigger)
+    let context = PredictContext {
+        has_airports: false,
+        has_tiles: true,
+        ..Default::default()
+    };
+
+    let vfr_cases = [
+        "VFR-Objects_GK_+47+007__+48+007_D_Schwarzwald West  4.1",
+        "VFR_Objects_Europe_Central",
+        "Shoreline_Objects",
+    ];
+
+    for name in &vfr_cases {
+        let (score, rule) = model.predict_with_rule_name(name, dummy_path, &context);
+        assert_ne!(
+            rule, "Mesh/Terrain (Healed)",
+            "'{}' should NOT fall to Mesh/Terrain (Healed), got score {} ({})",
+            name, score, rule
+        );
+        assert!(
+            score < 60,
+            "'{}' score {} should be below mesh threshold (60)",
+            name,
+            score
+        );
+    }
+}
+
+#[test]
+fn test_orbx_b_mesh_scored_above_mesh_tier() {
+    // Orbx_B_EGLC_LondonCity_Mesh must NOT be scored as Mesh/Foundation (60).
+    // It matches "london" → City Enhancements (25), which is correct — it's an
+    // airport-area product, not a standalone terrain mesh.
+    let mut model = BitNetModel::new().unwrap();
+    model.update_config(HeuristicsConfig::default());
+
+    let dummy_path = Path::new("/dummy/path");
+    let context = PredictContext::default();
+
+    let (score, rule) =
+        model.predict_with_rule_name("Orbx_B_EGLC_LondonCity_Mesh", dummy_path, &context);
+    assert_ne!(
+        rule, "Mesh/Foundation",
+        "Orbx B mesh should NOT match Mesh/Foundation rule, got '{}' (score {})",
+        rule, score
+    );
+    assert!(
+        score < 60,
+        "Orbx B mesh should score well above mesh tier (60), got {} ({})",
+        score, rule
+    );
+}
+
+#[test]
+fn test_orbx_a_airport_specific_above_regional() {
+    // Orbx_A_EGLC_LondonCity has an ICAO code (EGLC) → score 11, "Orbx A Airport"
+    // Orbx_A_GB_South_TrueEarth_Custom is regional → score 12, "Orbx A Custom"
+    // This ensures airport-specific packs override regional TrueEarth exclusion zones.
+    let mut model = BitNetModel::new().unwrap();
+    model.update_config(HeuristicsConfig::default());
+
+    let dummy_path = Path::new("/dummy/path");
+    let context = PredictContext::default();
+
+    // Airport-specific Orbx A pack
+    let (score_eglc, rule_eglc) =
+        model.predict_with_rule_name("Orbx_A_EGLC_LondonCity", dummy_path, &context);
+    assert_eq!(score_eglc, 11, "Orbx A airport-specific should score 11");
+    assert_eq!(
+        rule_eglc, "Orbx A Airport",
+        "Orbx A with ICAO should be labeled 'Orbx A Airport'"
+    );
+
+    // Regional Orbx A pack (no ICAO code)
+    let (score_regional, rule_regional) =
+        model.predict_with_rule_name("Orbx_A_GB_South_TrueEarth_Custom", dummy_path, &context);
+    assert_eq!(score_regional, 12, "Orbx A regional should score 12");
+    assert_eq!(
+        rule_regional, "Orbx A Custom",
+        "Orbx A without ICAO should be labeled 'Orbx A Custom'"
+    );
+
+    // Another regional pack (US)
+    let (score_us, rule_us) =
+        model.predict_with_rule_name("Orbx_A_US_NorCal_TE_Custom", dummy_path, &context);
+    assert_eq!(score_us, 12, "Orbx A US regional should score 12");
+    assert_eq!(rule_us, "Orbx A Custom");
 }

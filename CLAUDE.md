@@ -202,10 +202,10 @@ GitHub Actions (`ci.yml`) builds on push to main and on version tags:
 
 For building on Linux, install these packages first:
 
-**Ubuntu/Debian**: `sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-dev libxkbcommon-dev libdbus-1-dev pkg-config`
+**Ubuntu/Debian**: `sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-dev libxkbcommon-dev libdbus-1-dev libgtk-3-dev pkg-config`
 
-**Arch**: `sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus pkgconf`
+**Arch**: `sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus gtk3 pkgconf`
 
-**Fedora**: `sudo dnf install alsa-lib-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-devel pkg-config`
+**Fedora**: `sudo dnf install alsa-lib-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-devel gtk3-devel pkg-config`
 
-**openSUSE**: `sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-1-devel pkg-config`
+**openSUSE**: `sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-1-devel gtk3-devel pkg-config`

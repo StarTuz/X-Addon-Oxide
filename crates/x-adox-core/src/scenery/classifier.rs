@@ -13,7 +13,11 @@ impl Classifier {
         let name_lower = name.to_lowercase();
 
         // 1. Mesh/Foundation (Level 11 - Score 30)
-        if name_lower.contains("mesh")
+        // Exception: Orbx packs with "mesh" (e.g., Orbx_B_EGLC_LondonCity_Mesh) are
+        // airport-specific companion meshes, not standalone terrain. Let them fall through
+        // to the Orbx rules below.
+        let is_orbx = name_lower.starts_with("orbx_");
+        if (name_lower.contains("mesh") && !is_orbx)
             || name_lower.starts_with("zzz")
             || name_lower.contains("uhd")
         {
@@ -32,6 +36,9 @@ impl Classifier {
             || name_lower.contains("misterx")
             || name_lower.contains("opensceneryx")
             || name_lower.contains("worldjetways")
+            || name_lower.contains("world-models")
+            || name_lower.contains("sea_life")
+            || name_lower.contains("ruscenery")
         {
             return SceneryCategory::Library;
         }
@@ -51,7 +58,7 @@ impl Classifier {
         }
 
         // 5. City/Landmark Overlays (Level 4 - Score 88)
-        if name_lower.contains("x-plane landmarks -") {
+        if name_lower.contains("x-plane landmarks") {
             return SceneryCategory::Landmark;
         }
 
