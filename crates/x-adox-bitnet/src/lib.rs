@@ -452,13 +452,17 @@ impl BitNetModel {
             }
         }
 
-        // Orbx A sub-ordering: airport-specific packs (with ICAO codes like EGLC)
+        // Orbx A sub-ordering: location-specific packs (airports, landmarks, cities)
         // must sort ABOVE regional TrueEarth packs within the same Orbx A tier.
-        // Regional packs stay at 12, airport-specific get 11.
+        // TrueEarth regional packs stay at 12, everything else gets 11.
         if let Some(ref rule_name) = matched_rule_name {
-            if rule_name == "Orbx A Custom" && has_icao {
-                score = Some(11);
-                matched_rule_name = Some("Orbx A Airport".to_string());
+            if rule_name == "Orbx A Custom" {
+                let is_trueearth =
+                    name_lower.contains("trueearth") || name_lower.contains("_te_");
+                if !is_trueearth {
+                    score = Some(11);
+                    matched_rule_name = Some("Orbx A Airport".to_string());
+                }
             }
         }
 

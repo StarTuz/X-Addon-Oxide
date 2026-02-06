@@ -120,11 +120,21 @@ fn test_critical_scenery_ordering_pairs() {
             "FlyTampa_Amsterdam_3_mesh",
             "Shoreline packs must be above mesh (regional fluff)",
         ),
-        // Orbx A sub-ordering: airport-specific packs must be above regional TrueEarth packs
+        // Orbx A sub-ordering: location-specific packs must be above regional TrueEarth packs
         (
             "Orbx_A_EGLC_LondonCity",
             "Orbx_A_GB_South_TrueEarth_Custom",
-            "Orbx A airport-specific (EGLC) must be above Orbx A regional (TrueEarth)",
+            "Orbx A airport (EGLC) must be above Orbx A regional (TrueEarth)",
+        ),
+        (
+            "Orbx_A_YBBNv2_Brisbane",
+            "Orbx_A_GB_South_TrueEarth_Custom",
+            "Orbx A airport (YBBN Brisbane) must be above Orbx A regional (TrueEarth)",
+        ),
+        (
+            "Orbx_A_Brisbane_Landmarks",
+            "Orbx_A_GB_Central_TrueEarth_Custom",
+            "Orbx A landmarks (Brisbane) must be above Orbx A regional (TrueEarth)",
         ),
     ];
 
@@ -226,37 +236,51 @@ fn test_orbx_b_mesh_scored_above_mesh_tier() {
 }
 
 #[test]
-fn test_orbx_a_airport_specific_above_regional() {
-    // Orbx_A_EGLC_LondonCity has an ICAO code (EGLC) → score 11, "Orbx A Airport"
-    // Orbx_A_GB_South_TrueEarth_Custom is regional → score 12, "Orbx A Custom"
-    // This ensures airport-specific packs override regional TrueEarth exclusion zones.
+fn test_orbx_a_location_specific_above_regional() {
+    // Location-specific Orbx A packs (airports, landmarks) → score 11, "Orbx A Airport"
+    // Regional TrueEarth packs → score 12, "Orbx A Custom"
+    // Detection: anything WITHOUT "trueearth" or "_te_" in name gets promoted.
     let mut model = BitNetModel::new().unwrap();
     model.update_config(HeuristicsConfig::default());
 
     let dummy_path = Path::new("/dummy/path");
     let context = PredictContext::default();
 
-    // Airport-specific Orbx A pack
-    let (score_eglc, rule_eglc) =
+    // --- Location-specific packs (score 11) ---
+
+    // Airport with clean ICAO
+    let (score, rule) =
         model.predict_with_rule_name("Orbx_A_EGLC_LondonCity", dummy_path, &context);
-    assert_eq!(score_eglc, 11, "Orbx A airport-specific should score 11");
-    assert_eq!(
-        rule_eglc, "Orbx A Airport",
-        "Orbx A with ICAO should be labeled 'Orbx A Airport'"
-    );
+    assert_eq!(score, 11, "EGLC should score 11");
+    assert_eq!(rule, "Orbx A Airport");
 
-    // Regional Orbx A pack (no ICAO code)
-    let (score_regional, rule_regional) =
+    // Airport with version-suffixed ICAO (YBBNv2)
+    let (score, rule) =
+        model.predict_with_rule_name("Orbx_A_YBBNv2_Brisbane", dummy_path, &context);
+    assert_eq!(score, 11, "YBBN Brisbane should score 11");
+    assert_eq!(rule, "Orbx A Airport");
+
+    // City landmarks pack (no ICAO, no TrueEarth)
+    let (score, rule) =
+        model.predict_with_rule_name("Orbx_A_Brisbane_Landmarks", dummy_path, &context);
+    assert_eq!(score, 11, "Brisbane Landmarks should score 11");
+    assert_eq!(rule, "Orbx A Airport");
+
+    // --- Regional TrueEarth packs (score 12) ---
+
+    let (score, rule) =
         model.predict_with_rule_name("Orbx_A_GB_South_TrueEarth_Custom", dummy_path, &context);
-    assert_eq!(score_regional, 12, "Orbx A regional should score 12");
-    assert_eq!(
-        rule_regional, "Orbx A Custom",
-        "Orbx A without ICAO should be labeled 'Orbx A Custom'"
-    );
+    assert_eq!(score, 12, "GB South TrueEarth should score 12");
+    assert_eq!(rule, "Orbx A Custom");
 
-    // Another regional pack (US)
-    let (score_us, rule_us) =
+    let (score, rule) =
+        model.predict_with_rule_name("Orbx_A_GB_South_TrueEarth_Airports", dummy_path, &context);
+    assert_eq!(score, 12, "GB South TrueEarth Airports should score 12");
+    assert_eq!(rule, "Orbx A Custom");
+
+    // US pack with _TE_ abbreviation
+    let (score, rule) =
         model.predict_with_rule_name("Orbx_A_US_NorCal_TE_Custom", dummy_path, &context);
-    assert_eq!(score_us, 12, "Orbx A US regional should score 12");
-    assert_eq!(rule_us, "Orbx A Custom");
+    assert_eq!(score, 12, "US NorCal TE should score 12");
+    assert_eq!(rule, "Orbx A Custom");
 }
