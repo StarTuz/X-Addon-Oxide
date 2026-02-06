@@ -106,6 +106,7 @@ jobs:
 
     - name: Code Sign (Windows)
       if: matrix.platform.name == 'Windows'
+      shell: bash
       env:
         WIN_CERTIFICATE: ${{ secrets.WIN_CERTIFICATE }}
       run: |
