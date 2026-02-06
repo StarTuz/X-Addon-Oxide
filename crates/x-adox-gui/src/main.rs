@@ -3271,10 +3271,13 @@ impl App {
                         self.heuristics_model.update_config(config);
                         if let Err(e) = self.heuristics_model.save() {
                             self.heuristics_error = Some(format!("Save failed: {}", e));
-                        } else {
-                            self.heuristics_error = None;
-                            self.status = "Heuristics saved!".to_string();
+                            return Task::none();
                         }
+                        self.heuristics_error = None;
+                        self.status = "Heuristics saved and applied!".to_string();
+                        self.resort_scenery();
+                        self.sync_active_profile_scenery();
+                        return self.trigger_scenery_save();
                     }
                     Err(e) => {
                         self.heuristics_error = Some(format!("JSON Error: {}", e));
@@ -3285,27 +3288,31 @@ impl App {
             Message::ResetHeuristics => {
                 if let Err(e) = self.heuristics_model.reset_defaults() {
                     self.heuristics_error = Some(format!("Reset failed: {}", e));
-                } else {
-                    self.heuristics_model.refresh_regex_set();
-                    let json = serde_json::to_string_pretty(self.heuristics_model.config.as_ref())
-                        .unwrap_or_default();
-                    self.heuristics_json = text_editor::Content::with_text(&json);
-                    self.heuristics_error = None;
-                    self.status = "Heuristics reset to defaults".to_string();
+                    return Task::none();
                 }
-                Task::none()
+                self.heuristics_model.refresh_regex_set();
+                let json = serde_json::to_string_pretty(self.heuristics_model.config.as_ref())
+                    .unwrap_or_default();
+                self.heuristics_json = text_editor::Content::with_text(&json);
+                self.heuristics_error = None;
+                self.status = "Heuristics reset to defaults".to_string();
+                self.resort_scenery();
+                self.sync_active_profile_scenery();
+                return self.trigger_scenery_save();
             }
             Message::ClearOverrides => {
                 if let Err(e) = self.heuristics_model.clear_overrides() {
                     self.heuristics_error = Some(format!("Clear overrides failed: {}", e));
-                } else {
-                    let json = serde_json::to_string_pretty(self.heuristics_model.config.as_ref())
-                        .unwrap_or_default();
-                    self.heuristics_json = text_editor::Content::with_text(&json);
-                    self.heuristics_error = None;
-                    self.status = "AutoFix overrides cleared".to_string();
+                    return Task::none();
                 }
-                Task::none()
+                let json = serde_json::to_string_pretty(self.heuristics_model.config.as_ref())
+                    .unwrap_or_default();
+                self.heuristics_json = text_editor::Content::with_text(&json);
+                self.heuristics_error = None;
+                self.status = "AutoFix overrides cleared".to_string();
+                self.resort_scenery();
+                self.sync_active_profile_scenery();
+                return self.trigger_scenery_save();
             }
             Message::ImportHeuristics => Task::perform(
                 async {
@@ -3333,6 +3340,12 @@ impl App {
             }
             Message::ExportHeuristics => {
                 let text = self.heuristics_json.text();
+                // Validate JSON before exporting to prevent writing broken files
+                if serde_json::from_str::<x_adox_bitnet::HeuristicsConfig>(&text).is_err() {
+                    self.heuristics_error =
+                        Some("Fix JSON errors before exporting.".to_string());
+                    return Task::none();
+                }
                 Task::perform(
                     async move {
                         rfd::AsyncFileDialog::new()
