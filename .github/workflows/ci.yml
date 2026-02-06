@@ -36,7 +36,7 @@ jobs:
             formats: dmg,app
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install dependencies (Linux)
       if: matrix.platform.name == 'Linux'
@@ -117,7 +117,7 @@ jobs:
         # signtool sign /f certificate.pfx ...
 
     - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ matrix.platform.name }}-installers
         if-no-files-found: warn
@@ -132,7 +132,7 @@ jobs:
     permissions:
       contents: write
     steps:
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v7
       with:
         merge-multiple: true
 
@@ -146,7 +146,7 @@ jobs:
         find . -name "*.exe" -o -name "*.dmg" -o -name "*.tar.gz" 2>/dev/null || true
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           windows/*-setup.exe
