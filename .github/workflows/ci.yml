@@ -91,11 +91,11 @@ jobs:
     - name: Code Sign & Notarize (macOS)
       if: matrix.platform.name == 'macOS'
       env:
-        APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-        APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        APPLE_ID: ${{ secrets.APPLE_ID }}
-        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        APPLE_CERTIFICATE: "${{ secrets.APPLE_CERTIFICATE }}"
+        APPLE_CERTIFICATE_PASSWORD: "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
+        APPLE_ID: "${{ secrets.APPLE_ID }}"
+        APPLE_PASSWORD: "${{ secrets.APPLE_PASSWORD }}"
+        APPLE_TEAM_ID: "${{ secrets.APPLE_TEAM_ID }}"
       run: |
         if [ -z "$APPLE_CERTIFICATE" ]; then
           echo "No certificate provided, skipping signing."
@@ -108,7 +108,7 @@ jobs:
       if: matrix.platform.name == 'Windows'
       shell: bash
       env:
-        WIN_CERTIFICATE: ${{ secrets.WIN_CERTIFICATE }}
+        WIN_CERTIFICATE: "${{ secrets.WIN_CERTIFICATE }}"
       run: |
         if [ -z "$WIN_CERTIFICATE" ]; then
           echo "No certificate provided, skipping signing."
