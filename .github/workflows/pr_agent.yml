@@ -1,6 +1,9 @@
 name: Qodo Merge (PR Agent)
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     types: [opened, reopened, synchronize]
   issue_comment:
@@ -16,6 +19,7 @@ jobs:
     if: >
       github.event.sender.type != 'Bot' &&
       (
+        github.event_name == 'push' ||
         (
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
