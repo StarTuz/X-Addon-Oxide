@@ -283,6 +283,79 @@ impl ModManager {
 
         Ok(())
     }
+
+    /// Scans for Laminar Research aircraft that exist in BOTH `Aircraft/Laminar Research/`
+    /// AND `Aircraft (Disabled)/Laminar Research/`. This means X-Plane's updater has
+    /// reinstalled them after the user previously disabled them.
+    /// Returns a list of aircraft names that were automatically re-disabled.
+    pub fn suppress_laminar_duplicates(xplane_root: &Path) -> Vec<String> {
+        let disabled_laminar = xplane_root
+            .join("Aircraft (Disabled)")
+            .join("Laminar Research");
+        let active_laminar = xplane_root.join("Aircraft").join("Laminar Research");
+
+        let mut suppressed = Vec::new();
+
+        if !disabled_laminar.exists() || !active_laminar.exists() {
+            return suppressed;
+        }
+
+        // List all subdirectories in the disabled Laminar folder
+        let disabled_entries = match fs::read_dir(&disabled_laminar) {
+            Ok(entries) => entries,
+            Err(_) => return suppressed,
+        };
+
+        for entry in disabled_entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            let name = match path.file_name() {
+                Some(n) => n.to_string_lossy().to_string(),
+                None => continue,
+            };
+
+            // Check if the same aircraft also exists in the active Laminar folder
+            let active_copy = active_laminar.join(&name);
+            if active_copy.exists() && active_copy.is_dir() {
+                // The updater restored this aircraft — remove the active copy
+                println!(
+                    "[LaminarSuppress] Removing updater-restored copy: {}",
+                    active_copy.display()
+                );
+                if let Err(e) = fs::remove_dir_all(&active_copy) {
+                    eprintln!(
+                        "[LaminarSuppress] Failed to remove {}: {}",
+                        active_copy.display(),
+                        e
+                    );
+                    continue;
+                }
+                suppressed.push(name);
+            }
+        }
+
+        // Clean up empty Laminar Research directory in Aircraft/
+        if active_laminar.exists() {
+            if let Ok(mut entries) = fs::read_dir(&active_laminar) {
+                if entries.next().is_none() {
+                    let _ = fs::remove_dir(&active_laminar);
+                }
+            }
+        }
+
+        if !suppressed.is_empty() {
+            println!(
+                "[LaminarSuppress] Auto-suppressed {} aircraft: {:?}",
+                suppressed.len(),
+                suppressed
+            );
+        }
+
+        suppressed
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

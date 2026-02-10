@@ -450,6 +450,7 @@ impl SceneryManager {
                 },
                 is_enabled: true,
                 tags: Vec::new(),
+                is_laminar_default: false,
             }]
         } else {
             Vec::new()

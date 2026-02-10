@@ -117,6 +117,8 @@ struct AircraftNode {
     acf_file: Option<String>, // .acf filename if aircraft
     is_enabled: bool,
     tags: Vec<String>,
+    /// True if this aircraft lives under `Laminar Research/`.
+    is_laminar_default: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -8289,12 +8291,30 @@ impl App {
                 iced::widget::Space::with_width(Length::Fixed(26.0)).into()
             };
 
+            let laminar_badge: Element<'static, Message> = if node.is_laminar_default {
+                tooltip(
+                    text("⚠").size(12).color(Color::from_rgb(1.0, 0.75, 0.0)),
+                    "Default aircraft — may be reinstalled by X-Plane updates",
+                    tooltip::Position::Top,
+                )
+                .style(|_theme: &Theme| container::Style {
+                    background: Some(Background::Color(Color::from_rgb(0.15, 0.15, 0.2))),
+                    border: Border { radius: 4.0.into(), width: 1.0, color: Color::from_rgb(0.3, 0.3, 0.35) },
+                    text_color: Some(style::palette::TEXT_PRIMARY),
+                    shadow: Shadow::default(),
+                })
+                .into()
+            } else {
+                iced::widget::Space::with_width(Length::Shrink).into()
+            };
+
             row![
                 toggle_btn,
                 button(
                     row![
                         text(icon).size(12),
                         text(display_name).size(14).color(label_color),
+                        laminar_badge,
                     ]
                     .spacing(5),
                 )
@@ -8386,6 +8406,7 @@ impl App {
                             acf_file: None,
                             is_enabled: acs.iter().any(|ac| ac.is_enabled),
                             tags: Vec::new(),
+                            is_laminar_default: false,
                         };
 
                         // Use a custom row for virtual folder to support ToggleSmartFolder
@@ -8838,6 +8859,16 @@ fn load_aircraft(
     // Canonicalize root for robust exclusion matching
     let root = root.canonicalize().unwrap_or(root);
 
+    // Auto-suppress Laminar aircraft that were restored by X-Plane updates
+    let suppressed = ModManager::suppress_laminar_duplicates(&root);
+    if !suppressed.is_empty() {
+        log::info!(
+            "Auto-disabled {} Laminar aircraft restored by X-Plane update: {}",
+            suppressed.len(),
+            suppressed.join(", ")
+        );
+    }
+
     let mut cache = x_adox_core::cache::DiscoveryCache::load(Some(&root));
     let aircraft = DiscoveryManager::scan_aircraft(&root, &mut cache, &exclusions);
     let _ = cache.save(Some(&root));
@@ -9009,6 +9040,11 @@ fn build_merged_aircraft_tree(
         Vec::new()
     };
 
+    // Detect Laminar Research ancestry
+    let is_laminar_default = relative_path.components().any(|c| {
+        c.as_os_str() == "Laminar Research"
+    });
+
     AircraftNode {
         name,
         path: final_path,
@@ -9018,6 +9054,7 @@ fn build_merged_aircraft_tree(
         acf_file,
         is_enabled,
         tags,
+        is_laminar_default,
     }
 }
 

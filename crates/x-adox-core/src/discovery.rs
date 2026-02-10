@@ -37,6 +37,10 @@ pub struct DiscoveredAddon {
     pub addon_type: AddonType,
     pub is_enabled: bool,
     pub tags: Vec<String>,
+    /// True if this aircraft lives under `Aircraft/Laminar Research/`
+    /// or `Aircraft (Disabled)/Laminar Research/`.
+    #[serde(default)]
+    pub is_laminar_default: bool,
 }
 
 pub struct DiscoveryManager;
@@ -121,6 +125,9 @@ impl DiscoveryManager {
                                 .any(|d: &DiscoveredAddon| d.path == path)
                             {
                                 let tags = bitnet.predict_aircraft_tags(&name, &path);
+                                let is_laminar = path
+                                    .components()
+                                    .any(|c| c.as_os_str() == "Laminar Research");
                                 folder_results.push(DiscoveredAddon {
                                     path: path.clone(),
                                     name: name.clone(),
@@ -131,6 +138,7 @@ impl DiscoveryManager {
                                     },
                                     is_enabled,
                                     tags,
+                                    is_laminar_default: is_laminar,
                                 });
                             }
                         }
@@ -216,6 +224,7 @@ impl DiscoveryManager {
                     },
                     is_enabled: true,
                     tags: Vec::new(),
+                    is_laminar_default: false,
                 });
             }
         }
@@ -302,6 +311,7 @@ impl DiscoveryManager {
                             addon_type: AddonType::Plugin { scripts },
                             is_enabled: enabled,
                             tags: Vec::new(),
+                            is_laminar_default: false,
                         });
                     }
                 }
@@ -404,6 +414,7 @@ impl DiscoveryManager {
                                 addon_type: AddonType::CSL(true),
                                 is_enabled: true,
                                 tags: Vec::new(),
+                                is_laminar_default: false,
                             });
                         }
                     }
@@ -426,6 +437,7 @@ impl DiscoveryManager {
                                 addon_type: AddonType::CSL(false),
                                 is_enabled: false,
                                 tags: Vec::new(),
+                                is_laminar_default: false,
                             });
                         }
                     }
