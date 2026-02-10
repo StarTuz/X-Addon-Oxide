@@ -8293,7 +8293,14 @@ impl App {
 
             let laminar_badge: Element<'static, Message> = if node.is_laminar_default {
                 tooltip(
-                    text("⚠").size(12).color(Color::from_rgb(1.0, 0.75, 0.0)),
+                    svg(svg::Handle::from_memory(
+                        include_bytes!("../assets/icons/warning.svg").to_vec(),
+                    ))
+                    .width(14)
+                    .height(14)
+                    .style(|_, _| svg::Style {
+                        color: Some(Color::from_rgb(1.0, 0.75, 0.0)),
+                    }),
                     "Default aircraft — may be reinstalled by X-Plane updates",
                     tooltip::Position::Top,
                 )
