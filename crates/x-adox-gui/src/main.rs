@@ -7767,7 +7767,7 @@ impl App {
 
                                 // Add expand/collapse arrow for plugins with scripts
                                 if has_scripts {
-                                    let arrow = if is_expanded_scripts { "▼" } else { "▶" };
+                                    let arrow = if is_expanded_scripts { "v" } else { ">" };
                                     let path_for_expand = path.clone();
                                     plugin_row = plugin_row.push(
                                         button(text(arrow).size(12))
