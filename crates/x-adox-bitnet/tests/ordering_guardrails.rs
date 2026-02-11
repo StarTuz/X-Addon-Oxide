@@ -162,6 +162,17 @@ fn test_critical_scenery_ordering_pairs() {
             "EGLL_3Dgrass",
             "EGLL grass must be below Global Airports (companion pack)",
         ),
+        // Airport Overlays must be above Global Airports for correct X-Plane rendering
+        (
+            "FlyTampa_Amsterdam_1_overlays",
+            "Global Airports",
+            "Airport overlays must be above Global Airports",
+        ),
+        (
+            "DarkBlue-RJTT_Haneda_Overlays1",
+            "Global Airports",
+            "Airport overlays (Haneda) must be above Global Airports",
+        ),
     ];
 
     let dummy_path = Path::new("/dummy/path");

@@ -540,7 +540,8 @@ impl BitNetModel {
             (10, "Airports".to_string())
         } else if name_lower.contains("overlay") || name_lower.contains("static") {
             // Generic Overlay detection (matched names like "KTUL Overlay" or "Static Objects")
-            (25, "Airport Overlays".to_string())
+            // Score 24: just above Global Airports (25) so overlays render correctly
+            (24, "Airport Overlays".to_string())
         } else if name_lower.starts_with('z') || name_lower.starts_with('y') {
             (50, "Y/Z Prefix Scenery".to_string())
         } else if context.has_tiles && !context.has_airports {
