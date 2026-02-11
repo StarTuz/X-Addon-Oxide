@@ -81,7 +81,17 @@ Rules-based heuristics engine (not ML despite the name) that:
 
 ### x-adox-gui
 
-Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates.
+Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~10075 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
+
+**Key landmarks in `main.rs`** (use these to navigate):
+- `enum Message` (~line 163) — all message variants, grouped by feature
+- `struct App` (~line 527) — all application state fields
+- `fn update()` (~line 1094) — message handling / business logic dispatch
+- `fn subscription()` (~line 4045) — event subscriptions (timers, keyboard)
+- `fn view()` (~line 4131) — top-level view routing by tab
+- `fn view_scenery()` (~line 6324) — scenery tab layout
+- `fn view_aircraft_tree()` (~line 7951) — aircraft tree with smart view
+- `fn view_addon_list()` (~line 7686) — reusable list for plugins/CSLs
 
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
@@ -136,6 +146,14 @@ When the SceneryManager loads (`scenery/mod.rs`):
 
 Special case: `*GLOBAL_AIRPORTS*` is a virtual INI tag for X-Plane's built-in global airports.
 
+## Scenery Classification Pipeline
+
+Classification is a 3-stage pipeline across multiple files — understanding this flow is critical for category-related changes:
+
+1. **`classifier.rs`** — Name-based heuristic classification. Uses regex patterns on folder names to assign initial `SceneryCategory` (e.g., `Airport`, `Mesh`, `Overlay`, `Library`).
+2. **`mod.rs` (post-discovery promotion)** — Content-aware "healing" overrides classifier results by inspecting actual files (`library.txt` → Library, `apt.dat` → Airport, DSF tiles → Mesh). Has a protected category list — check it when adding new categories.
+3. **`validator.rs`** — Order validation using resolved `pack.category` (not raw names). Detects issues like SimHeaven below Global Airports, mesh-above-overlay conflicts. Libraries are position-independent and should not be flagged.
+
 ## X-Plane Integration Points
 
 - Scenery config: `$XPLANE_ROOT/Custom Scenery/scenery_packs.ini`
@@ -143,6 +161,10 @@ Special case: `*GLOBAL_AIRPORTS*` is a virtual INI tag for X-Plane's built-in gl
 - Disabled addons use suffix pattern: `Aircraft (Disabled)/`, `plugins (disabled)/`
 - Logs: `Log.txt` for error detection
 - Logbook: `Pilot.txt` (character-perfect parsing required for X-Plane 12 compatibility)
+
+## Known Risks
+
+- **X-Plane File Locking**: Accessing `scenery_packs.ini` while X-Plane is writing to it (e.g., on sim exit) can cause conflicts. Race conditions are possible if the user drags scenery while the sim is closing.
 
 ## Error Handling
 

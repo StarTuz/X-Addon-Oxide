@@ -1,6 +1,6 @@
-# Handoff: Version 2.3.3 (DND, Stateful Toggle, Hardening)
+# Handoff: Version 2.4.0 (Manuals, Map Rendering, UI Fixes)
 
-**Status**: Released v2.3.3
+**Status**: Released v2.4.0
 **Major Themes**: Interactive Scenery Order + Bulk Lifecycle + Security Hardening
 
 ## Recent Changes

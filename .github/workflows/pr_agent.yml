@@ -39,12 +39,13 @@ jobs:
       )
     runs-on: ubuntu-latest
     name: Run PR Agent
+    env:
+      OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: PR Agent action
         uses: qodo-ai/pr-agent@d36ad319f7fb0049205017405a71275c41599587
-        env:
-          OPENAI_KEY: "${{ secrets.OPENAI_KEY }}"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
         with:
             pr_url: ${{ github.event.pull_request.html_url || github.event.issue.html_url }}
             command: ${{ github.event.comment.body || '/review' }}

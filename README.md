@@ -61,6 +61,12 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ## Release Notes
 
+### v2.4.0
+
+- **New Aircraft Manuals Feature**: Launch PDF manuals directly from the aircraft tab.
+- **Improved Map Rendering**: Map tiles now render immediately on startup.
+- **UI Refinements**: Replaced unicode symbols with reliable ASCII indicators.
+
 ### v2.3.3
 
 - **Interactive Drag-and-Drop**: Manually reorder your scenery library with intuitive drag handles, visual ghosting, and auto-scrolling.

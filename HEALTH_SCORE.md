@@ -39,12 +39,12 @@ If your favorite airport is at 90%, it is performing perfectly!
 
 ## Status Indicators
 
-| Label | Score | Meaning |
-| --- | --- | --- |
-| **EXCELLENT** | 90 - 100% | Properly structured and perfectly categorized. |
-| **STABLE** | 70 - 89% | Valid content found, though it might be a lightweight addon or missing some metadata. |
-| **NEEDS ATTENTION** | 40 - 69% | **Mismatch detected.** For example, an "Airport" pack that contains no airports. |
-| **CRITICAL** | < 40% | Likely an empty folder, a corrupt install, or a non-scenery folder in your Custom Scenery directory. |
+| Label               | Score    | Meaning                                                                                              |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| **EXCELLENT**       | 90 - 100%| Properly structured and perfectly categorized.                                                       |
+| **STABLE**          | 70 - 89% | Valid content found, though it might be a lightweight addon or missing some metadata.                |
+| **NEEDS ATTENTION** | 40 - 69% | **Mismatch detected.** For example, an "Airport" pack that contains no airports.                     |
+| **CRITICAL**        | < 40%    | Likely an empty folder, a corrupt install, or a non-scenery folder in your Custom Scenery directory. |
 
 ---
 

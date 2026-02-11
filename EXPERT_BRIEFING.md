@@ -1,4 +1,4 @@
-# Expert Briefing: X-Addon-Oxide v2.3.3
+# Expert Briefing: X-Addon-Oxide v2.4.0
 
 ## System Architecture
 
