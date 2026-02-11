@@ -577,8 +577,16 @@ impl SceneryManager {
 
                 // 3b. Post-Discovery Promotion
                 // If we FOUND actual airports, this is a Custom Airport (Score 100)
-                // UNLESS it's already a 'System' category like GlobalAirport or Library.
+                // UNLESS it's already a 'System' category like GlobalAirport or Library,
+                // or it's a companion pack (mesh/terrain/grass) that ships incidental airport data.
                 if !pack.airports.is_empty() {
+                    let nl = pack.name.to_lowercase();
+                    let is_companion = nl.contains("mesh")
+                        || nl.contains("terrain")
+                        || nl.contains("3dgrass")
+                        || nl.contains("grass")
+                        || nl.contains("sealane");
+
                     match pack.category {
                         SceneryCategory::GlobalAirport
                         | SceneryCategory::Library
@@ -587,8 +595,10 @@ impl SceneryManager {
                             // Keep existing system/structural category
                         }
                         _ => {
-                            // Promote to Custom Airport
-                            pack.category = SceneryCategory::CustomAirport;
+                            if !is_companion {
+                                // Promote to Custom Airport
+                                pack.category = SceneryCategory::CustomAirport;
+                            }
                         }
                     }
                 } else if pack.category == SceneryCategory::Unknown && !pack.tiles.is_empty() {

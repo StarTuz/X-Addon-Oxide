@@ -41,7 +41,7 @@ pub struct HeuristicsConfig {
 }
 
 /// When a user's file has a lower version, their `overrides` will be cleared on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
@@ -49,25 +49,18 @@ impl Default for HeuristicsConfig {
     fn default() -> Self {
         Self {
             rules: vec![
-                // --- Tier 1: Top Priority Airports & Manufactuers ---
+                // --- Tier 1: Top Priority Airports & Manufacturers ---
                 Rule {
                     name: "Orbx A Custom".to_string(),
                     keywords: vec!["orbx_a".to_string()],
                     score: 12, // Top priority
                     is_exclusion: false,
                 },
-                // --- Tier 2: The Pivot (Global Airports) ---
-                // MUST check this before generic city/landmark rules to ensure *GLOBAL_AIRPORTS* isn't misclassified
+                // --- Tier 2: Official Scenery & Overlays ---
                 Rule {
                     name: "Official Landmarks".to_string(),
                     keywords: vec!["x-plane landmarks".to_string()],
-                    score: 18, // Above Global Airports (20)
-                    is_exclusion: false,
-                },
-                Rule {
-                    name: "Global Airports".to_string(),
-                    keywords: vec!["global airports".to_string(), "global_airports".to_string()],
-                    score: 20,
+                    score: 14, // Above all overlays
                     is_exclusion: false,
                 },
                 // --- Tier 3: High Priority Overlays (Cities, Landmarks) ---
@@ -82,19 +75,19 @@ impl Default for HeuristicsConfig {
                         "enhanced".to_string(),
                         "detailed".to_string(),
                     ],
-                    score: 25,
+                    score: 16,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Landmarks".to_string(),
                     keywords: vec!["landmarks".to_string(), "landmark".to_string()],
-                    score: 25,
+                    score: 16,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Orbx B / TrueEarth Overlay".to_string(),
                     keywords: vec!["orbx_b".to_string(), "trueearth_overlay".to_string()],
-                    score: 28, // Above SimHeaven (30) for UK dominance
+                    score: 18, // Above SimHeaven (20) for regional dominance
                     is_exclusion: false,
                 },
                 // --- Tier 4: Regional & World Scenery ---
@@ -105,16 +98,23 @@ impl Default for HeuristicsConfig {
                         "x-world".to_string(),
                         "w2xp".to_string(),
                     ],
-                    score: 30,
+                    score: 20, // Community standard: SimHeaven ABOVE Global Airports
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Global Forests".to_string(),
                     keywords: vec!["global_forests".to_string()],
-                    score: 32, // Below SimHeaven (30)
+                    score: 22, // Below SimHeaven (20)
                     is_exclusion: false,
                 },
-                // --- Tier 5: Generic Libraries & Fluff ---
+                // --- Tier 5: The Pivot (Global Airports) ---
+                Rule {
+                    name: "Global Airports".to_string(),
+                    keywords: vec!["global airports".to_string(), "global_airports".to_string()],
+                    score: 25, // Community standard: below SimHeaven, above Libraries
+                    is_exclusion: false,
+                },
+                // --- Tier 6: Generic Libraries & Fluff ---
                 Rule {
                     name: "Other Scenery".to_string(),
                     keywords: vec![
@@ -124,7 +124,7 @@ impl Default for HeuristicsConfig {
                         "aep".to_string(),
                         "sealanes".to_string(),
                     ],
-                    score: 40, // Regional fluff tier, matches fallback_score
+                    score: 30, // Regional fluff tier, matches fallback_score
                     is_exclusion: false,
                 },
                 Rule {
@@ -137,7 +137,7 @@ impl Default for HeuristicsConfig {
                         "pigeon".to_string(),
                         "seagulls".to_string(),
                     ],
-                    score: 44, // With Libraries, above Ortho overlays
+                    score: 34, // With Libraries, above Ortho overlays
                     is_exclusion: false,
                 },
                 Rule {
@@ -154,7 +154,7 @@ impl Default for HeuristicsConfig {
                         "sam".to_string(),
                         "assets".to_string(),
                     ],
-                    score: 45,
+                    score: 35,
                     is_exclusion: false,
                 },
                 // --- Tier 6: AutoOrtho & Photo Overlays ---
@@ -207,7 +207,7 @@ impl Default for HeuristicsConfig {
                     is_exclusion: false,
                 },
             ],
-            fallback_score: 40,
+            fallback_score: 30,
             overrides: std::collections::BTreeMap::new(),
             aircraft_overrides: std::collections::BTreeMap::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
@@ -282,12 +282,22 @@ impl BitNetModel {
                 e
             })?;
 
-            // Migration: If schema version is outdated, clear overrides (they may be from buggy AutoFix)
+            // Migration: If schema version is outdated, apply migrations
             if config.schema_version < CURRENT_SCHEMA_VERSION {
                 log::info!(
-                    "[BitNet] Migrating heuristics.json from schema v{} to v{}. (Clearing overrides removed)",
+                    "[BitNet] Migrating heuristics.json from schema v{} to v{}",
                     config.schema_version, CURRENT_SCHEMA_VERSION
                 );
+
+                // v3→v4: Score alignment (SimHeaven/Global Airports swap).
+                // Reset rules to defaults to pick up new scores.
+                // User overrides and aircraft_overrides are preserved.
+                if config.schema_version <= 3 {
+                    let defaults = HeuristicsConfig::default();
+                    config.rules = defaults.rules;
+                    log::info!("[BitNet] v3→v4: Reset rules to defaults (score alignment)");
+                }
+
                 config.schema_version = CURRENT_SCHEMA_VERSION;
                 // Save the migrated config
                 if let Some(parent) = path.parent() {
@@ -390,6 +400,42 @@ impl BitNetModel {
             || name_lower.contains("ground_service")
             || name_lower.contains("static_and_animated");
 
+        // Companion packs supplement an airport but are NOT airports themselves.
+        // They have BOTH:
+        // 1. Mesh/terrain keywords (mesh, terrain, 3dgrass, grass, sealane)
+        // 2. Airport identifiers (ICAO codes or airport-specific branding like Orbx, FlyTampa)
+        // Examples: EGLL_MESH, PAKT_Terrain, Orbx_B_EGLC_LondonCity_Mesh
+        // Counter-examples: zzz_UHD_Mesh_V4 (no airport identifier)
+        let has_mesh_keyword = name_lower.contains("mesh")
+            || name_lower.contains("terrain")
+            || name_lower.contains("3dgrass")
+            || name_lower.contains("grass")
+            || name_lower.contains("sealane");
+
+        let has_airport_identifier = name.split(|c: char| !c.is_alphanumeric()).any(|word| {
+            word.len() == 4
+                && word.chars().all(|c| c.is_alphabetic())
+                && word.chars().all(|c| c.is_uppercase())
+        }) || name_lower.starts_with("orbx_")
+            || name_lower.contains("flytampa")
+            || name_lower.contains("skyline")
+            || name_lower.contains("boundless")
+            || name_lower.contains("axonos")
+            || name_lower.contains("taimodels");
+
+        let is_companion_pack = has_mesh_keyword && has_airport_identifier;
+
+        if is_companion_pack {
+            // Orbx B/C mesh companions are airport-specific, score higher than generic mesh
+            if (name_lower.starts_with("orbx_b_") || name_lower.starts_with("orbx_c_"))
+                && name_lower.contains("mesh")
+            {
+                return (50, "SpecificMesh".to_string());
+            }
+            // Other companion packs (airport-specific terrain/mesh) go to SpecificMesh tier
+            return (50, "SpecificMesh".to_string());
+        }
+
         // Detection for common airport patterns
         let has_airport_keyword = !is_service_pack
             && (name_lower.contains("airport")
@@ -457,11 +503,27 @@ impl BitNetModel {
         // TrueEarth regional packs stay at 12, everything else gets 11.
         if let Some(ref rule_name) = matched_rule_name {
             if rule_name == "Orbx A Custom" {
-                let is_trueearth =
-                    name_lower.contains("trueearth") || name_lower.contains("_te_");
+                let is_trueearth = name_lower.contains("trueearth") || name_lower.contains("_te_");
                 if !is_trueearth {
                     score = Some(11);
                     matched_rule_name = Some("Orbx A Airport".to_string());
+                }
+            }
+        }
+
+        // Airport packs should never be demoted by generic keyword matches.
+        // e.g. "EGLL_LONDON_TAIMODELS" matches "london" in City Enhancements (score 16),
+        // but it's clearly a custom airport and must stay at airport priority (score 10).
+        // Override range: above Official Landmarks (14) and below SpecificMesh (50),
+        // excluding Global Airports which must keep its own dedicated score.
+        // Uses rule NAME check (not score value) so it works with any config version.
+        if is_airport && !name_lower.contains("overlay") {
+            if let Some(s) = score {
+                let is_global_airports =
+                    matched_rule_name.as_deref() == Some("Global Airports");
+                if s > 14 && s < 50 && !is_global_airports {
+                    score = Some(10);
+                    matched_rule_name = Some("Airports".to_string());
                 }
             }
         }
@@ -1336,8 +1398,8 @@ mod tests {
             Path::new("test"),
             &PredictContext::default(),
         );
-        assert_eq!(score1, 30);
-        assert_eq!(score2, 30);
+        assert_eq!(score1, 20);
+        assert_eq!(score2, 20);
         assert_eq!(
             score1, score2,
             "SimHeaven layers should have the same score to allow alphabetical continent grouping"

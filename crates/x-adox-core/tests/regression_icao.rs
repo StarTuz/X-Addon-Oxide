@@ -109,8 +109,8 @@ fn test_no_icao_five_uppercase_embedded() {
 
 #[test]
 fn test_icao_overridden_by_mesh() {
-    // "mesh" rule (priority 1) fires before ICAO (priority 10)
-    assert_eq!(classify("KLAX_mesh_terrain"), SceneryCategory::Mesh);
+    // ICAO companion packs (mesh/terrain + ICAO code) are SpecificMesh
+    assert_eq!(classify("KLAX_mesh_terrain"), SceneryCategory::SpecificMesh);
 }
 
 #[test]
@@ -149,10 +149,9 @@ fn test_icao_surrounded_by_lowercase() {
 
 #[test]
 fn test_no_icao_all_uppercase_long_word() {
-    // "UHDR" — this could look like ICAO but let's verify
-    // U-H-D-R is 4 uppercase letters, preceded by start or non-uppercase
-    // "UHD" check fires first in classifier (mesh rule: contains "uhd") → Mesh
-    assert_eq!(classify("UHDR_terrain"), SceneryCategory::Mesh);
+    // "UHDR" — 4 uppercase letters looks like ICAO, and "terrain" is a
+    // companion keyword → classified as SpecificMesh (airport companion)
+    assert_eq!(classify("UHDR_terrain"), SceneryCategory::SpecificMesh);
 }
 
 #[test]

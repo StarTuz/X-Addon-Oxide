@@ -13,11 +13,26 @@ impl Classifier {
         let name_lower = name.to_lowercase();
 
         // 1. Mesh/Foundation (Level 11 - Score 30)
-        // Exception: Orbx packs with "mesh" (e.g., Orbx_B_EGLC_LondonCity_Mesh) are
-        // airport-specific companion meshes, not standalone terrain. Let them fall through
-        // to the Orbx rules below.
+        // Exception: Orbx packs and companion packs with ICAO codes are
+        // airport-specific meshes, not standalone terrain.
         let is_orbx = name_lower.starts_with("orbx_");
+        let has_companion_keyword = name_lower.contains("mesh")
+            || name_lower.contains("terrain")
+            || name_lower.contains("3dgrass")
+            || name_lower.contains("grass");
+        let is_icao_companion = has_companion_keyword && has_icao_pattern(name);
+
+        // Airport-specific companion packs (EGLL_MESH, PAKT_Terrain, EGLL_3Dgrass)
+        // are SpecificMesh — they coexist with other companion packs for the same
+        // airport and must not trigger mesh shadowing warnings.
+        if is_icao_companion && !is_orbx {
+            return SceneryCategory::SpecificMesh;
+        }
+
         if (name_lower.contains("mesh") && !is_orbx)
+            || (name_lower.contains("terrain") && !is_orbx)
+            || (name_lower.contains("3dgrass") && !is_orbx)
+            || (name_lower.contains("grass") && !is_orbx && !name_lower.contains("bluegrass"))
             || name_lower.starts_with("zzz")
             || name_lower.contains("uhd")
         {
@@ -70,6 +85,13 @@ impl Classifier {
             return SceneryCategory::RegionalOverlay;
         }
 
+        // 6b. Orbx B/C Mesh companions (airport-specific meshes, not generic terrain)
+        if (name_lower.starts_with("orbx_b_") || name_lower.starts_with("orbx_c_"))
+            && name_lower.contains("mesh")
+        {
+            return SceneryCategory::SpecificMesh;
+        }
+
         // 7. Regional Fluff (Level 6 - Score 80)
         // Low-impact terrain enhancements that don't require overlay priority
         if name_lower.contains("forests")
@@ -105,7 +127,13 @@ impl Classifier {
 
         // 10. Custom Airports (Level 1 - Score 100)
         // Add DarkBlue, and verify it's not a generic overlay/library already caught.
-        if has_icao_pattern(&name)
+        // Companion packs (mesh/terrain/grass) with ICAO codes are NOT airports.
+        let is_companion = name_lower.contains("mesh")
+            || name_lower.contains("terrain")
+            || name_lower.contains("3dgrass")
+            || name_lower.contains("grass")
+            || name_lower.contains("sealane");
+        if (!is_companion && has_icao_pattern(&name))
             || name_lower.contains("fly2high")
             || name_lower.contains("aerosoft")
             || name_lower.contains("flytampa")

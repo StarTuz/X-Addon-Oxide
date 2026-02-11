@@ -112,14 +112,17 @@ impl SceneryValidator {
 
         if let Some(ga_idx) = global_airport_idx {
             for &sh_idx in &simheaven_indices {
-                if sh_idx < ga_idx {
+                // Community standard: SimHeaven must be ABOVE Global Airports
+                // (lower index = higher priority = above in the INI).
+                // Flag when SimHeaven is BELOW (higher index than) Global Airports.
+                if sh_idx > ga_idx {
                     report.issues.push(ValidationIssue {
                         pack_name: packs[sh_idx].name.clone(),
                         severity: ValidationSeverity::Critical,
                         issue_type: "simheaven_below_global".to_string(),
-                        message: "simHeaven layer is above Global Airports".to_string(),
-                        fix_suggestion: "Move simHeaven layers below Global Airports to avoid visual artifacts.".to_string(),
-                        details: "In X-Plane 12, simHeaven X-World packages should be placed below the Global Airports entry for correct layering and to ensure libraries are properly referenced.".to_string(),
+                        message: "simHeaven layer is below Global Airports".to_string(),
+                        fix_suggestion: "Move simHeaven layers above Global Airports for correct layering.".to_string(),
+                        details: "The X-Plane community standard places simHeaven/X-World packages above Global Airports so that regional VFR scenery and vegetation layers render correctly over the default terrain.".to_string(),
                     });
                 }
             }
@@ -132,11 +135,11 @@ impl SceneryValidator {
         // Libraries are excluded — their position in the INI is irrelevant to X-Plane.
 
         let is_mesh_category = |cat: &SceneryCategory| -> bool {
+            // SpecificMesh (airport companion packs) are excluded — they are
+            // airport-adjacent and should not be treated as bottom-of-list terrain.
             matches!(
                 cat,
-                SceneryCategory::Mesh
-                    | SceneryCategory::SpecificMesh
-                    | SceneryCategory::OrthoBase
+                SceneryCategory::Mesh | SceneryCategory::OrthoBase
             )
         };
 
@@ -198,11 +201,11 @@ impl SceneryValidator {
 }
 
 fn is_mesh(pack: &crate::scenery::SceneryPack) -> bool {
+    // Only generic Mesh triggers shadowing checks. SpecificMesh packs are
+    // airport companion packs (grass, terrain, sealane) that serve different
+    // purposes and are designed to coexist — not shadow each other.
     use crate::scenery::SceneryCategory;
-    matches!(
-        pack.category,
-        SceneryCategory::Mesh | SceneryCategory::SpecificMesh
-    )
+    matches!(pack.category, SceneryCategory::Mesh)
 }
 
 pub(crate) fn is_subset(small: &[(i32, i32)], big: &[(i32, i32)]) -> bool {

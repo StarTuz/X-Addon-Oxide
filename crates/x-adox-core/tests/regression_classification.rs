@@ -89,7 +89,11 @@ fn test_library_txt_prevents_airport_promotion() {
     let mut apt_file = std::fs::File::create(nav_path.join("apt.dat")).unwrap();
     writeln!(apt_file, "I").unwrap();
     writeln!(apt_file, "1100 Version").unwrap();
-    writeln!(apt_file, "17   40.00000  -74.00000 123.0 0 0 0  FAKE Helipad").unwrap();
+    writeln!(
+        apt_file,
+        "17   40.00000  -74.00000 123.0 0 0 0  FAKE Helipad"
+    )
+    .unwrap();
     writeln!(apt_file, "99").unwrap();
 
     // Simulate the classification pipeline (same order as mod.rs load)
@@ -137,7 +141,8 @@ fn test_library_txt_prevents_airport_promotion() {
 #[test]
 fn test_orbx_airport_mesh_not_classified_as_generic_mesh() {
     // Orbx_B_EGLC_LondonCity_Mesh is an airport-specific mesh companion pack,
-    // NOT a standalone terrain mesh. It should NOT be classified as Mesh.
+    // NOT a standalone terrain mesh. It should be SpecificMesh (not generic Mesh
+    // or CustomAirport).
     let name = "Orbx_B_EGLC_LondonCity_Mesh";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
     let result = Classifier::classify_heuristic(&path, name);
@@ -148,11 +153,11 @@ fn test_orbx_airport_mesh_not_classified_as_generic_mesh() {
         name,
         result
     );
-    // Should be caught by ICAO pattern (EGLC) → CustomAirport
+    // Should be caught by Orbx B/C mesh rule → SpecificMesh
     assert_eq!(
         result,
-        SceneryCategory::CustomAirport,
-        "'{}' should be CustomAirport via EGLC ICAO detection, got {:?}",
+        SceneryCategory::SpecificMesh,
+        "'{}' should be SpecificMesh (airport-specific companion mesh), got {:?}",
         name,
         result
     );
@@ -167,6 +172,30 @@ fn test_orbx_d_mesh_still_classified_as_mesh() {
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
     let result = Classifier::classify_heuristic(&path, name);
     assert_eq!(result, SceneryCategory::Mesh);
+}
+
+#[test]
+fn test_icao_companion_packs_classified_as_specific_mesh() {
+    // Non-Orbx companion packs with ICAO codes + mesh/terrain/grass keywords
+    // should be SpecificMesh (not generic Mesh). They serve different purposes
+    // (grass, terrain, sealane) for the same airport and must coexist without
+    // triggering false mesh shadowing warnings.
+    let cases = [
+        ("EGLL_3Dgrass", SceneryCategory::SpecificMesh),
+        ("EGLL_MESH", SceneryCategory::SpecificMesh),
+        ("PAKT_Terrain_Northern_Sky_Studio", SceneryCategory::SpecificMesh),
+        ("SFD_KLAX_Los_Angeles_HD_2_Mesh", SceneryCategory::SpecificMesh),
+    ];
+
+    for (name, expected) in &cases {
+        let path = PathBuf::from(format!("Custom Scenery/{}", name));
+        let result = Classifier::classify_heuristic(&path, name);
+        assert_eq!(
+            &result, expected,
+            "'{}' should be {:?}, got {:?}",
+            name, expected, result
+        );
+    }
 }
 
 #[test]

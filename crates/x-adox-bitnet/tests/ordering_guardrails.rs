@@ -36,9 +36,9 @@ fn test_critical_scenery_ordering_pairs() {
             "X-Plane Landmarks must be above Global Airports",
         ),
         (
-            "Global Airports",
             "simHeaven_X-World_Europe",
-            "Global Airports must be above SimHeaven (Corrective requirement)",
+            "Global Airports",
+            "SimHeaven must be above Global Airports (community standard)",
         ),
         (
             "simHeaven_X-World_America",
@@ -55,11 +55,10 @@ fn test_critical_scenery_ordering_pairs() {
             "zzz_UHD_Mesh_V4",
             "Ortho must be above Mesh",
         ),
-        // Additional Regression Checks
         (
-            "Global Airports",
             "simHeaven_Vegetation_Library",
-            "Global Airports must be above Vegetation Libraries (scored as Overlay/Library)",
+            "Global Airports",
+            "Vegetation Libraries must be above Global Airports (community standard)",
         ),
         // Orbx & Global Forests Checks
         (
@@ -135,6 +134,33 @@ fn test_critical_scenery_ordering_pairs() {
             "Orbx_A_Brisbane_Landmarks",
             "Orbx_A_GB_Central_TrueEarth_Custom",
             "Orbx A landmarks (Brisbane) must be above Orbx A regional (TrueEarth)",
+        ),
+        // Regression: Airport packs with city-name keywords must not be demoted
+        (
+            "EGLL_LONDON_TAIMODELS",
+            "Global Airports",
+            "EGLL airport must be above Global Airports (city keyword 'london' must not demote it)",
+        ),
+        // Regression: Mesh/terrain companion packs must NOT be classified as airports
+        (
+            "Global Airports",
+            "EGLL_MESH",
+            "EGLL mesh must be below Global Airports (companion pack, not an airport)",
+        ),
+        (
+            "Global Airports",
+            "PAKT_Terrain_Northern_Sky_Studio",
+            "PAKT terrain must be below Global Airports (companion pack)",
+        ),
+        (
+            "Global Airports",
+            "SFD_KLAX_Los_Angeles_HD_2_Mesh",
+            "KLAX mesh must be below Global Airports (companion pack)",
+        ),
+        (
+            "Global Airports",
+            "EGLL_3Dgrass",
+            "EGLL grass must be below Global Airports (companion pack)",
         ),
     ];
 
@@ -231,7 +257,8 @@ fn test_orbx_b_mesh_scored_above_mesh_tier() {
     assert!(
         score < 60,
         "Orbx B mesh should score well above mesh tier (60), got {} ({})",
-        score, rule
+        score,
+        rule
     );
 }
 
@@ -283,4 +310,52 @@ fn test_orbx_a_location_specific_above_regional() {
         model.predict_with_rule_name("Orbx_A_US_NorCal_TE_Custom", dummy_path, &context);
     assert_eq!(score, 12, "US NorCal TE should score 12");
     assert_eq!(rule, "Orbx A Custom");
+}
+
+#[test]
+fn test_global_airports_guard_uses_rule_name_not_score() {
+    // Regression: The airport override guard previously used `s != 25` to exclude
+    // Global Airports. This failed when the user's heuristics.json had old scores
+    // (Global Airports=20, City Enhancements=25), causing:
+    //   - Global Airports (score 20, 20 != 25 → true) → overridden to 10 (WRONG)
+    //   - EGLL_LONDON (score 25 via old City Enhancements, 25 != 25 → false) → stays 25 (WRONG)
+    // Fix: Check rule NAME ("Global Airports") instead of score value.
+
+    let dummy_path = Path::new("/dummy/path");
+    let context = PredictContext::default();
+
+    // Test with DEFAULT (current) config
+    let mut model = BitNetModel::new().unwrap();
+    model.update_config(HeuristicsConfig::default());
+
+    let (ga_score, ga_rule) =
+        model.predict_with_rule_name("Global Airports", dummy_path, &context);
+    assert_eq!(ga_score, 25, "Global Airports must keep its score (25)");
+    assert_eq!(ga_rule, "Global Airports", "Rule name must be 'Global Airports'");
+
+    let (egll_score, egll_rule) =
+        model.predict_with_rule_name("EGLL_LONDON_TAIMODELS", dummy_path, &context);
+    assert_eq!(egll_score, 10, "EGLL must be promoted to airport priority (10)");
+    assert_eq!(egll_rule, "Airports", "EGLL must be overridden to 'Airports'");
+
+    // Test with SIMULATED OLD config (Global Airports=20, City Enhancements=25)
+    let mut old_config = HeuristicsConfig::default();
+    for rule in &mut old_config.rules {
+        match rule.name.as_str() {
+            "Global Airports" => rule.score = 20,
+            "City Enhancements" => rule.score = 25,
+            _ => {}
+        }
+    }
+    model.update_config(old_config);
+
+    let (ga_score, ga_rule) =
+        model.predict_with_rule_name("Global Airports", dummy_path, &context);
+    assert_eq!(ga_score, 20, "Global Airports must keep its old score (20)");
+    assert_eq!(ga_rule, "Global Airports", "Rule name must remain 'Global Airports'");
+
+    let (egll_score, egll_rule) =
+        model.predict_with_rule_name("EGLL_LONDON_TAIMODELS", dummy_path, &context);
+    assert_eq!(egll_score, 10, "EGLL must still be promoted even with old config");
+    assert_eq!(egll_rule, "Airports", "EGLL must be overridden to 'Airports'");
 }

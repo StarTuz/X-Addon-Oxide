@@ -35,8 +35,9 @@ fn make_mesh(name: &str, tiles: Vec<(i32, i32)>) -> SceneryPack {
 // =====================================================================
 
 #[test]
-fn test_simheaven_above_global_airports_is_critical() {
-    // SimHeaven at index 0, Global Airports at index 1 → simheaven is ABOVE → Critical
+fn test_simheaven_above_global_airports_is_ok() {
+    // Community standard: SimHeaven ABOVE Global Airports is correct.
+    // SimHeaven at index 0, Global Airports at index 1 → simheaven is ABOVE → OK
     let packs = vec![
         make_pack(
             "simHeaven_X-World_Europe-1-vfr",
@@ -46,18 +47,21 @@ fn test_simheaven_above_global_airports_is_critical() {
     ];
 
     let report = SceneryValidator::validate(&packs);
-    assert_eq!(report.issues.len(), 1);
-    assert_eq!(report.issues[0].severity, ValidationSeverity::Critical);
-    assert_eq!(report.issues[0].issue_type, "simheaven_below_global");
-    assert_eq!(
-        report.issues[0].pack_name,
-        "simHeaven_X-World_Europe-1-vfr"
+    let simheaven_issues: Vec<_> = report
+        .issues
+        .iter()
+        .filter(|i| i.issue_type == "simheaven_below_global")
+        .collect();
+    assert!(
+        simheaven_issues.is_empty(),
+        "SimHeaven above Global Airports is correct per community standard"
     );
 }
 
 #[test]
-fn test_simheaven_below_global_airports_is_ok() {
-    // Global Airports at index 0, SimHeaven at index 1 → simheaven is BELOW → OK
+fn test_simheaven_below_global_airports_is_critical() {
+    // Global Airports at index 0, SimHeaven at index 1 → simheaven is BELOW → Critical
+    // Community standard: SimHeaven must be ABOVE Global Airports.
     let packs = vec![
         make_pack("Global Airports", SceneryCategory::GlobalAirport),
         make_pack(
@@ -72,16 +76,20 @@ fn test_simheaven_below_global_airports_is_ok() {
         .iter()
         .filter(|i| i.issue_type == "simheaven_below_global")
         .collect();
-    assert!(
-        simheaven_issues.is_empty(),
-        "SimHeaven below Global Airports should produce no placement issues"
+    assert_eq!(
+        simheaven_issues.len(),
+        1,
+        "SimHeaven below Global Airports should be flagged as critical"
     );
+    assert_eq!(simheaven_issues[0].severity, ValidationSeverity::Critical);
 }
 
 #[test]
-fn test_multiple_simheaven_above_global_airports() {
-    // Two SimHeaven packs above Global Airports → two Critical issues
+fn test_multiple_simheaven_below_global_airports() {
+    // Two SimHeaven packs below Global Airports → two Critical issues
+    // Community standard: SimHeaven must be ABOVE Global Airports.
     let packs = vec![
+        make_pack("Global Airports", SceneryCategory::GlobalAirport),
         make_pack(
             "simHeaven_X-World_Europe-1-vfr",
             SceneryCategory::RegionalOverlay,
@@ -90,7 +98,6 @@ fn test_multiple_simheaven_above_global_airports() {
             "simHeaven_X-World_America-1-vfr",
             SceneryCategory::RegionalOverlay,
         ),
-        make_pack("Global Airports", SceneryCategory::GlobalAirport),
     ];
 
     let report = SceneryValidator::validate(&packs);
@@ -104,13 +111,13 @@ fn test_multiple_simheaven_above_global_airports() {
 
 #[test]
 fn test_x_world_name_also_triggers_simheaven_check() {
-    // "x-world" in name (without "simheaven") should also be caught
+    // "x-world" in name (without "simheaven") should also be caught when BELOW GA
     let packs = vec![
+        make_pack("Global Airports", SceneryCategory::GlobalAirport),
         make_pack(
             "X-World_Europe_Vegetation_Library",
             SceneryCategory::Library,
         ),
-        make_pack("Global Airports", SceneryCategory::GlobalAirport),
     ];
 
     let report = SceneryValidator::validate(&packs);
@@ -304,7 +311,7 @@ fn test_mesh_partially_overlapping_no_shadow() {
 #[test]
 fn test_non_mesh_tiles_not_checked_for_shadowing() {
     // OrthoBase packs with overlapping tiles should NOT trigger shadowing
-    // (is_mesh only matches Mesh/SpecificMesh)
+    // (is_mesh only matches Mesh — SpecificMesh and OrthoBase are excluded)
     let mut pack1 = make_pack("Ortho_Region_A", SceneryCategory::OrthoBase);
     pack1.tiles = vec![(10, 20), (11, 21)];
     let mut pack2 = make_pack("Ortho_Region_B", SceneryCategory::OrthoBase);
@@ -366,19 +373,19 @@ fn test_empty_tiles_no_shadowing() {
 
 #[test]
 fn test_multiple_validation_issues_simultaneously() {
-    // Bad ordering: SimHeaven above Global, Mesh above Airport
+    // Bad ordering: SimHeaven below Global, Mesh above Airport
     let packs = vec![
+        make_pack("zzz_UHD_Mesh", SceneryCategory::Mesh),
+        make_pack("Global Airports", SceneryCategory::GlobalAirport),
         make_pack(
             "simHeaven_X-World_Europe",
             SceneryCategory::RegionalOverlay,
         ),
-        make_pack("zzz_UHD_Mesh", SceneryCategory::Mesh),
-        make_pack("Global Airports", SceneryCategory::GlobalAirport),
         make_pack("KSEA_Airport", SceneryCategory::CustomAirport),
     ];
 
     let report = SceneryValidator::validate(&packs);
-    // Should have at least: SimHeaven above Global + Mesh above Airport
+    // Should have at least: SimHeaven below Global + Mesh above Airport
     assert!(
         report.issues.len() >= 2,
         "Expected multiple issues, got {}",
@@ -392,14 +399,14 @@ fn test_multiple_validation_issues_simultaneously() {
 
 #[test]
 fn test_clean_ordering_produces_no_issues() {
-    // Correct X-Plane ordering: Airports → Global → Overlays → Libraries → Ortho → Mesh
+    // Correct community standard: Airports → SimHeaven → Global → Libraries → Ortho → Mesh
     let packs = vec![
         make_pack("KSEA_Airport", SceneryCategory::CustomAirport),
-        make_pack("Global Airports", SceneryCategory::GlobalAirport),
         make_pack(
             "simHeaven_X-World_Europe",
             SceneryCategory::RegionalOverlay,
         ),
+        make_pack("Global Airports", SceneryCategory::GlobalAirport),
         make_pack("OpenSceneryX", SceneryCategory::Library),
         make_pack("yOrtho4XP", SceneryCategory::OrthoBase),
         make_pack("zzz_UHD_Mesh", SceneryCategory::Mesh),
@@ -410,6 +417,49 @@ fn test_clean_ordering_produces_no_issues() {
         report.issues.is_empty(),
         "Clean ordering should produce no issues, got: {:?}",
         report.issues.iter().map(|i| &i.issue_type).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_specific_mesh_not_checked_for_shadowing() {
+    // SpecificMesh packs (airport companion packs like grass, terrain, sealane)
+    // serve different purposes and should NOT trigger mesh shadowing warnings.
+    let mut pack1 = make_pack("EGLL_3Dgrass", SceneryCategory::SpecificMesh);
+    pack1.tiles = vec![(51, 0), (51, -1)];
+    let mut pack2 = make_pack("EGLL_MESH", SceneryCategory::SpecificMesh);
+    pack2.tiles = vec![(51, 0)];
+
+    let packs = vec![pack1, pack2];
+    let report = SceneryValidator::validate(&packs);
+    let shadow_issues: Vec<_> = report
+        .issues
+        .iter()
+        .filter(|i| i.issue_type == "shadowed_mesh")
+        .collect();
+    assert!(
+        shadow_issues.is_empty(),
+        "SpecificMesh companion packs should not trigger mesh shadowing"
+    );
+}
+
+#[test]
+fn test_specific_mesh_above_overlay_no_warning() {
+    // SpecificMesh packs are airport-adjacent and should not trigger
+    // "mesh above overlay" warnings — they're not bottom-of-list terrain.
+    let packs = vec![
+        make_pack("EGLL_3Dgrass", SceneryCategory::SpecificMesh),
+        make_pack("yAutoOrtho_Overlays", SceneryCategory::AutoOrthoOverlay),
+    ];
+
+    let report = SceneryValidator::validate(&packs);
+    let mesh_issues: Vec<_> = report
+        .issues
+        .iter()
+        .filter(|i| i.issue_type == "mesh_above_overlay")
+        .collect();
+    assert!(
+        mesh_issues.is_empty(),
+        "SpecificMesh above AutoOrtho should not be flagged"
     );
 }
 
