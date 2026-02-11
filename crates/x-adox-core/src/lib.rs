@@ -312,11 +312,45 @@ pub enum XamError {
     Io(#[from] std::io::Error),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub enum LogIssueKind {
+    MissingResource,
+    BadLightName,
+    ObjectReadFailed,
+    DsfRoadNetwork,
+}
+
+impl std::fmt::Display for LogIssueKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogIssueKind::MissingResource => write!(f, "Missing Resource"),
+            LogIssueKind::BadLightName => write!(f, "Bad Light Name"),
+            LogIssueKind::ObjectReadFailed => write!(f, "Object Read Failed"),
+            LogIssueKind::DsfRoadNetwork => write!(f, "DSF Road Network"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LogIssue {
-    pub resource_path: String,
-    pub package_path: String,
-    pub potential_library: Option<String>,
+    pub kind: LogIssueKind,
+    pub primary: String,
+    pub secondary: String,
+    pub scenery_pack: Option<String>,
+}
+
+/// Extracts the scenery pack folder name from a path like `Custom Scenery/PackName/...`.
+/// Falls back to the first path segment for resource-style paths.
+fn extract_scenery_pack(path: &str) -> Option<String> {
+    if let Some(rest) = path.strip_prefix("Custom Scenery/") {
+        rest.split('/').next()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    } else {
+        path.split('/').next()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    }
 }
 
 pub struct XPlaneManager {
@@ -366,26 +400,82 @@ impl XPlaneManager {
         }
 
         let content = fs::read_to_string(log_path)?;
-        let re = Regex::new(
-            r"E/SCN: Failed to find resource '([^']*)', referenced from scenery package '([^']*)'",
-        )
-        .unwrap();
+
+        let re_missing = Regex::new(
+            r"E/SCN: Failed to find resource '([^']+)', referenced from (?:scenery package|file) '([^']*)'",
+        ).unwrap();
+        let re_bad_light = Regex::new(
+            r"E/OBJ: ERROR: object (.+) has a bad light name: (\S+)",
+        ).unwrap();
+        let re_obj_read = Regex::new(
+            r"E/OBJ: OBJ read failed: the file path (.+) could not be opened",
+        ).unwrap();
+        let re_dsf_road = Regex::new(
+            r"E/DSF: The DSF (.+) has a number of problems with its road network: (.+)",
+        ).unwrap();
 
         let mut issues = Vec::new();
         let mut seen = HashSet::new();
 
-        for cap in re.captures_iter(&content) {
-            let resource_path = cap[1].to_string();
-            let package_path = cap[2].to_string();
-
-            let key = format!("{}:{}", resource_path, package_path);
-            if seen.insert(key) {
-                let potential_library = resource_path.split('/').next().map(|s| s.to_string());
-                issues.push(LogIssue {
-                    resource_path,
-                    package_path,
-                    potential_library,
-                });
+        for line in content.lines() {
+            if let Some(cap) = re_missing.captures(line) {
+                let primary = cap[1].to_string();
+                let secondary = cap[2].to_string();
+                let key = format!("0:{}:{}", primary, secondary);
+                if seen.insert(key) {
+                    let scenery_pack = extract_scenery_pack(&primary);
+                    issues.push(LogIssue {
+                        kind: LogIssueKind::MissingResource,
+                        primary,
+                        secondary,
+                        scenery_pack,
+                    });
+                }
+                continue;
+            }
+            if let Some(cap) = re_bad_light.captures(line) {
+                let primary = cap[1].trim().to_string();
+                let secondary = cap[2].to_string();
+                let key = format!("1:{}:{}", primary, secondary);
+                if seen.insert(key) {
+                    let scenery_pack = extract_scenery_pack(&primary);
+                    issues.push(LogIssue {
+                        kind: LogIssueKind::BadLightName,
+                        primary,
+                        secondary,
+                        scenery_pack,
+                    });
+                }
+                continue;
+            }
+            if let Some(cap) = re_obj_read.captures(line) {
+                let primary = cap[1].trim().to_string();
+                let key = format!("2:{}", primary);
+                if seen.insert(key) {
+                    let scenery_pack = extract_scenery_pack(&primary);
+                    issues.push(LogIssue {
+                        kind: LogIssueKind::ObjectReadFailed,
+                        primary,
+                        secondary: String::new(),
+                        scenery_pack,
+                    });
+                }
+                continue;
+            }
+            if let Some(cap) = re_dsf_road.captures(line) {
+                let primary = cap[1].trim().to_string();
+                let secondary = cap[2].trim().to_string();
+                let key = format!("3:{}:{}", primary, secondary);
+                if seen.insert(key) {
+                    let scenery_pack = extract_scenery_pack(&primary);
+                    issues.push(LogIssue {
+                        kind: LogIssueKind::DsfRoadNetwork,
+                        primary,
+                        secondary,
+                        scenery_pack,
+                    });
+                }
+                continue;
             }
         }
 
@@ -552,23 +642,134 @@ mod tests {
 
         let log_content = "0:00:00.000 E/SCN: Failed to find resource 'madagascar_lib/cars/landrover.obj', referenced from scenery package 'Custom Scenery/CYSJ/'\n\
                            0:00:00.000 E/SCN: Failed to find resource 'BS2001/trees/pine.obj', referenced from scenery package 'Custom Scenery/Airport_A/'\n\
-                           0:00:00.000 E/SCN: Failed to find resource 'madagascar_lib/cars/landrover.obj', referenced from scenery package 'Custom Scenery/CYSJ/'"; // Duplicate
+                           0:00:00.000 E/SCN: Failed to find resource 'madagascar_lib/cars/landrover.obj', referenced from scenery package 'Custom Scenery/CYSJ/'\n\
+                           0:00:00.000 E/SCN: Failed to find resource 'opensceneryx/objects/furniture/bench.obj', referenced from file 'Custom Scenery/LFPG/'\n\
+                           0:00:00.000 E/SCN: Failed to find resource '', referenced from file 'Custom Scenery/AEP/Polygons/Pavement/'"; // empty resource skipped
 
         fs::write(root.join("Log.txt"), log_content).unwrap();
 
         let xpm = XPlaneManager::new(root).unwrap();
         let issues = xpm.check_log().unwrap();
 
-        assert_eq!(issues.len(), 2);
-        assert_eq!(issues[0].resource_path, "madagascar_lib/cars/landrover.obj");
-        assert_eq!(issues[0].package_path, "Custom Scenery/CYSJ/");
+        assert_eq!(issues.len(), 3);
+        assert_eq!(issues[0].kind, LogIssueKind::MissingResource);
+        assert_eq!(issues[0].primary, "madagascar_lib/cars/landrover.obj");
+        assert_eq!(issues[0].secondary, "Custom Scenery/CYSJ/");
         assert_eq!(
-            issues[0].potential_library,
+            issues[0].scenery_pack,
             Some("madagascar_lib".to_string())
         );
 
-        assert_eq!(issues[1].resource_path, "BS2001/trees/pine.obj");
-        assert_eq!(issues[1].package_path, "Custom Scenery/Airport_A/");
-        assert_eq!(issues[1].potential_library, Some("BS2001".to_string()));
+        assert_eq!(issues[1].primary, "BS2001/trees/pine.obj");
+        assert_eq!(issues[1].secondary, "Custom Scenery/Airport_A/");
+        assert_eq!(issues[1].scenery_pack, Some("BS2001".to_string()));
+
+        // X-Plane 12 format: "referenced from file" instead of "referenced from scenery package"
+        assert_eq!(
+            issues[2].primary,
+            "opensceneryx/objects/furniture/bench.obj"
+        );
+        assert_eq!(issues[2].secondary, "Custom Scenery/LFPG/");
+        assert_eq!(
+            issues[2].scenery_pack,
+            Some("opensceneryx".to_string())
+        );
+    }
+
+    #[test]
+    fn test_check_log_bad_light_name() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("Custom Scenery")).unwrap();
+        fs::create_dir_all(root.join("Resources")).unwrap();
+
+        let log_content = "\
+0:00:01.000 E/OBJ: ERROR: object Custom Scenery/LFOB Vehicles/objects/car.obj has a bad light name: fakeLightXYZ\n\
+0:00:01.000 E/OBJ: ERROR: object Custom Scenery/LFOB Vehicles/objects/car.obj has a bad light name: fakeLightXYZ\n\
+0:00:02.000 E/OBJ: ERROR: object Custom Scenery/KJFK/objects/tower.obj has a bad light name: badGlow\n";
+
+        fs::write(root.join("Log.txt"), log_content).unwrap();
+
+        let xpm = XPlaneManager::new(root).unwrap();
+        let issues = xpm.check_log().unwrap();
+
+        assert_eq!(issues.len(), 2); // dedup removes duplicate
+        assert_eq!(issues[0].kind, LogIssueKind::BadLightName);
+        assert_eq!(issues[0].primary, "Custom Scenery/LFOB Vehicles/objects/car.obj");
+        assert_eq!(issues[0].secondary, "fakeLightXYZ");
+        assert_eq!(issues[0].scenery_pack, Some("LFOB Vehicles".to_string()));
+
+        assert_eq!(issues[1].kind, LogIssueKind::BadLightName);
+        assert_eq!(issues[1].primary, "Custom Scenery/KJFK/objects/tower.obj");
+        assert_eq!(issues[1].scenery_pack, Some("KJFK".to_string()));
+    }
+
+    #[test]
+    fn test_check_log_object_read_failed() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("Custom Scenery")).unwrap();
+        fs::create_dir_all(root.join("Resources")).unwrap();
+
+        let log_content = "\
+0:00:03.000 E/OBJ: OBJ read failed: the file path Custom Scenery/EGLL/objects/missing.obj could not be opened\n";
+
+        fs::write(root.join("Log.txt"), log_content).unwrap();
+
+        let xpm = XPlaneManager::new(root).unwrap();
+        let issues = xpm.check_log().unwrap();
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].kind, LogIssueKind::ObjectReadFailed);
+        assert_eq!(issues[0].primary, "Custom Scenery/EGLL/objects/missing.obj");
+        assert_eq!(issues[0].secondary, "");
+        assert_eq!(issues[0].scenery_pack, Some("EGLL".to_string()));
+    }
+
+    #[test]
+    fn test_check_log_dsf_road_network() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("Custom Scenery")).unwrap();
+        fs::create_dir_all(root.join("Resources")).unwrap();
+
+        let log_content = "\
+0:00:04.000 E/DSF: The DSF Custom Scenery/SimHeaven_X-World/Earth nav data/+40-080.dsf has a number of problems with its road network: 3 junctions and 12 segments were removed.\n";
+
+        fs::write(root.join("Log.txt"), log_content).unwrap();
+
+        let xpm = XPlaneManager::new(root).unwrap();
+        let issues = xpm.check_log().unwrap();
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].kind, LogIssueKind::DsfRoadNetwork);
+        assert_eq!(issues[0].primary, "Custom Scenery/SimHeaven_X-World/Earth nav data/+40-080.dsf");
+        assert_eq!(issues[0].secondary, "3 junctions and 12 segments were removed.");
+        assert_eq!(issues[0].scenery_pack, Some("SimHeaven_X-World".to_string()));
+    }
+
+    #[test]
+    fn test_check_log_mixed_errors() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("Custom Scenery")).unwrap();
+        fs::create_dir_all(root.join("Resources")).unwrap();
+
+        let log_content = "\
+0:00:00.000 E/SCN: Failed to find resource 'opensceneryx/objects/bench.obj', referenced from scenery package 'Custom Scenery/LFPG/'\n\
+0:00:01.000 E/OBJ: ERROR: object Custom Scenery/KJFK/objects/tower.obj has a bad light name: badGlow\n\
+0:00:02.000 E/OBJ: OBJ read failed: the file path Custom Scenery/EGLL/objects/missing.obj could not be opened\n\
+0:00:03.000 E/DSF: The DSF Custom Scenery/SimHeaven/Earth nav data/+40-080.dsf has a number of problems with its road network: 5 issues found\n";
+
+        fs::write(root.join("Log.txt"), log_content).unwrap();
+
+        let xpm = XPlaneManager::new(root).unwrap();
+        let issues = xpm.check_log().unwrap();
+
+        assert_eq!(issues.len(), 4);
+        assert_eq!(issues[0].kind, LogIssueKind::MissingResource);
+        assert_eq!(issues[1].kind, LogIssueKind::BadLightName);
+        assert_eq!(issues[2].kind, LogIssueKind::ObjectReadFailed);
+        assert_eq!(issues[3].kind, LogIssueKind::DsfRoadNetwork);
     }
 }

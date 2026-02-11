@@ -7169,37 +7169,62 @@ impl App {
         } else {
             let issues_list = column(self.log_issues.iter().enumerate().map(|(idx, issue)| {
                 let is_selected = self.selected_log_issues.contains(&idx);
+
+                let (badge_text, badge_color, primary_label, secondary_label): (&str, iced::Color, String, Option<String>) = match &issue.kind {
+                    x_adox_core::LogIssueKind::MissingResource => (
+                        "Missing Resource",
+                        style::palette::ACCENT_RED,
+                        format!("Missing Resource: {}", issue.primary),
+                        Some(format!("Referenced from: {}", issue.secondary)),
+                    ),
+                    x_adox_core::LogIssueKind::BadLightName => (
+                        "Bad Light Name",
+                        style::palette::ACCENT_ORANGE,
+                        format!("Bad Light Name: {}", issue.secondary),
+                        Some(format!("In object: {}", issue.primary)),
+                    ),
+                    x_adox_core::LogIssueKind::ObjectReadFailed => (
+                        "Object Read Failed",
+                        style::palette::ACCENT_RED,
+                        format!("Failed to open: {}", issue.primary),
+                        None,
+                    ),
+                    x_adox_core::LogIssueKind::DsfRoadNetwork => (
+                        "DSF Road Network",
+                        style::palette::ACCENT_PURPLE,
+                        format!("DSF File: {}", issue.primary),
+                        Some(format!("Problems: {}", issue.secondary)),
+                    ),
+                };
+
+                let mut card_col = column![
+                    text(badge_text).size(11).color(badge_color),
+                    text(primary_label).color(style::palette::TEXT_PRIMARY),
+                ].spacing(6);
+
+                if let Some(sec) = secondary_label {
+                    card_col = card_col.push(
+                        text(sec).color(style::palette::TEXT_SECONDARY),
+                    );
+                }
+
+                if let Some(pack) = &issue.scenery_pack {
+                    card_col = card_col.push(
+                        row![
+                            text("Scenery Pack: ").color(style::palette::TEXT_SECONDARY),
+                            text(pack).color(style::palette::ACCENT_BLUE),
+                        ].spacing(5)
+                    );
+                }
+
                 row![
                     iced::widget::checkbox("", is_selected)
                         .on_toggle(move |val| Message::ToggleLogIssue(idx, val))
                         .size(18),
-                    container(
-                        column![
-                            row![
-                                text("Missing Resource: ").color(style::palette::TEXT_SECONDARY),
-                                text(&issue.resource_path).color(style::palette::TEXT_PRIMARY),
-                            ]
-                            .spacing(5),
-                            row![
-                                text("Referenced from: ").color(style::palette::TEXT_SECONDARY),
-                                text(&issue.package_path).color(style::palette::TEXT_PRIMARY),
-                            ]
-                            .spacing(5),
-                            if let Some(lib) = &issue.potential_library {
-                                row![
-                                    text("Potential Library: ").color(style::palette::TEXT_SECONDARY),
-                                    text(lib).color(style::palette::ACCENT_BLUE),
-                                ]
-                                .spacing(5)
-                            } else {
-                                row![].into()
-                            },
-                        ]
-                        .spacing(8),
-                    )
-                    .padding(15)
-                    .style(style::container_card)
-                    .width(Length::Fill)
+                    container(card_col)
+                        .padding(15)
+                        .style(style::container_card)
+                        .width(Length::Fill)
                 ]
                 .spacing(15)
                 .align_y(iced::Alignment::Center)
@@ -7208,14 +7233,14 @@ impl App {
             .spacing(10);
 
             let all_selected = self.selected_log_issues.len() == self.log_issues.len();
-            
+
             column![
                 row![
                     iced::widget::checkbox("Select All", all_selected)
                         .on_toggle(Message::ToggleAllLogIssues)
                         .size(18),
                     text(format!(
-                        "Found {} missing resources.",
+                        "Found {} issues in Log.txt.",
                         self.log_issues.len()
                     ))
                     .color(style::palette::ACCENT_RED),
@@ -9564,7 +9589,7 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
     let path = rfd::FileDialog::new()
         .add_filter("CSV File", &["csv"])
         .add_filter("Text File", &["txt"])
-        .set_file_name("x_plane_missing_resources.csv")
+        .set_file_name("x_plane_log_issues.csv")
         .set_directory(&initial_location)
         .save_file()
         .ok_or("Export cancelled".to_string())?;
@@ -9573,23 +9598,26 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
 
     let mut content = String::new();
     if is_csv {
-        content.push_str("Resource Path,Referenced From,Potential Library\n");
+        content.push_str("Type,Primary Detail,Secondary Detail,Scenery Pack\n");
         for issue in issues.iter() {
-            let lib = issue.potential_library.as_deref().unwrap_or("None");
-            // Simple CSV escaping: wrap in quotes and escape internal quotes
-            let res = issue.resource_path.replace('"', "\"\"");
-            let pkg = issue.package_path.replace('"', "\"\"");
-            let lib_esc = lib.replace('"', "\"\"");
-            content.push_str(&format!("\"{}\",\"{}\",\"{}\"\n", res, pkg, lib_esc));
+            let pack = issue.scenery_pack.as_deref().unwrap_or("None");
+            let kind = issue.kind.to_string().replace('"', "\"\"");
+            let primary = issue.primary.replace('"', "\"\"");
+            let secondary = issue.secondary.replace('"', "\"\"");
+            let pack_esc = pack.replace('"', "\"\"");
+            content.push_str(&format!("\"{}\",\"{}\",\"{}\",\"{}\"\n", kind, primary, secondary, pack_esc));
         }
     } else {
-        content.push_str("X-Plane Missing Resources Report\n");
+        content.push_str("X-Plane Log Issues Report\n");
         content.push_str("==============================\n\n");
         for issue in issues.iter() {
-            content.push_str(&format!("Missing Resource: {}\n", issue.resource_path));
-            content.push_str(&format!("Referenced from:  {}\n", issue.package_path));
-            if let Some(lib) = &issue.potential_library {
-                content.push_str(&format!("Potential Library: {}\n", lib));
+            content.push_str(&format!("Type:          {}\n", issue.kind));
+            content.push_str(&format!("Detail:        {}\n", issue.primary));
+            if !issue.secondary.is_empty() {
+                content.push_str(&format!("Context:       {}\n", issue.secondary));
+            }
+            if let Some(pack) = &issue.scenery_pack {
+                content.push_str(&format!("Scenery Pack:  {}\n", pack));
             }
             content.push_str("------------------------------\n");
         }
