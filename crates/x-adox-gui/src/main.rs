@@ -7544,16 +7544,20 @@ impl App {
 
         let move_controls = column![move_up_btn, move_down_btn].spacing(2);
 
-        let grip = button(
-            svg(icon_grip)
-                .width(Length::Fixed(16.0))
-                .height(Length::Fixed(16.0))
-        )
-        .style(style::button_neumorphic)
-        .on_press(Message::DragStart {
-            index,
-            name: pack.name.clone(),
-        });
+        let grip = tooltip(
+            button(
+                svg(icon_grip)
+                    .width(Length::Fixed(16.0))
+                    .height(Length::Fixed(16.0))
+            )
+            .style(style::button_neumorphic)
+            .on_press(Message::DragStart {
+                index,
+                name: pack.name.clone(),
+            }),
+            "Drag to Reorder",
+            tooltip::Position::Top,
+        );
 
         let basket_btn = tooltip(
             button(
@@ -7585,17 +7589,21 @@ impl App {
             iced::widget::Space::new(Length::Fixed(0.0), Length::Fixed(0.0)).into()
         };
 
-        let delete_card_btn = button(
-            svg(icon_trash)
-                .width(Length::Fixed(14.0))
-                .height(Length::Fixed(14.0))
-                .style(move |_, _| svg::Style {
-                    color: Some(style::palette::ACCENT_RED),
-                }),
-        )
-        .on_press(Message::DeleteAddonDirect(pack.path.clone(), Tab::Scenery))
-        .style(style::button_neumorphic)
-        .padding(4);
+        let delete_card_btn = tooltip(
+            button(
+                svg(icon_trash)
+                    .width(Length::Fixed(14.0))
+                    .height(Length::Fixed(14.0))
+                    .style(move |_, _| svg::Style {
+                        color: Some(style::palette::ACCENT_RED),
+                    }),
+            )
+            .on_press(Message::DeleteAddonDirect(pack.path.clone(), Tab::Scenery))
+            .style(style::button_neumorphic)
+            .padding(4),
+            "Delete Scenery Pack",
+            tooltip::Position::Top,
+        );
 
         let content_row = row![
             delete_card_btn,
@@ -9189,16 +9197,35 @@ fn extract_zip_task(
     let mut archive =
         zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
 
-    // Determine the top-level folder name from the zip
-    let top_folder = if let Some(first) = archive.file_names().next() {
-        first.split('/').next().unwrap_or("Unknown").to_string()
+    // Detect whether the zip has a single root folder or is flat
+    let mut top_level_entries = std::collections::HashSet::new();
+    for i in 0..archive.len() {
+        if let Ok(entry) = archive.by_index(i) {
+            if let Some(first_component) = entry.name().split('/').next() {
+                if !first_component.is_empty() {
+                    top_level_entries.insert(first_component.to_string());
+                }
+            }
+        }
+    }
+
+    let has_single_root = top_level_entries.len() == 1
+        && archive.file_names().any(|n| n.contains('/'));
+
+    let top_folder = if has_single_root {
+        top_level_entries.into_iter().next().unwrap_or_else(|| "Unknown".to_string())
     } else {
-        return Err("Empty zip archive".to_string());
+        // Flat archive: use the zip filename as the folder name
+        zip_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unknown")
+            .to_string()
     };
 
     let root = root.ok_or("X-Plane root not found".to_string())?;
 
-    let dest_dir = if let Some(dest) = dest_override {
+    let base_dest = if let Some(dest) = dest_override {
         dest
     } else {
         match tab {
@@ -9208,6 +9235,17 @@ fn extract_zip_task(
             Tab::CSLs => root.join("Resources").join("plugins"),
             _ => return Err("Unsupported install tab".to_string()),
         }
+    };
+
+    // If the archive is flat (no single root), extract into a created subfolder
+    let dest_dir = if has_single_root {
+        base_dest
+    } else {
+        let subfolder = base_dest.join(&top_folder);
+        std::fs::create_dir_all(&subfolder)
+            .map_err(|e| format!("Failed to create subfolder '{}': {}", top_folder, e))?;
+        log::info!("[Installer] Flat archive detected — creating subfolder: {:?}", subfolder);
+        subfolder
     };
 
     // Extract to destination
@@ -9593,7 +9631,7 @@ async fn export_scenery_task(
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-        writeln!(writer, "<SceneryLibrary version=\"2.3.3\">").map_err(|e| e.to_string())?;
+        writeln!(writer, "<SceneryLibrary version=\"2.4.0\">").map_err(|e| e.to_string())?;
 
         let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
         for pack in packs.iter() {
@@ -9723,7 +9761,7 @@ fn export_aircraft_task(
 
         if is_xml {
             writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-            writeln!(writer, "<AircraftLibrary version=\"2.3.3\">").map_err(|e| e.to_string())?;
+            writeln!(writer, "<AircraftLibrary version=\"2.4.0\">").map_err(|e| e.to_string())?;
             for addon in aircraft.iter() {
                 if let AddonType::Aircraft {
                     acf_name,
@@ -9868,7 +9906,7 @@ async fn export_plugins_task(
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-        writeln!(writer, "<PluginLibrary version=\"2.3.3\">").map_err(|e| e.to_string())?;
+        writeln!(writer, "<PluginLibrary version=\"2.4.0\">").map_err(|e| e.to_string())?;
 
         for addon in addons.iter() {
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
@@ -9981,7 +10019,7 @@ async fn export_csls_task(
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-        writeln!(writer, "<CSLLibrary version=\"2.3.3\">").map_err(|e| e.to_string())?;
+        writeln!(writer, "<CSLLibrary version=\"2.4.0\">").map_err(|e| e.to_string())?;
 
         for addon in addons.iter() {
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
