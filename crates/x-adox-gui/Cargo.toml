@@ -28,6 +28,7 @@ unrar = "0.5"
 log = "0.4"
 simplelog = "0.12"
 html-escape = "0.2"
+open = "5"
 
 [package.metadata.packager]
 product_name = "X-Addon-Oxide"

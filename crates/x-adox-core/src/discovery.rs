@@ -572,6 +572,49 @@ impl DiscoveryManager {
             Err(_) => Vec::new(),
         }
     }
+
+    /// Scans an aircraft folder for PDF manuals.
+    /// Checks the root folder and common documentation subfolders.
+    pub fn find_manuals(aircraft_path: &Path) -> Vec<PathBuf> {
+        let mut manuals = Vec::new();
+        let doc_dirs = [
+            "", // root folder itself
+            "Documentation",
+            "Manuals",
+            "Manual",
+            "Docs",
+            "docs",
+            "documentation",
+            "manuals",
+            "manual",
+            "Reference",
+            "reference",
+        ];
+
+        for dir_name in &doc_dirs {
+            let dir = if dir_name.is_empty() {
+                aircraft_path.to_path_buf()
+            } else {
+                aircraft_path.join(dir_name)
+            };
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(ext) = path.extension() {
+                            if ext.eq_ignore_ascii_case("pdf") {
+                                manuals.push(path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        manuals.sort();
+        manuals.dedup();
+        manuals
+    }
 }
 
 fn is_hidden(entry: &walkdir::DirEntry) -> bool {

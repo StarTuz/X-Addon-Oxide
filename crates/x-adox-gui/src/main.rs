@@ -119,6 +119,8 @@ struct AircraftNode {
     tags: Vec<String>,
     /// True if this aircraft lives under `Laminar Research/`.
     is_laminar_default: bool,
+    /// PDF manuals found in the aircraft folder.
+    manuals: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -202,6 +204,7 @@ enum Message {
     HoverScenery(Option<String>),
     HoverAirport(Option<String>),
     SelectAircraft(PathBuf),
+    OpenManual(PathBuf),
     SelectPlugin(PathBuf),
     SelectCSL(PathBuf),
     InstallScenery,
@@ -1923,6 +1926,12 @@ impl App {
             }
             Message::RenameProfileNameChanged(name) => {
                 self.rename_profile_name = name;
+                Task::none()
+            }
+            Message::OpenManual(path) => {
+                if let Err(e) = open::that(&path) {
+                    log::error!("Failed to open manual {:?}: {}", path, e);
+                }
                 Task::none()
             }
             Message::LaunchXPlane => {
@@ -8316,6 +8325,45 @@ impl App {
                 iced::widget::Space::with_width(Length::Shrink).into()
             };
 
+            let manual_btn: Element<'static, Message> = if !node.manuals.is_empty() {
+                let manual_path = if node.manuals.len() == 1 {
+                    node.manuals[0].clone()
+                } else {
+                    // Multiple manuals: open the folder
+                    node.path.clone()
+                };
+                tooltip(
+                    button(
+                        svg(svg::Handle::from_memory(
+                            include_bytes!("../assets/icons/manual.svg").to_vec(),
+                        ))
+                        .width(14)
+                        .height(14)
+                        .style(|_, _| svg::Style {
+                            color: Some(Color::from_rgb(0.4, 0.7, 1.0)),
+                        }),
+                    )
+                    .on_press(Message::OpenManual(manual_path))
+                    .style(style::button_ghost)
+                    .padding(4),
+                    text(if node.manuals.len() == 1 {
+                        format!("Open Manual: {}", node.manuals[0].file_name().unwrap_or_default().to_string_lossy())
+                    } else {
+                        format!("Open Manuals Folder ({} PDFs)", node.manuals.len())
+                    }),
+                    tooltip::Position::Top,
+                )
+                .style(|_theme: &Theme| container::Style {
+                    background: Some(Background::Color(Color::from_rgb(0.15, 0.15, 0.2))),
+                    border: Border { radius: 4.0.into(), width: 1.0, color: Color::from_rgb(0.3, 0.3, 0.35) },
+                    text_color: Some(style::palette::TEXT_PRIMARY),
+                    shadow: Shadow::default(),
+                })
+                .into()
+            } else {
+                iced::widget::Space::with_width(Length::Shrink).into()
+            };
+
             row![
                 toggle_btn,
                 button(
@@ -8330,6 +8378,7 @@ impl App {
                 .style(style)
                 .padding([4, 8])
                 .width(Length::Fill),
+                manual_btn,
                 button(
                     svg(icon_trash)
                         .width(14)
@@ -8415,6 +8464,7 @@ impl App {
                             is_enabled: acs.iter().any(|ac| ac.is_enabled),
                             tags: Vec::new(),
                             is_laminar_default: false,
+                            manuals: Vec::new(),
                         };
 
                         // Use a custom row for virtual folder to support ToggleSmartFolder
@@ -9053,6 +9103,12 @@ fn build_merged_aircraft_tree(
         c.as_os_str() == "Laminar Research"
     });
 
+    let manuals = if acf_file.is_some() {
+        DiscoveryManager::find_manuals(&final_path)
+    } else {
+        Vec::new()
+    };
+
     AircraftNode {
         name,
         path: final_path,
@@ -9063,6 +9119,7 @@ fn build_merged_aircraft_tree(
         is_enabled,
         tags,
         is_laminar_default,
+        manuals,
     }
 }
 
