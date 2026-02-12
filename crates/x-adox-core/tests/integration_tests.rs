@@ -72,8 +72,10 @@ fn test_discovery_aircraft() {
     let results = DiscoveryManager::scan_aircraft(&mock.root, &mut cache, &[]);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].name, "Cessna 172");
-    if let AddonType::Aircraft { ref acf_name, .. } = results[0].addon_type {
-        assert_eq!(acf_name, "Cessna_172.acf");
+    if let AddonType::Aircraft { ref variants, .. } = results[0].addon_type {
+        assert_eq!(variants.len(), 1);
+        assert_eq!(variants[0].file_name, "Cessna_172.acf");
+        assert!(variants[0].is_enabled);
     } else {
         panic!("Wrong addon type");
     }

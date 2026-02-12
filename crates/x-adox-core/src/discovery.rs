@@ -15,12 +15,19 @@ pub struct AddonScript {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
+pub struct AcfVariant {
+    pub name: String,
+    pub file_name: String,
+    pub is_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
 pub enum AddonType {
     Scenery {
         airports: Vec<String>,
     },
     Aircraft {
-        acf_name: String,
+        variants: Vec<AcfVariant>,
         livery_count: usize,
         livery_names: Vec<String>,
     },
@@ -111,8 +118,11 @@ impl DiscoveryManager {
 
             if entry.file_type().is_file() {
                 if let Some(ext) = entry.path().extension() {
-                    if ext == "acf" {
-                        let acf_name = entry.file_name().to_string_lossy().to_string();
+                    let file_name = entry.file_name().to_string_lossy().to_string();
+                    let is_acf = ext == "acf";
+                    let is_disabled_acf = file_name.ends_with(".acf.disabled");
+
+                    if is_acf || is_disabled_acf {
                         if let Some(parent) = entry.path().parent() {
                             let path = parent.to_path_buf();
                             let name = path
@@ -120,10 +130,37 @@ impl DiscoveryManager {
                                 .unwrap_or_default()
                                 .to_string_lossy()
                                 .to_string();
-                            if !folder_results
-                                .iter()
-                                .any(|d: &DiscoveredAddon| d.path == path)
+
+                            let variant_name = if is_acf {
+                                file_name
+                                    .strip_suffix(".acf")
+                                    .unwrap_or(&file_name)
+                                    .to_string()
+                            } else {
+                                file_name
+                                    .strip_suffix(".acf.disabled")
+                                    .unwrap_or(&file_name)
+                                    .to_string()
+                            };
+
+                            let variant = AcfVariant {
+                                name: variant_name,
+                                file_name: file_name.clone(),
+                                is_enabled: is_acf,
+                            };
+
+                            if let Some(existing) = folder_results
+                                .iter_mut()
+                                .find(|d: &&mut DiscoveredAddon| d.path == path)
                             {
+                                if let AddonType::Aircraft { variants, .. } =
+                                    &mut existing.addon_type
+                                {
+                                    if !variants.iter().any(|v| v.file_name == variant.file_name) {
+                                        variants.push(variant);
+                                    }
+                                }
+                            } else {
                                 let tags = bitnet.predict_aircraft_tags(&name, &path);
                                 let is_laminar = path
                                     .components()
@@ -132,7 +169,7 @@ impl DiscoveryManager {
                                     path: path.clone(),
                                     name: name.clone(),
                                     addon_type: AddonType::Aircraft {
-                                        acf_name,
+                                        variants: vec![variant],
                                         livery_count: DiscoveryManager::count_liveries(&path),
                                         livery_names: DiscoveryManager::get_livery_names(&path),
                                     },

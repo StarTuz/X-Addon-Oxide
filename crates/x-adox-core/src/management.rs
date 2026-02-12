@@ -197,6 +197,51 @@ impl ModManager {
         Ok(target_path)
     }
 
+    /// Enables or disables an individual aircraft variant within its folder.
+    /// Renames <name>.acf <-> <name>.acf.disabled
+    pub fn set_variant_enabled(
+        aircraft_path: &Path,
+        variant_file_name: &str,
+        enabled: bool,
+    ) -> Result<PathBuf, std::io::Error> {
+        let source_path = aircraft_path.join(variant_file_name);
+
+        let target_file_name = if enabled {
+            // "B737.acf.disabled" -> "B737.acf"
+            variant_file_name
+                .strip_suffix(".disabled")
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Variant is already enabled or invalid name",
+                    )
+                })?
+                .to_string()
+        } else {
+            // "B737.acf" -> "B737.acf.disabled"
+            if variant_file_name.ends_with(".disabled") {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Variant is already disabled",
+                ));
+            }
+            format!("{}.disabled", variant_file_name)
+        };
+
+        let target_path = aircraft_path.join(target_file_name);
+
+        if source_path.exists() && source_path != target_path {
+            fs::rename(&source_path, &target_path)?;
+        } else if !source_path.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Variant file not found: {}", source_path.display()),
+            ));
+        }
+
+        Ok(target_path)
+    }
+
     /// Deletes an addon and performs necessary cleanup (e.g. removing scenery from INI).
     pub fn delete_addon(
         xplane_root: &Path,

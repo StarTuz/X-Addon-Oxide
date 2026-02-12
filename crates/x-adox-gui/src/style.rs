@@ -822,3 +822,30 @@ pub fn button_region_header(_theme: &Theme, status: button::Status) -> button::S
         _ => base,
     }
 }
+
+pub fn pick_list_secondary(_theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+    let base = pick_list::Style {
+        text_color: palette::TEXT_PRIMARY,
+        placeholder_color: palette::TEXT_SECONDARY,
+        handle_color: palette::TEXT_PRIMARY,
+        background: Background::Color(palette::BACKGROUND),
+        border: Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: palette::BORDER,
+        },
+    };
+
+    match status {
+        pick_list::Status::Hovered => pick_list::Style {
+            border: Border {
+                color: palette::BORDER,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            background: Background::Color(Color::from_rgb(0.2, 0.2, 0.2)),
+            ..base
+        },
+        _ => base,
+    }
+}

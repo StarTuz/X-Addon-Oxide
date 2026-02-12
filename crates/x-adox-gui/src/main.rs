@@ -114,7 +114,7 @@ struct AircraftNode {
     is_folder: bool,
     is_expanded: bool,
     children: Vec<AircraftNode>,
-    acf_file: Option<String>, // .acf filename if aircraft
+    variants: Vec<x_adox_core::discovery::AcfVariant>,
     is_enabled: bool,
     tags: Vec<String>,
     /// True if this aircraft lives under `Laminar Research/`.
@@ -169,14 +169,15 @@ enum Message {
     WindowResized(iced::Size),
     TogglePack(String),
     PackToggled(Result<(), String>),
-    ToggleRegionView,
-    ToggleRegion(String),
-    SetRegionEnabled(String, bool),
-    SetRegionInBucket(String, bool),
+    SetSceneryViewMode(SceneryViewMode),
+    ToggleSceneryGroup(String),
+    SetSceneryGroupEnabled(String, bool),
+    SetSceneryGroupInBucket(String, bool),
 
     // Aircraft & Plugins
     AircraftLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     ToggleAircraft(PathBuf, bool),
+    ToggleAircraftVariant(PathBuf, String, bool), // path, variant_file_name, enabled
     AircraftToggled(Result<(), String>),
     PluginsLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     TogglePlugin(PathBuf, bool),
@@ -518,6 +519,34 @@ impl LoadingState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub enum SceneryViewMode {
+    #[default]
+    Flat,
+    Region,
+    Tags,
+}
+
+impl std::fmt::Display for SceneryViewMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                SceneryViewMode::Flat => "Flat View",
+                SceneryViewMode::Region => "Group by Region",
+                SceneryViewMode::Tags => "Group by Tag",
+            }
+        )
+    }
+}
+
+pub const SCENERY_VIEW_MODES: &[SceneryViewMode] = &[
+    SceneryViewMode::Flat,
+    SceneryViewMode::Region,
+    SceneryViewMode::Tags,
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MoveDirection {
     Up,
@@ -619,8 +648,8 @@ struct App {
 
     // Smart View State
     smart_view_expanded: std::collections::BTreeSet<String>,
-    use_region_view: bool,
-    region_expanded: std::collections::BTreeSet<String>,
+    scenery_view_mode: SceneryViewMode,
+    scenery_groups_expanded: std::collections::BTreeSet<String>,
 
     // Icon Overrides
     icon_overrides: std::collections::BTreeMap<PathBuf, PathBuf>,
@@ -815,8 +844,8 @@ impl App {
                 include_bytes!("../assets/fallback_helicopter.png").to_vec(),
             ),
             smart_view_expanded: std::collections::BTreeSet::new(),
-            use_region_view: false,
-            region_expanded: std::collections::BTreeSet::new(),
+            scenery_view_mode: SceneryViewMode::Flat,
+            scenery_groups_expanded: std::collections::BTreeSet::new(),
             icon_overrides: std::collections::BTreeMap::new(),
             scan_exclusions: Vec::new(),
             scan_inclusions: Vec::new(),
@@ -2072,6 +2101,20 @@ impl App {
                 self.show_rename_dialog = false;
                 Task::none()
             }
+            Message::ToggleAircraftVariant(path, variant, enable) => {
+                self.status = format!(
+                    "{} Aircraft Variant {}...",
+                    if enable { "Enabling" } else { "Disabling" },
+                    variant
+                );
+                Task::perform(
+                    async move { toggle_aircraft_variant(path, variant, enable) },
+                    |result| match result {
+                        Ok(_) => Message::Refresh,
+                        Err(e) => Message::AircraftToggled(Err(e)),
+                    },
+                )
+            }
             Message::ToggleAircraft(path, enable) => {
                 let root = self.xplane_root.clone();
                 let name = path
@@ -2147,22 +2190,27 @@ impl App {
                 }
                 Task::none()
             }
-            Message::ToggleRegionView => {
-                self.use_region_view = !self.use_region_view;
+            Message::SetSceneryViewMode(mode) => {
+                self.scenery_view_mode = mode;
                 Task::none()
             }
-            Message::ToggleRegion(region) => {
-                if self.region_expanded.contains(&region) {
-                    self.region_expanded.remove(&region);
+            Message::ToggleSceneryGroup(group) => {
+                if self.scenery_groups_expanded.contains(&group) {
+                    self.scenery_groups_expanded.remove(&group);
                 } else {
-                    self.region_expanded.insert(region);
+                    self.scenery_groups_expanded.insert(group);
                 }
                 Task::none()
             }
-            Message::SetRegionEnabled(region, enabled) => {
+            Message::SetSceneryGroupEnabled(group, enabled) => {
                 let mut states = std::collections::HashMap::new();
                 for pack in self.packs.iter() {
-                    if pack.get_region() == region {
+                    let pack_group = match self.scenery_view_mode {
+                        SceneryViewMode::Region => pack.get_region(),
+                        SceneryViewMode::Tags => pack.tags.first().cloned().unwrap_or_else(|| "Untagged".to_string()),
+                        _ => String::new(),
+                    };
+                    if pack_group == group {
                         states.insert(pack.name.clone(), enabled);
                     }
                 }
@@ -2180,10 +2228,15 @@ impl App {
                 }
                 Task::none()
             }
-            Message::SetRegionInBucket(region, in_bucket) => {
+            Message::SetSceneryGroupInBucket(group, in_bucket) => {
                 let mut current_bucket: std::collections::HashSet<String> = self.scenery_bucket.iter().cloned().collect();
                 for pack in self.packs.iter() {
-                    if pack.get_region() == region {
+                    let pack_group = match self.scenery_view_mode {
+                        SceneryViewMode::Region => pack.get_region(),
+                        SceneryViewMode::Tags => pack.tags.first().cloned().unwrap_or_else(|| "Untagged".to_string()),
+                        _ => String::new(),
+                    };
+                    if pack_group == group {
                         if in_bucket {
                             current_bucket.insert(pack.name.clone());
                         } else {
@@ -2192,7 +2245,6 @@ impl App {
                     }
                 }
                 let mut result_bucket: Vec<String> = current_bucket.into_iter().collect();
-                // Sort by position in self.packs to preserve discovery/INI order
                 result_bucket.sort_by_key(|name| {
                     self.packs.iter().position(|p| &p.name == name).unwrap_or(usize::MAX)
                 });
@@ -6348,41 +6400,54 @@ impl App {
         let current_search_match = self.scenery_search_index
             .and_then(|idx| self.scenery_search_matches.get(idx).cloned());
 
+        let scenery_view_mode = self.scenery_view_mode;
+        let scenery_groups_expanded = self.scenery_groups_expanded.clone();
         let bucket = self.scenery_bucket.clone();
-        let use_region_view = self.use_region_view;
-        let region_expanded = self.region_expanded.clone();
 
-        // Region View Grouping (Pre-calculated for lazy widget)
-        let mut region_groups: std::collections::BTreeMap<String, Vec<(usize, SceneryPack)>> = std::collections::BTreeMap::new();
-        if self.use_region_view {
-            for (idx, pack) in self.packs.iter().enumerate() {
-                let region = pack.get_region();
-                region_groups.entry(region).or_default().push((idx, pack.clone()));
+        // Grouping logic (Pre-calculated for lazy widget)
+        let mut scenery_groups: std::collections::BTreeMap<String, Vec<(usize, SceneryPack)>> = std::collections::BTreeMap::new();
+        match self.scenery_view_mode {
+            SceneryViewMode::Region => {
+                for (idx, pack) in self.packs.iter().enumerate() {
+                    let region = pack.get_region();
+                    scenery_groups.entry(region).or_default().push((idx, pack.clone()));
+                }
             }
+            SceneryViewMode::Tags => {
+                for (idx, pack) in self.packs.iter().enumerate() {
+                    let tag = pack.tags.first().cloned().unwrap_or_else(|| "Untagged".to_string());
+                    scenery_groups.entry(tag).or_default().push((idx, pack.clone()));
+                }
+            }
+            SceneryViewMode::Flat => {}
         }
-        let region_groups = std::sync::Arc::new(region_groups);
+        let scenery_groups = std::sync::Arc::new(scenery_groups);
 
         let list_container = scrollable(lazy(
-            (packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups),
-            move |(packs, selected, overrides, drag_id, hover_id, current_search_match, bucket, use_region_view, region_expanded, region_groups)| {
+            ((packs, selected, overrides, drag_id, hover_id), (current_search_match, bucket, scenery_view_mode, scenery_groups_expanded, scenery_groups)),
+            move |dep: &(
+                (Arc<Vec<SceneryPack>>, Option<String>, std::collections::BTreeMap<String, u8>, Option<usize>, Option<usize>),
+                (Option<usize>, Vec<String>, SceneryViewMode, std::collections::BTreeSet<String>, Arc<std::collections::BTreeMap<String, Vec<(usize, SceneryPack)>>>)
+            )| {
+                let ((packs, selected, overrides, drag_id, hover_id), (current_search_match, bucket, scenery_view_mode, scenery_groups_expanded, scenery_groups)) = dep;
                 let mut items = Vec::new();
 
-                if *use_region_view {
-                    for (region, region_packs) in region_groups.iter() {
-                        let is_expanded = region_expanded.contains(region);
-                        let is_any_enabled = region_packs.iter().any(|(_, p)| p.status == SceneryPackType::Active);
-                        let is_any_in_bucket = region_packs.iter().any(|(_, p)| bucket.contains(&p.name));
+                if *scenery_view_mode != SceneryViewMode::Flat {
+                    for (group_name, group_packs) in scenery_groups.iter() {
+                        let is_expanded = scenery_groups_expanded.contains(group_name);
+                        let is_any_enabled = group_packs.iter().any(|(_, p)| p.status == SceneryPackType::Active);
+                        let is_any_in_bucket = group_packs.iter().any(|(_, p)| bucket.contains(&p.name));
 
-                        items.push(Self::render_region_header(
-                            region.to_string(),
-                            region_packs.len(),
+                        items.push(Self::render_scenery_group_header(
+                            group_name.to_string(),
+                            group_packs.len(),
                             is_expanded,
                             is_any_enabled,
                             is_any_in_bucket,
                         ));
 
                         if is_expanded {
-                            for (idx, pack) in region_packs {
+                            for (idx, pack) in group_packs {
                                 let is_being_dragged = *drag_id == Some(*idx);
                                 let is_search_match = *current_search_match == Some(*idx);
                                 let is_in_bucket = bucket.contains(&pack.name);
@@ -6556,21 +6621,14 @@ impl App {
                 .on_press(Message::ExportSceneryList)
                 .style(style::button_secondary)
                 .padding([6, 12]),
-                button(
-                    text(if self.use_region_view {
-                        "Flat View"
-                    } else {
-                        "Group by Region"
-                    })
-                    .size(12)
+                pick_list(
+                    SCENERY_VIEW_MODES,
+                    Some(self.scenery_view_mode),
+                    Message::SetSceneryViewMode
                 )
-                .on_press(Message::ToggleRegionView)
-                .style(if self.use_region_view {
-                    style::button_primary
-                } else {
-                    style::button_secondary
-                })
+                .text_size(12)
                 .padding([6, 12])
+                .style(style::pick_list_secondary)
             ]
             .spacing(10)
             .align_y(iced::Alignment::Center)
@@ -7341,22 +7399,22 @@ impl App {
             .into()
     }
 
-    fn render_region_header(
-        region: String,
+    fn render_scenery_group_header(
+        group: String,
         count: usize,
         is_expanded: bool,
         is_any_enabled: bool,
         is_any_in_bucket: bool,
     ) -> Element<'static, Message> {
-        let region_for_toggle = region.clone();
-        let region_for_enabled = region.clone();
-        let region_for_bucket = region.clone();
+        let group_for_toggle = group.clone();
+        let group_for_enabled = group.clone();
+        let group_for_bucket = group.clone();
         
         let content = row![
             text(if is_expanded { "v" } else { ">" })
                 .size(14)
                 .width(Length::Fixed(20.0)),
-            text(region).size(16).width(Length::Fill),
+            text(group).size(16).width(Length::Fill),
             text(format!("({} packs)", count))
                 .size(12)
                 .color(style::palette::TEXT_SECONDARY),
@@ -7369,7 +7427,7 @@ impl App {
                 })
                 .size(10)
             )
-            .on_press(Message::SetRegionInBucket(region_for_bucket, !is_any_in_bucket))
+            .on_press(Message::SetSceneryGroupInBucket(group_for_bucket, !is_any_in_bucket))
             .style(style::button_secondary)
             .padding([4, 8]),
             button(
@@ -7380,7 +7438,7 @@ impl App {
                 })
                 .size(10)
             )
-            .on_press(Message::SetRegionEnabled(region_for_enabled, !is_any_enabled))
+            .on_press(Message::SetSceneryGroupEnabled(group_for_enabled, !is_any_enabled))
             .style(if is_any_enabled {
                 style::button_danger
             } else {
@@ -7393,7 +7451,7 @@ impl App {
         .padding(10);
 
         button(content)
-            .on_press(Message::ToggleRegion(region_for_toggle))
+            .on_press(Message::ToggleSceneryGroup(group_for_toggle))
             .style(style::button_region_header)
             .width(Length::Fill)
             .into()
@@ -7760,7 +7818,7 @@ impl App {
                     let list: Column<Message, Theme, Renderer> =
                         addons.iter().fold(Column::new().spacing(4), |col, addon| {
                             let type_label = match &addon.addon_type {
-                                AddonType::Aircraft { acf_name, .. } => format!("• {}", acf_name),
+                                AddonType::Aircraft { variants, .. } => format!("• {}", variants.first().map(|v| v.file_name.as_str()).unwrap_or("Aircraft")),
                                 AddonType::Scenery { .. } => "• Scenery".to_string(),
                                 AddonType::Plugin { .. } => "• Plugin".to_string(),
                                 AddonType::CSL(_) => "• CSL".to_string(),
@@ -8234,6 +8292,13 @@ impl App {
         
         if !is_root {
             result.push(Self::render_aircraft_row(node, depth, selected_aircraft, icon_trash.clone()));
+            
+            // Render variants if this is an aircraft package
+            if !node.variants.is_empty() {
+                for variant in &node.variants {
+                    result.push(Self::render_variant_row(node, variant, depth + 1));
+                }
+            }
         }
 
         // Collect children if expanded (root is always treated as expanded)
@@ -8251,6 +8316,38 @@ impl App {
         result
     }
 
+    fn render_variant_row(
+        parent: &AircraftNode,
+        variant: &x_adox_core::discovery::AcfVariant,
+        depth: usize,
+    ) -> Element<'static, Message> {
+        let indent = 20.0 * depth as f32;
+        let is_enabled = variant.is_enabled;
+        let path = parent.path.clone();
+        let variant_file = variant.file_name.clone();
+
+        let label_color = if is_enabled {
+            style::palette::TEXT_PRIMARY
+        } else {
+            style::palette::TEXT_SECONDARY
+        };
+
+        row![
+            container(text("")).width(Length::Fixed(indent)),
+            checkbox("", is_enabled)
+                .on_toggle(move |v| Message::ToggleAircraftVariant(path.clone(), variant_file.clone(), v))
+                .size(14)
+                .spacing(10),
+            text(format!("{} ({})", variant.name, variant.file_name))
+                .size(12)
+                .color(label_color)
+        ]
+        .spacing(5)
+        .align_y(iced::Alignment::Center)
+        .padding([2, 0])
+        .into()
+    }
+
     fn render_aircraft_row(
         node: &AircraftNode,
         depth: usize,
@@ -8266,17 +8363,13 @@ impl App {
             } else {
                 ">"
             }
-        } else if node.acf_file.is_some() {
+        } else if !node.variants.is_empty() {
             "   •"
         } else {
             "   -"
         };
 
-        let display_name = if let Some(acf) = &node.acf_file {
-            format!("{} ({})", node.name, acf)
-        } else {
-            node.name.clone()
-        };
+        let display_name = node.name.clone();
 
         let is_selected = if let Some(sel_path) = selected_aircraft {
             sel_path == &node.path && !node.path.as_os_str().is_empty()
@@ -8323,15 +8416,15 @@ impl App {
             let toggle_path = node.path.clone();
             let is_enabled = node.is_enabled;
 
-            // Allow toggling only if it's an aircraft package (leaf node with .acf usually)
-            let toggle_btn: Element<'static, Message> = if node.acf_file.is_some() {
-                checkbox("Enabled", is_enabled)
+            // Allow toggling only if it's an aircraft package (leaf node with variants usually)
+            let toggle_btn: Element<'static, Message> = if !node.variants.is_empty() {
+                checkbox("", is_enabled)
                     .on_toggle(move |v| Message::ToggleAircraft(toggle_path.clone(), v))
                     .size(16)
-                    .spacing(10)
+                    .spacing(5)
                     .into()
             } else {
-                iced::widget::Space::with_width(Length::Fixed(26.0)).into()
+                iced::widget::Space::with_width(Length::Fixed(21.0)).into()
             };
 
             let laminar_badge: Element<'static, Message> = if node.is_laminar_default {
@@ -8432,7 +8525,7 @@ impl App {
 
     fn flatten_aircraft_tree(node: &AircraftNode) -> Vec<AircraftNode> {
         let mut result = Vec::new();
-        if node.acf_file.is_some() {
+        if !node.variants.is_empty() {
             result.push(node.clone());
         }
         for child in &node.children {
@@ -8493,8 +8586,8 @@ impl App {
                             is_folder: true,
                             is_expanded: model_expanded,
                             children: Vec::new(),
-                            acf_file: None,
                             is_enabled: acs.iter().any(|ac| ac.is_enabled),
+                            variants: Vec::new(),
                             tags: Vec::new(),
                             is_laminar_default: false,
                             manuals: Vec::new(),
@@ -8529,7 +8622,7 @@ impl App {
                         if model_expanded {
                             for ac in acs {
                                 let mut ac = ac.clone();
-                                ac.acf_file = None;
+                                ac.variants = Vec::new();
                                 result.push(Self::render_aircraft_row(&ac, 2, selected_aircraft, icon_trash.clone()));
                             }
                         }
@@ -8586,10 +8679,9 @@ impl App {
             if MANUFACTURERS.contains(&tag.as_str()) {
                 let mut model_groups: BTreeMap<String, Vec<AircraftNode>> = BTreeMap::new();
                 for ac in aircraft {
-                    let raw_model = ac
-                        .acf_file
-                        .as_ref()
-                        .map(|f| f.strip_suffix(".acf").unwrap_or(f).to_string())
+                    let raw_model = ac.variants.first()
+                        .map(|v| v.file_name.clone())
+                        .map(|f| f.strip_suffix(".acf").unwrap_or(&f).to_string())
                         .unwrap_or_else(|| ac.name.clone());
                     let model = Self::normalize_model_name(&raw_model);
                     model_groups.entry(model).or_default().push(ac.clone());
@@ -9063,7 +9155,7 @@ fn build_merged_aircraft_tree(
         .unwrap_or_else(|| "Addon Library".to_string());
 
     let mut children = Vec::new();
-    let mut acf_file = None;
+    let mut node_variants: Option<Vec<x_adox_core::discovery::AcfVariant>> = None;
     let mut is_enabled = true;
 
     // Use absolute path for identifying which root it's in actually is_enabled
@@ -9092,6 +9184,9 @@ fn build_merged_aircraft_tree(
         let e_full = enabled_root.join(&entry_rel);
         let d_full = disabled_root.join(&entry_rel);
 
+        let is_acf = entry_name_str.ends_with(".acf");
+        let is_disabled_acf = entry_name_str.ends_with(".acf.disabled");
+
         if e_full.is_dir() || d_full.is_dir() {
             // Check if this folder itself is excluded
             if is_path_excluded(&e_full, exclusions) || is_path_excluded(&d_full, exclusions) {
@@ -9105,10 +9200,29 @@ fn build_merged_aircraft_tree(
                 bitnet,
                 exclusions,
             ));
-        } else if entry_name_str.ends_with(".acf") {
-            acf_file = Some(entry_name_str);
-            // If the .acf is found in disabled_full, then this whole folder is disabled.
-            if disabled_full.join(&entry_name).exists() {
+        } else if is_acf || is_disabled_acf {
+            let variant_name = if is_acf {
+                entry_name_str.strip_suffix(".acf").unwrap_or(&entry_name_str).to_string()
+            } else {
+                entry_name_str.strip_suffix(".acf.disabled").unwrap_or(&entry_name_str).to_string()
+            };
+
+            let variant = x_adox_core::discovery::AcfVariant {
+                name: variant_name,
+                file_name: entry_name_str.clone(),
+                is_enabled: is_acf,
+            };
+
+            if let Some(existing_variants) = &mut node_variants {
+                existing_variants.push(variant);
+            } else {
+                node_variants = Some(vec![variant]);
+            }
+
+            // Folder-level enabled state: if the .acf (enabled) is found in enabled_full,
+            // or if it's currently disabled but the FOLDER is in enabled_root.
+            // Wait, the existing logic was: if .acf is in disabled_full, folder is disabled.
+            if is_acf && disabled_full.join(&entry_name).exists() {
                 is_enabled = false;
             }
         }
@@ -9122,9 +9236,11 @@ fn build_merged_aircraft_tree(
         enabled_full
     };
 
+    let variants = node_variants.unwrap_or_default();
+
     // Predict tags
-    let tags = if acf_file.is_some()
-        || (!children.is_empty() && children.iter().any(|c| c.acf_file.is_some()))
+    let tags = if !variants.is_empty()
+        || (!children.is_empty() && children.iter().any(|c| !c.variants.is_empty()))
     {
         bitnet.predict_aircraft_tags(&name, &final_path)
     } else {
@@ -9136,7 +9252,7 @@ fn build_merged_aircraft_tree(
         c.as_os_str() == "Laminar Research"
     });
 
-    let manuals = if acf_file.is_some() {
+    let manuals = if !variants.is_empty() {
         DiscoveryManager::find_manuals(&final_path)
     } else {
         Vec::new()
@@ -9145,10 +9261,10 @@ fn build_merged_aircraft_tree(
     AircraftNode {
         name,
         path: final_path,
-        is_folder: acf_file.is_none() && !children.is_empty(),
+        is_folder: variants.is_empty() && !children.is_empty(),
         is_expanded: relative_path.as_os_str().is_empty(), // Expand root
         children,
-        acf_file,
+        variants,
         is_enabled,
         tags,
         is_laminar_default,
@@ -9205,6 +9321,11 @@ async fn install_addon(
 fn toggle_aircraft(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(), String> {
     let root = root.ok_or("X-Plane root not found")?;
     ModManager::set_aircraft_enabled(&root, &path, enable).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn toggle_aircraft_variant(path: PathBuf, variant: String, enable: bool) -> Result<(), String> {
+    ModManager::set_variant_enabled(&path, &variant, enable).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -9792,7 +9913,7 @@ fn export_aircraft_task(
             writeln!(writer, "<AircraftLibrary version=\"2.4.0\">").map_err(|e| e.to_string())?;
             for addon in aircraft.iter() {
                 if let AddonType::Aircraft {
-                    acf_name,
+                    variants,
                     livery_count,
                     livery_names,
                 } = &addon.addon_type
@@ -9804,7 +9925,8 @@ fn export_aircraft_task(
 
                     let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
                     let name = html_escape::encode_text(&addon.name);
-                    let acf = html_escape::encode_text(acf_name);
+                    let acf_filename = variants.first().map(|v| v.file_name.as_str()).unwrap_or("");
+                    let acf = html_escape::encode_text(acf_filename);
                     let category_esc = html_escape::encode_text(category);
                     let path_str = addon.path.display().to_string();
                     let path_esc = html_escape::encode_text(&path_str);
@@ -9835,7 +9957,7 @@ fn export_aircraft_task(
             writeln!(writer, "Manufacturer/Category,Aircraft Name,ACF File,Status,Livery Count,Liveries,Path").map_err(|e| e.to_string())?;
             for addon in aircraft.iter() {
                 if let AddonType::Aircraft {
-                    acf_name,
+                    variants,
                     livery_count,
                     livery_names,
                 } = &addon.addon_type
@@ -9846,7 +9968,8 @@ fn export_aircraft_task(
                         .unwrap_or("Uncategorized");
 
                     let name = addon.name.replace('"', "\"\"");
-                    let acf = acf_name.replace('"', "\"\"");
+                    let acf_filename = variants.first().map(|v| v.file_name.as_str()).unwrap_or("");
+                    let acf = acf_filename.replace('"', "\"\"");
                     let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
                     let path_str = addon.path.display().to_string().replace('"', "\"\"");
 
@@ -9879,13 +10002,14 @@ fn export_aircraft_task(
             writeln!(writer, "").map_err(|e| e.to_string())?;
             for addon in aircraft.iter() {
                 if let AddonType::Aircraft {
-                    acf_name,
+                    variants,
                     livery_count,
                     livery_names,
                 } = &addon.addon_type
                 {
+                    let acf_filename = variants.first().map(|v| v.file_name.as_str()).unwrap_or("");
                     writeln!(writer, "Aircraft:    {}", addon.name).map_err(|e| e.to_string())?;
-                    writeln!(writer, "ACF File:    {}", acf_name).map_err(|e| e.to_string())?;
+                    writeln!(writer, "ACF File:    {}", acf_filename).map_err(|e| e.to_string())?;
                     writeln!(writer, "Status:      {}", if addon.is_enabled { "Enabled" } else { "Disabled" }).map_err(|e| e.to_string())?;
                     writeln!(writer, "Liveries:    {}", livery_count).map_err(|e| e.to_string())?;
                     if include_liveries && !livery_names.is_empty() {
