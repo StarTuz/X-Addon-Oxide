@@ -111,6 +111,8 @@ pub enum Tab {
 struct AircraftNode {
     name: String,
     path: PathBuf,
+    /// Stable ID for selection, relative to Aircraft/ or Aircraft (Disabled)/
+    relative_path: PathBuf,
     is_folder: bool,
     is_expanded: bool,
     children: Vec<AircraftNode>,
@@ -204,6 +206,8 @@ enum Message {
     ToggleAircraftFolder(PathBuf),
     AircraftTreeLoaded(Result<Arc<AircraftNode>, String>),
     ToggleAircraftSmartView,
+    RequestAircraftRefresh(u128),
+    DebouncedRefreshAircraft(u128),
 
     // Install/Delete
     SelectScenery(String),
@@ -596,6 +600,7 @@ struct App {
     map_center: (f64, f64), // (lat, lon)
     map_initialized: bool,
     scenery_scroll_id: scrollable::Id,
+    aircraft_scroll_id: scrollable::Id,
     install_progress: Option<f32>,
     // Heuristics
     heuristics_model: BitNetModel,
@@ -634,6 +639,7 @@ struct App {
     ignored_issues: std::collections::HashSet<(String, String)>, // (type, pack_name)
     expanded_issue_groups: std::collections::HashSet<String>,    // type
     loading_state: LoadingState,
+    last_aircraft_refresh_request: u128,
 
     // Floating UI
     editing_priority: Option<(String, u8)>,
@@ -771,6 +777,7 @@ impl App {
             selected_csl: None,
             show_delete_confirm: false,
             show_csl_tab: false,
+            last_aircraft_refresh_request: 0,
             tile_manager: TileManager::new(),
             icon_aircraft: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/aircraft.svg").to_vec(),
@@ -793,6 +800,7 @@ impl App {
             map_center: (0.0, 0.0),
             map_initialized: false,
             scenery_scroll_id: scrollable::Id::unique(),
+            aircraft_scroll_id: scrollable::Id::unique(),
             install_progress: None,
             // Heuristics are GLOBAL (not per-install) - use BitNetModel's global config path
             heuristics_model: root.as_ref()
@@ -1327,7 +1335,13 @@ impl App {
                 self.loading_state.aircraft_tree = true;
                 match result {
                     Ok(tree) => {
+                        self.aircraft_expanded_paths.clear();
+                        if let Some(ref old_tree) = self.aircraft_tree {
+                            collect_expanded_paths(old_tree, &mut self.aircraft_expanded_paths);
+                        }
+
                         self.aircraft_tree = Some(tree);
+                        
                         // Restore folder expansion state from before the rebuild
                         if !self.aircraft_expanded_paths.is_empty() {
                             if let Some(ref mut tree) = self.aircraft_tree {
@@ -1336,12 +1350,22 @@ impl App {
                                     &self.aircraft_expanded_paths,
                                 );
                             }
-                            self.aircraft_expanded_paths.clear();
+                            // Don't clear here, maybe keep for next time? Or clear is fine.
+                            // keeping it is safer for multiple rapid updates, but we just recollected.
                         }
                         self.update_smart_view_cache();
                         if !self.loading_state.is_loading {
                             if self.active_tab == Tab::Aircraft {
                                 self.status = "Aircraft tree loaded".to_string();
+                            }
+                            
+                            // Restore selection tags if something is selected
+                            if let Some(ref sel_relative) = self.selected_aircraft {
+                                if let Some(ref tree) = self.aircraft_tree {
+                                    if let Some(tags) = Self::find_tags_in_tree(tree, sel_relative) {
+                                        self.selected_aircraft_tags = tags;
+                                    }
+                                }
                             }
 
                             // Pipeline: Trigger next scan
@@ -2110,6 +2134,28 @@ impl App {
                 Task::none()
             }
             Message::ToggleAircraftVariant(path, variant, enable) => {
+                // OPTIMISTIC UPDATE: Update the variant in the current tree immediately
+                if let Some(ref mut tree) = self.aircraft_tree {
+                    fn find_and_update_variant(node: &mut AircraftNode, target_path: &Path, variant_file: &str, enabled: bool) -> bool {
+                        if node.path == target_path {
+                            for v in &mut node.variants {
+                                if v.file_name == variant_file {
+                                    v.is_enabled = enabled;
+                                    return true;
+                                }
+                            }
+                            return true;
+                        }
+                        for child in &mut node.children {
+                            if find_and_update_variant(child, target_path, variant_file, enabled) {
+                                return true;
+                            }
+                        }
+                        false
+                    }
+                    find_and_update_variant(Arc::make_mut(tree), &path, &variant, enable);
+                }
+
                 self.status = format!(
                     "{} Aircraft Variant {}...",
                     if enable { "Enabling" } else { "Disabling" },
@@ -2127,6 +2173,23 @@ impl App {
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string();
+                // OPTIMISTIC UPDATE: Update the node in the current tree immediately
+                if let Some(ref mut tree) = self.aircraft_tree {
+                    fn find_and_update(node: &mut AircraftNode, target_path: &Path, enabled: bool) -> bool {
+                        if node.path == target_path {
+                            node.is_enabled = enabled;
+                            return true;
+                        }
+                        for child in &mut node.children {
+                            if find_and_update(child, target_path, enabled) {
+                                return true;
+                            }
+                        }
+                        false
+                    }
+                    find_and_update(Arc::make_mut(tree), &path, enable);
+                }
+
                 self.status = format!(
                     "{} Aircraft {}...",
                     if enable { "Enabling" } else { "Disabling" },
@@ -2140,18 +2203,46 @@ impl App {
             Message::AircraftToggled(result) => match result {
                 Ok(_) => {
                     self.status = "Aircraft toggled!".to_string();
-                    // Snapshot expanded folder paths so they survive the tree rebuild
-                    self.aircraft_expanded_paths.clear();
-                    if let Some(ref tree) = self.aircraft_tree {
-                        collect_expanded_paths(tree, &mut self.aircraft_expanded_paths);
-                    }
-                    Task::done(Message::Refresh)
+                    self.status = "Aircraft toggled!".to_string();
+                    
+                    // Trigger a debounced refresh
+                    let request_id = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_nanos();
+                    Task::done(Message::RequestAircraftRefresh(request_id))
                 }
                 Err(e) => {
                     self.status = format!("Error toggling aircraft: {}", e);
-                    Task::none()
+                    // Force refresh anyway to ensure UI is in sync
+                    let request_id = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_nanos();
+                    Task::done(Message::RequestAircraftRefresh(request_id))
                 }
             },
+            Message::RequestAircraftRefresh(id) => {
+                self.last_aircraft_refresh_request = id;
+                Task::perform(
+                    async move {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                    },
+                    move |_| Message::DebouncedRefreshAircraft(id),
+                )
+            }
+            Message::DebouncedRefreshAircraft(id) => {
+                if self.last_aircraft_refresh_request == id {
+                    let root = self.xplane_root.clone();
+                    let exclusions = self.scan_exclusions.clone();
+                    Task::perform(
+                        async move { load_aircraft(root, exclusions) },
+                        Message::AircraftLoaded,
+                    )
+                } else {
+                    Task::none()
+                }
+            }
             Message::ToggleAircraftSmartView => {
                 self.use_smart_view = !self.use_smart_view;
                 Task::none()
@@ -8204,6 +8295,7 @@ impl App {
                     Element::from(column(items).spacing(2))
                 },
             ))
+            .id(self.aircraft_scroll_id.clone())
             .height(Length::Fill)
             .into()
         };
@@ -8480,7 +8572,7 @@ impl App {
         let display_name = node.name.clone();
 
         let is_selected = if let Some(sel_path) = selected_aircraft {
-            sel_path == &node.path && !node.path.as_os_str().is_empty()
+            sel_path == &node.relative_path
         } else {
             false
         };
@@ -8498,8 +8590,8 @@ impl App {
         };
 
         let node_row: Element<'static, Message> = if node.is_folder {
-            let path = node.path.clone();
-            let path_for_select = node.path.clone();
+            let path = node.relative_path.clone();
+            let path_for_select = node.relative_path.clone(); // Use relative_path for selection
 
             row![
                 button(text(icon).size(14))
@@ -8507,7 +8599,7 @@ impl App {
                     .padding([4, 8])
                     .style(style::button_ghost),
                 button(text(display_name.clone()).size(14).color(label_color))
-                    .on_press(if !node.path.as_os_str().is_empty() {
+                    .on_press(if !node.relative_path.as_os_str().is_empty() {
                         Message::SelectAircraft(path_for_select)
                     } else {
                         Message::ToggleAircraftFolder(path)
@@ -8520,7 +8612,6 @@ impl App {
             .width(Length::Fill)
             .into()
         } else {
-            let path = node.path.clone();
             let toggle_path = node.path.clone();
             let is_enabled = node.is_enabled;
 
@@ -8602,13 +8693,16 @@ impl App {
                 toggle_btn,
                 button(
                     row![
-                        text(icon).size(12),
-                        text(display_name).size(14).color(label_color),
+                        text(icon).size(12).width(Length::Fixed(20.0)),
+                        text(display_name)
+                            .size(14)
+                            .color(label_color)
+                            .width(Length::Fill),
                         laminar_badge,
                     ]
                     .spacing(5),
                 )
-                .on_press(Message::SelectAircraft(path.clone()))
+                .on_press(Message::SelectAircraft(node.relative_path.clone()))
                 .style(style)
                 .padding([4, 8])
                 .width(Length::Fill),
@@ -8619,7 +8713,7 @@ impl App {
                         .height(14)
                         .style(|_, _| svg::Style { color: Some(style::palette::ACCENT_RED) })
                 )
-                .on_press(Message::DeleteAddonDirect(path.clone(), Tab::Aircraft))
+                .on_press(Message::DeleteAddonDirect(node.path.clone(), Tab::Aircraft))
                 .style(style::button_ghost)
                 .padding(4),
             ]
@@ -8691,6 +8785,7 @@ impl App {
                         let folder = AircraftNode {
                             name: model.clone(),
                             path: PathBuf::new(), // dummy path
+                            relative_path: PathBuf::new(),
                             is_folder: true,
                             is_expanded: model_expanded,
                             children: Vec::new(),
@@ -8745,12 +8840,12 @@ impl App {
         result
     }
 
-    fn find_tags_in_tree(node: &AircraftNode, target: &std::path::Path) -> Option<Vec<String>> {
-        if node.path == target {
+    fn find_tags_in_tree(node: &AircraftNode, target_relative: &std::path::Path) -> Option<Vec<String>> {
+        if node.relative_path == target_relative {
             return Some(node.tags.clone());
         }
         for child in &node.children {
-            if let Some(tags) = Self::find_tags_in_tree(child, target) {
+            if let Some(tags) = Self::find_tags_in_tree(child, target_relative) {
                 return Some(tags);
             }
         }
@@ -9369,6 +9464,7 @@ fn build_merged_aircraft_tree(
     AircraftNode {
         name,
         path: final_path,
+        relative_path: relative_path.to_path_buf(),
         is_folder: variants.is_empty() && !children.is_empty(),
         is_expanded: relative_path.as_os_str().is_empty(), // Expand root
         children,
@@ -9381,7 +9477,7 @@ fn build_merged_aircraft_tree(
 }
 
 fn toggle_folder_at_path(node: &mut AircraftNode, target_path: &std::path::Path) {
-    if node.path == target_path {
+    if node.relative_path == target_path {
         node.is_expanded = !node.is_expanded;
         return;
     }
@@ -9393,7 +9489,7 @@ fn toggle_folder_at_path(node: &mut AircraftNode, target_path: &std::path::Path)
 
 fn collect_expanded_paths(node: &AircraftNode, paths: &mut std::collections::HashSet<PathBuf>) {
     if node.is_folder && node.is_expanded {
-        paths.insert(node.path.clone());
+        paths.insert(node.relative_path.clone());
     }
     for child in &node.children {
         collect_expanded_paths(child, paths);
@@ -9401,7 +9497,7 @@ fn collect_expanded_paths(node: &AircraftNode, paths: &mut std::collections::Has
 }
 
 fn restore_expanded_paths(node: &mut AircraftNode, paths: &std::collections::HashSet<PathBuf>) {
-    if node.is_folder && paths.contains(&node.path) {
+    if node.is_folder && paths.contains(&node.relative_path) {
         node.is_expanded = true;
     }
     for child in &mut node.children {

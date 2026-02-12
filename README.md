@@ -121,25 +121,25 @@ You will need the **Rust** toolchain installed ([rustup.rs](https://rustup.rs/))
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-dev libxkbcommon-dev libdbus-1-dev pkg-config
+sudo apt-get install -y libasound2-dev libfontconfig1-dev libwayland-dev libx11-dev libxkbcommon-dev libdbus-1-dev libgtk-3-dev pkg-config
 ```
 
 **Arch Linux:**
 
 ```bash
-sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus pkgconf
+sudo pacman -S alsa-lib fontconfig wayland libx11 libxkbcommon dbus gtk3 pkgconf
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install alsa-lib-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-devel pkg-config
+sudo dnf install alsa-lib-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-devel gtk3-devel pkg-config
 ```
 
 **openSUSE:**
 
 ```bash
-sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-1-devel pkg-config
+sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel libxkbcommon-devel dbus-1-devel gtk3-devel pkg-config
 ```
 
 #### Steps

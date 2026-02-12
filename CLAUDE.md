@@ -74,25 +74,25 @@ crates/
 
 Rules-based heuristics engine (not ML despite the name) that:
 
-- Scores scenery packs (0-100) for smart sorting with 13 SceneryCategory variants
+- Scores scenery packs (0-100) for smart sorting with 16 SceneryCategory variants
 - Classifies aircraft by engine type and category using regex pattern matching
 - Supports manual priority overrides (sticky sort / pins)
 - Lower score = higher priority (inverted from category scores)
 
 ### x-adox-gui
 
-Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~10075 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
+Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~10335 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
 
 **Key landmarks in `main.rs`** (use these to navigate):
 
 - `enum Message` (~line 163) — all message variants, grouped by feature
-- `struct App` (~line 527) — all application state fields
-- `fn update()` (~line 1094) — message handling / business logic dispatch
-- `fn subscription()` (~line 4045) — event subscriptions (timers, keyboard)
-- `fn view()` (~line 4131) — top-level view routing by tab
-- `fn view_scenery()` (~line 6324) — scenery tab layout
-- `fn view_aircraft_tree()` (~line 7951) — aircraft tree with smart view
-- `fn view_addon_list()` (~line 7686) — reusable list for plugins/CSLs
+- `struct App` (~line 562) — all application state fields
+- `fn update()` (~line 1131) — message handling / business logic dispatch
+- `fn subscription()` (~line 4162) — event subscriptions (timers, keyboard)
+- `fn view()` (~line 4248) — top-level view routing by tab
+- `fn view_scenery()` (~line 6441) — scenery tab layout
+- `fn view_addon_list()` (~line 7877) — reusable list for plugins/CSLs
+- `fn view_aircraft_tree()` (~line 8142) — aircraft tree with smart view
 
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
