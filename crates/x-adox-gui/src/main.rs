@@ -2117,10 +2117,7 @@ impl App {
                 );
                 Task::perform(
                     async move { toggle_aircraft_variant(path, variant, enable) },
-                    |result| match result {
-                        Ok(_) => Message::Refresh,
-                        Err(e) => Message::AircraftToggled(Err(e)),
-                    },
+                    Message::AircraftToggled,
                 )
             }
             Message::ToggleAircraft(path, enable) => {
