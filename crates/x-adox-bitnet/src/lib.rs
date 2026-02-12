@@ -41,7 +41,7 @@ pub struct HeuristicsConfig {
 }
 
 /// When a user's file has a lower version, their `overrides` will be cleared on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 9;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
@@ -65,11 +65,20 @@ impl Default for HeuristicsConfig {
                 },
                 // --- Tier 3: High Priority Overlays (Cities, Landmarks) ---
                 Rule {
+                    name: "Named Airports".to_string(),
+                    keywords: vec![
+                        "charles de gaulle".to_string(),
+                        "cdg".to_string(),
+                        "roissy".to_string(),
+                    ],
+                    score: 10, // Must override Global Airports (13)
+                    is_exclusion: false,
+                },
+                Rule {
                     name: "City Enhancements".to_string(),
                     keywords: vec![
                         "riga".to_string(),
                         "london".to_string(),
-                        "paris".to_string(),
                         "berlin".to_string(),
                         "new york".to_string(),
                         "enhanced".to_string(),
@@ -111,7 +120,7 @@ impl Default for HeuristicsConfig {
                 Rule {
                     name: "Global Airports".to_string(),
                     keywords: vec!["global airports".to_string(), "global_airports".to_string()],
-                    score: 25, // Community standard: below SimHeaven, above Libraries
+                    score: 13, // High Priority: Above Landmarks (14) and SimHeaven (20)
                     is_exclusion: false,
                 },
                 // --- Tier 6: Generic Libraries & Fluff ---
@@ -286,7 +295,8 @@ impl BitNetModel {
             if config.schema_version < CURRENT_SCHEMA_VERSION {
                 log::info!(
                     "[BitNet] Migrating heuristics.json from schema v{} to v{}",
-                    config.schema_version, CURRENT_SCHEMA_VERSION
+                    config.schema_version,
+                    CURRENT_SCHEMA_VERSION
                 );
 
                 // v3→v4: Score alignment (SimHeaven/Global Airports swap).
@@ -296,6 +306,41 @@ impl BitNetModel {
                     let defaults = HeuristicsConfig::default();
                     config.rules = defaults.rules;
                     log::info!("[BitNet] v3→v4: Reset rules to defaults (score alignment)");
+                }
+
+                // v4→v5: Add LFPG keywords
+                if config.schema_version <= 4 {
+                    let defaults = HeuristicsConfig::default();
+                    config.rules = defaults.rules;
+                    log::info!("[BitNet] v4→v5: Reset rules to defaults (LFPG keywords)");
+                }
+
+                // v5→v6: Global Airports Priority (25 -> 13)
+                if config.schema_version <= 5 {
+                    let defaults = HeuristicsConfig::default();
+                    config.rules = defaults.rules;
+                    log::info!(
+                        "[BitNet] v5→v6: Reset rules to defaults (Global Airports Priority)"
+                    );
+                }
+
+                // v6→v7: Separate Named Airports (10) from City Enhancements (16)
+                if config.schema_version <= 6 {
+                    let defaults = HeuristicsConfig::default();
+                    config.rules = defaults.rules;
+                    log::info!("[BitNet] v6→v7: Reset rules to defaults (Named Airports Priority)");
+                }
+
+                // v7→v8: Remove city names from City Enhancements (prevents demotion of airports)
+                if config.schema_version <= 7 {
+                    let defaults = HeuristicsConfig::default();
+                    config.rules = defaults.rules;
+                    log::info!("[BitNet] v7→v8: Reset rules to defaults (Remove City Keywords)");
+                }
+
+                // v8→v9: Logic update only (overlays 24->12), no config/rule changes needed.
+                if config.schema_version <= 8 {
+                    log::info!("[BitNet] v8→v9: Logic updated (Airport Overlays 24->12)");
                 }
 
                 config.schema_version = CURRENT_SCHEMA_VERSION;
@@ -519,8 +564,7 @@ impl BitNetModel {
         // Uses rule NAME check (not score value) so it works with any config version.
         if is_airport && !name_lower.contains("overlay") {
             if let Some(s) = score {
-                let is_global_airports =
-                    matched_rule_name.as_deref() == Some("Global Airports");
+                let is_global_airports = matched_rule_name.as_deref() == Some("Global Airports");
                 if s > 14 && s < 50 && !is_global_airports {
                     score = Some(10);
                     matched_rule_name = Some("Airports".to_string());
@@ -540,8 +584,9 @@ impl BitNetModel {
             (10, "Airports".to_string())
         } else if name_lower.contains("overlay") || name_lower.contains("static") {
             // Generic Overlay detection (matched names like "KTUL Overlay" or "Static Objects")
-            // Score 24: just above Global Airports (25) so overlays render correctly
-            (24, "Airport Overlays".to_string())
+            // Score 12: High Priority Overlay - MUST be above Global Airports (13)
+            // for exclusions to work (e.g. FlyTampa)
+            (12, "Airport Overlays".to_string())
         } else if name_lower.starts_with('z') || name_lower.starts_with('y') {
             (50, "Y/Z Prefix Scenery".to_string())
         } else if context.has_tiles && !context.has_airports {

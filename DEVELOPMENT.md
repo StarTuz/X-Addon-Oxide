@@ -81,6 +81,24 @@ Rules-based heuristics engine that:
 - Classifies aircraft by engine type and category
 - Supports manual priority overrides (sticky sort)
 
+#### BitNet Sorting Rules (Critical)
+
+The sorting hierarchy is strictly defined to prevent scenery conflicts. Future changes **MUST** output this order:
+
+| Priority | Category | Score | Notes |
+| :--- | :--- | :--- | :--- |
+| **Top** | **Custom Airports** | **10** | Includes `Named Airports` (e.g., "Charles De Gaulle") |
+| | **Airport Overlays** | **12** | e.g., FlyTampa Overlays (Must be above Global) |
+| | **Global Airports** | **13** | **CRITICAL ANCHOR**: Must be above SimHeaven |
+| | **Landmarks** | **14** | Official X-Plane Landmarks |
+| | **City Enhancements** | **16** | Generic enhancements (Riga, London, etc.) |
+| | **SimHeaven / X-World** | **20** | **MUST BE BELOW GLOBAL AIRPORTS** to avoid exclusion zones hiding terminals |
+| | **Libraries** | **40** | |
+| | **Ortho/Photo** | **50+** | |
+| **Bottom** | **Mesh** | **60+** | |
+
+**Regression Testing**: Always run `cargo test -p x-adox-bitnet --test ordering_guardrails` when modifying these rules.
+
 ### x-adox-gui
 
 Iced framework with Elm-like message-driven architecture:

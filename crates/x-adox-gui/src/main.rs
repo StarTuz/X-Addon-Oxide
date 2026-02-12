@@ -2499,7 +2499,7 @@ impl App {
                 if let Some(ref mut packs_arc) = self.simulated_packs {
                     let packs = Arc::make_mut(packs_arc);
                     match issue_type.as_str() {
-                        "simheaven_below_global" => {
+                        "simheaven_above_global" => {
                             // NOTE: This AutoFix has been disabled because it conflicts with custom sort rules.
                             // If the user has customized the SimHeaven score to be lower (higher priority),
                             // they WANT SimHeaven above Global Airports. The Smart Sort already handles
@@ -4762,7 +4762,7 @@ impl App {
                                 {
                                     let base_msg = match issue_type {
                                         "shadowed_mesh" => "Redundant Mesh Scenery Detected",
-                                        "simheaven_below_global" => "simHeaven Layers Misplaced",
+                                        "simheaven_above_global" => "simHeaven Layers Misplaced",
                                         "mesh_above_overlay" => "Mesh/Overlay Layering Issues",
                                         _ => first.message.as_str(),
                                     };

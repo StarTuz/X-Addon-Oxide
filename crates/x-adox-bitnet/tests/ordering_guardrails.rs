@@ -23,22 +23,27 @@ fn test_critical_scenery_ordering_pairs() {
             "Global Airports",
             "Custom Airports must be above Global Airports",
         ),
+        (
+            "Charles De Gaulle",
+            "Global Airports",
+            "Named Airports (LFPG) must be above Global Airports",
+        ),
         // CRITICAL: X-Plane's official landmarks must be ABOVE Global Airports
         // These are enhancement packs that should override default airport scenery
         (
+            "Global Airports",
             "X-Plane Landmarks - London",
-            "Global Airports",
-            "X-Plane Landmarks must be above Global Airports (official enhancement packs)",
+            "Global Airports must be above X-Plane Landmarks (prevents exclusion of terminals)",
         ),
         (
+            "Global Airports",
             "X-Plane Landmarks - New York",
-            "Global Airports",
-            "X-Plane Landmarks must be above Global Airports",
+            "Global Airports must be above X-Plane Landmarks",
         ),
         (
-            "simHeaven_X-World_Europe",
             "Global Airports",
-            "SimHeaven must be above Global Airports (community standard)",
+            "simHeaven_X-World_Europe",
+            "Global Airports must be above SimHeaven (official docs)",
         ),
         (
             "simHeaven_X-World_America",
@@ -56,9 +61,9 @@ fn test_critical_scenery_ordering_pairs() {
             "Ortho must be above Mesh",
         ),
         (
-            "simHeaven_Vegetation_Library",
             "Global Airports",
-            "Vegetation Libraries must be above Global Airports (community standard)",
+            "simHeaven_Vegetation_Library",
+            "Global Airports must be above Vegetation Libraries (SimHeaven docs)",
         ),
         // Orbx & Global Forests Checks
         (
@@ -339,15 +344,23 @@ fn test_global_airports_guard_uses_rule_name_not_score() {
     let mut model = BitNetModel::new().unwrap();
     model.update_config(HeuristicsConfig::default());
 
-    let (ga_score, ga_rule) =
-        model.predict_with_rule_name("Global Airports", dummy_path, &context);
-    assert_eq!(ga_score, 25, "Global Airports must keep its score (25)");
-    assert_eq!(ga_rule, "Global Airports", "Rule name must be 'Global Airports'");
+    let (ga_score, ga_rule) = model.predict_with_rule_name("Global Airports", dummy_path, &context);
+    assert_eq!(ga_score, 13, "Global Airports must keep its score (13)");
+    assert_eq!(
+        ga_rule, "Global Airports",
+        "Rule name must be 'Global Airports'"
+    );
 
     let (egll_score, egll_rule) =
         model.predict_with_rule_name("EGLL_LONDON_TAIMODELS", dummy_path, &context);
-    assert_eq!(egll_score, 10, "EGLL must be promoted to airport priority (10)");
-    assert_eq!(egll_rule, "Airports", "EGLL must be overridden to 'Airports'");
+    assert_eq!(
+        egll_score, 10,
+        "EGLL must be promoted to airport priority (10)"
+    );
+    assert_eq!(
+        egll_rule, "Airports",
+        "EGLL must be overridden to 'Airports'"
+    );
 
     // Test with SIMULATED OLD config (Global Airports=20, City Enhancements=25)
     let mut old_config = HeuristicsConfig::default();
@@ -360,13 +373,21 @@ fn test_global_airports_guard_uses_rule_name_not_score() {
     }
     model.update_config(old_config);
 
-    let (ga_score, ga_rule) =
-        model.predict_with_rule_name("Global Airports", dummy_path, &context);
+    let (ga_score, ga_rule) = model.predict_with_rule_name("Global Airports", dummy_path, &context);
     assert_eq!(ga_score, 20, "Global Airports must keep its old score (20)");
-    assert_eq!(ga_rule, "Global Airports", "Rule name must remain 'Global Airports'");
+    assert_eq!(
+        ga_rule, "Global Airports",
+        "Rule name must remain 'Global Airports'"
+    );
 
     let (egll_score, egll_rule) =
         model.predict_with_rule_name("EGLL_LONDON_TAIMODELS", dummy_path, &context);
-    assert_eq!(egll_score, 10, "EGLL must still be promoted even with old config");
-    assert_eq!(egll_rule, "Airports", "EGLL must be overridden to 'Airports'");
+    assert_eq!(
+        egll_score, 10,
+        "EGLL must still be promoted even with old config"
+    );
+    assert_eq!(
+        egll_rule, "Airports",
+        "EGLL must be overridden to 'Airports'"
+    );
 }

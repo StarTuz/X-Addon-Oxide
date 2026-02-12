@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub struct ValidationIssue {
     pub pack_name: String,
     pub severity: ValidationSeverity,
-    pub issue_type: String, // e.g., "simheaven_below_global"
+    pub issue_type: String, // e.g., "simheaven_above_global"
     pub message: String,
     pub fix_suggestion: String,
     pub details: String, // Detailed explanation for tooltips
@@ -112,17 +112,17 @@ impl SceneryValidator {
 
         if let Some(ga_idx) = global_airport_idx {
             for &sh_idx in &simheaven_indices {
-                // Community standard: SimHeaven must be ABOVE Global Airports
-                // (lower index = higher priority = above in the INI).
-                // Flag when SimHeaven is BELOW (higher index than) Global Airports.
-                if sh_idx > ga_idx {
+                // Community standard: SimHeaven must be BELOW Global Airports
+                // (Global Airports = Score 13, SimHeaven = Score 20)
+                // Flag when SimHeaven is ABOVE (lower index than) Global Airports.
+                if sh_idx < ga_idx {
                     report.issues.push(ValidationIssue {
                         pack_name: packs[sh_idx].name.clone(),
                         severity: ValidationSeverity::Critical,
-                        issue_type: "simheaven_below_global".to_string(),
-                        message: "simHeaven layer is below Global Airports".to_string(),
-                        fix_suggestion: "Move simHeaven layers above Global Airports for correct layering.".to_string(),
-                        details: "The X-Plane community standard places simHeaven/X-World packages above Global Airports so that regional VFR scenery and vegetation layers render correctly over the default terrain.".to_string(),
+                        issue_type: "simheaven_above_global".to_string(),
+                        message: "simHeaven layer is above Global Airports".to_string(),
+                        fix_suggestion: "Move simHeaven layers below Global Airports for correct layering.".to_string(),
+                        details: "The X-Plane community standard places simHeaven/X-World packages below Global Airports so that they do not hide default airport terminals.".to_string(),
                     });
                 }
             }
@@ -137,10 +137,7 @@ impl SceneryValidator {
         let is_mesh_category = |cat: &SceneryCategory| -> bool {
             // SpecificMesh (airport companion packs) are excluded — they are
             // airport-adjacent and should not be treated as bottom-of-list terrain.
-            matches!(
-                cat,
-                SceneryCategory::Mesh | SceneryCategory::OrthoBase
-            )
+            matches!(cat, SceneryCategory::Mesh | SceneryCategory::OrthoBase)
         };
 
         let is_position_sensitive = |cat: &SceneryCategory| -> bool {
