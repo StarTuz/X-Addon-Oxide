@@ -173,6 +173,12 @@ enum Message {
     ToggleSceneryGroup(String),
     SetSceneryGroupEnabled(String, bool),
     SetSceneryGroupInBucket(String, bool),
+    AddSceneryTag(String, String),    // pack_name, tag
+    RemoveSceneryTag(String, String), // pack_name, tag
+    UpdateSceneryTagInput(String),
+    OpenTagInput(Option<String>),     // pack_name
+    TagAdded,
+    TagRemoved,
 
     // Aircraft & Plugins
     AircraftLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
@@ -669,6 +675,7 @@ struct App {
 
     // Phase 3
     new_tag_input: String,
+    scenery_tag_focus: Option<String>, // name of pack with open tag input
 
     // Launch X-Plane
     launch_args: String,
@@ -859,6 +866,7 @@ impl App {
 
             // Phase 3
             new_tag_input: String::new(),
+            scenery_tag_focus: None,
             validation_report: None,
 
             // Utilities
@@ -2249,6 +2257,67 @@ impl App {
                     self.packs.iter().position(|p| &p.name == name).unwrap_or(usize::MAX)
                 });
                 self.scenery_bucket = result_bucket;
+                Task::none()
+            }
+            Message::AddSceneryTag(pack_name, tag) => {
+                if tag.is_empty() {
+                    return Task::none();
+                }
+                let root = self.xplane_root.clone();
+                Task::perform(
+                    async move {
+                        if let Some(xp_root) = root {
+                            let xpm = x_adox_core::XPlaneManager::new(&xp_root).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                            let mut manager = x_adox_core::scenery::SceneryManager::new(xpm.get_scenery_packs_path());
+                            let _ = manager.load(); // Ensure packs are loaded
+                            manager.add_tag(&pack_name, &tag)
+                        } else {
+                            Err(anyhow::anyhow!("No X-Plane root selected"))
+                        }
+                    },
+                    |res| match res {
+                        Ok(_) => Message::TagAdded,
+                        Err(e) => {
+                            log::error!("Failed to add tag: {}", e);
+                            Message::Refresh
+                        }
+                    },
+                )
+            }
+            Message::RemoveSceneryTag(pack_name, tag) => {
+                let root = self.xplane_root.clone();
+                Task::perform(
+                    async move {
+                        if let Some(xp_root) = root {
+                            let xpm = x_adox_core::XPlaneManager::new(&xp_root).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                            let mut manager = x_adox_core::scenery::SceneryManager::new(xpm.get_scenery_packs_path());
+                            let _ = manager.load();
+                            manager.remove_tag(&pack_name, &tag)
+                        } else {
+                            Err(anyhow::anyhow!("No X-Plane root selected"))
+                        }
+                    },
+                    |res| match res {
+                        Ok(_) => Message::TagRemoved,
+                        Err(e) => {
+                            log::error!("Failed to remove tag: {}", e);
+                            Message::Refresh
+                        }
+                    },
+                )
+            }
+            Message::TagAdded | Message::TagRemoved => {
+                self.scenery_tag_focus = None;
+                self.new_tag_input = String::new();
+                Task::done(Message::Refresh)
+            }
+            Message::UpdateSceneryTagInput(val) => {
+                self.new_tag_input = val;
+                Task::none()
+            }
+            Message::OpenTagInput(pack_name) => {
+                self.scenery_tag_focus = pack_name;
+                self.new_tag_input = String::new();
                 Task::none()
             }
             Message::PackToggled(result) => {
@@ -3787,8 +3856,7 @@ impl App {
                             }
                         }
                         self.scenery_last_bucket_index = Some(current_idx);
-                    } else if let Some(current_idx) = self.packs.iter().position(|p| p.name == name)
-                    {
+                    } else if let Some(current_idx) = self.packs.iter().position(|p| p.name == name) {
                         // Fallback to single if no last index
                         if let Some(pos) = self.scenery_bucket.iter().position(|n| n == &name) {
                             self.scenery_bucket.remove(pos);
@@ -6403,6 +6471,8 @@ impl App {
         let scenery_view_mode = self.scenery_view_mode;
         let scenery_groups_expanded = self.scenery_groups_expanded.clone();
         let bucket = self.scenery_bucket.clone();
+        let tag_focus = self.scenery_tag_focus.clone();
+        let tag_input = self.new_tag_input.clone();
 
         // Grouping logic (Pre-calculated for lazy widget)
         let mut scenery_groups: std::collections::BTreeMap<String, Vec<(usize, SceneryPack)>> = std::collections::BTreeMap::new();
@@ -6424,12 +6494,12 @@ impl App {
         let scenery_groups = std::sync::Arc::new(scenery_groups);
 
         let list_container = scrollable(lazy(
-            ((packs, selected, overrides, drag_id, hover_id), (current_search_match, bucket, scenery_view_mode, scenery_groups_expanded, scenery_groups)),
+            ((packs, selected, overrides, drag_id, hover_id), (current_search_match, bucket, scenery_view_mode, scenery_groups_expanded, scenery_groups, tag_focus, tag_input)),
             move |dep: &(
                 (Arc<Vec<SceneryPack>>, Option<String>, std::collections::BTreeMap<String, u8>, Option<usize>, Option<usize>),
-                (Option<usize>, Vec<String>, SceneryViewMode, std::collections::BTreeSet<String>, Arc<std::collections::BTreeMap<String, Vec<(usize, SceneryPack)>>>)
+                (Option<usize>, Vec<String>, SceneryViewMode, std::collections::BTreeSet<String>, Arc<std::collections::BTreeMap<String, Vec<(usize, SceneryPack)>>>, Option<String>, String)
             )| {
-                let ((packs, selected, overrides, drag_id, hover_id), (current_search_match, bucket, scenery_view_mode, scenery_groups_expanded, scenery_groups)) = dep;
+                let ((packs, selected, overrides, drag_id, hover_id), (current_search_match, bucket, scenery_view_mode, scenery_groups_expanded, scenery_groups, tag_focus, tag_input)) = dep;
                 let mut items = Vec::new();
 
                 if *scenery_view_mode != SceneryViewMode::Flat {
@@ -6461,6 +6531,8 @@ impl App {
                                     is_search_match,
                                     is_in_bucket,
                                     !bucket.is_empty(),
+                                    tag_focus.clone(),
+                                    tag_input.clone(),
                                     icons.clone(),
                                 )).padding(iced::Padding { left: 20.0, ..iced::Padding::default() }).into());
                             }
@@ -6486,6 +6558,8 @@ impl App {
                             is_search_match,
                             is_in_bucket,
                             !bucket.is_empty(),
+                            tag_focus.clone(),
+                            tag_input.clone(),
                             icons.clone(),
                         ));
                     }
@@ -7466,6 +7540,8 @@ impl App {
         is_search_match: bool,
         is_in_bucket: bool,
         can_paste_mode: bool,
+        tag_focus: Option<String>,
+        tag_input: String,
         icons: (
             iced::widget::svg::Handle,
             iced::widget::svg::Handle,
@@ -7544,24 +7620,59 @@ impl App {
                 ..Default::default()
             });
 
-        let tags_row = row(pack
+        let mut tags_items: Vec<Element<'static, Message>> = pack
             .tags
             .iter()
             .map(|t| {
-                container(text(t.clone()).size(9).color(Color::WHITE))
-                    .padding([2, 5])
-                    .style(|_| container::Style {
-                        background: Some(iced::Background::Color(Color::from_rgb(0.4, 0.4, 0.4))),
-                        border: iced::Border {
-                            radius: 3.0.into(),
-                            ..Default::default()
-                        },
+                let tag_name = t.clone();
+                let pack_name = pack.name.clone();
+                container(
+                    row![
+                        text(t.clone()).size(9).color(Color::WHITE),
+                        button(text("x").size(8).color(Color::from_rgb(0.8, 0.8, 0.8)))
+                            .on_press(Message::RemoveSceneryTag(pack_name, tag_name))
+                            .style(style::button_ghost)
+                            .padding(2)
+                    ]
+                    .align_y(iced::Alignment::Center)
+                    .spacing(2)
+                )
+                .padding([2, 5])
+                .style(|_| container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgb(0.3, 0.3, 0.3))),
+                    border: iced::Border {
+                        radius: 3.0.into(),
                         ..Default::default()
-                    })
-                    .into()
+                    },
+                    ..Default::default()
+                })
+                .into()
             })
-            .collect::<Vec<Element<'static, Message>>>())
-        .spacing(4);
+            .collect();
+
+        if tag_focus.as_ref() == Some(&pack.name) {
+            let pack_name = pack.name.clone();
+            tags_items.push(
+                text_input("New tag...", &tag_input)
+                    .on_input(Message::UpdateSceneryTagInput)
+                    .on_submit(Message::AddSceneryTag(pack_name, tag_input))
+                    .size(10)
+                    .padding(2)
+                    .width(Length::Fixed(80.0))
+                    .into()
+            );
+        } else {
+            let pack_name = pack.name.clone();
+            tags_items.push(
+                button(text("+").size(10).color(Color::from_rgb(0.7, 0.7, 0.7)))
+                    .on_press(Message::OpenTagInput(Some(pack_name)))
+                    .style(style::button_ghost)
+                    .padding(2)
+                    .into()
+            );
+        }
+
+        let tags_row = row(tags_items).spacing(4).align_y(iced::Alignment::Center);
 
         let pin_btn = if is_heroic {
             button(
