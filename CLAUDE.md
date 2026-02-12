@@ -84,6 +84,7 @@ Rules-based heuristics engine (not ML despite the name) that:
 Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~10075 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
 
 **Key landmarks in `main.rs`** (use these to navigate):
+
 - `enum Message` (~line 163) — all message variants, grouped by feature
 - `struct App` (~line 527) — all application state fields
 - `fn update()` (~line 1094) — message handling / business logic dispatch
@@ -101,6 +102,15 @@ Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct h
   - The `save_scenery_packs` helper does a "dumb write" of exact GUI state, bypassing the SceneryManager load/merge cycle for responsiveness
   - Visuals: Grip handles, drop gaps, ghost overlay, auto-scroll (`AbsoluteOffset`)
   - State managed via `DragContext` struct in `main.rs`
+- **Scenery Tagging & Grouping**:
+  - `SceneryViewMode` (Flat, Region, Tags) controls grouping in `view_scenery`.
+  - Tags are interactive: `+` button for adding, `x` for removal.
+  - State: `scenery_tag_focus` (active input), `new_tag_input` (text buffer).
+  - Persistence: Managed via `groups.rs` and saved to `scenery_groups.json`.
+- **Aircraft Variants**:
+  - `AircraftNode` holds `variants: Vec<AcfVariant>`.
+  - Variants are rendered as indented children in the tree.
+  - Toggling renamed `.acf` files; expansion state preserved via `aircraft_expanded_paths` snapshots.
 - **Stateful Bulk Toggle**:
   - Detection: View cross-references `selected_basket_items` with `App.packs` to count enabled/disabled items.
   - States: **Disable Selected** (all enabled, ACCENT_RED), **Enable Selected** (all disabled, ACCENT_BLUE), **Toggle Selected** (mixed, ACCENT_PURPLE).
