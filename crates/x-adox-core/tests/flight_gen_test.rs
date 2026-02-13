@@ -173,6 +173,50 @@ mod tests {
     }
 
     #[test]
+    fn test_heavy_aircraft_avoids_helipads() {
+        // Tagless aircraft defaults to 500m/Soft, which allows HELIPADS if not filtered by type!
+        let aircraft = vec![make_test_aircraft("Caravelle", vec![])]; // No tags
+
+        let packs = vec![SceneryPack {
+            path: PathBuf::from("Custom Scenery/TestPack"),
+            name: "TestPack".to_string(),
+            airports: vec![
+                // Invalid Heliport - Should be ignored for Jet
+                Airport {
+                    id: "HOSP".to_string(),
+                    name: "General Hospital".to_string(),
+                    airport_type: AirportType::Heliport,
+                    lat: Some(51.5),
+                    lon: Some(-0.12),
+                    proj_x: None,
+                    proj_y: None,
+                    max_runway_length: None,               // Tiny
+                    surface_type: Some(SurfaceType::Hard), // Concrete pad
+                },
+            ],
+            region: None,
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+        }];
+
+        // Manager wrapper not needed for direct call, just pass packs
+
+        // 1. Explicitly ask for any airport with Caravelle
+        // Should NOT pick HOSP
+        for _ in 0..10 {
+            let plan = generate_flight(&packs, &aircraft, "Flight using Caravelle");
+            assert!(
+                plan.is_err(),
+                "Caravelle (tagless) should NOT find HOSP heliport (Fixed)"
+            );
+        }
+    }
+
+    #[test]
     fn test_export_xml() {
         let plan = x_adox_core::flight_gen::FlightPlan {
             origin: make_test_airport(
@@ -837,5 +881,54 @@ mod tests {
         let p = plan.unwrap();
         assert_eq!(p.origin.id, "KLAX");
         assert_eq!(p.destination.id, "EGLL");
+    }
+    #[test]
+    fn test_unknown_runway_length_filtering() {
+        let packs = vec![SceneryPack {
+            path: PathBuf::from("Custom Scenery/TestPack"),
+            name: "TestPack".to_string(),
+            airports: vec![
+                Airport {
+                    id: "UNKN".to_string(),
+                    name: "Unknown Runway Strip".to_string(),
+                    airport_type: AirportType::Land,
+                    lat: Some(51.5),
+                    lon: Some(-0.12),
+                    proj_x: None,
+                    proj_y: None,
+                    max_runway_length: None, // Missing length
+                    surface_type: Some(SurfaceType::Soft),
+                },
+                make_test_airport("EGLL", "Heathrow", 52.5, -0.45, 12000, SurfaceType::Hard),
+            ],
+            region: None,
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+        }];
+
+        // 1. Small aircraft SHOULD find the unknown strip (since it's not a heliport)
+        let ga_aircraft = vec![make_test_aircraft("Cessna 172", vec!["GA", "Prop"])];
+        let mut found_unkn = false;
+        for _ in 0..20 {
+            let plan = generate_flight(&packs, &ga_aircraft, "Flight from UNKN to any");
+            if let Ok(p) = plan {
+                if p.origin.id == "UNKN" {
+                    found_unkn = true;
+                    break;
+                }
+            }
+        }
+        assert!(found_unkn, "GA aircraft should be able to pick UNKN");
+
+        // 2. Heavy aircraft SHOULD NOT find the unknown strip
+        let heavy_aircraft = vec![make_test_aircraft("B747", vec!["Heavy", "Jet"])];
+        for _ in 0..10 {
+            let plan = generate_flight(&packs, &heavy_aircraft, "Flight from UNKN to any");
+            assert!(plan.is_err(), "Heavy aircraft should reject unknown length");
+        }
     }
 }

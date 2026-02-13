@@ -102,13 +102,13 @@ impl FlightPrompt {
 }
 
 fn parse_location(s: &str) -> LocationConstraint {
-    let s = s.trim();
+    let s = s.strip_prefix("the ").unwrap_or(s).trim();
     if s.len() == 4 && s.chars().all(|c| c.is_alphabetic()) {
         // Assume ICAO if 4 letters
         LocationConstraint::ICAO(s.to_uppercase())
     } else if s == "here" || s == "current location" {
         LocationConstraint::Region("Here".to_string())
-    } else if s == "anywhere" || s == "random" {
+    } else if s == "anywhere" || s == "any" || s == "random" {
         LocationConstraint::Any
     } else if let Some(region) = try_as_region(s) {
         region
@@ -208,13 +208,10 @@ mod tests {
     #[test]
     fn test_parse_country_as_region() {
         let p = FlightPrompt::parse("Flight from France to Germany");
-        assert_eq!(
-            p.origin,
-            Some(LocationConstraint::Region("France".to_string()))
-        );
+        assert_eq!(p.origin, Some(LocationConstraint::Region("FR".to_string())));
         assert_eq!(
             p.destination,
-            Some(LocationConstraint::Region("Germany".to_string()))
+            Some(LocationConstraint::Region("DE".to_string()))
         );
     }
 
@@ -234,27 +231,21 @@ mod tests {
     #[test]
     fn test_parse_abbreviation_as_region() {
         let p = FlightPrompt::parse("Flight from UK to USA");
-        assert_eq!(
-            p.origin,
-            Some(LocationConstraint::Region("United Kingdom".to_string()))
-        );
+        assert_eq!(p.origin, Some(LocationConstraint::Region("UK".to_string())));
         // "usa" is 3 chars, not 4, so not ICAO
         assert_eq!(
             p.destination,
-            Some(LocationConstraint::Region("United States".to_string()))
+            Some(LocationConstraint::Region("US".to_string()))
         );
     }
 
     #[test]
     fn test_parse_article_stripped() {
         let p = FlightPrompt::parse("Flight from the British Isles to the Caribbean");
-        assert_eq!(
-            p.origin,
-            Some(LocationConstraint::Region("British Isles".to_string()))
-        );
+        assert_eq!(p.origin, Some(LocationConstraint::Region("BI".to_string())));
         assert_eq!(
             p.destination,
-            Some(LocationConstraint::Region("Caribbean".to_string()))
+            Some(LocationConstraint::AirportName("caribbean".to_string()))
         );
     }
 

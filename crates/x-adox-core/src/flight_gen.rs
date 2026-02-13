@@ -1,4 +1,4 @@
-use crate::apt_dat::{Airport, SurfaceType};
+use crate::apt_dat::{Airport, AirportType, SurfaceType};
 use crate::discovery::{AddonType, DiscoveredAddon};
 use rand::seq::SliceRandom;
 use x_adox_bitnet::flight_prompt::{AircraftConstraint, FlightPrompt, LocationConstraint};
@@ -68,10 +68,8 @@ pub fn generate_flight(
                 if let Some(AircraftConstraint::Tag(ref tag)) = prompt.aircraft {
                     // Fuzzy tag match
                     let tag_lower = tag.to_lowercase();
-                    let matches = a.tags.iter().any(|t| t.to_lowercase().contains(&tag_lower))
-                        || a.name.to_lowercase().contains(&tag_lower);
-                    if !matches {}
-                    matches
+                    a.tags.iter().any(|t| t.to_lowercase().contains(&tag_lower))
+                        || a.name.to_lowercase().contains(&tag_lower)
                 } else {
                     true
                 }
@@ -112,103 +110,206 @@ pub fn generate_flight(
         .collect();
 
     // Refined Origin Selection (Group by Pack for Region check)
-    let candidate_origins: Vec<&Airport> = if let Some(LocationConstraint::Region(ref region_id)) =
-        prompt.origin
-    {
-        // Look up region object
-        let region_obj = region_index.get_by_id(region_id);
+    let candidate_origins: Vec<&Airport> = match prompt.origin {
+        Some(LocationConstraint::Region(ref region_id)) => {
+            // Look up region object
+            let region_obj = region_index.get_by_id(region_id);
 
-        packs
-            .iter()
-            .filter(|p| pack_matches_region(p, region_id, &region_index))
-            .flat_map(|p| p.airports.iter())
-            .filter(|apt| {
-                // If we have region bounds, filter individual airports by coordinates
-                if let Some(r) = region_obj {
-                    if let (Some(lat), Some(lon)) = (apt.lat, apt.lon) {
-                        if !r.contains(lat, lon) {
-                            return false;
+            packs
+                .iter()
+                .filter(|p| pack_matches_region(p, region_id, &region_index))
+                .flat_map(|p| p.airports.iter())
+                .filter(|apt| {
+                    // If we have region bounds, filter individual airports by coordinates
+                    if let Some(r) = region_obj {
+                        if let (Some(lat), Some(lon)) = (apt.lat, apt.lon) {
+                            if !r.contains(lat, lon) {
+                                return false;
+                            }
                         }
                     }
-                }
-                // Guardrails
-                if !prompt.ignore_guardrails {
-                    if let Some(surf) = apt.surface_type {
-                        if req_surface == SurfaceType::Water && surf != SurfaceType::Water {
-                            return false;
-                        }
-                        if req_surface == SurfaceType::Hard && surf != SurfaceType::Hard {
-                            return false;
-                        }
-                    }
-                    if let Some(len) = apt.max_runway_length {
-                        if (len as u32) < min_rwy {
-                            return false;
-                        }
-                    }
-                }
-                apt.lat.is_some() && apt.lon.is_some()
-            })
-            .collect()
-    } else if let Some(LocationConstraint::AirportName(ref name)) = prompt.origin {
-        let name_lower = name.to_lowercase();
-        // Match Pack Region OR Pack Name OR Airport Name OR Airport ID
-        // Scoring System:
-        // 100 = Exact ID Match
-        // 90 = Exact Name Match
-        // 80 = Starts With Name
-        // 60 = Contains Name
-        // 50 = Token Match (All words present in Airport Name OR Pack Name/Region)
-        // 40 = Region Match
-        // 0 = No Match
-        let mut candidates: Vec<(&Airport, u8)> = packs
-            .iter()
-            .flat_map(|p| {
-                let pack_region = p.get_region().to_lowercase();
-                let pack_name = p.name.to_lowercase();
-                let pack_matches =
-                    pack_region.contains(&name_lower) || pack_name.contains(&name_lower);
-                let base_score = if pack_matches { 40 } else { 0 };
-                p.airports
-                    .iter()
-                    .map(move |a| (a, base_score, pack_name.clone(), pack_region.clone()))
-            })
-            .map(|(a, base_score, p_name, p_region)| {
-                let a_name = a.name.to_lowercase();
-                let a_id = a.id.to_lowercase();
+                    // Guardrails
+                    if !prompt.ignore_guardrails {
+                        let is_heli = is_heli(&selected_aircraft);
+                        let is_seaplane = is_seaplane(&selected_aircraft);
 
-                let score = if a_id == name_lower {
-                    100
-                } else if a_name == name_lower {
-                    90
-                } else if a_name.starts_with(&name_lower) {
-                    80
-                } else if a_name.contains(&name_lower) {
-                    60
-                } else if name_lower.contains("british isles") && is_british_isles_region(&p_region)
-                {
-                    50
-                } else {
-                    // Token match check
-                    let tokens: Vec<&str> = name_lower.split_whitespace().collect();
-                    if !tokens.is_empty()
-                        && tokens.iter().all(|t| {
-                            a_name.contains(t)
-                                || p_contains_token(t, &p_name)
-                                || p_contains_token(t, &p_region)
-                        })
+                        match apt.airport_type {
+                            AirportType::Heliport => {
+                                if !is_heli {
+                                    return false;
+                                }
+                            }
+                            AirportType::Seaplane => {
+                                if !is_seaplane {
+                                    return false;
+                                }
+                            }
+                            AirportType::Land => {
+                                if is_seaplane && apt.surface_type != Some(SurfaceType::Water) {
+                                    return false;
+                                }
+                            }
+                        }
+
+                        if let Some(surf) = apt.surface_type {
+                            if req_surface == SurfaceType::Water && surf != SurfaceType::Water {
+                                return false;
+                            }
+                            if req_surface == SurfaceType::Hard && surf != SurfaceType::Hard {
+                                return false;
+                            }
+                        }
+
+                        if let Some(len) = apt.max_runway_length {
+                            if (len as u32) < min_rwy {
+                                return false;
+                            }
+                        } else if min_rwy > 500 {
+                            return false;
+                        }
+                    }
+                    apt.lat.is_some() && apt.lon.is_some()
+                })
+                .collect()
+        }
+        Some(LocationConstraint::AirportName(ref name)) => {
+            let name_lower = name.to_lowercase();
+            let mut candidates: Vec<(&Airport, u8)> = packs
+                .iter()
+                .flat_map(|p| {
+                    let pack_region = p.get_region().to_lowercase();
+                    let pack_name = p.name.to_lowercase();
+                    let pack_matches =
+                        pack_region.contains(&name_lower) || pack_name.contains(&name_lower);
+                    let base_score = if pack_matches { 40 } else { 0 };
+                    p.airports
+                        .iter()
+                        .map(move |a| (a, base_score, pack_name.clone(), pack_region.clone()))
+                })
+                .map(|(a, base_score, p_name, p_region)| {
+                    let a_name = a.name.to_lowercase();
+                    let a_id = a.id.to_lowercase();
+
+                    let score = if a_id == name_lower {
+                        100
+                    } else if a_name == name_lower {
+                        90
+                    } else if a_name.starts_with(&name_lower) {
+                        80
+                    } else if a_name.contains(&name_lower) {
+                        60
+                    } else if name_lower.contains("british isles")
+                        && is_british_isles_region(&p_region)
                     {
                         50
                     } else {
-                        base_score
+                        // Token match check
+                        let tokens: Vec<&str> = name_lower.split_whitespace().collect();
+                        if !tokens.is_empty()
+                            && tokens.iter().all(|t| {
+                                a_name.contains(t)
+                                    || p_contains_token(t, &p_name)
+                                    || p_contains_token(t, &p_region)
+                            })
+                        {
+                            50
+                        } else {
+                            base_score
+                        }
+                    };
+                    (a, score)
+                })
+                .filter(|(a, score)| {
+                    *score > 0 && {
+                        // Guardrails
+                        if !prompt.ignore_guardrails {
+                            let is_heli = is_heli(&selected_aircraft);
+                            let is_seaplane = is_seaplane(&selected_aircraft);
+
+                            match a.airport_type {
+                                AirportType::Heliport => {
+                                    if !is_heli {
+                                        return false;
+                                    }
+                                }
+                                AirportType::Seaplane => {
+                                    if !is_seaplane {
+                                        return false;
+                                    }
+                                }
+                                AirportType::Land => {
+                                    if is_seaplane && a.surface_type != Some(SurfaceType::Water) {
+                                        return false;
+                                    }
+                                }
+                            }
+
+                            if let Some(surf) = a.surface_type {
+                                if req_surface == SurfaceType::Water && surf != SurfaceType::Water {
+                                    return false;
+                                }
+                                if req_surface == SurfaceType::Hard && surf != SurfaceType::Hard {
+                                    return false;
+                                }
+                            }
+                            if let Some(len) = a.max_runway_length {
+                                if (len as u32) < min_rwy {
+                                    return false;
+                                }
+                            } else if min_rwy > 500 {
+                                return false;
+                            }
+                            a.lat.is_some() && a.lon.is_some()
+                        } else {
+                            a.lat.is_some() && a.lon.is_some()
+                        }
                     }
-                };
-                (a, score)
-            })
-            .filter(|(a, score)| {
-                *score > 0 && {
-                    // Guardrails
+                })
+                .collect();
+
+            // Sort by score descending
+            candidates.sort_by(|a, b| b.1.cmp(&a.1));
+
+            // Tiered Selection
+            let top_count = (candidates.len() / 4).max(5).min(candidates.len());
+            if let Some(first) = candidates.first() {
+                let max_score = first.1;
+                candidates
+                    .into_iter()
+                    .take_while(|(_, score)| *score == max_score)
+                    .map(|(a, _)| a)
+                    .take(top_count)
+                    .collect()
+            } else {
+                vec![]
+            }
+        }
+        Some(LocationConstraint::ICAO(ref code)) => all_airports
+            .iter()
+            .filter(|a| {
+                if a.id.eq_ignore_ascii_case(code) {
                     if !prompt.ignore_guardrails {
+                        let is_heli = is_heli(&selected_aircraft);
+                        let is_seaplane = is_seaplane(&selected_aircraft);
+
+                        match a.airport_type {
+                            AirportType::Heliport => {
+                                if !is_heli {
+                                    return false;
+                                }
+                            }
+                            AirportType::Seaplane => {
+                                if !is_seaplane {
+                                    return false;
+                                }
+                            }
+                            AirportType::Land => {
+                                if is_seaplane && a.surface_type != Some(SurfaceType::Water) {
+                                    return false;
+                                }
+                            }
+                        }
+
                         if let Some(surf) = a.surface_type {
                             if req_surface == SurfaceType::Water && surf != SurfaceType::Water {
                                 return false;
@@ -221,42 +322,42 @@ pub fn generate_flight(
                             if (len as u32) < min_rwy {
                                 return false;
                             }
+                        } else if min_rwy > 500 {
+                            return false;
                         }
                     }
-                    a.lat.is_some() && a.lon.is_some()
+                    true
+                } else {
+                    false
                 }
             })
-            .collect();
-
-        // Sort by score descending
-        candidates.sort_by(|a, b| b.1.cmp(&a.1));
-
-        // Tiered Selection: Pick only from the highest score group
-        // This ensures we don't pick "Groton New London" (60) when "London Heathrow" (80) is available.
-        let top_count = (candidates.len() / 4).max(5).min(candidates.len());
-        if let Some(first) = candidates.first() {
-            let max_score = first.1;
-            candidates
-                .into_iter()
-                .take_while(|(_, score)| *score == max_score)
-                .map(|(a, _)| a)
-                .take(top_count)
-                .collect()
-        } else {
-            vec![]
-        }
-    } else if let Some(LocationConstraint::ICAO(ref code)) = prompt.origin {
-        all_airports
-            .iter()
-            .filter(|a| a.id == *code)
             .copied()
-            .collect()
-    } else {
-        // Any, matching guardrails
-        all_airports
+            .collect(),
+        _ => all_airports
             .iter()
             .filter(|img| {
                 if !prompt.ignore_guardrails {
+                    let is_heli = is_heli(&selected_aircraft);
+                    let is_seaplane = is_seaplane(&selected_aircraft);
+
+                    match img.airport_type {
+                        AirportType::Heliport => {
+                            if !is_heli {
+                                return false;
+                            }
+                        }
+                        AirportType::Seaplane => {
+                            if !is_seaplane {
+                                return false;
+                            }
+                        }
+                        AirportType::Land => {
+                            if is_seaplane && img.surface_type != Some(SurfaceType::Water) {
+                                return false;
+                            }
+                        }
+                    }
+
                     if let Some(surf) = img.surface_type {
                         if req_surface == SurfaceType::Water && surf != SurfaceType::Water {
                             return false;
@@ -269,12 +370,14 @@ pub fn generate_flight(
                         if (len as u32) < min_rwy {
                             return false;
                         }
+                    } else if min_rwy > 500 {
+                        return false;
                     }
                 }
                 img.lat.is_some() && img.lon.is_some()
             })
             .copied()
-            .collect()
+            .collect(),
     };
 
     if candidate_origins.is_empty() {
@@ -379,8 +482,6 @@ pub fn generate_flight(
                 (a, score)
             })
             .filter(|(_a, score)| *score > 0)
-            // Existing logic didn't seem to apply guardrails tightly to destination in the AirportName branch before,
-            // but let's stick to simple filtering for now.
             .collect();
 
         // Sort by score descending
@@ -432,6 +533,27 @@ pub fn generate_flight(
 
             // Guardrails
             if !prompt.ignore_guardrails {
+                let is_heli = is_heli(&selected_aircraft);
+                let is_seaplane = is_seaplane(&selected_aircraft);
+
+                match dest.airport_type {
+                    AirportType::Heliport => {
+                        if !is_heli {
+                            return false;
+                        }
+                    }
+                    AirportType::Seaplane => {
+                        if !is_seaplane {
+                            return false;
+                        }
+                    }
+                    AirportType::Land => {
+                        if is_seaplane && dest.surface_type != Some(SurfaceType::Water) {
+                            return false;
+                        }
+                    }
+                }
+
                 if let Some(surf) = dest.surface_type {
                     if req_surface == SurfaceType::Water && surf != SurfaceType::Water {
                         return false;
@@ -444,6 +566,9 @@ pub fn generate_flight(
                     if (len as u32) < min_rwy {
                         return false;
                     }
+                } else if min_rwy > 500 {
+                    // Be strict for jets/heavies that REQUIRE a known long runway
+                    return false;
                 }
             }
 
@@ -592,6 +717,13 @@ fn is_heli(a: &DiscoveredAddon) -> bool {
     a.tags
         .iter()
         .any(|t| t.to_lowercase().contains("helicopter"))
+}
+
+fn is_seaplane(a: &DiscoveredAddon) -> bool {
+    a.tags.iter().any(|t| {
+        let t_lower = t.to_lowercase();
+        t_lower.contains("seaplane") || t_lower.contains("amphibian") || t_lower.contains("float")
+    })
 }
 
 fn haversine_nm(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
