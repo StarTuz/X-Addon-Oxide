@@ -270,6 +270,8 @@ mod tests {
             lon: Some(0.0),
             proj_x: None,
             proj_y: None,
+            max_runway_length: None,
+            surface_type: None,
         });
 
         // Simulate the "Post-Discovery Promotion" logic from SceneryManager::load

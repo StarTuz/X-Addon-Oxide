@@ -8,11 +8,24 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum AirportType {
     Land,
     Seaplane,
     Heliport,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub enum SurfaceType {
+    Hard,  // Asphalt, Concrete
+    Soft,  // Grass, Dirt, Gravel
+    Water, // Water
+}
+
+impl Default for SurfaceType {
+    fn default() -> Self {
+        Self::Soft
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -22,8 +35,10 @@ pub struct Airport {
     pub airport_type: AirportType,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
-    pub proj_x: Option<f32>, // Normalized Mercator X (0.0 to 1.0)
-    pub proj_y: Option<f32>, // Normalized Mercator Y (0.0 to 1.0)
+    pub proj_x: Option<f32>,            // Normalized Mercator X (0.0 to 1.0)
+    pub proj_y: Option<f32>,            // Normalized Mercator Y (0.0 to 1.0)
+    pub max_runway_length: Option<u32>, // in meters
+    pub surface_type: Option<SurfaceType>,
 }
 
 impl std::hash::Hash for Airport {
@@ -141,6 +156,8 @@ struct AirportBuilder {
     lons: Vec<f64>,
     datum_lat: Option<f64>,
     datum_lon: Option<f64>,
+    max_rwy_len: f64,
+    primary_surface: SurfaceType,
 }
 
 impl AirportBuilder {
@@ -183,6 +200,16 @@ impl AirportBuilder {
             lon,
             proj_x,
             proj_y,
+            max_runway_length: if self.max_rwy_len > 0.0 {
+                Some(self.max_rwy_len as u32)
+            } else {
+                None
+            },
+            surface_type: if self.max_rwy_len > 0.0 {
+                Some(self.primary_surface)
+            } else {
+                None
+            },
         }
     }
 }
@@ -204,6 +231,8 @@ fn parse_airport_header(line: &str, apt_type: AirportType) -> Option<AirportBuil
         lons: Vec::with_capacity(4),
         datum_lat: None,
         datum_lon: None,
+        max_rwy_len: 0.0,
+        primary_surface: SurfaceType::Soft,
     })
 }
 
@@ -229,31 +258,75 @@ fn parse_metadata(line: &str, builder: &mut AirportBuilder) {
 
 fn parse_runway(line: &str, builder: &mut AirportBuilder) {
     let mut parts = line.split_whitespace();
-    // Skip first 9 parts to get to lat/lon 1
-    // 0:100, 1:width, 2:surf, 3:shoulder, 4:smooth, 5:center, 6:edge, 7:dist, 8:rwy1
-    for _ in 0..9 {
+
+    // 100 width surface ...
+    parts.next(); // 100
+    let _width = parts.next();
+    let surface_code = parts.next().unwrap_or("1"); // Default to asphalt if missing
+
+    // Map surface code
+    // 1=Asphalt, 2=Concrete -> Hard
+    // 3=Turf, 4=Dirt, 5=Gravel -> Soft
+    // 13=Water -> Water
+    // 14=Snow, 15=Transparent -> Soft/Hard? Treat 15 as Hard (usually overlays).
+    let surface = match surface_code {
+        "1" | "2" | "15" => SurfaceType::Hard,
+        "13" => SurfaceType::Water,
+        _ => SurfaceType::Soft,
+    };
+
+    // Skip to lat/lon 1 (index 9 in 0-indexed split, we consumed 3)
+    // 3:shoulder, 4:smooth, 5:center, 6:edge, 7:dist, 8:rwy1
+    for _ in 0..6 {
         parts.next();
     }
 
+    let mut lat1 = 0.0;
+    let mut lon1 = 0.0;
     if let (Some(lat_s), Some(lon_s)) = (parts.next(), parts.next()) {
         if let (Ok(lat), Ok(lon)) = (lat_s.parse::<f64>(), lon_s.parse::<f64>()) {
+            lat1 = lat;
+            lon1 = lon;
             builder.lats.push(lat);
             builder.lons.push(lon);
         }
     }
 
-    // Skip to next lat/lon
+    // Skip to lat/lon 2
     // 11: rwy2_thld, 12: rwy2_vasi, 13: rwy2_reil, 14: rwy2_mark, 15: rwy2_stop, 16: rwy2_blast, 17: rwy2_nm
     for _ in 0..7 {
         parts.next();
     }
 
+    let mut lat2 = 0.0;
+    let mut lon2 = 0.0;
     if let (Some(lat_s), Some(lon_s)) = (parts.next(), parts.next()) {
         if let (Ok(lat), Ok(lon)) = (lat_s.parse::<f64>(), lon_s.parse::<f64>()) {
+            lat2 = lat;
+            lon2 = lon;
             builder.lats.push(lat);
             builder.lons.push(lon);
         }
     }
+
+    // Calculate length
+    let length = haversine_dist(lat1, lon1, lat2, lon2);
+    if length > builder.max_rwy_len {
+        builder.max_rwy_len = length;
+        // If this is the longest runway, assume its surface is the airport's primary surface
+        builder.primary_surface = surface;
+    }
+}
+
+// Simple Haversine distance in meters
+fn haversine_dist(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let r = 6371000.0; // Earth radius in meters
+    let d_lat = (lat2 - lat1).to_radians();
+    let d_lon = (lon2 - lon1).to_radians();
+    let a = (d_lat / 2.0).sin().powi(2)
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (d_lon / 2.0).sin().powi(2);
+    let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
+    r * c
 }
 
 fn parse_helipad(line: &str, builder: &mut AirportBuilder) {
@@ -300,8 +373,18 @@ I
         // Avg ~ 42.36
         assert!(kbos.lat.unwrap() > 42.3);
 
+        // Runway 09/27 length check
+        // Coords: (42.358, -71.018) to (42.365, -70.991)
+        // Distance roughly 2.3km = 2300m
+        assert!(kbos.max_runway_length.is_some());
+        let len = kbos.max_runway_length.unwrap();
+        assert!(len > 2000 && len < 4000);
+        assert_eq!(kbos.surface_type, Some(SurfaceType::Hard));
+
         let h123 = &airports[2];
         assert_eq!(h123.id, "H123");
         assert_eq!(h123.lat, Some(42.0));
+        // Helipad parser doesn't set runway length yet, so it should be None
+        assert!(h123.max_runway_length.is_none());
     }
 }

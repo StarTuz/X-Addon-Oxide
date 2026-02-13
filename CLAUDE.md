@@ -61,8 +61,9 @@ crates/
 - `profiles.rs` - Profile management for switching hangar configurations (root-specific isolation)
 - `cache.rs` - Disk-backed caching for scenery bounds and metadata (mtime-based invalidation, versioned schema)
 - `logbook.rs` - X-Plane Pilot.txt parsing (character-perfect for X-Plane 12)
-- `apt_dat.rs` - Parser for X-Plane `apt.dat` airport data files (runways, coordinates, ICAO codes)
+- `apt_dat.rs` - Parser for X-Plane `apt.dat` airport data files (runways, coordinates, ICAO codes, datum row 1302)
 - `groups.rs` - User-defined tag/group management for scenery packs (persisted per-config)
+- `flight_gen.rs` - Flight plan generation: airport matching (includes "British Isles" region support), route building, failure logging, multi-format export
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
   - `ini_handler.rs` - Reads/writes `scenery_packs.ini` with raw_path round-trip preservation
   - `sorter.rs` - Smart sort using stable `sort_by` to preserve manual pins
@@ -74,29 +75,31 @@ crates/
 
 Rules-based heuristics engine (not ML despite the name) that:
 
-- Scores scenery packs (0-100) for smart sorting with 16 SceneryCategory variants
+- Scores scenery packs (0-100) for smart sorting with 16 `SceneryCategory` variants (defined in `scenery/mod.rs`, includes virtual `Group`)
 - Classifies aircraft by engine type and category using regex pattern matching
+- Parses natural language flight prompts via `flight_prompt.rs` (e.g., "London to Paris in a 737")
 - Supports manual priority overrides (sticky sort / pins)
 - Lower score = higher priority (inverted from category scores)
 
 ### x-adox-gui
 
-Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~10335 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
+Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~10480 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
 
 **Key landmarks in `main.rs`** (use these to navigate):
 
-- `enum Message` (~line 163) — all message variants, grouped by feature
-- `struct App` (~line 562) — all application state fields
-- `fn update()` (~line 1131) — message handling / business logic dispatch
-- `fn subscription()` (~line 4162) — event subscriptions (timers, keyboard)
-- `fn view()` (~line 4248) — top-level view routing by tab
-- `fn view_scenery()` (~line 6441) — scenery tab layout
-- `fn view_addon_list()` (~line 7877) — reusable list for plugins/CSLs
-- `fn view_aircraft_tree()` (~line 8142) — aircraft tree with smart view
+- `enum Message` (~line 167) — all message variants, grouped by feature
+- `struct App` (~line 571) — all application state fields
+- `fn update()` (~line 1148) — message handling / business logic dispatch
+- `fn subscription()` (~line 4301) — event subscriptions (timers, keyboard)
+- `fn view()` (~line 4387) — top-level view routing by tab
+- `fn view_scenery()` (~line 6584) — scenery tab layout
+- `fn view_addon_list()` (~line 8020) — reusable list for plugins/CSLs
+- `fn view_aircraft_tree()` (~line 8285) — aircraft tree with smart view
 
-- Tab navigation: Scenery, Aircraft, Plugins, CSLs, Heuristics, Issues, Utilities, Settings
+- Tab navigation: Scenery, Aircraft, Plugins, CSLs, FlightGenerator, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
 - `style.rs` - Dark theme with neon glow effects and animated splash screen (driven by `animation_time` state)
+- `flight_gen_gui.rs` - Chat-based flight plan generator UI (natural language input, format selection, export)
 - **Drag-and-Drop**:
   - Parity-first design: Drops trigger physical move + pin + save to `scenery_packs.ini`
   - The `save_scenery_packs` helper does a "dumb write" of exact GUI state, bypassing the SceneryManager load/merge cycle for responsiveness

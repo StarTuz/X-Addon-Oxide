@@ -1289,6 +1289,8 @@ mod tests {
                     airport_type: crate::apt_dat::AirportType::Land,
                     proj_x: None,
                     proj_y: None,
+                    max_runway_length: None,
+                    surface_type: None,
                 },
                 Airport {
                     id: "A2".into(),
@@ -1298,6 +1300,8 @@ mod tests {
                     airport_type: crate::apt_dat::AirportType::Land,
                     proj_x: None,
                     proj_y: None,
+                    max_runway_length: None,
+                    surface_type: None,
                 },
                 Airport {
                     id: "A3".into(),
@@ -1307,6 +1311,8 @@ mod tests {
                     airport_type: crate::apt_dat::AirportType::Land,
                     proj_x: None,
                     proj_y: None,
+                    max_runway_length: None,
+                    surface_type: None,
                 },
             ],
             tiles: vec![(40, 50), (41, 51)],

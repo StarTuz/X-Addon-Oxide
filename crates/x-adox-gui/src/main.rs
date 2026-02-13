@@ -25,6 +25,7 @@ use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType};
 use x_adox_core::XPlaneManager;
 
 mod map;
+mod flight_gen_gui;
 mod style;
 use map::{MapView, TileManager};
 use simplelog::*;
@@ -101,6 +102,7 @@ pub enum Tab {
     Aircraft,
     Plugins,
     CSLs,
+    FlightGenerator,
     Heuristics,
     Issues,
     Utilities,
@@ -248,6 +250,9 @@ enum Message {
     HeuristicsAction(text_editor::Action),
     SaveHeuristics,
     ImportHeuristics,
+
+    // Flight Generator
+    FlightGen(flight_gen_gui::Message),
     ExportHeuristics,
     ResetHeuristics,
     ClearOverrides,
@@ -598,6 +603,9 @@ struct App {
     hovered_airport_id: Option<String>,
     map_zoom: f64,
     map_center: (f64, f64), // (lat, lon)
+
+    // Flight Generator
+    flight_gen: flight_gen_gui::FlightGenState,
     map_initialized: bool,
     scenery_scroll_id: scrollable::Id,
     aircraft_scroll_id: scrollable::Id,
@@ -797,7 +805,8 @@ impl App {
             hovered_scenery: None,
             hovered_airport_id: None,
             map_zoom: 0.0,
-            map_center: (0.0, 0.0),
+            map_center: (51.47, -0.45), // Default to London
+            flight_gen: flight_gen_gui::FlightGenState::default(),
             map_initialized: false,
             scenery_scroll_id: scrollable::Id::unique(),
             aircraft_scroll_id: scrollable::Id::unique(),
@@ -1169,6 +1178,7 @@ impl App {
                     Tab::Issues => "Known Issues & Log Analysis".to_string(),
                     Tab::Utilities => "Utilities & Logbook Viewer".to_string(),
                     Tab::Settings => "Settings & Configuration".to_string(),
+                    Tab::FlightGenerator => "Flight Generator".to_string(),
                 };
 
                 if tab == Tab::Utilities {
@@ -3454,7 +3464,7 @@ impl App {
                         Tab::Aircraft => self.selected_aircraft.clone(),
                         Tab::Plugins => self.selected_plugin.clone(),
                         Tab::CSLs => self.selected_csl.clone(),
-                        Tab::Heuristics | Tab::Issues | Tab::Settings | Tab::Utilities => None,
+                        Tab::Utilities | Tab::Settings | Tab::Issues | Tab::Heuristics | Tab::FlightGenerator => None,
                     };
 
                     if let Some(p) = path {
@@ -3556,6 +3566,44 @@ impl App {
                 self.heuristics_json = text_editor::Content::with_text(&text);
                 self.heuristics_error = None;
                 self.status = "JSON imported. Click Save to apply.".to_string();
+                Task::none()
+            }
+            Message::FlightGen(msg) => {
+                let aircraft_flattened = self.aircraft.clone(); // Arc<Vec>
+                // We need to pass &[DiscoveredAddon]
+                // Scenery Manager is available via XPlaneManager potentially?
+                // self.packs is Arc<Vec<SceneryPack>>.
+                // But SceneryManager owns packs.
+                // Wait, SceneryManager is constructed from packs usually?
+                // Or App has a SceneryManager?
+                // App has `packs`.
+                // FlightGen needs `SceneryManager`.
+                // I need to construct a temporary SceneryManager or change FlightGen to accept packs.
+                // SceneryManager is simple wrapper around packs.
+                // Let's look at `SceneryManager` definition.
+                // It has `packs`, `tiles`, `tags`, `descriptor`.
+                // I can construct one cheaply if I clone the Arc? No, SceneryManager has `pub packs: Vec<SceneryPack>` not Arc.
+                // Oh no.
+                // If SceneryManager owns packs, I can't easily pass it if App owns packs.
+                // `App` has `packs: Arc<Vec<SceneryPack>>`.
+                // `flight_gen` takes `&SceneryManager`.
+                
+                // I should probably change `flight_gen` to take `&[SceneryPack]` instead of `&SceneryManager`.
+                // Let's do that refactor first? No, too much context switching.
+                // Let's see if I can construct a SceneryManager that borrows? No.
+                
+                // Alternative: Update `flight_gen` signature.
+                // It uses `scenery.packs.iter()`.
+                // It uses `scenery.packs` only?
+                // Let's check `flight_gen.rs`.
+                // It uses `scenery.packs`.
+                // So I should change `generate_flight` signature to take `&[SceneryPack]`.
+                
+                // For now, I will verify this.
+                let packs = &self.packs; // Arc<Vec<SceneryPack>> -> &Vec<SceneryPack> -> &[SceneryPack]
+                let aircraft_list = &self.aircraft; // Arc<Vec<DiscoveredAddon>> -> &Vec -> slice
+                
+                self.flight_gen.update(msg, packs, aircraft_list);
                 Task::none()
             }
             Message::ExportHeuristics => {
@@ -5380,6 +5428,7 @@ impl App {
                 .push(self.sidebar_button("Scenery", Tab::Scenery))
                 .push(self.sidebar_button("Plugins", Tab::Plugins))
                 .push(self.sidebar_button("CSLs", Tab::CSLs))
+                .push(self.sidebar_button("Flight Gen", Tab::FlightGenerator))
                 .push(self.sidebar_button("Utilities", Tab::Utilities))
                 .push(self.sidebar_button("Issues", Tab::Issues))
                 .push(self.sidebar_button("Settings", Tab::Settings))
@@ -5434,6 +5483,7 @@ impl App {
             }
             Tab::Heuristics => self.view_heuristics_editor(),
             Tab::Issues => self.view_issues(),
+            Tab::FlightGenerator => self.flight_gen.view().map(Message::FlightGen),
             Tab::Utilities => self.view_utilities(),
             Tab::Settings => self.view_settings(),
         };
@@ -5470,6 +5520,7 @@ impl App {
             Tab::Issues => (Message::CheckLogIssues, Message::Refresh, false),
             Tab::Utilities => (Message::Refresh, Message::Refresh, false),
             Tab::Settings => (Message::Refresh, Message::Refresh, false),
+            Tab::FlightGenerator => (Message::Refresh, Message::Refresh, false),
         };
 
         let install_btn = button(
@@ -6407,6 +6458,7 @@ impl App {
             Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
             Tab::Issues => (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)), // Always red for Issues
             Tab::Settings => (&self.icon_settings, style::palette::ACCENT_PURPLE), // Violet for settings
+            Tab::FlightGenerator => (&self.icon_aircraft, Color::from_rgb(0.0, 0.8, 0.8)), // Cyan for Flight Gen
         };
 
         let icon = svg(icon_handle.clone())

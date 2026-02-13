@@ -5,6 +5,7 @@
 pub mod apt_dat;
 pub mod cache;
 pub mod discovery;
+pub mod flight_gen;
 pub mod groups;
 pub mod logbook;
 pub mod management;
@@ -232,7 +233,10 @@ pub fn get_scoped_config_root(xplane_root: &Path) -> PathBuf {
                     Ok(content) => {
                         if serde_json::from_str::<serde_json::Value>(&content).is_err() {
                             log::warn!("[Migration] Stable heuristics.json is corrupt, backing up and replacing with legacy");
-                            let _ = fs::rename(&stable_heuristics, stable_path.join("heuristics.json.bak"));
+                            let _ = fs::rename(
+                                &stable_heuristics,
+                                stable_path.join("heuristics.json.bak"),
+                            );
                             true
                         } else {
                             false // Stable is valid, don't overwrite
@@ -343,11 +347,13 @@ pub struct LogIssue {
 /// Falls back to the first path segment for resource-style paths.
 fn extract_scenery_pack(path: &str) -> Option<String> {
     if let Some(rest) = path.strip_prefix("Custom Scenery/") {
-        rest.split('/').next()
+        rest.split('/')
+            .next()
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
     } else {
-        path.split('/').next()
+        path.split('/')
+            .next()
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
     }
@@ -404,15 +410,13 @@ impl XPlaneManager {
         let re_missing = Regex::new(
             r"E/SCN: Failed to find resource '([^']+)', referenced from (?:scenery package|file) '([^']*)'",
         ).unwrap();
-        let re_bad_light = Regex::new(
-            r"E/OBJ: ERROR: object (.+) has a bad light name: (\S+)",
-        ).unwrap();
-        let re_obj_read = Regex::new(
-            r"E/OBJ: OBJ read failed: the file path (.+) could not be opened",
-        ).unwrap();
-        let re_dsf_road = Regex::new(
-            r"E/DSF: The DSF (.+) has a number of problems with its road network: (.+)",
-        ).unwrap();
+        let re_bad_light =
+            Regex::new(r"E/OBJ: ERROR: object (.+) has a bad light name: (\S+)").unwrap();
+        let re_obj_read =
+            Regex::new(r"E/OBJ: OBJ read failed: the file path (.+) could not be opened").unwrap();
+        let re_dsf_road =
+            Regex::new(r"E/DSF: The DSF (.+) has a number of problems with its road network: (.+)")
+                .unwrap();
 
         let mut issues = Vec::new();
         let mut seen = HashSet::new();
@@ -655,10 +659,7 @@ mod tests {
         assert_eq!(issues[0].kind, LogIssueKind::MissingResource);
         assert_eq!(issues[0].primary, "madagascar_lib/cars/landrover.obj");
         assert_eq!(issues[0].secondary, "Custom Scenery/CYSJ/");
-        assert_eq!(
-            issues[0].scenery_pack,
-            Some("madagascar_lib".to_string())
-        );
+        assert_eq!(issues[0].scenery_pack, Some("madagascar_lib".to_string()));
 
         assert_eq!(issues[1].primary, "BS2001/trees/pine.obj");
         assert_eq!(issues[1].secondary, "Custom Scenery/Airport_A/");
@@ -670,10 +671,7 @@ mod tests {
             "opensceneryx/objects/furniture/bench.obj"
         );
         assert_eq!(issues[2].secondary, "Custom Scenery/LFPG/");
-        assert_eq!(
-            issues[2].scenery_pack,
-            Some("opensceneryx".to_string())
-        );
+        assert_eq!(issues[2].scenery_pack, Some("opensceneryx".to_string()));
     }
 
     #[test]
@@ -695,7 +693,10 @@ mod tests {
 
         assert_eq!(issues.len(), 2); // dedup removes duplicate
         assert_eq!(issues[0].kind, LogIssueKind::BadLightName);
-        assert_eq!(issues[0].primary, "Custom Scenery/LFOB Vehicles/objects/car.obj");
+        assert_eq!(
+            issues[0].primary,
+            "Custom Scenery/LFOB Vehicles/objects/car.obj"
+        );
         assert_eq!(issues[0].secondary, "fakeLightXYZ");
         assert_eq!(issues[0].scenery_pack, Some("LFOB Vehicles".to_string()));
 
@@ -743,9 +744,18 @@ mod tests {
 
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, LogIssueKind::DsfRoadNetwork);
-        assert_eq!(issues[0].primary, "Custom Scenery/SimHeaven_X-World/Earth nav data/+40-080.dsf");
-        assert_eq!(issues[0].secondary, "3 junctions and 12 segments were removed.");
-        assert_eq!(issues[0].scenery_pack, Some("SimHeaven_X-World".to_string()));
+        assert_eq!(
+            issues[0].primary,
+            "Custom Scenery/SimHeaven_X-World/Earth nav data/+40-080.dsf"
+        );
+        assert_eq!(
+            issues[0].secondary,
+            "3 junctions and 12 segments were removed."
+        );
+        assert_eq!(
+            issues[0].scenery_pack,
+            Some("SimHeaven_X-World".to_string())
+        );
     }
 
     #[test]
