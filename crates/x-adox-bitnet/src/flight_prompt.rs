@@ -53,7 +53,7 @@ impl FlightPrompt {
         static LOC_RE: OnceLock<Regex> = OnceLock::new();
         let loc_re = LOC_RE.get_or_init(|| {
             Regex::new(
-                r"(?:flight\s+from\s+|from\s+)?(.+?)\s+to\s+(.+?)(\s+using|\s+in|\s+with|\s+for|$)",
+                r"(?:flight\s+from\s+|from\s+|^flight\s+)?(.+?)\s+to\s+(.+?)(\s+using|\s+in|\s+with|\s+for|$)",
             )
             .unwrap()
         });
@@ -120,107 +120,31 @@ fn parse_location(s: &str) -> LocationConstraint {
 /// Attempts to recognize a string as a geographic region (country, US sub-region, continent, etc.).
 /// Returns `Some(Region(...))` with a canonical name if recognized, `None` otherwise.
 fn try_as_region(s: &str) -> Option<LocationConstraint> {
-    // Strip leading "the " (handles "the british isles", "the caribbean")
+    // Strip leading "the "
     let s = s.strip_prefix("the ").unwrap_or(s).trim();
 
-    let canonical = match s {
-        // Countries
-        "france" => "France",
-        "germany" => "Germany",
-        "spain" => "Spain",
-        "italy" => "Italy",
-        "japan" => "Japan",
-        "australia" => "Australia",
-        "canada" => "Canada",
-        "brazil" => "Brazil",
-        "india" => "India",
-        "china" => "China",
-        "mexico" => "Mexico",
-        "ireland" => "Ireland",
-        "scotland" => "Scotland",
-        "england" => "England",
-        "wales" => "Wales",
-        "greece" => "Greece",
-        "turkey" => "Turkey",
-        "thailand" => "Thailand",
-        "portugal" => "Portugal",
-        "netherlands" | "holland" => "Netherlands",
-        "sweden" => "Sweden",
-        "norway" => "Norway",
-        "finland" => "Finland",
-        "denmark" => "Denmark",
-        "iceland" => "Iceland",
-        "switzerland" => "Switzerland",
-        "austria" => "Austria",
-        "poland" => "Poland",
-        "belgium" => "Belgium",
-        "czech republic" | "czechia" => "Czech Republic",
-        "romania" => "Romania",
-        "hungary" => "Hungary",
-        "croatia" => "Croatia",
-        "serbia" => "Serbia",
-        "bulgaria" => "Bulgaria",
-        "south korea" | "korea" => "South Korea",
-        "taiwan" => "Taiwan",
-        "philippines" => "Philippines",
-        "indonesia" => "Indonesia",
-        "malaysia" => "Malaysia",
-        "vietnam" => "Vietnam",
-        "singapore" => "Singapore",
-        "south africa" => "South Africa",
-        "egypt" => "Egypt",
-        "morocco" => "Morocco",
-        "kenya" => "Kenya",
-        "nigeria" => "Nigeria",
-        "colombia" => "Colombia",
-        "argentina" => "Argentina",
-        "chile" => "Chile",
-        "russia" => "Russia",
-        "ukraine" => "Ukraine",
-        "pakistan" => "Pakistan",
+    // Use the global region index for lookup
+    let index = crate::geo::RegionIndex::new();
 
-        // Abbreviations
-        "uk" | "united kingdom" => "United Kingdom",
-        "gb" | "great britain" => "Great Britain",
-        "us" | "usa" | "united states" => "United States",
-        "uae" | "united arab emirates" => "United Arab Emirates",
-        "nz" | "new zealand" => "New Zealand",
+    if let Some(region) = index.search(s) {
+        return Some(LocationConstraint::Region(region.id.to_string()));
+    }
 
-        // Geographic groups
-        "british isles" => "British Isles",
-        "scandinavia" => "Scandinavia",
-        "caribbean" => "Caribbean",
-        "mediterranean" => "Mediterranean",
-        "benelux" => "Benelux",
-        "southeast asia" | "se asia" => "Southeast Asia",
-        "middle east" => "Middle East",
-        "central america" => "Central America",
-        "balkans" => "Balkans",
-
-        // US regions
-        "socal" | "southern california" | "so cal" => "US:SoCal",
-        "norcal" | "northern california" | "nor cal" => "US:NorCal",
-        "pnw" | "pacific northwest" => "US:PNW",
-        "northeast" | "new england" => "US:Northeast",
-        "midwest" => "US:Midwest",
-        "southeast" | "south east" => "US:Southeast",
-        "texas" => "US:Texas",
-        "florida" => "US:Florida",
-        "hawaii" => "US:Hawaii",
-        "alaska" => "US:Alaska",
-
-        // Continents
-        "europe" => "Europe",
-        "africa" => "Africa",
-        "asia" => "Asia",
-        "north america" => "North America",
-        "south america" => "South America",
-        "oceania" | "australasia" => "Oceania",
-
-        _ => return None,
-    };
-
-    Some(LocationConstraint::Region(canonical.to_string()))
+    // Fallback for nicknames not in the core index yet
+    // (Though most should be in data.rs now)
+    match s.to_lowercase().as_str() {
+        "british isles" => Some(LocationConstraint::Region("BI".to_string())),
+        "ireland" | "eire" => Some(LocationConstraint::Region("IE".to_string())),
+        "uk" | "united kingdom" => Some(LocationConstraint::Region("UK".to_string())),
+        "gb" | "great britain" => Some(LocationConstraint::Region("GB".to_string())),
+        "usa" | "us" | "united states" => Some(LocationConstraint::Region("US".to_string())),
+        "socal" | "southern california" => Some(LocationConstraint::Region("US:SoCal".to_string())),
+        "norcal" | "northern california" => {
+            Some(LocationConstraint::Region("US:NorCal".to_string()))
+        }
+        "pnw" | "pacific northwest" => Some(LocationConstraint::Region("US:OR".to_string())), // Approximation to Oregon for now
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -351,10 +275,7 @@ mod tests {
     #[test]
     fn test_parse_icao_still_icao() {
         let p = FlightPrompt::parse("Flight from EGLL to LFPG");
-        assert_eq!(
-            p.origin,
-            Some(LocationConstraint::ICAO("EGLL".to_string()))
-        );
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
         assert_eq!(
             p.destination,
             Some(LocationConstraint::ICAO("LFPG".to_string()))

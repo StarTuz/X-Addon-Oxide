@@ -10,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 pub mod flight_prompt;
+pub mod geo;
 pub mod parser;
 
 #[derive(Debug, Clone, Default)]
