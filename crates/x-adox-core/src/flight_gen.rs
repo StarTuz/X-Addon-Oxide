@@ -3,6 +3,158 @@ use crate::discovery::{AddonType, DiscoveredAddon};
 use rand::seq::SliceRandom;
 use x_adox_bitnet::flight_prompt::{AircraftConstraint, FlightPrompt, LocationConstraint};
 
+/// A lat/lon bounding box for geographic region matching.
+#[derive(Debug, Clone, Copy)]
+struct GeoBounds {
+    lat_min: f64,
+    lat_max: f64,
+    lon_min: f64,
+    lon_max: f64,
+}
+
+impl GeoBounds {
+    fn contains(&self, lat: f64, lon: f64) -> bool {
+        lat >= self.lat_min && lat <= self.lat_max && lon >= self.lon_min && lon <= self.lon_max
+    }
+}
+
+/// Maps a canonical region name (from `try_as_region()`) to lat/lon bounding boxes.
+/// Returns multiple boxes where needed (e.g., US = CONUS + Alaska + Hawaii).
+fn region_bounds(name: &str) -> Option<Vec<GeoBounds>> {
+    let b = |lat_min, lat_max, lon_min, lon_max| GeoBounds {
+        lat_min,
+        lat_max,
+        lon_min,
+        lon_max,
+    };
+
+    let boxes = match name {
+        // Countries (approximate bounding boxes)
+        "France" => vec![b(41.0, 51.5, -5.5, 8.3)],
+        "Germany" => vec![b(47.0, 55.5, 5.5, 15.5)],
+        "Spain" => vec![b(35.5, 44.0, -10.0, 4.5)],
+        "Italy" => vec![b(35.5, 47.5, 6.5, 19.0)],
+        "Japan" => vec![b(24.0, 46.0, 122.0, 154.0)],
+        "Australia" => vec![b(-45.0, -10.0, 112.0, 155.0)],
+        "Canada" => vec![b(41.0, 84.0, -141.0, -52.0)],
+        "Brazil" => vec![b(-34.0, 6.0, -74.0, -34.0)],
+        "India" => vec![b(6.0, 36.0, 68.0, 98.0)],
+        "China" => vec![b(18.0, 54.0, 73.0, 135.0)],
+        "Mexico" => vec![b(14.0, 33.0, -118.0, -86.0)],
+        "Ireland" => vec![b(51.0, 55.5, -11.0, -5.5)],
+        "Scotland" => vec![b(54.5, 61.0, -8.0, -0.5)],
+        "England" => vec![b(49.5, 56.0, -6.5, 2.0)],
+        "Wales" => vec![b(51.3, 53.5, -5.5, -2.5)],
+        "Greece" => vec![b(34.5, 42.0, 19.0, 30.0)],
+        "Turkey" => vec![b(35.5, 42.5, 25.5, 45.0)],
+        "Thailand" => vec![b(5.5, 21.0, 97.0, 106.0)],
+        "Portugal" => vec![b(36.5, 42.5, -10.0, -6.0)],
+        "Netherlands" => vec![b(50.5, 54.0, 3.0, 7.5)],
+        "Sweden" => vec![b(55.0, 69.5, 10.5, 24.5)],
+        "Norway" => vec![b(57.5, 71.5, 4.0, 31.5)],
+        "Finland" => vec![b(59.5, 70.5, 19.0, 32.0)],
+        "Denmark" => vec![b(54.5, 58.0, 7.5, 15.5)],
+        "Iceland" => vec![b(63.0, 67.0, -25.0, -13.0)],
+        "Switzerland" => vec![b(45.5, 48.0, 5.5, 10.5)],
+        "Austria" => vec![b(46.0, 49.5, 9.0, 17.5)],
+        "Poland" => vec![b(49.0, 55.0, 14.0, 24.5)],
+        "Belgium" => vec![b(49.5, 51.5, 2.5, 6.5)],
+        "Czech Republic" => vec![b(48.5, 51.5, 12.0, 19.0)],
+        "Romania" => vec![b(43.5, 48.5, 20.0, 30.5)],
+        "Hungary" => vec![b(45.5, 49.0, 16.0, 23.0)],
+        "Croatia" => vec![b(42.0, 46.5, 13.0, 19.5)],
+        "Serbia" => vec![b(42.0, 46.5, 18.5, 23.0)],
+        "Bulgaria" => vec![b(41.0, 44.5, 22.0, 29.0)],
+        "South Korea" => vec![b(33.0, 39.0, 124.0, 132.0)],
+        "Taiwan" => vec![b(21.5, 25.5, 119.5, 122.5)],
+        "Philippines" => vec![b(4.5, 21.0, 116.0, 127.0)],
+        "Indonesia" => vec![b(-11.0, 6.0, 95.0, 141.0)],
+        "Malaysia" => vec![b(0.5, 7.5, 99.0, 119.5)],
+        "Vietnam" => vec![b(8.0, 23.5, 102.0, 110.0)],
+        "Singapore" => vec![b(1.1, 1.5, 103.5, 104.1)],
+        "South Africa" => vec![b(-35.0, -22.0, 16.0, 33.0)],
+        "Egypt" => vec![b(22.0, 32.0, 24.5, 37.0)],
+        "Morocco" => vec![b(27.5, 36.0, -13.5, -1.0)],
+        "Kenya" => vec![b(-5.0, 5.5, 33.5, 42.0)],
+        "Nigeria" => vec![b(4.0, 14.0, 2.5, 15.0)],
+        "Colombia" => vec![b(-4.5, 13.5, -79.0, -66.5)],
+        "Argentina" => vec![b(-55.0, -21.5, -74.0, -53.5)],
+        "Chile" => vec![b(-56.0, -17.5, -76.0, -66.5)],
+        "Russia" => vec![b(41.0, 82.0, 19.0, 180.0)],
+        "Ukraine" => vec![b(44.0, 53.0, 22.0, 41.0)],
+        "Pakistan" => vec![b(23.5, 37.5, 60.5, 77.5)],
+
+        // Abbreviation targets
+        "United Kingdom" => vec![b(49.5, 61.0, -8.5, 2.0)],
+        // Two boxes: mainland excludes NI longitude; Scottish islands box starts north of Belfast
+        "Great Britain" => vec![b(49.5, 61.0, -5.8, 2.0), b(55.0, 61.0, -8.5, -5.8)],
+        "United States" => vec![b(24.0, 50.0, -125.0, -66.0), b(51.0, 72.0, -170.0, -130.0)],
+        "United Arab Emirates" => vec![b(22.5, 26.5, 51.0, 56.5)],
+        "New Zealand" => vec![b(-47.5, -34.0, 165.5, 179.0)],
+
+        // Geographic groups
+        "British Isles" => vec![b(49.5, 61.0, -11.0, 2.0)],
+        "Scandinavia" => vec![b(54.5, 71.5, 4.0, 32.0)],
+        "Caribbean" => vec![b(10.0, 27.0, -85.0, -59.0)],
+        "Mediterranean" => vec![b(30.0, 46.0, -6.0, 37.0)],
+        "Benelux" => vec![b(49.5, 54.0, 2.5, 7.5)],
+        "Southeast Asia" => vec![b(-11.0, 24.0, 92.0, 141.0)],
+        "Middle East" => vec![b(12.0, 42.0, 24.0, 63.0)],
+        "Central America" => vec![b(7.0, 18.5, -92.0, -77.0)],
+        "Balkans" => vec![b(39.0, 47.0, 13.0, 30.0)],
+
+        // US regions
+        "US:SoCal" => vec![b(32.0, 35.5, -121.0, -114.5)],
+        "US:NorCal" => vec![b(35.5, 42.5, -125.0, -119.5)],
+        "US:PNW" => vec![b(42.0, 49.0, -125.0, -116.5)],
+        "US:Northeast" => vec![b(40.0, 47.5, -80.0, -66.5)],
+        "US:Midwest" => vec![b(36.0, 49.0, -104.0, -80.0)],
+        "US:Southeast" => vec![b(24.5, 37.0, -92.0, -75.0)],
+        "US:Texas" => vec![b(25.5, 36.5, -107.0, -93.0)],
+        "US:Florida" => vec![b(24.5, 31.0, -88.0, -79.5)],
+        "US:Hawaii" => vec![b(18.5, 22.5, -161.0, -154.5)],
+        "US:Alaska" => vec![b(51.0, 72.0, -170.0, -130.0)],
+
+        // Continents
+        "Europe" => vec![b(34.0, 72.0, -25.0, 45.0)],
+        "Africa" => vec![b(-35.0, 38.0, -18.0, 52.0)],
+        "Asia" => vec![b(-11.0, 82.0, 25.0, 180.0)],
+        "North America" => vec![b(7.0, 84.0, -170.0, -52.0)],
+        "South America" => vec![b(-56.0, 13.5, -82.0, -34.0)],
+        "Oceania" => vec![b(-47.5, 0.0, 110.0, 180.0)],
+
+        _ => return None,
+    };
+    Some(boxes)
+}
+
+/// Check if an airport's coordinates fall within any of the given bounding boxes.
+fn airport_in_bounds(airport: &Airport, bounds: &[GeoBounds]) -> bool {
+    if let (Some(lat), Some(lon)) = (airport.lat, airport.lon) {
+        bounds.iter().any(|b| b.contains(lat, lon))
+    } else {
+        false
+    }
+}
+
+/// Check if a pack has any airport within the given bounding boxes,
+/// falling back to text matching on pack name/region if no airports have coordinates.
+fn pack_matches_region(pack: &SceneryPack, region: &str, bounds: &[GeoBounds]) -> bool {
+    // First try coordinate-based matching
+    let has_coords = pack
+        .airports
+        .iter()
+        .any(|a| a.lat.is_some() && a.lon.is_some());
+    if has_coords {
+        return pack.airports.iter().any(|a| airport_in_bounds(a, bounds));
+    }
+    // Fallback: text match on pack name/region
+    let region_lower = region.to_lowercase();
+    let pack_region = pack.get_region().to_lowercase();
+    let pack_name = pack.name.to_lowercase();
+    pack_region.contains(&region_lower) || pack_name.contains(&region_lower)
+}
+
 #[derive(Debug, Clone)]
 pub struct FlightPlan {
     pub origin: Airport,
@@ -61,19 +213,31 @@ pub fn generate_flight(
     // Refined Origin Selection (Group by Pack for Region check)
     let candidate_origins: Vec<&Airport> =
         if let Some(LocationConstraint::Region(ref region)) = prompt.origin {
-            // Filter by region string in pack name or region field
-            let region_lower = region.to_lowercase();
+            // Use bounding box matching if available, with text fallback
+            let bounds = region_bounds(region);
             packs
                 .iter()
                 .filter(|p| {
-                    p.get_region().to_lowercase().contains(&region_lower)
-                        || p.name.to_lowercase().contains(&region_lower)
+                    if let Some(ref bb) = bounds {
+                        pack_matches_region(p, region, bb)
+                    } else {
+                        // No bounding box data — fall back to text matching
+                        let region_lower = region.to_lowercase();
+                        p.get_region().to_lowercase().contains(&region_lower)
+                            || p.name.to_lowercase().contains(&region_lower)
+                    }
                 })
                 .flat_map(|p| p.airports.iter())
-                .filter(|img| {
-                    // Guardrails again
+                .filter(|apt| {
+                    // If we have bounds, also filter individual airports by coordinates
+                    if let Some(ref bb) = bounds {
+                        if !airport_in_bounds(apt, bb) {
+                            return false;
+                        }
+                    }
+                    // Guardrails
                     if !prompt.ignore_guardrails {
-                        if let Some(surf) = img.surface_type {
+                        if let Some(surf) = apt.surface_type {
                             if req_surface == SurfaceType::Water && surf != SurfaceType::Water {
                                 return false;
                             }
@@ -81,13 +245,13 @@ pub fn generate_flight(
                                 return false;
                             }
                         }
-                        if let Some(len) = img.max_runway_length {
+                        if let Some(len) = apt.max_runway_length {
                             if (len as u32) < min_rwy {
                                 return false;
                             }
                         }
                     }
-                    img.lat.is_some() && img.lon.is_some()
+                    apt.lat.is_some() && apt.lon.is_some()
                 })
                 .collect()
         } else if let Some(LocationConstraint::AirportName(ref name)) = prompt.origin {
@@ -126,18 +290,7 @@ pub fn generate_flight(
                     } else if a_name.contains(&name_lower) {
                         60
                     } else if name_lower.contains("british isles")
-                        && (p_region.contains("united kingdom")
-                            || p_region.contains("great britain")
-                            || p_region.contains("ireland")
-                            || p_region.contains("northern ireland")
-                            || p_region.contains("scotland")
-                            || p_region.contains("wales")
-                            || p_region.contains("england")
-                            || p_region.contains("isle of man")
-                            || p_region.contains("hebrides")
-                            || p_region.contains("shetland")
-                            || p_region.contains("orkney")
-                            || p_region.contains("channel islands"))
+                        && is_british_isles_region(&p_region)
                     {
                         50
                     } else {
@@ -238,10 +391,20 @@ pub fn generate_flight(
 
     // 3. Select Destination
     // Calculate Target Distance
+    // When both endpoints are explicit (ICAO or AirportName), the user specified
+    // exactly where they want to fly — don't filter by aircraft-type distance defaults.
+    let both_explicit = matches!(
+        (&prompt.origin, &prompt.destination),
+        (
+            Some(LocationConstraint::ICAO(_)) | Some(LocationConstraint::AirportName(_)),
+            Some(LocationConstraint::ICAO(_)) | Some(LocationConstraint::AirportName(_))
+        )
+    );
+
     let (min_dist, max_dist) = if let Some(mins) = prompt.duration_minutes {
         let dist = speed_kts as f64 * (mins as f64 / 60.0);
         (dist * 0.8, dist * 1.2)
-    } else if prompt.ignore_guardrails {
+    } else if prompt.ignore_guardrails || both_explicit {
         (0.0, 20000.0)
     } else {
         // Default range based on aircraft type
@@ -255,14 +418,26 @@ pub fn generate_flight(
     };
 
     let candidate_dests = if let Some(LocationConstraint::Region(ref region)) = prompt.destination {
-        let region_lower = region.to_lowercase();
+        let bounds = region_bounds(region);
         packs
             .iter()
             .filter(|p| {
-                p.get_region().to_lowercase().contains(&region_lower)
-                    || p.name.to_lowercase().contains(&region_lower)
+                if let Some(ref bb) = bounds {
+                    pack_matches_region(p, region, bb)
+                } else {
+                    let region_lower = region.to_lowercase();
+                    p.get_region().to_lowercase().contains(&region_lower)
+                        || p.name.to_lowercase().contains(&region_lower)
+                }
             })
             .flat_map(|p| p.airports.iter())
+            .filter(|apt| {
+                if let Some(ref bb) = bounds {
+                    airport_in_bounds(apt, bb)
+                } else {
+                    true
+                }
+            })
             .collect::<Vec<&Airport>>()
     } else if let Some(LocationConstraint::AirportName(ref name)) = prompt.destination {
         let name_lower = name.to_lowercase();
@@ -291,18 +466,7 @@ pub fn generate_flight(
                 } else if a_name.contains(&name_lower) {
                     60
                 } else if name_lower.contains("british isles")
-                    && (p_region.contains("united kingdom")
-                        || p_region.contains("great britain")
-                        || p_region.contains("ireland")
-                        || p_region.contains("northern ireland")
-                        || p_region.contains("scotland")
-                        || p_region.contains("wales")
-                        || p_region.contains("england")
-                        || p_region.contains("isle of man")
-                        || p_region.contains("hebrides")
-                        || p_region.contains("shetland")
-                        || p_region.contains("orkney")
-                        || p_region.contains("channel islands"))
+                    && is_british_isles_region(&p_region)
                 {
                     50
                 } else {
@@ -322,7 +486,7 @@ pub fn generate_flight(
                 };
                 (a, score)
             })
-            .filter(|(_a, score)| *score > 0) // No guardrails for destination usually? Or should we?
+            .filter(|(_a, score)| *score > 0)
             // Existing logic didn't seem to apply guardrails tightly to destination in the AirportName branch before,
             // but let's stick to simple filtering for now.
             .collect();
@@ -484,8 +648,41 @@ fn p_contains_token(token: &str, text: &str) -> bool {
         }
         "usa" | "us" => text.contains("united states") || text.contains("america"),
         "uae" => text.contains("united arab emirates"),
+        "nz" => text.contains("new zealand"),
+        "socal" => {
+            text.contains("southern california")
+                || text.contains("los angeles")
+                || text.contains("san diego")
+        }
+        "norcal" => {
+            text.contains("northern california")
+                || text.contains("san francisco")
+                || text.contains("sacramento")
+        }
+        "pnw" => {
+            text.contains("pacific northwest")
+                || text.contains("washington")
+                || text.contains("oregon")
+                || text.contains("seattle")
+        }
         _ => false,
     }
+}
+
+/// Returns true if the region string refers to a British Isles sub-region.
+fn is_british_isles_region(region: &str) -> bool {
+    region.contains("united kingdom")
+        || region.contains("great britain")
+        || region.contains("ireland")
+        || region.contains("northern ireland")
+        || region.contains("scotland")
+        || region.contains("wales")
+        || region.contains("england")
+        || region.contains("isle of man")
+        || region.contains("hebrides")
+        || region.contains("shetland")
+        || region.contains("orkney")
+        || region.contains("channel islands")
 }
 
 fn is_heavy(a: &DiscoveredAddon) -> bool {

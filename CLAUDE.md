@@ -77,7 +77,7 @@ Rules-based heuristics engine (not ML despite the name) that:
 
 - Scores scenery packs (0-100) for smart sorting with 16 `SceneryCategory` variants (defined in `scenery/mod.rs`, includes virtual `Group`)
 - Classifies aircraft by engine type and category using regex pattern matching
-- Parses natural language flight prompts via `flight_prompt.rs` (e.g., "London to Paris in a 737")
+- Parses natural language flight prompts via `flight_prompt.rs` / `parser.rs` (e.g., "London to Paris in a 737")
 - Supports manual priority overrides (sticky sort / pins)
 - Lower score = higher priority (inverted from category scores)
 
@@ -93,6 +93,7 @@ Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct h
 - `fn subscription()` (~line 4301) — event subscriptions (timers, keyboard)
 - `fn view()` (~line 4387) — top-level view routing by tab
 - `fn view_scenery()` (~line 6584) — scenery tab layout
+- `fn view_scenery_basket()` (~line 6899) — scenery basket panel (selection, bulk toggle)
 - `fn view_addon_list()` (~line 8020) — reusable list for plugins/CSLs
 - `fn view_aircraft_tree()` (~line 8285) — aircraft tree with smart view
 

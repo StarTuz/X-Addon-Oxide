@@ -509,4 +509,133 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_region_to_region_flight() {
+        // France → Germany using bounding-box region matching
+        let mut manager = SceneryManager::new(PathBuf::from("/tmp/scenery_packs.ini"));
+        manager.packs.push(SceneryPack {
+            name: "Europe Scenery".to_string(),
+            path: PathBuf::from("EU"),
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            airports: vec![
+                // Paris CDG — inside France bounding box (41-51.5N, -5.5-10E)
+                make_test_airport("LFPG", "Paris Charles de Gaulle", 49.00, 2.55, 12000, SurfaceType::Hard),
+                // Frankfurt — inside Germany bounding box (47-55.5N, 5.5-15.5E)
+                make_test_airport("EDDF", "Frankfurt Main", 50.03, 8.57, 12000, SurfaceType::Hard),
+            ],
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+            region: Some("Europe".to_string()),
+        });
+
+        let aircraft = vec![make_test_aircraft("Boeing 747", vec!["Heavy", "Jet"])];
+
+        // "France" and "Germany" should now parse as Region constraints
+        // and match airports by coordinate bounding boxes
+        for _ in 0..5 {
+            let plan = generate_flight(
+                &manager.packs,
+                &aircraft,
+                "Flight from France to Germany using Boeing 747",
+            );
+            assert!(plan.is_ok(), "France → Germany should find airports: {:?}", plan.err());
+            let p = plan.unwrap();
+            assert_eq!(p.origin.id, "LFPG", "Origin should be in France");
+            assert_eq!(p.destination.id, "EDDF", "Destination should be in Germany");
+        }
+    }
+
+    #[test]
+    fn test_us_region_flight() {
+        // SoCal → NorCal using bounding-box matching
+        let mut manager = SceneryManager::new(PathBuf::from("/tmp/scenery_packs.ini"));
+        manager.packs.push(SceneryPack {
+            name: "US Global Airports".to_string(),
+            path: PathBuf::from("US"),
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            airports: vec![
+                // KLAX — inside SoCal box (32-35.5N, -121--114.5W)
+                make_test_airport("KLAX", "Los Angeles Intl", 33.94, -118.40, 4000, SurfaceType::Hard),
+                // KSFO — inside NorCal box (35.5-42.5N, -125--119.5W)
+                make_test_airport("KSFO", "San Francisco Intl", 37.62, -122.37, 3500, SurfaceType::Hard),
+            ],
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+            region: Some("North America".to_string()),
+        });
+
+        let aircraft = vec![make_test_aircraft("Cessna 172", vec!["GA", "Prop"])];
+
+        for _ in 0..5 {
+            let plan = generate_flight(
+                &manager.packs,
+                &aircraft,
+                "Flight from Socal to Norcal",
+            );
+            assert!(plan.is_ok(), "SoCal → NorCal should work: {:?}", plan.err());
+            let p = plan.unwrap();
+            assert_eq!(p.origin.id, "KLAX");
+            assert_eq!(p.destination.id, "KSFO");
+        }
+    }
+
+    #[test]
+    fn test_explicit_endpoints_bypass_distance_filter() {
+        // Two airports ~300nm apart with a GA aircraft (default 30-500nm).
+        // This should work even though previously it would fail for very long distances.
+        // We'll test with airports ~600nm apart which would exceed GA default of 500nm.
+        let mut manager = SceneryManager::new(PathBuf::from("/tmp/scenery_packs.ini"));
+        manager.packs.push(SceneryPack {
+            name: "US Airports".to_string(),
+            path: PathBuf::from("US"),
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            airports: vec![
+                // KLAX (Los Angeles) and KSEA (Seattle) are ~960nm apart
+                make_test_airport("KLAX", "Los Angeles Intl", 33.94, -118.40, 4000, SurfaceType::Hard),
+                make_test_airport("KSEA", "Seattle Tacoma Intl", 47.45, -122.31, 3500, SurfaceType::Hard),
+            ],
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+            region: Some("North America".to_string()),
+        });
+
+        let aircraft = vec![make_test_aircraft("Cessna 172", vec!["GA", "Prop"])];
+
+        // Using airport names (AirportName constraint) — both explicit
+        let plan = generate_flight(
+            &manager.packs,
+            &aircraft,
+            "Flight from Los Angeles to Seattle",
+        );
+        assert!(
+            plan.is_ok(),
+            "Explicit name-to-name should bypass distance filter: {:?}",
+            plan.err()
+        );
+        let p = plan.unwrap();
+        assert_eq!(p.origin.id, "KLAX");
+        assert_eq!(p.destination.id, "KSEA");
+
+        // Using ICAO codes — both explicit
+        let plan2 = generate_flight(
+            &manager.packs,
+            &aircraft,
+            "Flight from KLAX to KSEA",
+        );
+        assert!(
+            plan2.is_ok(),
+            "Explicit ICAO-to-ICAO should bypass distance filter: {:?}",
+            plan2.err()
+        );
+    }
 }
