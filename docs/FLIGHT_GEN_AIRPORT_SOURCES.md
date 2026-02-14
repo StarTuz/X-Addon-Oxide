@@ -58,3 +58,19 @@ So the failure is not just parsing ("London" → region); it is that **no pack i
    Add a small embedded list of airports (e.g. UK: EGLL, EGKK, EGCC, …; IT: LIRF, LIML, …; FR, DE, US, …) with id, name, lat, lon, and region. In `generate_flight`, when building `candidate_origins` or `candidate_dests` from packs, if the result is empty for a **Region** constraint, extend the list with seed airports for that region (and optionally filter by existing packs to prefer pack data). Then pick origin/destination from the combined list so “London to Italy” always returns a valid plan.
 
 No OpenStreetMap or external API is required; everything stays offline and robust against missing or misconfigured XP scenery.
+
+## Global coverage
+
+- **Correctness (right country):** Origin/destination filtering uses **ICAO location prefixes** per region (e.g. Mexico → MM, Japan → RJ, Brazil → SB). Prefixes are defined for all country-level regions in the geo index so that “Flight from Canada to Mexico” never lands in the US, and “to Japan” only considers RJ* airports. Bounds are used as well; prefixes avoid wrong-country picks when bounds overlap (e.g. Texas inside a Mexico bounding box).
+- **Data (which airports exist):** Actual airport lists come from (1) scenery packs (INI + discovery) and (2) the **base layer** (Resources + Global Scenery apt.dat) when available. That gives global coverage when the user has a normal X-Plane install.
+- **Seeds:** A small set of seed airports is used only when the pool (packs + base) has **no** candidates for that region. We do not maintain a full global seed list; the base layer is the intended source for worldwide airports. Seeds are a fallback so that a few high-traffic regions (e.g. London–Paris, South Africa, Kenya) still work if base/scenery is missing or broken.
+
+## Structured world view (no learning yet)
+
+The app has a **structured world view** that is static and rule-based:
+
+- **Regions** (`regions.json`): geographic bounds and ids (countries, sub-regions, continents). Used to map “South Africa”, “Kenya”, “Japan”, etc. to a region and filter airports by location.
+- **ICAO prefixes**: per-region so “to Mexico” means MM\* only, “from Kenya” means HK\* only. Ensures the right country even when bounds overlap.
+- **Airport pool**: built from scenery packs + base layer (Resources + Global Scenery apt.dat). The map shows this pool; gaps (e.g. sparse Africa) reflect what’s in the install and our seed fallbacks.
+
+The system **does not learn**: it does not remember corrections, preferences, or successful flights. It is heuristic/rule-based (regex prompt parsing, static regions, static seeds). Making it “AI-driven” in a learning sense would require, for example: persisting user preferences, learning from “use this airport for Kenya,” or integrating an LLM/API for natural language and suggestions. For now, extending the structured view (more regions, aliases, seeds where needed) makes more prompts work without adding learning.

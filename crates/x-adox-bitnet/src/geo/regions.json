@@ -740,6 +740,19 @@
         "parent_id": "AF"
     },
     {
+        "id": "KE",
+        "name": "Kenya",
+        "bounds": [
+            {
+                "min_lat": -4.7,
+                "max_lat": 5.0,
+                "min_lon": 33.9,
+                "max_lon": 41.9
+            }
+        ],
+        "parent_id": "AF"
+    },
+    {
         "id": "ZA",
         "name": "South Africa",
         "bounds": [

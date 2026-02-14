@@ -659,8 +659,13 @@ fn is_glider(a: &DiscoveredAddon) -> bool {
         || a.name.to_lowercase().contains("ask21")
 }
 
+/// ICAO location prefix(es) per region. Used to restrict origin/destination to the correct
+/// country (e.g. "Mexico" → MM only, so US airports in the same bounding box are excluded).
+/// Parent fallback applies for sub-regions (US:SoCal → US → K). Continent ids (EU, NA, AS, …)
+/// are not listed; they have no single prefix.
 fn icao_prefixes_for_region(region_id: &str) -> Option<Vec<&'static str>> {
     let direct = match region_id {
+        // Europe
         "IT" => Some(vec!["LI"]),
         "FR" => Some(vec!["LF"]),
         "UK" | "GB" | "BI" => Some(vec!["EG"]),
@@ -672,10 +677,36 @@ fn icao_prefixes_for_region(region_id: &str) -> Option<Vec<&'static str>> {
         "GR" => Some(vec!["LG"]),
         "BE" => Some(vec!["EB"]),
         "NL" => Some(vec!["EH"]),
+        "LU" => Some(vec!["EL"]),
+        "IE" => Some(vec!["EI"]),
+        "NO" => Some(vec!["EN"]),
+        "SE" => Some(vec!["ES"]),
+        "FI" => Some(vec!["EF"]),
+        "DK" => Some(vec!["EK"]),
+        "IS" => Some(vec!["BI"]),
+        "PL" => Some(vec!["EP"]),
+        "CZ" => Some(vec!["LK"]),
+        "TR" => Some(vec!["LT"]),
+        // Americas
         "US" => Some(vec!["K"]),
         "CA" => Some(vec!["C"]),
+        "MX" => Some(vec!["MM"]),
+        "BR" => Some(vec!["SB"]),
+        // Asia–Pacific
+        "JP" => Some(vec!["RJ"]),
+        "CN" => Some(vec!["ZB", "ZG", "ZH", "ZM", "ZU"]),
+        "KR" => Some(vec!["RK"]),
+        "IN" => Some(vec!["VE", "VO"]),
+        "TH" => Some(vec!["VT"]),
+        "VN" => Some(vec!["VV"]),
+        "ID" => Some(vec!["WI"]),
         "AU" => Some(vec!["Y"]),
+        // Middle East & Africa
+        "IL" => Some(vec!["LL"]),
+        "EG" => Some(vec!["HE"]),
         "ZA" => Some(vec!["FA"]),
+        "KE" => Some(vec!["HK"]),
+        "UAE" => Some(vec!["OM"]),
         _ => None,
     };
     if direct.is_some() {
@@ -704,8 +735,10 @@ fn seed_airport(id: &str, name: &str, lat: f64, lon: f64) -> Airport {
     }
 }
 
-/// Embedded seed airports (fallback when pool + base layer have no candidates).
-/// Uses parent fallback for sub-regions (e.g. US:SoCal -> US seeds).
+/// Seed airports used only when the pool (scenery packs + base layer) has no candidates for
+/// that region. Global coverage comes from the base layer (Resources + Global Scenery apt.dat);
+/// we seed only a few high-traffic regions so prompts like "London to Paris" still work without
+/// scenery. Parent fallback applies for sub-regions (e.g. US:SoCal → US seeds).
 fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
     let direct = match region_id {
         // GB has no seeds: it excludes Northern Ireland; do not fall back to UK seeds.
@@ -742,6 +775,25 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
             seed_airport("KLAX", "Los Angeles", 33.9425, -118.4081),
             seed_airport("KORD", "Chicago O'Hare", 41.9786, -87.9047),
             seed_airport("KATL", "Atlanta", 33.6367, -84.4281),
+        ],
+        "MX" => vec![
+            seed_airport("MMMX", "Mexico City", 19.4363, -99.0721),
+            seed_airport("MMUN", "Cancun", 21.0365, -86.8770),
+            seed_airport("MMMD", "Monterrey", 25.7785, -100.1070),
+        ],
+        "CA" => vec![
+            seed_airport("CYVR", "Vancouver", 49.1967, -123.1815),
+            seed_airport("CYYZ", "Toronto Pearson", 43.6777, -79.6248),
+            seed_airport("CYUL", "Montreal", 45.4706, -73.7408),
+        ],
+        "ZA" => vec![
+            seed_airport("FALE", "King Shaka Durban", -29.6144, 31.1197),
+            seed_airport("FAOR", "Johannesburg O.R. Tambo", -26.1367, 28.2411),
+            seed_airport("FACT", "Cape Town Intl", -33.9715, 18.6021),
+        ],
+        "KE" => vec![
+            seed_airport("HKJK", "Nairobi Jomo Kenyatta", -1.3192, 36.9275),
+            seed_airport("HKMO", "Mombasa Moi", -4.0348, 39.5943),
         ],
         "IE" => vec![
             seed_airport("EIDW", "Dublin", 53.4263, -6.2499),

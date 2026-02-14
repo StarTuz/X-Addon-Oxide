@@ -213,6 +213,8 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "germany" | "berlin" | "frankfurt" => Some(LocationConstraint::Region("DE".to_string())),
         "spain" | "madrid" | "barcelona" => Some(LocationConstraint::Region("ES".to_string())),
         "usa" | "us" | "united states" => Some(LocationConstraint::Region("US".to_string())),
+        "canada" => Some(LocationConstraint::Region("CA".to_string())),
+        "mexico" => Some(LocationConstraint::Region("MX".to_string())),
         "socal" | "southern california" => Some(LocationConstraint::Region("US:SoCal".to_string())),
         "riverside county" | "riverside" => Some(LocationConstraint::Region("US:SoCal".to_string())),
         "norcal" | "northern california" => {
@@ -223,6 +225,8 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "alps" => Some(LocationConstraint::Region("Alps".to_string())),
         "rockies" => Some(LocationConstraint::Region("Rockies".to_string())),
         "caribbean" => Some(LocationConstraint::Region("Caribbean".to_string())),
+        "south africa" => Some(LocationConstraint::Region("ZA".to_string())),
+        "kenya" => Some(LocationConstraint::Region("KE".to_string())),
         _ => None,
     }
 }
