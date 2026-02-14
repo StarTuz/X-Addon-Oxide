@@ -1,5 +1,7 @@
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
 use iced::{Element, Length};
+use std::path::Path;
+use x_adox_core::apt_dat::Airport;
 use x_adox_core::discovery::DiscoveredAddon;
 use x_adox_core::flight_gen::{self, FlightPlan};
 
@@ -9,6 +11,8 @@ pub struct FlightGenState {
     pub history: Vec<ChatMessage>,
     pub current_plan: Option<FlightPlan>,
     pub status_message: Option<String>,
+    /// Base airport layer (Option B): loaded from X-Plane Resources/Global Scenery when root is set.
+    pub base_airports: Option<Vec<Airport>>,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +43,7 @@ impl Default for FlightGenState {
             }],
             current_plan: None,
             status_message: None,
+            base_airports: None,
         }
     }
 }
@@ -51,6 +56,7 @@ impl FlightGenState {
         message: Message,
         packs: &[SceneryPack],
         aircraft_list: &[DiscoveredAddon],
+        xplane_root: Option<&Path>,
     ) {
         match message {
             Message::InputChanged(val) => {
@@ -60,6 +66,11 @@ impl FlightGenState {
                 if self.input_value.trim().is_empty() {
                     return;
                 }
+                // Option B: load base airport layer once when we have X-Plane root
+                if xplane_root.is_some() && self.base_airports.is_none() {
+                    self.base_airports = Some(flight_gen::load_base_airports(xplane_root.unwrap()));
+                }
+
                 let prompt = self.input_value.clone();
                 self.history.push(ChatMessage {
                     sender: "User".to_string(),
@@ -68,7 +79,8 @@ impl FlightGenState {
                 });
                 self.input_value.clear();
 
-                match flight_gen::generate_flight(packs, aircraft_list, &prompt) {
+                let base = self.base_airports.as_deref();
+                match flight_gen::generate_flight(packs, aircraft_list, &prompt, base) {
                     Ok(plan) => {
                         let response = format!(
                             "Generated Flight:\nOrigin: {} ({})\nDestination: {} ({})\nAircraft: {}\nDistance: {} nm\nDuration: {} mins",
@@ -87,12 +99,22 @@ impl FlightGenState {
                         self.status_message = Some("Flight generated successfully.".to_string());
                     }
                     Err(e) => {
+                        let mut text = format!("Error: {}", e);
+                        // Option A: suggest adding Global Airports when not in list
+                        let has_global = packs.iter().any(|p| {
+                            p.name == "Global Airports"
+                                || p.name == "*GLOBAL_AIRPORTS*"
+                                || p.path.to_string_lossy().to_lowercase().contains("global airports")
+                        });
+                        if !has_global && (e.contains("No suitable departure") || e.contains("No suitable destination")) {
+                            text.push_str("\nTip: Add Global Airports in Scenery for more options.");
+                        }
                         self.history.push(ChatMessage {
                             sender: "System".to_string(),
-                            text: format!("Error: {}", e),
+                            text: text.clone(),
                             is_user: false,
                         });
-                        self.status_message = Some(format!("Error: {}", e));
+                        self.status_message = Some(text);
                     }
                 }
             }

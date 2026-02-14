@@ -30,10 +30,10 @@ impl BoundingBox {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Region {
-    pub id: &'static str,         // Unique ID, e.g., "US", "US:OR", "EU:FR"
-    pub name: &'static str,       // Human readable name, e.g., "Oregon", "France"
-    pub bounds: Vec<BoundingBox>, // Union of boxes to approximate shape
-    pub parent_id: Option<&'static str>,
+    pub id: String,
+    pub name: String,
+    pub bounds: Vec<BoundingBox>,
+    pub parent_id: Option<String>,
 }
 
 impl Region {

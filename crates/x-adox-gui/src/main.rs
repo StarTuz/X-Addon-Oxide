@@ -3601,9 +3601,9 @@ impl App {
                 
                 // For now, I will verify this.
                 let packs = &self.packs; // Arc<Vec<SceneryPack>> -> &Vec<SceneryPack> -> &[SceneryPack]
-                let aircraft_list = &self.aircraft; // Arc<Vec<DiscoveredAddon>> -> &Vec -> slice
-                
-                self.flight_gen.update(msg, packs, aircraft_list);
+                let aircraft_list = &self.aircraft;
+                let xplane_root = self.xplane_root.as_deref();
+                self.flight_gen.update(msg, packs, aircraft_list, xplane_root);
                 Task::none()
             }
             Message::ExportHeuristics => {

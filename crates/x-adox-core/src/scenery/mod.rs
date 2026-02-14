@@ -389,7 +389,7 @@ impl SceneryManager {
 
     pub fn load(&mut self) -> Result<(), SceneryError> {
         let custom_scenery_dir = self.file_path.parent().unwrap_or(&self.file_path);
-        println!("[SceneryManager] Loading from INI: {:?}", self.file_path);
+        log::info!("[SceneryManager] Loading from INI: {:?}", self.file_path);
         println!(
             "[SceneryManager] Custom Scenery Dir: {:?}",
             custom_scenery_dir
@@ -399,12 +399,12 @@ impl SceneryManager {
         let mut packs = match ini_handler::read_ini(&self.file_path, custom_scenery_dir) {
             Ok(p) => p,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                println!("[SceneryManager] INI file not found, starting fresh");
+                log::info!("[SceneryManager] INI file not found, starting fresh");
                 Vec::new()
             }
             Err(e) => return Err(SceneryError::Io(e)),
         };
-        println!("[SceneryManager] Read {} packs from INI", packs.len());
+        log::info!("[SceneryManager] Read {} packs from INI", packs.len());
 
         // De-duplicate INI entries just in case
         let initial_count = packs.len();
@@ -537,7 +537,28 @@ impl SceneryManager {
                             None,
                         )
                     } else {
-                        let airports = discover_airports_in_pack(&pack.path);
+                        let mut airports = discover_airports_in_pack(&pack.path);
+                        // X-Plane 12 may ship the default airport database in Resources instead of
+                        // Global Scenery/Global Airports; use it as fallback so flight gen has data.
+                        if airports.is_empty() && is_global_airports_pack(&pack) {
+                            if let Some(xplane_root) = pack.path.parent().and_then(Path::parent) {
+                                let resources_apt = xplane_root
+                                    .join("Resources")
+                                    .join("default scenery")
+                                    .join("default apt dat")
+                                    .join("Earth nav data")
+                                    .join("apt.dat");
+                                if resources_apt.exists() {
+                                    if let Ok(extra) = AptDatParser::parse_file(&resources_apt) {
+                                        log::info!(
+                                            "[SceneryManager] Global Airports: loaded {} airports from Resources fallback",
+                                            extra.len()
+                                        );
+                                        airports = extra;
+                                    }
+                                }
+                            }
+                        }
                         let (tiles, descriptor) = discover_tiles_in_pack(&pack.path);
 
                         let mtime = std::fs::metadata(&pack.path)
@@ -629,7 +650,7 @@ impl SceneryManager {
         for (pack, cache_update) in processed_results {
             if let Some(entry) = cache_update {
                 if !entry.airports.is_empty() {
-                    println!(
+                    log::info!(
                         "[SceneryManager] Pack '{}' initialized with {} airports",
                         pack.name,
                         entry.airports.len()
@@ -883,7 +904,7 @@ impl SceneryManager {
 
         for (name, indices) in groups {
             if indices.len() > 1 {
-                println!(
+                log::info!(
                     "[SceneryManager] Found duplicates for '{}': {:?}",
                     name, indices
                 );
@@ -1036,6 +1057,13 @@ fn extract_version(name: &str) -> Option<String> {
     }
 
     None
+}
+
+/// True if this pack is the default Global Airports (by name or path).
+fn is_global_airports_pack(pack: &SceneryPack) -> bool {
+    pack.name == "*GLOBAL_AIRPORTS*"
+        || pack.name == "Global Airports"
+        || pack.path.to_string_lossy().to_lowercase().contains("global airports")
 }
 
 /// Recursively find all directories within a pack that look like actual scenery roots
@@ -1249,7 +1277,7 @@ pub fn discover_airports_in_pack(pack_path: &Path) -> Vec<Airport> {
             match AptDatParser::parse_file(&apt_path) {
                 Ok(airports) => all_airports.extend(airports),
                 Err(e) => {
-                    println!(
+                    log::info!(
                         "[SceneryManager] ERROR parsing {}: {}",
                         apt_path.display(),
                         e
