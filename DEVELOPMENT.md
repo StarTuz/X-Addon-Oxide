@@ -80,6 +80,7 @@ Rules-based heuristics engine that:
 - Scores scenery packs (0-100) for smart sorting. Detailed logic in [HEALTH_SCORE.md](HEALTH_SCORE.md).
 - Classifies aircraft by engine type and category
 - Supports manual priority overrides (sticky sort)
+- **Flight preferences** (schema v10): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; flight gen uses these when resolving region-based origin/destination
 
 #### BitNet Sorting Rules (Critical)
 
@@ -103,7 +104,8 @@ The sorting hierarchy is strictly defined to prevent scenery conflicts. Future c
 
 Iced framework with Elm-like message-driven architecture:
 
-- Tab navigation: Scenery, Aircraft, Plugins (includes Companion Manager), Utilities (Logbook/Map), Heuristics, Issues, Settings
+- Tab navigation: Scenery, Aircraft, Plugins (includes Companion Manager), **Flight Generator**, Utilities (Logbook/Map), Heuristics, Issues, Settings
+- `flight_gen_gui.rs` - Flight Gen: natural language prompt, **Regenerate** (same prompt, new outcome), export (FMS 11/12, LNM, SimBrief), **Remember this flight** / **Prefer this origin** / **Prefer this destination** (persist to BitNet)
 - `map.rs` - Interactive world map showing scenery locations and live flight tracking
 - `style.rs` - Dark theme with neon glow effects
 - **Folder Exclusions**: Manage scanning scope via Settings (gear icon in Aircraft tab)
@@ -116,7 +118,7 @@ Iced framework with Elm-like message-driven architecture:
 - Scenery config: `$XPLANE_ROOT/Custom Scenery/scenery_packs.ini`
 - Disabled addons use suffix: `Aircraft (Disabled)/`, `plugins (disabled)/`
 - Config storage (`~/.config/x-adox/X-Addon-Oxide/`):
-  - `heuristics.json`: Sorting rules and tags
+  - `heuristics.json`: Sorting rules, pins, aircraft overrides, flight preferences (schema v10)
   - `scan_config.json`: Folder exclusions/inclusions
   - `icon_overrides.json`: Manual aircraft icon paths
 

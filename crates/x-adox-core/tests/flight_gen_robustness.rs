@@ -172,7 +172,7 @@ fn test_all_regions_coverage() {
         // 1. Ensure Local Connectivity for GA
         {
             let prompt = format!("{} Cessna", region.name);
-            if let Err(e) = generate_flight(&packs, &[cessna.clone()], &prompt, None) {
+            if let Err(e) = generate_flight(&packs, &[cessna.clone()], &prompt, None, None) {
                 println!("GA FAILED '{}' ({}): {}", prompt, region.id, e);
                 failure_count += 1;
             }
@@ -181,7 +181,7 @@ fn test_all_regions_coverage() {
         // 2. Ensure Global Connectivity for Jets
         {
             let prompt = format!("{} Boeing", region.name);
-            if let Err(e) = generate_flight(&packs, &[boeing.clone()], &prompt, None) {
+            if let Err(e) = generate_flight(&packs, &[boeing.clone()], &prompt, None, None) {
                 println!("JET FAILED '{}' ({}): {}", prompt, region.id, e);
                 failure_count += 1;
             }
@@ -192,14 +192,14 @@ fn test_all_regions_coverage() {
     // Explicit route: UK (EGLL) to US (KJFK) - both in hub list
     // Use ICAO codes for robust "A to B" testing
     let cross_prompt = "EGLL to KJFK using Boeing";
-    if let Err(e) = generate_flight(&packs, &[boeing.clone()], cross_prompt, None) {
+    if let Err(e) = generate_flight(&packs, &[boeing.clone()], cross_prompt, None, None) {
         println!("CROSS-REGION FAILED: {}", e);
         failure_count += 1;
     }
 
     // Helicopter constraint
     let heli_prompt = "Alps Bell";
-    if let Err(e) = generate_flight(&packs, &[heli.clone()], heli_prompt, None) {
+    if let Err(e) = generate_flight(&packs, &[heli.clone()], heli_prompt, None, None) {
         println!("HELI FAILED: {}", e);
         failure_count += 1;
     }
@@ -245,7 +245,7 @@ fn test_glider_range_constraint() {
     let packs = vec![pack];
 
     // "to random" ensures the parser sees "from X to Y" so origin is EGLL (not unset)
-    let plan = generate_flight(&packs, &[ask21], "from EGLL to random using glider", None)
+    let plan = generate_flight(&packs, &[ask21], "from EGLL to random using glider", None, None)
         .expect("Failed to gen glider flight");
     assert!(
         plan.distance_nm <= 60,
@@ -282,7 +282,7 @@ fn test_italy_accuracy() {
 
     // Request flight to Italy
     for _ in 0..10 {
-        let plan = generate_flight(&packs, &[cessna.clone()], "from random to Italy", None)
+        let plan = generate_flight(&packs, &[cessna.clone()], "from random to Italy", None, None)
             .expect("Failed to gen Italy flight");
         assert!(
             plan.destination.id.starts_with("LI"),
@@ -318,7 +318,7 @@ fn test_search_accuracy_london_uk() {
     let packs = vec![pack];
 
     // Request flight from "London UK" (parsed as Region UK)
-    let plan = generate_flight(&packs, &[cessna], "short flight from London UK to random", None)
+    let plan = generate_flight(&packs, &[cessna], "short flight from London UK to random", None, None)
         .expect("Failed to gen London UK flight");
 
     // Must be a UK airport (EG), not London Ontario (CYXU)

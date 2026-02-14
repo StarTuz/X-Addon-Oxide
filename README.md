@@ -44,6 +44,7 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 - **Shadow Mesh Detection**: Automatically identifies redundant mesh scenery that destroys load times, helping you optimize performance.
 - **Profiles**: Create and switch between different hangar configurations (e.g., "IFR Online", "VFR Scenery Heavy") instantly.
 - **Companion App Launcher**: Manage and launch external tools like SimBrief, Navigraph, or VATSIM clients directly from the Plugins tab.
+- **Flight Generator**: Natural-language flight plans (e.g. “London to Paris in a 737”) with **Regenerate** for a new outcome and BitNet learning (“Remember this flight”, “Prefer this origin/destination”).
 - **Logbook & Utilities**: Automatically synced pilot logbook and live aircraft tracking in the Utilities tab
 
 ### 🧠 AI & Visuals

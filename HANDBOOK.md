@@ -42,6 +42,7 @@ Welcome to **X-Addon-Oxide**, the next-generation addon manager for X-Plane. Des
 * **Smart Sorting**: AI-powered scenery sorting (BitNet engine) that respects X-Plane's strict loading order.
 * **Map Visualization**: Interactive world map showing your installed scenery coverage.
 * **Plugin Management**: Enable/disable plugins without deleting files.
+* **Flight Generator**: Natural-language flight plans (e.g. “London to Paris in a 737”), with **Regenerate** for a new outcome, and learning (“Remember this flight”, “Prefer this origin/destination”) persisted via BitNet.
 * **Utilities**: Built-in Logbook editor, Companion App launcher, and more.
 * **Performance**: Native application (Rust) for blazing fast speeds.
 

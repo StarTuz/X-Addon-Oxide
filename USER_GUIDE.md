@@ -76,6 +76,13 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 - **Dynamic Scanning**: X-Addon-Oxide automatically scans all your installed plugins (like IVAO_CSL, xPilot, or LiveTraffic) for CSL packages. No manual path configuration required.
 - **Toggling**: Enable or disable specific CSL libraries to manage visibility during online operations. Disabled libraries are moved to a protected `CSL (disabled)` subfolder.
 
+### ✈️ Flight Generator
+
+- **Natural language**: Ask for a flight (e.g. “Flight from London to Paris using Cessna”). The app uses your scenery and base airport data to suggest origin, destination, and aircraft.
+- **Regenerate**: Don’t like the result? Click **Regenerate** to run the same request again and get a different random outcome.
+- **Learning**: After a generated plan, use **Remember this flight** (saves the origin/destination pair for that region combo) or **Prefer this origin** / **Prefer this destination** (prefer that airport next time for that region). Preferences are stored in BitNet and used on future generations.
+- **Export**: FMS 11, FMS 12, Little Navmap, or SimBrief.
+
 ### 🛠️ Utilities
 
 - **Pilot Logbook**: Automatically syncs your `X-Plane Pilot.txt` entries into a searchable list.

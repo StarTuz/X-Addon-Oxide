@@ -29,6 +29,16 @@ pub struct Rule {
     pub is_exclusion: bool,
 }
 
+/// Stored after "Remember this flight" for region-based prompts. Next time the same
+/// origin/dest region pair is requested, these ICAOs are preferred when in the candidate set.
+#[derive(Debug, Clone, Default, Hash, Serialize, Deserialize)]
+pub struct FlightLastSuccess {
+    pub origin_region: String,
+    pub dest_region: String,
+    pub origin_icao: String,
+    pub dest_icao: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Hash)]
 pub struct HeuristicsConfig {
     pub rules: Vec<Rule>,
@@ -37,13 +47,22 @@ pub struct HeuristicsConfig {
     pub overrides: std::collections::BTreeMap<String, u8>,
     #[serde(default)]
     pub aircraft_overrides: std::collections::BTreeMap<String, Vec<String>>,
+    /// Preferred origin ICAOs per region (e.g. "KE" -> ["HKJK"]). Used by flight gen when resolving "from Kenya".
+    #[serde(default)]
+    pub flight_origin_prefs: std::collections::BTreeMap<String, Vec<String>>,
+    /// Preferred destination ICAOs per region.
+    #[serde(default)]
+    pub flight_dest_prefs: std::collections::BTreeMap<String, Vec<String>>,
+    /// Last successful flight (origin/dest regions + ICAOs) for "Remember this flight".
+    #[serde(default)]
+    pub flight_last_success: Option<FlightLastSuccess>,
     /// Schema version for migration. Increment when breaking changes are made.
     #[serde(default)]
     pub schema_version: u32,
 }
 
 /// When a user's file has a lower version, their `overrides` will be cleared on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 9;
+pub const CURRENT_SCHEMA_VERSION: u32 = 10;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
@@ -221,6 +240,9 @@ impl Default for HeuristicsConfig {
             fallback_score: 30,
             overrides: std::collections::BTreeMap::new(),
             aircraft_overrides: std::collections::BTreeMap::new(),
+            flight_origin_prefs: std::collections::BTreeMap::new(),
+            flight_dest_prefs: std::collections::BTreeMap::new(),
+            flight_last_success: None,
             schema_version: CURRENT_SCHEMA_VERSION,
         }
     }
@@ -345,6 +367,11 @@ impl BitNetModel {
                     log::info!("[BitNet] v8→v9: Logic updated (Airport Overlays 24->12)");
                 }
 
+                // v9→v10: Flight gen preferences (origin/dest prefs, last success). New fields use #[serde(default)].
+                if config.schema_version <= 9 {
+                    log::info!("[BitNet] v9→v10: Flight preferences (origin/dest prefs, last success)");
+                }
+
                 config.schema_version = CURRENT_SCHEMA_VERSION;
                 // Save the migrated config
                 if let Some(parent) = path.parent() {
@@ -408,6 +435,44 @@ impl BitNetModel {
     pub fn clear_overrides(&mut self) -> Result<()> {
         let config = Arc::make_mut(&mut self.config);
         config.overrides.clear();
+        self.save()
+    }
+
+    /// Record last successful flight for "Remember this flight". Prefer this origin/dest pair next time the same region pair is requested.
+    pub fn record_flight_last_success(
+        &mut self,
+        origin_region: String,
+        dest_region: String,
+        origin_icao: String,
+        dest_icao: String,
+    ) -> Result<()> {
+        let config = Arc::make_mut(&mut self.config);
+        config.flight_last_success = Some(FlightLastSuccess {
+            origin_region,
+            dest_region,
+            origin_icao,
+            dest_icao,
+        });
+        self.save()
+    }
+
+    /// Add an airport to the preferred origin list for a region (e.g. "Prefer HKJK for Kenya" → region "KE").
+    pub fn add_flight_origin_pref(&mut self, region_id: String, icao: String) -> Result<()> {
+        let config = Arc::make_mut(&mut self.config);
+        let list = config.flight_origin_prefs.entry(region_id).or_default();
+        if !list.contains(&icao) {
+            list.push(icao);
+        }
+        self.save()
+    }
+
+    /// Add an airport to the preferred destination list for a region.
+    pub fn add_flight_dest_pref(&mut self, region_id: String, icao: String) -> Result<()> {
+        let config = Arc::make_mut(&mut self.config);
+        let list = config.flight_dest_prefs.entry(region_id).or_default();
+        if !list.contains(&icao) {
+            list.push(icao);
+        }
         self.save()
     }
 

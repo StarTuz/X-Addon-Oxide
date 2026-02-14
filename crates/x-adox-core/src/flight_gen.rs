@@ -6,7 +6,7 @@ use x_adox_bitnet::flight_prompt::{
     AircraftConstraint, DurationKeyword, FlightPrompt, LocationConstraint, SurfaceKeyword,
     TypeKeyword,
 };
-
+use x_adox_bitnet::HeuristicsConfig;
 use x_adox_bitnet::geo::RegionIndex;
 
 /// Loads the default airport database from X-Plane root (Option B: guaranteed base layer).
@@ -70,6 +70,10 @@ pub struct FlightPlan {
     pub distance_nm: u32,
     pub duration_minutes: u32,
     pub route_description: String,
+    /// When origin was resolved from a region (e.g. "from Kenya"), the region id for UI/prefs.
+    pub origin_region_id: Option<String>,
+    /// When destination was resolved from a region, the region id for UI/prefs.
+    pub dest_region_id: Option<String>,
 }
 
 use crate::scenery::SceneryPack;
@@ -134,6 +138,7 @@ pub fn generate_flight(
     aircraft_list: &[DiscoveredAddon],
     prompt_str: &str,
     base_airports: Option<&[Airport]>,
+    prefs: Option<&HeuristicsConfig>,
 ) -> Result<FlightPlan, String> {
     let prompt = FlightPrompt::parse(prompt_str);
     log::debug!(
@@ -277,7 +282,43 @@ pub fn generate_flight(
         return Err("No suitable departure airport found.".to_string());
     }
 
-    candidate_origins.shuffle(&mut rng);
+    // Apply flight preferences: preferred origin ICAOs first (from prefs + last_success when region pair matches)
+    if let Some(LocationConstraint::Region(ref region_id)) = &prompt.origin {
+        let mut preferred_icaos: Vec<String> = prefs
+            .and_then(|c| c.flight_origin_prefs.get(region_id).cloned())
+            .unwrap_or_default();
+        if let (Some(ref last), Some(LocationConstraint::Region(ref dest_r))) =
+            (prefs.and_then(|c| c.flight_last_success.as_ref()), &prompt.destination)
+        {
+            if last.origin_region == *region_id && last.dest_region == *dest_r && !last.origin_icao.is_empty() {
+                if !preferred_icaos.contains(&last.origin_icao) {
+                    preferred_icaos.insert(0, last.origin_icao.clone());
+                }
+            }
+        }
+        if !preferred_icaos.is_empty() {
+            let preferred_set: std::collections::HashSet<&str> =
+                preferred_icaos.iter().map(|s| s.as_str()).collect();
+            let mut preferred: Vec<&Airport> = candidate_origins
+                .iter()
+                .filter(|a| preferred_set.contains(a.id.as_str()))
+                .copied()
+                .collect();
+            let mut rest: Vec<&Airport> = candidate_origins
+                .iter()
+                .filter(|a| !preferred_set.contains(a.id.as_str()))
+                .copied()
+                .collect();
+            rest.shuffle(&mut rng);
+            preferred.shuffle(&mut rng);
+            candidate_origins = preferred;
+            candidate_origins.extend(rest);
+        } else {
+            candidate_origins.shuffle(&mut rng);
+        }
+    } else {
+        candidate_origins.shuffle(&mut rng);
+    }
     let max_attempts = 20;
     #[allow(unused_assignments)]
     let mut seed_dest_fallback: Vec<Airport> = Vec::new();
@@ -428,13 +469,60 @@ pub fn generate_flight(
             .collect();
 
         if !valid_dests.is_empty() {
-            let destination = *valid_dests.choose(&mut rng).unwrap();
+            let preferred_dest_icaos: Vec<String> = match &prompt.destination {
+                Some(LocationConstraint::Region(ref region_id)) => {
+                    let mut icaos = prefs
+                        .and_then(|c| c.flight_dest_prefs.get(region_id).cloned())
+                        .unwrap_or_default();
+                    if let (Some(ref last), Some(LocationConstraint::Region(ref orig_r))) =
+                        (prefs.and_then(|c| c.flight_last_success.as_ref()), &prompt.origin)
+                    {
+                        if last.dest_region == *region_id && last.origin_region == *orig_r && !last.dest_icao.is_empty() {
+                            if !icaos.contains(&last.dest_icao) {
+                                icaos.insert(0, last.dest_icao.clone());
+                            }
+                        }
+                    }
+                    icaos
+                }
+                _ => Vec::new(),
+            };
+            let destination = if preferred_dest_icaos.is_empty() {
+                *valid_dests.choose(&mut rng).unwrap()
+            } else {
+                let preferred_set: std::collections::HashSet<&str> =
+                    preferred_dest_icaos.iter().map(|s| s.as_str()).collect();
+                let preferred: Vec<&Airport> = valid_dests
+                    .iter()
+                    .filter(|a| preferred_set.contains(a.id.as_str()))
+                    .copied()
+                    .collect();
+                if preferred.is_empty() {
+                    *valid_dests.choose(&mut rng).unwrap()
+                } else {
+                    *preferred.choose(&mut rng).unwrap()
+                }
+            };
             let dist = haversine_nm(
                 origin.lat.unwrap(),
                 origin.lon.unwrap(),
                 destination.lat.unwrap(),
                 destination.lon.unwrap(),
             );
+            let origin_region_id = prompt.origin.as_ref().and_then(|o| {
+                if let LocationConstraint::Region(r) = o {
+                    Some(r.clone())
+                } else {
+                    None
+                }
+            });
+            let dest_region_id = prompt.destination.as_ref().and_then(|d| {
+                if let LocationConstraint::Region(r) = d {
+                    Some(r.clone())
+                } else {
+                    None
+                }
+            });
             return Ok(FlightPlan {
                 origin: (*origin).clone(),
                 destination: destination.clone(),
@@ -446,13 +534,11 @@ pub fn generate_flight(
                 } else {
                     "generated".to_string()
                 },
+                origin_region_id,
+                dest_region_id,
             });
         }
     }
-    log::debug!(
-        "[flight_gen] No destination found after {} origin attempts",
-        max_attempts
-    );
     log::debug!(
         "[flight_gen] No destination found after {} origin attempts",
         max_attempts
@@ -1002,7 +1088,7 @@ mod tests {
 
         // This test simulates the logic inside generate_flight's origin selection
         // We can call generate_flight directly
-        let result = generate_flight(&[pack], &[aircraft], prompt, None);
+        let result = generate_flight(&[pack], &[aircraft], prompt, None, None);
 
         // Assertions
         if let Ok(plan) = result {

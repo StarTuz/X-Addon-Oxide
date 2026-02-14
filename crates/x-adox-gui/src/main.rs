@@ -3569,42 +3569,59 @@ impl App {
                 Task::none()
             }
             Message::FlightGen(msg) => {
-                let aircraft_flattened = self.aircraft.clone(); // Arc<Vec>
-                // We need to pass &[DiscoveredAddon]
-                // Scenery Manager is available via XPlaneManager potentially?
-                // self.packs is Arc<Vec<SceneryPack>>.
-                // But SceneryManager owns packs.
-                // Wait, SceneryManager is constructed from packs usually?
-                // Or App has a SceneryManager?
-                // App has `packs`.
-                // FlightGen needs `SceneryManager`.
-                // I need to construct a temporary SceneryManager or change FlightGen to accept packs.
-                // SceneryManager is simple wrapper around packs.
-                // Let's look at `SceneryManager` definition.
-                // It has `packs`, `tiles`, `tags`, `descriptor`.
-                // I can construct one cheaply if I clone the Arc? No, SceneryManager has `pub packs: Vec<SceneryPack>` not Arc.
-                // Oh no.
-                // If SceneryManager owns packs, I can't easily pass it if App owns packs.
-                // `App` has `packs: Arc<Vec<SceneryPack>>`.
-                // `flight_gen` takes `&SceneryManager`.
-                
-                // I should probably change `flight_gen` to take `&[SceneryPack]` instead of `&SceneryManager`.
-                // Let's do that refactor first? No, too much context switching.
-                // Let's see if I can construct a SceneryManager that borrows? No.
-                
-                // Alternative: Update `flight_gen` signature.
-                // It uses `scenery.packs.iter()`.
-                // It uses `scenery.packs` only?
-                // Let's check `flight_gen.rs`.
-                // It uses `scenery.packs`.
-                // So I should change `generate_flight` signature to take `&[SceneryPack]`.
-                
-                // For now, I will verify this.
-                let packs = &self.packs; // Arc<Vec<SceneryPack>> -> &Vec<SceneryPack> -> &[SceneryPack]
-                let aircraft_list = &self.aircraft;
-                let xplane_root = self.xplane_root.as_deref();
-                self.flight_gen.update(msg, packs, aircraft_list, xplane_root);
-                Task::none()
+                match &msg {
+                    flight_gen_gui::Message::RememberThisFlight => {
+                        if let Some(plan) = &self.flight_gen.current_plan {
+                            if let (Some(orig_r), Some(dest_r)) =
+                                (&plan.origin_region_id, &plan.dest_region_id)
+                            {
+                                let _ = self.heuristics_model.record_flight_last_success(
+                                    orig_r.clone(),
+                                    dest_r.clone(),
+                                    plan.origin.id.clone(),
+                                    plan.destination.id.clone(),
+                                );
+                            }
+                        }
+                        Task::none()
+                    }
+                    flight_gen_gui::Message::PreferThisOrigin => {
+                        if let Some(plan) = &self.flight_gen.current_plan {
+                            if let Some(region_id) = &plan.origin_region_id {
+                                let _ = self.heuristics_model.add_flight_origin_pref(
+                                    region_id.clone(),
+                                    plan.origin.id.clone(),
+                                );
+                            }
+                        }
+                        Task::none()
+                    }
+                    flight_gen_gui::Message::PreferThisDestination => {
+                        if let Some(plan) = &self.flight_gen.current_plan {
+                            if let Some(region_id) = &plan.dest_region_id {
+                                let _ = self.heuristics_model.add_flight_dest_pref(
+                                    region_id.clone(),
+                                    plan.destination.id.clone(),
+                                );
+                            }
+                        }
+                        Task::none()
+                    }
+                    _ => {
+                        let packs = &self.packs;
+                        let aircraft_list = &self.aircraft;
+                        let xplane_root = self.xplane_root.as_deref();
+                        let prefs = self.heuristics_model.config.as_ref();
+                        self.flight_gen.update(
+                            msg.clone(),
+                            packs,
+                            aircraft_list,
+                            xplane_root,
+                            Some(prefs),
+                        );
+                        Task::none()
+                    }
+                }
             }
             Message::ExportHeuristics => {
                 let text = self.heuristics_json.text();

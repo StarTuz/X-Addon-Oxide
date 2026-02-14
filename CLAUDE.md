@@ -79,6 +79,7 @@ Rules-based heuristics engine (not ML despite the name) that:
 - Classifies aircraft by engine type and category using regex pattern matching
 - Parses natural language flight prompts via `flight_prompt.rs` / `parser.rs` (e.g., "London to Paris in a 737")
 - Supports manual priority overrides (sticky sort / pins)
+- **Flight preferences** (schema v10): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; used by flight gen to prefer airports/remember last flight for region-based prompts
 - Lower score = higher priority (inverted from category scores)
 
 ### x-adox-gui
@@ -100,7 +101,7 @@ Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct h
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, FlightGenerator, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
 - `style.rs` - Dark theme with neon glow effects and animated splash screen (driven by `animation_time` state)
-- `flight_gen_gui.rs` - Chat-based flight plan generator UI (natural language input, format selection, export)
+- `flight_gen_gui.rs` - Chat-based flight plan generator UI (natural language input, Regenerate, format selection, export; “Remember this flight”, “Prefer this origin/destination” persist to BitNet)
 - **Drag-and-Drop**:
   - Parity-first design: Drops trigger physical move + pin + save to `scenery_packs.ini`
   - The `save_scenery_packs` helper does a "dumb write" of exact GUI state, bypassing the SceneryManager load/merge cycle for responsiveness
@@ -190,7 +191,7 @@ Custom error types using `thiserror::Error` per crate (XamError, SceneryError, A
 - Windows: `%APPDATA%\X-Addon-Oxide\`
 - macOS: `~/Library/Application Support/X-Addon-Oxide/`
 
-Files: `heuristics.json`, `scan_config.json`, `icon_overrides.json`
+Files: `heuristics.json` (sorting rules, pins, aircraft overrides, **flight preferences** — schema v10), `scan_config.json`, `icon_overrides.json`
 
 Per-installation configs live in `installs/{hash}/` subdirectories (see Root-Specific Config Isolation above).
 

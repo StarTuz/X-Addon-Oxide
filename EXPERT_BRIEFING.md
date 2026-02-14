@@ -6,7 +6,7 @@
 
 - **Drag-and-Drop Engine**:
   - **Logic**: `crates/x-adox-gui/src/main.rs`. State managed via `DragContext` struct.
-  - **Persistence**: Hybrid approach. Physical move in memory (`self.packs`), BitNet Pinning (`heuristics.json`), and Immediate File Write (`scenery_packs.ini` via `save_scenery_packs`).
+  - **Persistence**: Hybrid approach. Physical move in memory (`self.packs`), BitNet Pinning (`heuristics.json`: scenery overrides, aircraft overrides, **flight preferences** — origin/dest prefs, last success), and Immediate File Write (`scenery_packs.ini` via `save_scenery_packs`).
   - **Parity**: We strictly mirror the order of `self.packs` to the INI file.
 
 ### Critical Invariants
