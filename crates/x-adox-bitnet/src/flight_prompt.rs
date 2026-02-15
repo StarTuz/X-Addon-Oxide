@@ -206,17 +206,19 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "ireland" | "eire" => Some(LocationConstraint::Region("IE".to_string())),
         "uk" | "united kingdom" => Some(LocationConstraint::Region("UK".to_string())),
         "gb" | "great britain" => Some(LocationConstraint::Region("GB".to_string())),
-        "london" | "london uk" | "london united kingdom" => Some(LocationConstraint::Region("UK".to_string())),
+        "london" | "london uk" => Some(LocationConstraint::Region("UK:London".to_string())),
         "england" | "scotland" | "wales" => Some(LocationConstraint::Region("UK".to_string())),
-        "italy" | "rome" | "milan" => Some(LocationConstraint::Region("IT".to_string())),
-        "france" | "paris" => Some(LocationConstraint::Region("FR".to_string())),
-        "germany" | "berlin" | "frankfurt" => Some(LocationConstraint::Region("DE".to_string())),
-        "spain" | "madrid" | "barcelona" => Some(LocationConstraint::Region("ES".to_string())),
+        "italy" => Some(LocationConstraint::Region("IT".to_string())),
+        "france" => Some(LocationConstraint::Region("FR".to_string())),
+        "germany" => Some(LocationConstraint::Region("DE".to_string())),
+        "spain" => Some(LocationConstraint::Region("ES".to_string())),
         "usa" | "us" | "united states" => Some(LocationConstraint::Region("US".to_string())),
         "canada" => Some(LocationConstraint::Region("CA".to_string())),
         "mexico" => Some(LocationConstraint::Region("MX".to_string())),
         "socal" | "southern california" => Some(LocationConstraint::Region("US:SoCal".to_string())),
-        "riverside county" | "riverside" => Some(LocationConstraint::Region("US:SoCal".to_string())),
+        "riverside county" | "riverside" => {
+            Some(LocationConstraint::Region("US:SoCal".to_string()))
+        }
         "norcal" | "northern california" => {
             Some(LocationConstraint::Region("US:NorCal".to_string()))
         }
@@ -238,16 +240,22 @@ mod tests {
     #[test]
     fn test_parse_no_from() {
         let p = FlightPrompt::parse("London to Paris");
-        // London and Paris map to UK/FR regions for reliable flight gen
-        assert_eq!(p.origin, Some(LocationConstraint::Region("UK".to_string())));
-        assert_eq!(p.destination, Some(LocationConstraint::Region("FR".to_string())));
+        // London maps to UK:London (London area only, not all UK); Paris stays name-based
+        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::AirportName("paris".to_string()))
+        );
     }
 
     #[test]
     fn test_parse_simple() {
         let p = FlightPrompt::parse("Flight from London to Paris");
-        assert_eq!(p.origin, Some(LocationConstraint::Region("UK".to_string())));
-        assert_eq!(p.destination, Some(LocationConstraint::Region("FR".to_string())));
+        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::AirportName("paris".to_string()))
+        );
     }
 
     #[test]
@@ -323,18 +331,34 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_city_maps_to_region() {
-        // London/Paris map to UK/FR for reliable region-based flight gen
+    fn test_parse_city_maps_to_name() {
+        // London maps to UK:London (London area only); Paris stays name-based
         let p = FlightPrompt::parse("Flight from London to Paris");
-        assert_eq!(p.origin, Some(LocationConstraint::Region("UK".to_string())));
-        assert_eq!(p.destination, Some(LocationConstraint::Region("FR".to_string())));
+        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::AirportName("paris".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_london_uk_to_region() {
+        let p = FlightPrompt::parse("Flight from London UK to Germany");
+        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("DE".to_string()))
+        );
     }
 
     #[test]
     fn test_parse_london_to_italy() {
         let p = FlightPrompt::parse("Flight from London to Italy");
-        assert_eq!(p.origin, Some(LocationConstraint::Region("UK".to_string())));
-        assert_eq!(p.destination, Some(LocationConstraint::Region("IT".to_string())));
+        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("IT".to_string()))
+        );
     }
 
     #[test]

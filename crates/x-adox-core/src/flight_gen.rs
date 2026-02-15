@@ -1,4 +1,4 @@
-use crate::apt_dat::{Airport, AptDatParser, AirportType, SurfaceType};
+use crate::apt_dat::{Airport, AirportType, AptDatParser, SurfaceType};
 use crate::discovery::{AddonType, DiscoveredAddon};
 use rand::seq::SliceRandom;
 use std::path::Path;
@@ -6,8 +6,14 @@ use x_adox_bitnet::flight_prompt::{
     AircraftConstraint, DurationKeyword, FlightPrompt, LocationConstraint, SurfaceKeyword,
     TypeKeyword,
 };
-use x_adox_bitnet::HeuristicsConfig;
 use x_adox_bitnet::geo::RegionIndex;
+use x_adox_bitnet::HeuristicsConfig;
+
+/// London area bounds (lat 51–52, lon -1 to 0.6). Excludes e.g. Great Yarmouth (52.6°N, 1.7°E).
+/// Used when region is UK:London so origin/dest are always restricted to London even if region index is stale.
+fn in_bounds_london(lat: f64, lon: f64) -> bool {
+    lat >= 51.0 && lat <= 52.0 && lon >= -1.0 && lon <= 0.6
+}
 
 /// Loads the default airport database from X-Plane root (Option B: guaranteed base layer).
 /// Tries Resources/default scenery/default apt dat first, then Global Scenery/Global Airports.
@@ -199,7 +205,10 @@ pub fn generate_flight(
         .flat_map(|p| p.airports.iter())
         .chain(base_slice.iter())
         .collect();
-    log::debug!("[flight_gen] airport pool: {} from packs + base", all_airports.len());
+    log::debug!(
+        "[flight_gen] airport pool: {} from packs + base",
+        all_airports.len()
+    );
 
     // Refined Origin Selection
     let mut candidate_origins: Vec<&Airport> = match prompt.origin {
@@ -217,7 +226,14 @@ pub fn generate_flight(
                         }
                     }
 
-                    if let Some(r) = region_obj {
+                    // Bounds: use region from index, or hardcoded London bounds for UK:London (avoids Great Yarmouth etc. if index is stale)
+                    if region_id == "UK:London" {
+                        if let (Some(lat), Some(lon)) = (apt.lat, apt.lon) {
+                            if !in_bounds_london(lat, lon) {
+                                return false;
+                            }
+                        }
+                    } else if let Some(r) = region_obj {
                         if let (Some(lat), Some(lon)) = (apt.lat, apt.lon) {
                             if !r.contains(lat, lon) {
                                 return false;
@@ -234,16 +250,14 @@ pub fn generate_flight(
                 .map(|a| *a)
                 .collect()
         }
-        Some(LocationConstraint::AirportName(ref name)) => {
-            score_airports_by_name(
-                &all_airports,
-                name,
-                prompt.ignore_guardrails,
-                selected_aircraft,
-                min_rwy,
-                req_surface,
-            )
-        }
+        Some(LocationConstraint::AirportName(ref name)) => score_airports_by_name(
+            &all_airports,
+            name,
+            prompt.ignore_guardrails,
+            selected_aircraft,
+            min_rwy,
+            req_surface,
+        ),
         Some(LocationConstraint::ICAO(ref code)) => all_airports
             .iter()
             .filter(|a| a.id.eq_ignore_ascii_case(code))
@@ -278,19 +292,26 @@ pub fn generate_flight(
     }
 
     if candidate_origins.is_empty() {
-        log::debug!("[flight_gen] No departure candidates (origin={:?})", prompt.origin);
+        log::debug!(
+            "[flight_gen] No departure candidates (origin={:?})",
+            prompt.origin
+        );
         return Err("No suitable departure airport found.".to_string());
     }
 
-    // Apply flight preferences: preferred origin ICAOs first (from prefs + last_success when region pair matches)
+    // Apply flight preferences: preferred origin ICAOs first
     if let Some(LocationConstraint::Region(ref region_id)) = &prompt.origin {
         let mut preferred_icaos: Vec<String> = prefs
             .and_then(|c| c.flight_origin_prefs.get(region_id).cloned())
             .unwrap_or_default();
-        if let (Some(ref last), Some(LocationConstraint::Region(ref dest_r))) =
-            (prefs.and_then(|c| c.flight_last_success.as_ref()), &prompt.destination)
-        {
-            if last.origin_region == *region_id && last.dest_region == *dest_r && !last.origin_icao.is_empty() {
+        if let (Some(ref last), Some(LocationConstraint::Region(ref dest_r))) = (
+            prefs.and_then(|c| c.flight_last_success.as_ref()),
+            &prompt.destination,
+        ) {
+            if last.origin_region == *region_id
+                && last.dest_region == *dest_r
+                && !last.origin_icao.is_empty()
+            {
                 if !preferred_icaos.contains(&last.origin_icao) {
                     preferred_icaos.insert(0, last.origin_icao.clone());
                 }
@@ -316,6 +337,8 @@ pub fn generate_flight(
         } else {
             candidate_origins.shuffle(&mut rng);
         }
+    } else if let Some(LocationConstraint::AirportName(_)) = &prompt.origin {
+        // FIXED: Do NOT shuffle if search was by name. Preserve the scoring from score_airports_by_name.
     } else {
         candidate_origins.shuffle(&mut rng);
     }
@@ -387,7 +410,13 @@ pub fn generate_flight(
                                 return false;
                             }
                         }
-                        if let Some(r) = region_obj {
+                        if region_id == "UK:London" {
+                            if let (Some(lat), Some(lon)) = (apt.lat, apt.lon) {
+                                if !in_bounds_london(lat, lon) {
+                                    return false;
+                                }
+                            }
+                        } else if let Some(r) = region_obj {
                             if let (Some(lat), Some(lon)) = (apt.lat, apt.lon) {
                                 if !r.contains(lat, lon) {
                                     return false;
@@ -474,10 +503,14 @@ pub fn generate_flight(
                     let mut icaos = prefs
                         .and_then(|c| c.flight_dest_prefs.get(region_id).cloned())
                         .unwrap_or_default();
-                    if let (Some(ref last), Some(LocationConstraint::Region(ref orig_r))) =
-                        (prefs.and_then(|c| c.flight_last_success.as_ref()), &prompt.origin)
-                    {
-                        if last.dest_region == *region_id && last.origin_region == *orig_r && !last.dest_icao.is_empty() {
+                    if let (Some(ref last), Some(LocationConstraint::Region(ref orig_r))) = (
+                        prefs.and_then(|c| c.flight_last_success.as_ref()),
+                        &prompt.origin,
+                    ) {
+                        if last.dest_region == *region_id
+                            && last.origin_region == *orig_r
+                            && !last.dest_icao.is_empty()
+                        {
                             if !icaos.contains(&last.dest_icao) {
                                 icaos.insert(0, last.dest_icao.clone());
                             }
@@ -487,7 +520,12 @@ pub fn generate_flight(
                 }
                 _ => Vec::new(),
             };
-            let destination = if preferred_dest_icaos.is_empty() {
+            let destination = if let Some(LocationConstraint::AirportName(_)) = &prompt.destination
+            {
+                // FIXED: Preserve scoring for name-based destination search.
+                // Pick the first one (highest score) from the valid list.
+                *valid_dests.first().unwrap()
+            } else if preferred_dest_icaos.is_empty() {
                 *valid_dests.choose(&mut rng).unwrap()
             } else {
                 let preferred_set: std::collections::HashSet<&str> =
@@ -629,9 +667,21 @@ fn score_airports_by_name<'a>(
                 score += 300;
             }
 
+            // Token-based matching: Give a boost for each word in the search string that matches a word in the airport name.
+            let search_tokens: Vec<&str> = search_lower.split_whitespace().collect();
+            let name_words: Vec<&str> = name_lower.split_whitespace().collect();
+
+            for token in &search_tokens {
+                if name_words.iter().any(|&w| w == *token) {
+                    score += 500; // INCREASED: Word match is much more important
+                } else if name_lower.contains(token) {
+                    score += 200; // INCREASED: Contained token is more important
+                }
+            }
+
             // Accuracy Boost: If search_str contains a region token (e.g. "Paris FR" or "London UK")
             // check if the airport's ICAO matches that region's prefix.
-            for token in search_lower.split_whitespace() {
+            for token in search_tokens {
                 if token.len() >= 2 {
                     if let Some(region_id) = try_map_token_to_region_id(token) {
                         if let Some(prefixes) = icao_prefixes_for_region(region_id) {
@@ -668,7 +718,6 @@ fn try_map_token_to_region_id(token: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod legacy_tests {
-    use super::*;
 
     fn p_contains_token(token: &str, text: &str) -> bool {
         if text.contains(token) {
@@ -829,12 +878,29 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
     let direct = match region_id {
         // GB has no seeds: it excludes Northern Ireland; do not fall back to UK seeds.
         "GB" => return Vec::new(),
+        "UK:London" => vec![
+            seed_airport("EGLL", "London Heathrow", 51.4700, -0.4543),
+            seed_airport("EGKK", "London Gatwick", 51.1481, -0.1903),
+            seed_airport("EGGW", "London Luton", 51.8747, -0.3683),
+            seed_airport("EGSS", "London Stansted", 51.8849, 0.2346),
+            seed_airport("EGLC", "London City", 51.5053, 0.0553),
+            seed_airport("EGKB", "London Biggin Hill", 51.3308, 0.0325),
+            seed_airport("EGWU", "London Northolt", 51.5530, -0.4182),
+            seed_airport("EGLF", "Farnborough", 51.2758, -0.7763),
+        ],
         "UK" | "BI" => vec![
             seed_airport("EGLL", "London Heathrow", 51.4700, -0.4543),
             seed_airport("EGKK", "London Gatwick", 51.1481, -0.1903),
-            seed_airport("EGCC", "Manchester", 53.3537, -2.2750),
             seed_airport("EGGW", "London Luton", 51.8747, -0.3683),
             seed_airport("EGSS", "London Stansted", 51.8849, 0.2346),
+            seed_airport("EGLC", "London City", 51.5053, 0.0553),
+            seed_airport("EGKB", "London Biggin Hill", 51.3308, 0.0325),
+            seed_airport("EGWU", "London Northolt", 51.5530, -0.4182),
+            seed_airport("EGLF", "Farnborough", 51.2758, -0.7763),
+            seed_airport("EGCC", "Manchester", 53.3537, -2.2750),
+            seed_airport("EGBB", "Birmingham", 52.4539, -1.7480),
+            seed_airport("EGPH", "Edinburgh", 55.9500, -3.3725),
+            seed_airport("EGGP", "Liverpool", 53.3336, -2.8497),
         ],
         "IT" => vec![
             seed_airport("LIRF", "Rome Fiumicino", 41.8003, 12.2389),

@@ -114,10 +114,18 @@ impl FlightGenState {
                         let has_global = packs.iter().any(|p| {
                             p.name == "Global Airports"
                                 || p.name == "*GLOBAL_AIRPORTS*"
-                                || p.path.to_string_lossy().to_lowercase().contains("global airports")
+                                || p.path
+                                    .to_string_lossy()
+                                    .to_lowercase()
+                                    .contains("global airports")
                         });
-                        if !has_global && (e.contains("No suitable departure") || e.contains("No suitable destination")) {
-                            text.push_str("\nTip: Add Global Airports in Scenery for more options.");
+                        if !has_global
+                            && (e.contains("No suitable departure")
+                                || e.contains("No suitable destination"))
+                        {
+                            text.push_str(
+                                "\nTip: Add Global Airports in Scenery for more options.",
+                            );
                         }
                         self.history.push(ChatMessage {
                             sender: "System".to_string(),
@@ -160,26 +168,34 @@ impl FlightGenState {
                             let has_global = packs.iter().any(|p| {
                                 p.name == "Global Airports"
                                     || p.name == "*GLOBAL_AIRPORTS*"
-                                    || p.path.to_string_lossy().to_lowercase().contains("global airports")
+                                    || p.path
+                                        .to_string_lossy()
+                                        .to_lowercase()
+                                        .contains("global airports")
                             });
                             if !has_global
-                                && (e.contains("No suitable departure") || e.contains("No suitable destination"))
+                                && (e.contains("No suitable departure")
+                                    || e.contains("No suitable destination"))
                             {
-                                text.push_str("\nTip: Add Global Airports in Scenery for more options.");
+                                text.push_str(
+                                    "\nTip: Add Global Airports in Scenery for more options.",
+                                );
                             }
                             self.history.push(ChatMessage {
                                 sender: "System".to_string(),
                                 text,
                                 is_user: false,
                             });
-                            self.current_plan = None;
+                            // FIXED: Do NOT clear current_plan here.
+                            // If we fail a regenerate, we should keep the previous plan's buttons
+                            // so the user can still export it or try regenerating again.
                         }
                     }
                 }
             }
             Message::ExportFms11 => {
                 if let Some(plan) = &self.current_plan {
-                    let text = flight_gen::export_fms_11(plan);
+                    let _text = flight_gen::export_fms_11(plan);
                     // TODO: Save to file logic should happen here or via file picker
                     // For now just simulation
                     self.status_message = Some("Exported FMS 11 (simulated)".to_string());
@@ -211,7 +227,7 @@ impl FlightGenState {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<'_, Message> {
         let chat_history = scrollable(
             column(self.history.iter().map(|msg| {
                 container(column![
@@ -256,27 +272,33 @@ impl FlightGenState {
         ]
         .spacing(10);
 
-        let controls = if let Some(plan) = &self.current_plan {
-            let mut r = row![
-                button("Regenerate").on_press(Message::Regenerate),
-                button("FMS 11").on_press(Message::ExportFms11),
-                button("FMS 12").on_press(Message::ExportFms12),
-                button("LNM").on_press(Message::ExportLnm),
-                button("SimBrief").on_press(Message::ExportSimbrief),
-            ];
+        let mut controls = row![].spacing(10);
+
+        // Always show Regenerate if we have at least one user prompt to regenerate from
+        if self.history.iter().any(|m| m.is_user) {
+            controls = controls.push(button("Regenerate").on_press(Message::Regenerate));
+        }
+
+        if let Some(plan) = &self.current_plan {
+            controls = controls.push(button("FMS 11").on_press(Message::ExportFms11));
+            controls = controls.push(button("FMS 12").on_press(Message::ExportFms12));
+            controls = controls.push(button("LNM").on_press(Message::ExportLnm));
+            controls = controls.push(button("SimBrief").on_press(Message::ExportSimbrief));
+
             if plan.origin_region_id.is_some() && plan.dest_region_id.is_some() {
-                r = r.push(button("Remember this flight").on_press(Message::RememberThisFlight));
+                controls = controls
+                    .push(button("Remember this flight").on_press(Message::RememberThisFlight));
             }
             if plan.origin_region_id.is_some() {
-                r = r.push(button("Prefer this origin").on_press(Message::PreferThisOrigin));
+                controls =
+                    controls.push(button("Prefer this origin").on_press(Message::PreferThisOrigin));
             }
             if plan.dest_region_id.is_some() {
-                r = r.push(button("Prefer this destination").on_press(Message::PreferThisDestination));
+                controls = controls.push(
+                    button("Prefer this destination").on_press(Message::PreferThisDestination),
+                );
             }
-            r.spacing(10)
-        } else {
-            row![]
-        };
+        }
 
         column![chat_history, controls, input_area]
             .spacing(20)

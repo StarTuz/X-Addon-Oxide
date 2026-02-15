@@ -272,6 +272,19 @@
         "parent_id": "UK"
     },
     {
+        "id": "UK:London",
+        "name": "London",
+        "bounds": [
+            {
+                "min_lat": 51.0,
+                "max_lat": 52.0,
+                "min_lon": -1.0,
+                "max_lon": 0.6
+            }
+        ],
+        "parent_id": "UK"
+    },
+    {
         "id": "FR",
         "name": "France",
         "bounds": [

@@ -245,8 +245,14 @@ fn test_glider_range_constraint() {
     let packs = vec![pack];
 
     // "to random" ensures the parser sees "from X to Y" so origin is EGLL (not unset)
-    let plan = generate_flight(&packs, &[ask21], "from EGLL to random using glider", None, None)
-        .expect("Failed to gen glider flight");
+    let plan = generate_flight(
+        &packs,
+        &[ask21],
+        "from EGLL to random using glider",
+        None,
+        None,
+    )
+    .expect("Failed to gen glider flight");
     assert!(
         plan.distance_nm <= 60,
         "Glider flight too long: {}nm",
@@ -282,8 +288,14 @@ fn test_italy_accuracy() {
 
     // Request flight to Italy
     for _ in 0..10 {
-        let plan = generate_flight(&packs, &[cessna.clone()], "from random to Italy", None, None)
-            .expect("Failed to gen Italy flight");
+        let plan = generate_flight(
+            &packs,
+            &[cessna.clone()],
+            "from random to Italy",
+            None,
+            None,
+        )
+        .expect("Failed to gen Italy flight");
         assert!(
             plan.destination.id.starts_with("LI"),
             "Italy flight ended in France: {}",
@@ -318,13 +330,53 @@ fn test_search_accuracy_london_uk() {
     let packs = vec![pack];
 
     // Request flight from "London UK" (parsed as Region UK)
-    let plan = generate_flight(&packs, &[cessna], "short flight from London UK to random", None, None)
-        .expect("Failed to gen London UK flight");
+    let plan = generate_flight(
+        &packs,
+        &[cessna],
+        "short flight from London UK to random",
+        None,
+        None,
+    )
+    .expect("Failed to gen London UK flight");
 
     // Must be a UK airport (EG), not London Ontario (CYXU)
     assert!(
         plan.origin.id.starts_with("EG"),
         "Expected UK airport (EG*), got {} (e.g. London Ontario CYXU)",
         plan.origin.id
+    );
+}
+
+#[test]
+fn test_search_accuracy_london_england() {
+    let mut pack = create_mock_pack("UK Area");
+
+    // "Wrong" airport: Deenethorpe (has no "London" in name, but is in England/UK)
+    let mut eg30 = create_mock_airport("EG30", 52.51, -0.61, 1000, SurfaceType::Hard);
+    eg30.name = "Deenethorpe".to_string();
+    pack.airports.push(eg30);
+
+    // "Right" airport: London City
+    let mut eglc = create_mock_airport("EGLC", 51.5, 0.05, 1500, SurfaceType::Hard);
+    eglc.name = "London City".to_string();
+    pack.airports.push(eglc);
+
+    // Some destination
+    let mut eddh = create_mock_airport("EDDH", 53.63, 9.98, 3000, SurfaceType::Hard);
+    eddh.name = "Hamburg".to_string();
+    pack.airports.push(eddh);
+
+    let boeing = create_mock_aircraft("Boeing 737", vec!["Jet"]);
+    let packs = vec![pack];
+
+    // Request flight from "London England"
+    // Token matching should prize "London" + "England" prefix boost over just "England" prefix boost
+    let plan = generate_flight(&packs, &[boeing], "London England to Hamburg", None, None)
+        .expect("Failed to gen London England flight");
+
+    assert_eq!(
+        plan.origin.id, "EGLC",
+        "Expected London City (EGLC) for 'London England', got {} ({})",
+        plan.origin.id, plan.origin.name
     );
 }
