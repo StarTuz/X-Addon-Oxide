@@ -6208,6 +6208,22 @@ impl App {
                 self.map_zoom.max((size.width as f64 / 256.0).log2())
             };
 
+            // Flight Gen path for map (origin → destination line when a plan is generated)
+            let flight_gen_path = if self.active_tab == Tab::FlightGenerator {
+                self.flight_gen.current_plan.as_ref().and_then(|plan| {
+                    let o = (plan.origin.lat, plan.origin.lon);
+                    let d = (plan.destination.lat, plan.destination.lon);
+                    match (o.0, o.1, d.0, d.1) {
+                        (Some(lat1), Some(lon1), Some(lat2), Some(lon2)) => {
+                            Some((lat1, lon1, lat2, lon2))
+                        }
+                        _ => None,
+                    }
+                })
+            } else {
+                None
+            };
+
             // Map View
             let map_view = MapView {
                 packs: &self.packs,
@@ -6219,6 +6235,7 @@ impl App {
                 center: self.map_center,
                 airports: &self.airports,
                 selected_flight: self.selected_flight.and_then(|idx| self.logbook.get(idx)),
+                flight_gen_path,
                 filters: &self.map_filters,
             };
 

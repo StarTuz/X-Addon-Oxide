@@ -162,6 +162,8 @@ pub struct MapView<'a> {
     pub center: (f64, f64), // (Lat, Lon)
     pub airports: &'a std::collections::HashMap<String, x_adox_core::apt_dat::Airport>,
     pub selected_flight: Option<&'a x_adox_core::logbook::LogbookEntry>,
+    /// When on Flight Gen tab with a generated plan: (origin_lat, origin_lon, dest_lat, dest_lon). Drawn as magenta line like logbook.
+    pub flight_gen_path: Option<(f64, f64, f64, f64)>,
     pub filters: &'a crate::MapFilters,
 }
 
@@ -766,6 +768,87 @@ where
                     });
                 }
             }
+        }
+
+        // --- Flight Gen path (departure → destination when a plan is generated) ---
+        if let Some((lat1, lon1, lat2, lon2)) = self.flight_gen_path {
+            renderer.with_layer(bounds, |renderer| {
+                let wx1 = lon_to_x(lon1, 0.0);
+                let wy1 = lat_to_y(lat1, 0.0);
+                let wx2 = lon_to_x(lon2, 0.0);
+                let wy2 = lat_to_y(lat2, 0.0);
+
+                let sx1 = bounds.x
+                    + (bounds.width / 2.0)
+                    + ((wx1 - camera_center_x) * zoom_scale) as f32;
+                let sy1 = bounds.y
+                    + (bounds.height / 2.0)
+                    + ((wy1 - camera_center_y) * zoom_scale) as f32;
+                let sx2 = bounds.x
+                    + (bounds.width / 2.0)
+                    + ((wx2 - camera_center_x) * zoom_scale) as f32;
+                let sy2 = bounds.y
+                    + (bounds.height / 2.0)
+                    + ((wy2 - camera_center_y) * zoom_scale) as f32;
+
+                let dx = sx2 - sx1;
+                let dy = sy2 - sy1;
+                let distance = (dx * dx + dy * dy).sqrt();
+                let steps = (distance / 4.0).ceil().max(1.0) as usize;
+                for i in 0..=steps {
+                    let t = i as f32 / steps as f32;
+                    let px = sx1 + dx * t;
+                    let py = sy1 + dy * t;
+                    renderer.fill_quad(
+                        renderer::Quad {
+                            bounds: Rectangle {
+                                x: px - 1.0,
+                                y: py - 1.0,
+                                width: 2.0,
+                                height: 2.0,
+                            },
+                            ..Default::default()
+                        },
+                        Color::from_rgb(1.0, 0.0, 1.0), // Magenta (same as logbook)
+                    );
+                }
+
+                let dot_size = 8.0;
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: Rectangle {
+                            x: sx1 - 4.0,
+                            y: sy1 - 4.0,
+                            width: dot_size,
+                            height: dot_size,
+                        },
+                        border: Border {
+                            color: Color::BLACK,
+                            width: 1.0,
+                            radius: 4.0.into(),
+                        },
+                        ..Default::default()
+                    },
+                    Color::from_rgb(0.0, 1.0, 1.0), // Cyan DEP
+                );
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: Rectangle {
+                            x: sx2 - 4.0,
+                            y: sy2 - 4.0,
+                            width: dot_size,
+                            height: dot_size,
+                        },
+                        border: Border {
+                            color: Color::BLACK,
+                            width: 1.0,
+                            radius: 4.0.into(),
+                        },
+                        ..Default::default()
+                    },
+                    Color::from_rgb(1.0, 0.5, 0.0), // Orange ARR
+                );
+            });
         }
     }
 
