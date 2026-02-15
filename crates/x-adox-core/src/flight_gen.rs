@@ -1037,16 +1037,90 @@ pub fn export_lnmpln(plan: &FlightPlan) -> String {
     )
 }
 
+/// Derives a SimBrief ICAO aircraft type from addon name and tags (e.g. A320, B738, C172).
+fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> String {
+    // 1. Tags: look for a 4-char ICAO-like code (letter + 3 alphanumeric)
+    for t in &aircraft.tags {
+        let t = t.trim().to_uppercase();
+        if t.len() == 4
+            && t.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false)
+            && t.chars().skip(1).all(|c| c.is_ascii_alphanumeric())
+        {
+            return t;
+        }
+    }
+    // 2. Name: common patterns (ToLiss A320, Boeing 737-800, Cessna 172, etc.)
+    let name_upper = aircraft.name.to_uppercase();
+    let name_lower = aircraft.name.to_lowercase();
+    // Airbus A3xx
+    if name_upper.contains("A320") || name_lower.contains("a320") {
+        return "A320".to_string();
+    }
+    if name_upper.contains("A321") || name_lower.contains("a321") {
+        return "A321".to_string();
+    }
+    if name_upper.contains("A319") || name_lower.contains("a319") {
+        return "A319".to_string();
+    }
+    if name_upper.contains("A318") || name_lower.contains("a318") {
+        return "A318".to_string();
+    }
+    if name_upper.contains("A330") || name_lower.contains("a330") {
+        return "A333".to_string();
+    }
+    if name_upper.contains("A340") || name_lower.contains("a340") {
+        return "A346".to_string();
+    }
+    if name_upper.contains("A350") || name_lower.contains("a350") {
+        return "A359".to_string();
+    }
+    if name_upper.contains("A380") || name_lower.contains("a380") {
+        return "A388".to_string();
+    }
+    // Boeing 7xx
+    if name_upper.contains("737-800") || name_upper.contains("737 800") || name_lower.contains("737-800") {
+        return "B738".to_string();
+    }
+    if name_upper.contains("737-900") || name_upper.contains("737 900") {
+        return "B739".to_string();
+    }
+    if name_upper.contains("737-700") || name_upper.contains("737 700") {
+        return "B737".to_string();
+    }
+    if name_upper.contains("747") || name_lower.contains("747") {
+        return "B748".to_string();
+    }
+    if name_upper.contains("757") || name_lower.contains("757") {
+        return "B752".to_string();
+    }
+    if name_upper.contains("767") || name_lower.contains("767") {
+        return "B763".to_string();
+    }
+    if name_upper.contains("777") || name_lower.contains("777") {
+        return "B77W".to_string();
+    }
+    if name_upper.contains("787") || name_lower.contains("787") {
+        return "B788".to_string();
+    }
+    // Cessna / GA
+    if name_lower.contains("cessna 172") || name_lower.contains("c172") || name_upper.contains("C172") {
+        return "C172".to_string();
+    }
+    if name_lower.contains("cessna 208") || name_lower.contains("caravan") {
+        return "C208".to_string();
+    }
+    // Default when nothing matches
+    "C172".to_string()
+}
+
+/// Builds SimBrief dispatch URL. Uses `orig` (not `dep`) and `dest` per SimBrief API; aircraft type derived from name/tags.
 pub fn export_simbrief(plan: &FlightPlan) -> String {
+    let ac_type = simbrief_aircraft_type(&plan.aircraft);
     format!(
-        "https://www.simbrief.com/system/dispatch.php?dep={}&dest={}&type={}",
+        "https://www.simbrief.com/system/dispatch.php?orig={}&dest={}&type={}",
         plan.origin.id,
         plan.destination.id,
-        plan.aircraft
-            .tags
-            .iter()
-            .find(|t| t.len() == 4)
-            .unwrap_or(&"C172".to_string()) // Try to find ICAO tag logic? or just C172 default
+        ac_type
     )
 }
 #[cfg(test)]
@@ -1174,5 +1248,26 @@ mod tests {
         } else {
             panic!("Flight generation failed: {:?}", result.err());
         }
+    }
+
+    #[test]
+    fn test_simbrief_url_orig_dest_type() {
+        // SimBrief expects orig= (not dep=), dest=, and type= (ICAO aircraft)
+        let a320 = make_addon("ToLissA320_V1p0", vec!["Airliner", "Jet"]);
+        let plan = FlightPlan {
+            origin: create_test_airport("EGMC", 51.57, 0.70),
+            destination: create_test_airport("LIRF", 41.80, 12.24),
+            aircraft: a320,
+            distance_nm: 753,
+            duration_minutes: 100,
+            route_description: "Direct".to_string(),
+            origin_region_id: Some("UK:London".to_string()),
+            dest_region_id: Some("IT".to_string()),
+        };
+        let url = export_simbrief(&plan);
+        assert!(url.contains("orig=EGMC"), "SimBrief URL must use orig= for departure: {}", url);
+        assert!(url.contains("dest=LIRF"), "SimBrief URL must use dest= for destination: {}", url);
+        assert!(url.contains("type=A320"), "SimBrief URL must use A320 for ToLiss A320: {}", url);
+        assert!(!url.contains("dep="), "SimBrief does not use dep= parameter: {}", url);
     }
 }
