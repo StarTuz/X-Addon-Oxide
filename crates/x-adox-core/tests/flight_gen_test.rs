@@ -251,6 +251,7 @@ mod tests {
             dest_region_id: None,
             duration_minutes: 45,
             route_description: "generated".to_string(),
+            context: None,
         };
 
         let xml = export_lnmpln(&plan);

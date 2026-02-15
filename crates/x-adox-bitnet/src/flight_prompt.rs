@@ -191,6 +191,16 @@ fn parse_location(s: &str) -> LocationConstraint {
     }
 }
 
+/// Normalizes location string for alias match: lowercase, collapse whitespace, strip "the ", replace comma with space.
+fn normalize_for_region_match(s: &str) -> String {
+    let s = s.strip_prefix("the ").unwrap_or(s).trim();
+    s.replace(',', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
 /// Attempts to recognize a string as a geographic region.
 fn try_as_region(s: &str) -> Option<LocationConstraint> {
     let s = s.strip_prefix("the ").unwrap_or(s).trim();
@@ -201,7 +211,9 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
     }
 
     // Fallback aliases (countries/regions and major cities → region for reliable flight gen)
-    match s.to_lowercase().as_str() {
+    // "City Country" patterns avoid ambiguous name match (e.g. Rome Georgia vs Rome Italy)
+    let key = normalize_for_region_match(s);
+    match key.as_str() {
         "british isles" => Some(LocationConstraint::Region("BI".to_string())),
         "ireland" | "eire" => Some(LocationConstraint::Region("IE".to_string())),
         "uk" | "united kingdom" => Some(LocationConstraint::Region("UK".to_string())),
@@ -209,7 +221,9 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "london" | "london uk" => Some(LocationConstraint::Region("UK:London".to_string())),
         "england" | "scotland" | "wales" => Some(LocationConstraint::Region("UK".to_string())),
         "italy" => Some(LocationConstraint::Region("IT".to_string())),
+        "rome italy" | "rome, italy" => Some(LocationConstraint::Region("IT".to_string())),
         "france" => Some(LocationConstraint::Region("FR".to_string())),
+        "paris france" | "paris, france" => Some(LocationConstraint::Region("FR".to_string())),
         "germany" => Some(LocationConstraint::Region("DE".to_string())),
         "spain" => Some(LocationConstraint::Region("ES".to_string())),
         "usa" | "us" | "united states" => Some(LocationConstraint::Region("US".to_string())),
@@ -358,6 +372,37 @@ mod tests {
         assert_eq!(
             p.destination,
             Some(LocationConstraint::Region("IT".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_rome_italy_as_region() {
+        // "Rome Italy" must resolve to Region(IT), not AirportName, to avoid matching Rome GA (KRMG)
+        let p = FlightPrompt::parse("Flight from EGMC to Rome Italy");
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGMC".to_string())));
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("IT".to_string())),
+            "Rome Italy should map to Italy region, not airport name"
+        );
+    }
+
+    #[test]
+    fn test_parse_rome_comma_italy_as_region() {
+        let p = FlightPrompt::parse("Flight from London to Rome, Italy");
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("IT".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_paris_france_as_region() {
+        let p = FlightPrompt::parse("Flight from EGLL to Paris France");
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("FR".to_string())),
+            "Paris France should map to France region"
         );
     }
 

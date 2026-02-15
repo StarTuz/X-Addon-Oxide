@@ -31,7 +31,6 @@ chrono = { version = "0.4", features = ["serde"] }
 rayon = "1.8"
 
 [profile.release]
-lto = "fat"
-codegen-units = 1
+lto = "thin"
 strip = true
 panic = "abort"

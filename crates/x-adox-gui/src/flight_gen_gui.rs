@@ -302,9 +302,90 @@ impl FlightGenState {
 
         let status_row = text(self.status_message.as_deref().unwrap_or("")).size(14);
 
-        column![chat_history, controls, status_row, input_area]
-            .spacing(20)
-            .padding(20)
+        let history_block = self.view_history_and_context();
+
+        column![
+            chat_history,
+            controls,
+            history_block,
+            status_row,
+            input_area
+        ]
+        .spacing(20)
+        .padding(20)
+        .into()
+    }
+
+    /// "History & context" block when a plan exists; placeholder when context is None (Phase 1).
+    fn view_history_and_context(&self) -> Element<'_, Message> {
+        let Some(plan) = &self.current_plan else {
+            return column![].into();
+        };
+
+        let header = text("History & context").size(14);
+
+        let content: Element<_> = match &plan.context {
+            Some(ctx) => {
+                let origin_pois: Vec<Element<_>> = ctx
+                    .origin
+                    .points_nearby
+                    .iter()
+                    .map(|poi| {
+                        let line = if let Some(d) = poi.distance_nm {
+                            format!("• {} — {} ({:.1} nm)", poi.name, poi.snippet, d)
+                        } else {
+                            format!("• {} — {}", poi.name, poi.snippet)
+                        };
+                        text(line).size(11).into()
+                    })
+                    .collect();
+
+                let origin_section = column![
+                    text(format!("Origin: {} ({})", plan.origin.name, plan.origin.id)).size(12),
+                    text(&ctx.origin.snippet).size(12),
+                    column(origin_pois).spacing(4),
+                ]
+                .spacing(6);
+
+                let dest_pois: Vec<Element<_>> = ctx
+                    .destination
+                    .points_nearby
+                    .iter()
+                    .map(|poi| {
+                        let line = if let Some(d) = poi.distance_nm {
+                            format!("• {} — {} ({:.1} nm)", poi.name, poi.snippet, d)
+                        } else {
+                            format!("• {} — {}", poi.name, poi.snippet)
+                        };
+                        text(line).size(11).into()
+                    })
+                    .collect();
+
+                let dest_section = column![
+                    text(format!("Destination: {} ({})", plan.destination.name, plan.destination.id))
+                        .size(12),
+                    text(&ctx.destination.snippet).size(12),
+                    column(dest_pois).spacing(4),
+                ]
+                .spacing(6);
+
+                column![origin_section, dest_section].spacing(16).into()
+            }
+            None => column![text("No history loaded.").size(12)].into(),
+        };
+
+        container(column![header, content].spacing(10).padding(10))
+            .style(|_| container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgb(
+                    0.12, 0.12, 0.14,
+                ))),
+                border: iced::Border {
+                    color: iced::Color::from_rgb(0.3, 0.3, 0.35),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            })
             .into()
     }
 }

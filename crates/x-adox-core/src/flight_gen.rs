@@ -68,6 +68,35 @@ pub fn load_base_airports(xplane_root: &Path) -> Vec<Airport> {
     all
 }
 
+// --- Flight context (3.2 history & flavor) ---------------------------------
+
+/// A point of interest within ~10 nm of an airport (landmark, event, etc.).
+#[derive(Debug, Clone)]
+pub struct PointOfInterest {
+    pub name: String,
+    pub kind: String,
+    pub snippet: String,
+    /// Distance from airport in nautical miles, if known.
+    pub distance_nm: Option<f64>,
+}
+
+/// History and flavor for one airport (snippet + nearby POIs).
+#[derive(Debug, Clone)]
+pub struct AirportContext {
+    pub icao: String,
+    pub snippet: String,
+    pub points_nearby: Vec<PointOfInterest>,
+}
+
+/// Combined context for origin and destination (Phase 1: optional on FlightPlan).
+#[derive(Debug, Clone)]
+pub struct FlightContext {
+    pub origin: AirportContext,
+    pub destination: AirportContext,
+}
+
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone)]
 pub struct FlightPlan {
     pub origin: Airport,
@@ -80,6 +109,8 @@ pub struct FlightPlan {
     pub origin_region_id: Option<String>,
     /// When destination was resolved from a region, the region id for UI/prefs.
     pub dest_region_id: Option<String>,
+    /// Optional history & flavor for origin/destination (3.2); None until Phase 2 loads data.
+    pub context: Option<FlightContext>,
 }
 
 use crate::scenery::SceneryPack;
@@ -574,6 +605,7 @@ pub fn generate_flight(
                 },
                 origin_region_id,
                 dest_region_id,
+                context: None,
             });
         }
     }
@@ -1263,6 +1295,7 @@ mod tests {
             route_description: "Direct".to_string(),
             origin_region_id: Some("UK:London".to_string()),
             dest_region_id: Some("IT".to_string()),
+            context: None,
         };
         let url = export_simbrief(&plan);
         assert!(url.contains("orig=EGMC"), "SimBrief URL must use orig= for departure: {}", url);

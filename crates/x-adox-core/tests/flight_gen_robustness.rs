@@ -304,6 +304,53 @@ fn test_italy_accuracy() {
     }
 }
 
+/// "Rome Italy" must resolve to Italy (LI), not Rome GA (KRMG). See flight_prompt "City Country" aliases.
+#[test]
+fn test_rome_italy_resolves_to_italy_not_usa() {
+    let mut pack = create_mock_pack("Europe");
+    pack.airports.push(create_mock_airport(
+        "EGMC",
+        51.57,
+        0.70,
+        1800,
+        SurfaceType::Hard,
+    ));
+    pack.airports.push(create_mock_airport(
+        "LIRF",
+        41.80,
+        12.24,
+        3900,
+        SurfaceType::Hard,
+    ));
+    pack.airports.push(create_mock_airport(
+        "KRMG",
+        34.35,
+        -85.16,
+        6000,
+        SurfaceType::Hard,
+    ));
+
+    // Use jet so EGMC->LIRF (~753 nm) is within range (50–3000 nm); GA would cap at 500 nm
+    let jet = create_mock_aircraft("B737", vec!["Jet"]);
+    let packs = vec![pack];
+
+    for _ in 0..5 {
+        let plan = generate_flight(
+            &packs,
+            &[jet.clone()],
+            "Flight from EGMC to Rome Italy",
+            None,
+            None,
+        )
+        .expect("Rome Italy should produce a plan");
+        assert!(
+            plan.destination.id.starts_with("LI"),
+            "Rome Italy must resolve to Italy (LI), not Rome GA (KRMG): got {}",
+            plan.destination.id
+        );
+    }
+}
+
 #[test]
 fn test_search_accuracy_london_uk() {
     let mut pack = create_mock_pack("London Area");
