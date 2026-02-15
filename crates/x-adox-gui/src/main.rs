@@ -253,6 +253,8 @@ enum Message {
 
     // Flight Generator
     FlightGen(flight_gen_gui::Message),
+    /// Result of save-file export (FMS / LNM).
+    FlightGenExportSaved(Result<PathBuf, String>),
     ExportHeuristics,
     ResetHeuristics,
     ClearOverrides,
@@ -3607,6 +3609,100 @@ impl App {
                         }
                         Task::none()
                     }
+                    flight_gen_gui::Message::ExportFms11 => {
+                        if let Some(plan) = &self.flight_gen.current_plan {
+                            let content = x_adox_core::flight_gen::export_fms_11(plan);
+                            let default_name = format!("{}_to_{}.fms", plan.origin.id, plan.destination.id);
+                            self.flight_gen.status_message = Some("Saving FMS 11 flight plan…".to_string());
+                            return Task::perform(
+                                async move {
+                                    rfd::AsyncFileDialog::new()
+                                        .set_title("Save FMS 11 Flight Plan")
+                                        .add_filter("X-Plane FMS", &["fms"])
+                                        .set_file_name(&default_name)
+                                        .save_file()
+                                        .await
+                                        .map(|f| f.path().to_path_buf())
+                                },
+                                move |path_opt| {
+                                    let result = match path_opt {
+                                        Some(p) => std::fs::write(&p, &content).map(|_| p).map_err(|e| e.to_string()),
+                                        None => Err("Cancelled".to_string()),
+                                    };
+                                    Message::FlightGenExportSaved(result)
+                                },
+                            );
+                        }
+                        Task::none()
+                    }
+                    flight_gen_gui::Message::ExportFms12 => {
+                        if let Some(plan) = &self.flight_gen.current_plan {
+                            let content = x_adox_core::flight_gen::export_fms_12(plan);
+                            let default_name = format!("{}_to_{}.fms", plan.origin.id, plan.destination.id);
+                            self.flight_gen.status_message = Some("Saving FMS 12 flight plan…".to_string());
+                            return Task::perform(
+                                async move {
+                                    rfd::AsyncFileDialog::new()
+                                        .set_title("Save FMS 12 Flight Plan")
+                                        .add_filter("X-Plane FMS", &["fms"])
+                                        .set_file_name(&default_name)
+                                        .save_file()
+                                        .await
+                                        .map(|f| f.path().to_path_buf())
+                                },
+                                move |path_opt| {
+                                    let result = match path_opt {
+                                        Some(p) => std::fs::write(&p, &content).map(|_| p).map_err(|e| e.to_string()),
+                                        None => Err("Cancelled".to_string()),
+                                    };
+                                    Message::FlightGenExportSaved(result)
+                                },
+                            );
+                        }
+                        Task::none()
+                    }
+                    flight_gen_gui::Message::ExportLnm => {
+                        if let Some(plan) = &self.flight_gen.current_plan {
+                            let content = x_adox_core::flight_gen::export_lnmpln(plan);
+                            let default_name = format!("{}_to_{}.lnmpln", plan.origin.id, plan.destination.id);
+                            self.flight_gen.status_message = Some("Saving Little Navmap flight plan…".to_string());
+                            return Task::perform(
+                                async move {
+                                    rfd::AsyncFileDialog::new()
+                                        .set_title("Save Little Navmap Flight Plan")
+                                        .add_filter("Little Navmap", &["lnmpln"])
+                                        .add_filter("Flight plan", &["lnmpln", "pln", "fms"])
+                                        .set_file_name(&default_name)
+                                        .save_file()
+                                        .await
+                                        .map(|f| f.path().to_path_buf())
+                                },
+                                move |path_opt| {
+                                    let result = match path_opt {
+                                        Some(p) => std::fs::write(&p, &content).map(|_| p).map_err(|e| e.to_string()),
+                                        None => Err("Cancelled".to_string()),
+                                    };
+                                    Message::FlightGenExportSaved(result)
+                                },
+                            );
+                        }
+                        Task::none()
+                    }
+                    flight_gen_gui::Message::ExportSimbrief => {
+                        if let Some(plan) = &self.flight_gen.current_plan {
+                            let url = x_adox_core::flight_gen::export_simbrief(plan);
+                            self.flight_gen.status_message =
+                                Some("Opening SimBrief in browser…".to_string());
+                            if open::that(&url).is_ok() {
+                                self.flight_gen.status_message =
+                                    Some(format!("SimBrief opened: {}", url));
+                            } else {
+                                self.flight_gen.status_message =
+                                    Some(format!("SimBrief URL (copy if browser didn’t open): {}", url));
+                            }
+                        }
+                        Task::none()
+                    }
                     _ => {
                         let packs = &self.packs;
                         let aircraft_list = &self.aircraft;
@@ -3622,6 +3718,14 @@ impl App {
                         Task::none()
                     }
                 }
+            }
+            Message::FlightGenExportSaved(result) => {
+                self.flight_gen.status_message = Some(match &result {
+                    Ok(path) => format!("Saved to {}", path.display()),
+                    Err(e) if e == "Cancelled" => "Save cancelled.".to_string(),
+                    Err(e) => format!("Save failed: {}", e),
+                });
+                Task::none()
             }
             Message::ExportHeuristics => {
                 let text = self.heuristics_json.text();

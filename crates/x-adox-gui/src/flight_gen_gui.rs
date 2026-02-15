@@ -300,7 +300,9 @@ impl FlightGenState {
             }
         }
 
-        column![chat_history, controls, input_area]
+        let status_row = text(self.status_message.as_deref().unwrap_or("")).size(14);
+
+        column![chat_history, controls, status_row, input_area]
             .spacing(20)
             .padding(20)
             .into()
