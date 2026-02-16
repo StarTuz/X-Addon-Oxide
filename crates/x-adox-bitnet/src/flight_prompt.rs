@@ -141,6 +141,26 @@ impl FlightPrompt {
             if let Some(caps) = to_re.captures(&clean_input) {
                 let dest_str = caps[1].trim();
                 prompt.destination = Some(parse_location(dest_str));
+            } else {
+                // Fallback: "from X" without "to Y" (e.g. "2 hour flight from UK") — constrain origin only
+                static FROM_RE: OnceLock<Regex> = OnceLock::new();
+                let from_re =
+                    FROM_RE.get_or_init(|| Regex::new(r"from\s+([a-zA-Z0-9\s,]+)").unwrap());
+                if let Some(caps) = from_re.captures(&clean_input) {
+                    let raw = caps[1].trim();
+                    // Strip trailing keywords so "from UK for 2 hours" yields "UK"
+                    let origin_str = raw
+                        .find(" for ")
+                        .or_else(|| raw.find(" using "))
+                        .or_else(|| raw.find(" in "))
+                        .or_else(|| raw.find(" with "))
+                        .map(|i| &raw[..i])
+                        .unwrap_or(raw)
+                        .trim();
+                    if !origin_str.is_empty() {
+                        prompt.origin = Some(parse_location(origin_str));
+                    }
+                }
             }
         }
 
@@ -238,6 +258,7 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         }
         "oregon" => Some(LocationConstraint::Region("US:OR".to_string())),
         "pnw" | "pacific northwest" => Some(LocationConstraint::Region("US:OR".to_string())),
+        "alaska" | "ak" => Some(LocationConstraint::Region("US:AK".to_string())),
         "alps" => Some(LocationConstraint::Region("Alps".to_string())),
         "rockies" => Some(LocationConstraint::Region("Rockies".to_string())),
         "caribbean" => Some(LocationConstraint::Region("Caribbean".to_string())),
@@ -255,7 +276,10 @@ mod tests {
     fn test_parse_no_from() {
         let p = FlightPrompt::parse("London to Paris");
         // London maps to UK:London (London area only, not all UK); Paris stays name-based
-        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::Region("UK:London".to_string()))
+        );
         assert_eq!(
             p.destination,
             Some(LocationConstraint::AirportName("paris".to_string()))
@@ -265,7 +289,10 @@ mod tests {
     #[test]
     fn test_parse_simple() {
         let p = FlightPrompt::parse("Flight from London to Paris");
-        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::Region("UK:London".to_string()))
+        );
         assert_eq!(
             p.destination,
             Some(LocationConstraint::AirportName("paris".to_string()))
@@ -335,6 +362,20 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_from_uk_only() {
+        // "from X" without "to Y" must constrain origin so flight is from UK, not e.g. Algeria/France
+        let p = FlightPrompt::parse("2 hour flight from UK");
+        assert_eq!(p.origin, Some(LocationConstraint::Region("UK".to_string())));
+        assert_eq!(p.destination, None);
+        let p2 = FlightPrompt::parse("flight from UK");
+        assert_eq!(
+            p2.origin,
+            Some(LocationConstraint::Region("UK".to_string()))
+        );
+        assert_eq!(p2.destination, None);
+    }
+
+    #[test]
     fn test_parse_article_stripped() {
         let p = FlightPrompt::parse("Flight from the British Isles to the Caribbean");
         assert_eq!(p.origin, Some(LocationConstraint::Region("BI".to_string())));
@@ -348,7 +389,10 @@ mod tests {
     fn test_parse_city_maps_to_name() {
         // London maps to UK:London (London area only); Paris stays name-based
         let p = FlightPrompt::parse("Flight from London to Paris");
-        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::Region("UK:London".to_string()))
+        );
         assert_eq!(
             p.destination,
             Some(LocationConstraint::AirportName("paris".to_string()))
@@ -358,7 +402,10 @@ mod tests {
     #[test]
     fn test_parse_london_uk_to_region() {
         let p = FlightPrompt::parse("Flight from London UK to Germany");
-        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::Region("UK:London".to_string()))
+        );
         assert_eq!(
             p.destination,
             Some(LocationConstraint::Region("DE".to_string()))
@@ -368,7 +415,10 @@ mod tests {
     #[test]
     fn test_parse_london_to_italy() {
         let p = FlightPrompt::parse("Flight from London to Italy");
-        assert_eq!(p.origin, Some(LocationConstraint::Region("UK:London".to_string())));
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::Region("UK:London".to_string()))
+        );
         assert_eq!(
             p.destination,
             Some(LocationConstraint::Region("IT".to_string()))
@@ -413,6 +463,19 @@ mod tests {
         assert_eq!(
             p.destination,
             Some(LocationConstraint::ICAO("LFPG".to_string()))
+        );
+    }
+    #[test]
+    fn test_parse_f70_to_alaska() {
+        let p = FlightPrompt::parse("F70 to Alaska");
+        // F70 is 3 chars, so parsed as Name, not ICAO (valid behavior as flight_gen handles ID match in name search)
+        match p.origin {
+            Some(LocationConstraint::AirportName(ref s)) if s == "f70" => {}
+            _ => panic!("Origin should be AirportName(f70), got {:?}", p.origin),
+        }
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("US:AK".to_string()))
         );
     }
 }
