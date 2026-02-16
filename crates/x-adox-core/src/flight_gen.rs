@@ -1,7 +1,11 @@
 use crate::apt_dat::{Airport, AirportType, AptDatParser, SurfaceType};
 use crate::discovery::{AddonType, DiscoveredAddon};
 use rand::seq::SliceRandom;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::io::Cursor;
 use std::path::Path;
+use std::sync::OnceLock;
 use x_adox_bitnet::flight_prompt::{
     AircraftConstraint, DurationKeyword, FlightPrompt, LocationConstraint, SurfaceKeyword,
     TypeKeyword,
@@ -93,6 +97,316 @@ pub struct AirportContext {
 pub struct FlightContext {
     pub origin: AirportContext,
     pub destination: AirportContext,
+}
+
+/// File format for one airport in flight_context.json and cache (POIs have lat/lon; we filter by 10 nm).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AirportContextFile {
+    pub snippet: String,
+    #[serde(default)]
+    pub points_nearby: Vec<PoiFile>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PoiFile {
+    pub name: String,
+    #[serde(default)]
+    pub kind: String,
+    pub snippet: String,
+    pub lat: f64,
+    pub lon: f64,
+    #[serde(default)]
+    pub score: i32,
+}
+
+/// Radius in nautical miles for "points nearby" (Phase 2).
+const POI_RADIUS_NM: f64 = 10.0;
+
+/// Subdir under config for Phase 2b API/LLM cache (one file per ICAO).
+pub const FLIGHT_CONTEXT_CACHE_DIR: &str = "flight_context_cache";
+
+/// Bundled default airport context (Option B). Embedded at compile time; load order uses this first.
+fn get_bundled_flight_context_raw() -> &'static str {
+    include_str!("../data/flight_context_bundle.json")
+}
+
+/// Returns the bundled default flight context map (ICAO → AirportContextFile). Use with load_flight_context_with_bundled.
+pub fn get_bundled_flight_context() -> std::collections::BTreeMap<String, AirportContextFile> {
+    serde_json::from_str(get_bundled_flight_context_raw()).unwrap_or_default()
+}
+
+/// Curated 10 nm POIs per ICAO (merged with bundle/cache at load time). Add entries here for historical/nearby points.
+fn get_poi_overlay_raw() -> &'static str {
+    include_str!("../data/flight_context_pois_overlay.json")
+}
+
+fn get_poi_overlay() -> std::collections::BTreeMap<String, Vec<PoiFile>> {
+    serde_json::from_str(get_poi_overlay_raw()).unwrap_or_default()
+}
+
+/// Embedded OurAirports-derived CSV (ident,title). Parsed at runtime to build ICAO → Wikipedia map.
+fn get_icao_to_wikipedia_csv_raw() -> &'static str {
+    include_str!("../data/icao_to_wikipedia.csv")
+}
+
+static ICAO_TO_WIKIPEDIA: OnceLock<BTreeMap<String, String>> = OnceLock::new();
+
+/// Parses the embedded CSV once and returns the map. Fallback: empty map on parse error.
+fn parse_icao_to_wikipedia_csv() -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    let raw = get_icao_to_wikipedia_csv_raw();
+    let mut rdr = csv::Reader::from_reader(Cursor::new(raw));
+    for result in rdr.records() {
+        if let Ok(record) = result {
+            if record.len() >= 2 {
+                let ident = record[0].trim().to_string();
+                let title = record[1].trim().to_string();
+                if !ident.is_empty() && !title.is_empty() {
+                    map.insert(ident, title);
+                }
+            }
+        }
+    }
+    map
+}
+
+/// Returns ICAO → Wikipedia page title (underscore form) for the summary API. Built at runtime from embedded OurAirports-derived CSV.
+pub fn get_icao_to_wikipedia() -> &'static BTreeMap<String, String> {
+    ICAO_TO_WIKIPEDIA.get_or_init(parse_icao_to_wikipedia_csv)
+}
+
+/// Fallback (lat, lon) when an airport from the plan has no coordinates (e.g. from a pack without apt.dat). Ensures we can still fetch POIs.
+fn fallback_coords(icao: &str) -> Option<(f64, f64)> {
+    let (lat, lon) = match icao.to_uppercase().as_str() {
+        "EGMC" => (51.5703, 0.6933),  // London Southend
+        "EGLL" => (51.4700, -0.4543), // London Heathrow
+        "LFPG" => (49.0097, 2.5478),  // Paris CDG
+        "LIMB" => (45.5422, 9.2033),  // Bresso
+        "LIPX" => (45.3953, 10.8885), // Verona Villafranca
+        "LIBV" => (40.7678, 16.9333), // Gioia del Colle
+        _ => return None,
+    };
+    Some((lat, lon))
+}
+
+/// Returns (lat, lon) for an airport: from the airport struct, or fallback for known ICAOs when missing.
+pub fn airport_coords_for_poi_fetch(airport: &Airport) -> Option<(f64, f64)> {
+    airport
+        .lat
+        .and_then(|lat| airport.lon.map(|lon| (lat, lon)))
+        .or_else(|| fallback_coords(&airport.id))
+}
+
+/// Loads flight context from a curated JSON file (Phase 2a). Keys are ICAO codes; POIs (file + overlay) filtered to within ~10 nm.
+/// Returns None if the file is missing or invalid.
+pub fn load_flight_context(
+    path: &Path,
+    origin: &Airport,
+    destination: &Airport,
+) -> Option<FlightContext> {
+    let data = std::fs::read_to_string(path).ok()?;
+    let map: std::collections::BTreeMap<String, AirportContextFile> =
+        serde_json::from_str(&data).ok()?;
+    let overlay = get_poi_overlay();
+    let origin_ctx = build_airport_context(
+        origin,
+        map.get(&*origin.id)
+            .or_else(|| map.get(&origin.id.to_uppercase())),
+        overlay
+            .get(&*origin.id)
+            .or_else(|| overlay.get(&origin.id.to_uppercase()))
+            .map(Vec::as_slice),
+        None,
+    )?;
+    let dest_ctx = build_airport_context(
+        destination,
+        map.get(&*destination.id)
+            .or_else(|| map.get(&destination.id.to_uppercase())),
+        overlay
+            .get(&*destination.id)
+            .or_else(|| overlay.get(&destination.id.to_uppercase()))
+            .map(Vec::as_slice),
+        None,
+    )?;
+    Some(FlightContext {
+        origin: origin_ctx,
+        destination: dest_ctx,
+    })
+}
+
+/// Load order per airport: cache → bundled → config file. Option B: zero-effort default from bundle.
+/// Optional dynamic_origin_pois / dynamic_dest_pois (e.g. from Wikipedia geosearch) are merged and filtered to 10 nm.
+pub fn load_flight_context_with_bundled(
+    bundled: &std::collections::BTreeMap<String, AirportContextFile>,
+    config_path: &Path,
+    cache_dir: &Path,
+    origin: &Airport,
+    destination: &Airport,
+    dynamic_origin_pois: Option<Vec<PoiFile>>,
+    dynamic_dest_pois: Option<Vec<PoiFile>>,
+) -> Option<FlightContext> {
+    let config_map: std::collections::BTreeMap<String, AirportContextFile> =
+        std::fs::read_to_string(config_path)
+            .ok()
+            .and_then(|d| serde_json::from_str(&d).ok())
+            .unwrap_or_default();
+    let get_file = |icao: &str| {
+        load_airport_context_from_cache(cache_dir, icao)
+            .or_else(|| {
+                bundled
+                    .get(icao)
+                    .or_else(|| bundled.get(&icao.to_uppercase()))
+                    .cloned()
+            })
+            .or_else(|| {
+                config_map
+                    .get(icao)
+                    .or_else(|| config_map.get(&icao.to_uppercase()))
+                    .cloned()
+            })
+    };
+    let origin_file = get_file(&origin.id);
+    let dest_file = get_file(&destination.id);
+    let overlay = get_poi_overlay();
+    let origin_ctx = build_airport_context(
+        origin,
+        origin_file.as_ref(),
+        overlay
+            .get(&*origin.id)
+            .or_else(|| overlay.get(&origin.id.to_uppercase()))
+            .map(Vec::as_slice),
+        dynamic_origin_pois.as_deref(),
+    )?;
+    let dest_ctx = build_airport_context(
+        destination,
+        dest_file.as_ref(),
+        overlay
+            .get(&*destination.id)
+            .or_else(|| overlay.get(&destination.id.to_uppercase()))
+            .map(Vec::as_slice),
+        dynamic_dest_pois.as_deref(),
+    )?;
+    Some(FlightContext {
+        origin: origin_ctx,
+        destination: dest_ctx,
+    })
+}
+
+/// Loads one airport's context from the cache (Phase 2b). File format: `{ "snippet": "", "points_nearby": [] }`.
+pub fn load_airport_context_from_cache(cache_dir: &Path, icao: &str) -> Option<AirportContextFile> {
+    let path = cache_dir.join(format!("{}.json", icao.to_uppercase()));
+    let data = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+/// Writes one airport's context to the cache (Phase 2b). Creates cache_dir if needed.
+pub fn save_airport_context_to_cache(
+    cache_dir: &Path,
+    icao: &str,
+    data: &AirportContextFile,
+) -> std::io::Result<()> {
+    let _ = std::fs::create_dir_all(cache_dir);
+    let path = cache_dir.join(format!("{}.json", icao.to_uppercase()));
+    let file = std::fs::File::create(path)?;
+    serde_json::to_writer_pretty(file, data)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+}
+
+/// Builds FlightContext from cache (per-ICAO files) and optionally curated map. Cache takes precedence per airport.
+/// POIs are filtered to within 10 nm. Returns None if either airport has no lat/lon.
+pub fn load_flight_context_with_cache(
+    cache_dir: &Path,
+    curated_path: &Path,
+    origin: &Airport,
+    destination: &Airport,
+) -> Option<FlightContext> {
+    let curated_map: std::collections::BTreeMap<String, AirportContextFile> =
+        std::fs::read_to_string(curated_path)
+            .ok()
+            .and_then(|d| serde_json::from_str(&d).ok())
+            .unwrap_or_default();
+    let origin_file = load_airport_context_from_cache(cache_dir, &origin.id).or_else(|| {
+        curated_map
+            .get(&*origin.id)
+            .or_else(|| curated_map.get(&origin.id.to_uppercase()))
+            .cloned()
+    });
+    let dest_file = load_airport_context_from_cache(cache_dir, &destination.id).or_else(|| {
+        curated_map
+            .get(&*destination.id)
+            .or_else(|| curated_map.get(&destination.id.to_uppercase()))
+            .cloned()
+    });
+    let overlay = get_poi_overlay();
+    let origin_ctx = build_airport_context(
+        origin,
+        origin_file.as_ref(),
+        overlay
+            .get(&*origin.id)
+            .or_else(|| overlay.get(&origin.id.to_uppercase()))
+            .map(Vec::as_slice),
+        None,
+    )?;
+    let dest_ctx = build_airport_context(
+        destination,
+        dest_file.as_ref(),
+        overlay
+            .get(&*destination.id)
+            .or_else(|| overlay.get(&destination.id.to_uppercase()))
+            .map(Vec::as_slice),
+        None,
+    )?;
+    Some(FlightContext {
+        origin: origin_ctx,
+        destination: dest_ctx,
+    })
+}
+
+/// Merges file snippet/POIs with overlay POIs and optional dynamic POIs (e.g. Wikipedia geosearch); filters all to within POI_RADIUS_NM (10 nm).
+fn build_airport_context(
+    airport: &Airport,
+    file: Option<&AirportContextFile>,
+    overlay_pois: Option<&[PoiFile]>,
+    dynamic_pois: Option<&[PoiFile]>,
+) -> Option<AirportContext> {
+    let (apt_lat, apt_lon) = airport
+        .lat
+        .and_then(|lat| airport.lon.map(|lon| (lat, lon)))
+        .or_else(|| fallback_coords(&airport.id))?;
+    let snippet = file.map(|f| f.snippet.as_str()).unwrap_or("").to_string();
+    let from_file = file.iter().flat_map(|f| f.points_nearby.iter());
+    let from_overlay = overlay_pois.iter().flat_map(|s| s.iter());
+    let from_dynamic = dynamic_pois.unwrap_or(&[]).iter();
+    // Don't show the airport's own Wikipedia article as a landmark (redundant with History).
+    let is_airport_self = |name: &str| {
+        name.eq_ignore_ascii_case(airport.name.as_str())
+            || name.eq_ignore_ascii_case(&format!("{} Airport", airport.name))
+    };
+    let points_nearby: Vec<PointOfInterest> = from_file
+        .chain(from_overlay)
+        .chain(from_dynamic)
+        .filter_map(|p| {
+            if is_airport_self(&p.name) {
+                return None;
+            }
+            let dist_nm = haversine_nm(apt_lat, apt_lon, p.lat, p.lon);
+            if dist_nm <= POI_RADIUS_NM {
+                Some(PointOfInterest {
+                    name: p.name.clone(),
+                    kind: p.kind.clone(),
+                    snippet: p.snippet.clone(),
+                    distance_nm: Some(dist_nm),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    Some(AirportContext {
+        icao: airport.id.clone(),
+        snippet,
+        points_nearby,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1075,7 +1389,10 @@ fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> Strin
     for t in &aircraft.tags {
         let t = t.trim().to_uppercase();
         if t.len() == 4
-            && t.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false)
+            && t.chars()
+                .next()
+                .map(|c| c.is_ascii_alphabetic())
+                .unwrap_or(false)
             && t.chars().skip(1).all(|c| c.is_ascii_alphanumeric())
         {
             return t;
@@ -1110,7 +1427,10 @@ fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> Strin
         return "A388".to_string();
     }
     // Boeing 7xx
-    if name_upper.contains("737-800") || name_upper.contains("737 800") || name_lower.contains("737-800") {
+    if name_upper.contains("737-800")
+        || name_upper.contains("737 800")
+        || name_lower.contains("737-800")
+    {
         return "B738".to_string();
     }
     if name_upper.contains("737-900") || name_upper.contains("737 900") {
@@ -1135,7 +1455,10 @@ fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> Strin
         return "B788".to_string();
     }
     // Cessna / GA
-    if name_lower.contains("cessna 172") || name_lower.contains("c172") || name_upper.contains("C172") {
+    if name_lower.contains("cessna 172")
+        || name_lower.contains("c172")
+        || name_upper.contains("C172")
+    {
         return "C172".to_string();
     }
     if name_lower.contains("cessna 208") || name_lower.contains("caravan") {
@@ -1150,9 +1473,7 @@ pub fn export_simbrief(plan: &FlightPlan) -> String {
     let ac_type = simbrief_aircraft_type(&plan.aircraft);
     format!(
         "https://www.simbrief.com/system/dispatch.php?orig={}&dest={}&type={}",
-        plan.origin.id,
-        plan.destination.id,
-        ac_type
+        plan.origin.id, plan.destination.id, ac_type
     )
 }
 #[cfg(test)]
@@ -1173,6 +1494,52 @@ mod tests {
             is_enabled: true,
             is_laminar_default: false,
         }
+    }
+
+    #[test]
+    fn test_airport_coords_for_poi_fetch() {
+        use crate::apt_dat::{Airport, AirportType};
+        // With coords: use them
+        let apt = Airport {
+            id: "EGMC".to_string(),
+            name: "Southend".to_string(),
+            airport_type: AirportType::Land,
+            lat: Some(51.57),
+            lon: Some(0.69),
+            proj_x: None,
+            proj_y: None,
+            max_runway_length: None,
+            surface_type: None,
+        };
+        let c = airport_coords_for_poi_fetch(&apt);
+        assert_eq!(c, Some((51.57, 0.69)));
+        // No coords but known ICAO: fallback
+        let apt_no_coords = Airport {
+            id: "EGMC".to_string(),
+            name: "Southend".to_string(),
+            airport_type: AirportType::Land,
+            lat: None,
+            lon: None,
+            proj_x: None,
+            proj_y: None,
+            max_runway_length: None,
+            surface_type: None,
+        };
+        let c2 = airport_coords_for_poi_fetch(&apt_no_coords);
+        assert_eq!(c2, Some((51.5703, 0.6933)));
+        // Unknown ICAO, no coords: None
+        let apt_unknown = Airport {
+            id: "XXXX".to_string(),
+            name: "Unknown".to_string(),
+            airport_type: AirportType::Land,
+            lat: None,
+            lon: None,
+            proj_x: None,
+            proj_y: None,
+            max_runway_length: None,
+            surface_type: None,
+        };
+        assert!(airport_coords_for_poi_fetch(&apt_unknown).is_none());
     }
 
     #[test]
@@ -1298,9 +1665,102 @@ mod tests {
             context: None,
         };
         let url = export_simbrief(&plan);
-        assert!(url.contains("orig=EGMC"), "SimBrief URL must use orig= for departure: {}", url);
-        assert!(url.contains("dest=LIRF"), "SimBrief URL must use dest= for destination: {}", url);
-        assert!(url.contains("type=A320"), "SimBrief URL must use A320 for ToLiss A320: {}", url);
-        assert!(!url.contains("dep="), "SimBrief does not use dep= parameter: {}", url);
+        assert!(
+            url.contains("orig=EGMC"),
+            "SimBrief URL must use orig= for departure: {}",
+            url
+        );
+        assert!(
+            url.contains("dest=LIRF"),
+            "SimBrief URL must use dest= for destination: {}",
+            url
+        );
+        assert!(
+            url.contains("type=A320"),
+            "SimBrief URL must use A320 for ToLiss A320: {}",
+            url
+        );
+        assert!(
+            !url.contains("dep="),
+            "SimBrief does not use dep= parameter: {}",
+            url
+        );
+    }
+
+    #[test]
+    fn test_load_flight_context_from_json() {
+        let json = r#"{
+            "EGLL": {
+                "snippet": "Heathrow is the largest UK airport.",
+                "points_nearby": [
+                    {"name": "Windsor", "kind": "landmark", "snippet": "Castle.", "lat": 51.48, "lon": -0.60}
+                ]
+            },
+            "LIRF": {
+                "snippet": "Rome Fiumicino.",
+                "points_nearby": []
+            }
+        }"#;
+        let tmp = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(tmp.path(), json).expect("write");
+        let origin = create_test_airport("EGLL", 51.47, -0.45);
+        let dest = create_test_airport("LIRF", 41.80, 12.24);
+        let ctx = load_flight_context(tmp.path(), &origin, &dest).expect("load");
+        assert_eq!(ctx.origin.icao, "EGLL");
+        assert!(ctx.origin.snippet.contains("Heathrow"));
+        // File has 1 POI (Windsor); overlay adds 1 (Windsor Castle) for EGLL → 2 total
+        assert!(ctx.origin.points_nearby.len() >= 1);
+        assert!(ctx.origin.points_nearby.iter().any(|p| p.name == "Windsor"));
+        assert!(ctx
+            .origin
+            .points_nearby
+            .iter()
+            .any(|p| p.name == "Windsor Castle"));
+
+        // Option B: bundled + load order (cache → bundled → config)
+        let bundled = get_bundled_flight_context();
+        assert!(
+            bundled.len() >= 50,
+            "bundle should have at least 50 airports (Phase 1.1), got {}",
+            bundled.len()
+        );
+        assert!(
+            bundled.contains_key("EGLL") && bundled.contains_key("LIRF"),
+            "bundle should contain EGLL and LIRF"
+        );
+        let cache_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = tempfile::NamedTempFile::new().expect("temp config");
+        std::fs::write(config_path.path(), "{}").expect("empty config");
+        let ctx2 = load_flight_context_with_bundled(
+            &bundled,
+            config_path.path(),
+            cache_dir.path(),
+            &origin,
+            &dest,
+            None,
+            None,
+        )
+        .expect("load with bundle");
+        assert_eq!(ctx2.origin.icao, "EGLL");
+        assert!(ctx2.origin.snippet.contains("Heathrow") || ctx2.origin.snippet.contains("London"));
+        assert_eq!(
+            get_icao_to_wikipedia().get("EGLL").map(String::as_str),
+            Some("Heathrow_Airport")
+        );
+        let windsor_poi = ctx
+            .origin
+            .points_nearby
+            .iter()
+            .find(|p| p.name == "Windsor")
+            .expect("Windsor from file");
+        assert!(windsor_poi.distance_nm.unwrap() <= 10.0);
+        assert_eq!(ctx.destination.icao, "LIRF");
+        assert!(ctx.destination.snippet.contains("Fiumicino"));
+        // LIRF gets overlay POI (Ostia Antica)
+        assert!(ctx
+            .destination
+            .points_nearby
+            .iter()
+            .any(|p| p.name == "Ostia Antica"));
     }
 }

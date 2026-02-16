@@ -888,6 +888,23 @@ pub fn fetch_pois_near_from_wikipedia(
         let Some(title) = item.get("title").and_then(|v| v.as_str()) else {
             continue;
         };
+        // Filter out schools/academies/colleges
+        let title_lower = title.to_lowercase();
+        if title_lower.contains("school")
+            || title_lower.contains("academy")
+            || title_lower.contains("college")
+            || title_lower.contains("university")
+            || title_lower.contains("primary")
+            || title_lower.contains("high school")
+            || title_lower.contains("hospital")
+            || title_lower.contains("f.c.")
+            || title_lower.contains("football club")
+            || title_lower.contains("roller coaster")
+            || title_lower.contains("amusement ride")
+            || title_lower == "rage"
+        {
+            continue;
+        }
         let Some(lat_p) = item.get("lat").and_then(|v| v.as_f64()) else {
             continue;
         };
@@ -900,6 +917,7 @@ pub fn fetch_pois_near_from_wikipedia(
             snippet: title.to_string(),
             lat: lat_p,
             lon: lon_p,
+            score: 10, // Base score for Wikipedia items
         });
     }
     if let Some(cache_dir) = cache_dir {
@@ -975,87 +993,207 @@ pub fn fetch_pois_near_from_wikidata(
     }
     // WKT: Point(longitude latitude)
     let point = format!("Point({} {})", lon, lat);
-    // Types: stadium, pier, museum, tourist attraction, landmark (Q483110, Q337234, Q33506, Q570116, Q2319498)
-    let query = format!(
+    // Primary Query: Direct coordinates
+    // Types: stadium, museum, tourist attraction, landmark, pier, football club, amusement park
+    let query_direct = format!(
         r#"
 PREFIX geo: <http://www.opengis.net/ont/geosparql#>
 PREFIX wikibase: <http://wikiba.se/ontology#>
 PREFIX wd: <http://www.wikidata.org/entity/>
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX schema: <http://schema.org/>
-SELECT ?placeLabel ?location ?article WHERE {{
+SELECT ?place ?placeLabel ?location ?article ?sitelinks ?type WHERE {{
   SERVICE wikibase:around {{
     ?place wdt:P625 ?location .
     bd:serviceParam wikibase:center "{point}"^^geo:wktLiteral .
     bd:serviceParam wikibase:radius "20" .
   }}
-  FILTER EXISTS {{
-    ?place wdt:P31/wdt:P279* ?type .
-    VALUES ?type {{ wd:Q483110 wd:Q337234 wd:Q33506 wd:Q570116 wd:Q2319498 }}
-  }}
+  ?place wdt:P31/wdt:P279* ?type .
+  VALUES ?type {{ wd:Q483110 wd:Q33506 wd:Q570116 wd:Q2319498 wd:Q863454 wd:Q476028 wd:Q194195 }}
+  ?place wikibase:sitelinks ?sitelinks .
+  FILTER(?sitelinks > 3)
   ?article schema:about ?place .
   ?article schema:inLanguage "en" .
   ?article schema:isPartOf <https://en.wikipedia.org/> .
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
-}} ORDER BY ?place
-LIMIT 30
+}} ORDER BY DESC(?sitelinks)
+LIMIT 40
 "#
     );
-    let url = format!(
-        "{}?query={}&format=json",
-        WIKIDATA_SPARQL_URL.trim_end_matches('/'),
-        urlencoding::encode(&query)
+
+    // Secondary Query: Tenants (Football Clubs via Venue)
+    // Fixes missing coordinates for clubs like Southend United (Q48951)
+    let query_tenants = format!(
+        r#"
+PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+PREFIX wikibase: <http://wikiba.se/ontology#>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX schema: <http://schema.org/>
+SELECT ?place ?placeLabel ?location ?article ?sitelinks ?type ?venue WHERE {{
+  SERVICE wikibase:around {{
+    ?venue wdt:P625 ?location .
+    bd:serviceParam wikibase:center "{point}"^^geo:wktLiteral .
+    bd:serviceParam wikibase:radius "20" .
+  }}
+  ?place wdt:P115 ?venue .
+  ?place wdt:P31/wdt:P279* ?type .
+  VALUES ?type {{ wd:Q476028 }}
+  ?place wikibase:sitelinks ?sitelinks .
+  FILTER(?sitelinks > 3)
+  ?article schema:about ?place .
+  ?article schema:inLanguage "en" .
+  ?article schema:isPartOf <https://en.wikipedia.org/> .
+  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+}} ORDER BY DESC(?sitelinks)
+LIMIT 20
+"#
     );
+
+    let mut candidates = Vec::new();
     let agent = poi_fetch_agent();
-    let resp = agent
-        .get(&url)
-        .set("User-Agent", "X-Addon-Oxide/1.0 (flight context)")
-        .set("Accept", "application/sparql-results+json")
-        .call()
-        .ok()?;
-    let body = resp.into_string().ok()?;
-    let v: serde_json::Value = serde_json::from_str(&body).ok()?;
-    let bindings = v.get("results")?.get("bindings")?.as_array()?;
-    let mut pois: Vec<x_adox_core::flight_gen::PoiFile> = Vec::with_capacity(bindings.len());
-    for row in bindings {
-        let article_uri = match row
-            .get("article")
-            .and_then(|n| n.get("value"))
-            .and_then(|v| v.as_str())
+
+    // Track venues occupied by major clubs to hide the venue itself (deduplication)
+    let mut occupied_venues = std::collections::HashSet::new();
+
+    for (_q_idx, query) in [query_direct, query_tenants].iter().enumerate() {
+        let url = format!(
+            "{}?query={}&format=json",
+            WIKIDATA_SPARQL_URL.trim_end_matches('/'),
+            urlencoding::encode(query)
+        );
+        if let Ok(resp) = agent
+            .get(&url)
+            .set("User-Agent", "X-Addon-Oxide/1.0 (flight context)")
+            .set("Accept", "application/sparql-results+json")
+            .call()
         {
-            Some(u) => u,
-            None => continue,
-        };
-        let title = match wikipedia_title_from_url(article_uri) {
-            Some(t) => t,
-            None => continue,
-        };
-        let location_str = match row
-            .get("location")
-            .and_then(|n| n.get("value"))
-            .and_then(|v| v.as_str())
-        {
-            Some(s) => s,
-            None => continue,
-        };
-        let (lat_p, lon_p) = match parse_wkt_point(location_str) {
-            Some(c) => c,
-            None => continue,
-        };
-        let snippet = row
-            .get("placeLabel")
-            .and_then(|n| n.get("value"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .unwrap_or_else(|| title.clone());
-        pois.push(x_adox_core::flight_gen::PoiFile {
-            name: title,
-            kind: "wikidata".to_string(),
-            snippet,
-            lat: lat_p,
-            lon: lon_p,
-        });
+            if let Ok(body) = resp.into_string() {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                    if let Some(bindings) = v
+                        .get("results")
+                        .and_then(|r| r.get("bindings"))
+                        .and_then(|b| b.as_array())
+                    {
+                        for row in bindings {
+                            // Extract URI to check against occupied venues
+                            let place_uri = row
+                                .get("place")
+                                .and_then(|n| n.get("value"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+
+                            // If this is a tenant query result, record the venue URI
+                            if let Some(venue_uri) = row
+                                .get("venue")
+                                .and_then(|n| n.get("value"))
+                                .and_then(|v| v.as_str())
+                            {
+                                occupied_venues.insert(venue_uri.to_string());
+                            }
+
+                            let article_uri = match row
+                                .get("article")
+                                .and_then(|n| n.get("value"))
+                                .and_then(|v| v.as_str())
+                            {
+                                Some(u) => u.to_string(),
+                                None => continue,
+                            };
+                            let title = match wikipedia_title_from_url(&article_uri) {
+                                Some(t) => t,
+                                None => continue,
+                            };
+                            let type_uri = row
+                                .get("type")
+                                .and_then(|n| n.get("value"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            let sitelinks = row
+                                .get("sitelinks")
+                                .and_then(|n| n.get("value"))
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| s.parse::<i32>().ok())
+                                .unwrap_or(0);
+
+                            let location_str = match row
+                                .get("location")
+                                .and_then(|n| n.get("value"))
+                                .and_then(|v| v.as_str())
+                            {
+                                Some(s) => s,
+                                None => continue,
+                            };
+                            let (lat, lon) = match parse_wkt_point(location_str) {
+                                Some(c) => c,
+                                None => continue,
+                            };
+
+                            candidates.push((
+                                x_adox_core::flight_gen::PoiFile {
+                                    name: title,
+                                    kind: "wikidata".to_string(), // we refine this later?
+                                    snippet: String::new(),
+                                    lat,
+                                    lon,
+                                    score: calculate_score(sitelinks, &type_uri),
+                                },
+                                sitelinks,
+                                type_uri,
+                                place_uri,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
     }
+
+    // Weighted Scoring Logic
+    // Apply multipliers to base sitelinks to boost prominent types (e.g. Piers)
+    // Multipliers: Pier (x5), Park (x1.5), Stadium (x1.5), Club (x1.5)
+    candidates.sort_by(|a, b| {
+        let score_a = calculate_score(a.1, &a.2);
+        let score_b = calculate_score(b.1, &b.2);
+        score_b.cmp(&score_a)
+    });
+
+    let mut pois = Vec::new();
+    let mut football_clubs_count = 0;
+    let mut seen_titles = std::collections::HashSet::new();
+
+    for (poi, _sitelinks, type_uri, place_uri) in candidates {
+        let name_lower = poi.name.to_lowercase();
+
+        // Strict Name Filter to kill "Rage"
+        if name_lower == "rage"
+            || name_lower.contains("roller coaster")
+            || name_lower.contains("amusement ride")
+        {
+            continue;
+        }
+
+        if !seen_titles.insert(name_lower) {
+            continue;
+        }
+
+        // Filter out occupied venues (e.g. hide Roots Hall if Southend United is present)
+        if occupied_venues.contains(&place_uri) {
+            continue; // Skip this POI, it's just the building for a club we already have
+        }
+
+        // Limit football clubs (Q476028) to 1
+        if type_uri.ends_with("Q476028") {
+            if football_clubs_count >= 1 {
+                continue;
+            }
+            football_clubs_count += 1;
+        }
+        pois.push(poi);
+    }
+
     if let Some(cache_dir) = cache_dir {
         if !pois.is_empty() {
             let sub = cache_dir.join(POIS_NEAR_WIKIDATA_CACHE_SUBDIR);
@@ -1070,27 +1208,55 @@ LIMIT 30
     Some(pois)
 }
 
+fn calculate_score(sitelinks: i32, type_uri: &str) -> i32 {
+    let base = sitelinks as f32;
+    let multiplier = if type_uri.ends_with("Q863454") {
+        5.0 // Generic Pier - Huge boost
+    } else if type_uri.ends_with("Q194195") {
+        1.5 // Amusement Park (or Theme Park)
+    } else if type_uri.ends_with("Q483110") {
+        1.5 // Stadium
+    } else if type_uri.ends_with("Q476028") {
+        1.5 // Football Club
+    } else if type_uri.ends_with("Q2319498") {
+        1.5 // Landmark
+    } else {
+        1.0
+    };
+    (base * multiplier) as i32
+}
+
 /// Merges Wikipedia and Wikidata POI lists and deduplicates by Wikipedia title (case-insensitive).
 /// Wikipedia results come first; Wikidata fills gaps (e.g. Southend Pier, Roots Hall).
 fn merge_pois_dedupe_by_title(
     wiki: Vec<x_adox_core::flight_gen::PoiFile>,
     wikidata: Vec<x_adox_core::flight_gen::PoiFile>,
 ) -> Vec<x_adox_core::flight_gen::PoiFile> {
-    use std::collections::HashSet;
-    let mut seen = HashSet::new();
-    let mut out = Vec::with_capacity(wiki.len() + wikidata.len());
+    use std::collections::HashMap;
+    let mut map: HashMap<String, x_adox_core::flight_gen::PoiFile> = HashMap::new();
+
     for p in wiki {
-        let key = p.name.to_lowercase();
-        if seen.insert(key) {
-            out.push(p);
-        }
+        map.insert(p.name.to_lowercase(), p);
     }
+
     for p in wikidata {
         let key = p.name.to_lowercase();
-        if seen.insert(key) {
-            out.push(p);
+        match map.entry(key) {
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(p);
+            }
+            std::collections::hash_map::Entry::Occupied(mut e) => {
+                let existing = e.get_mut();
+                if p.score > existing.score {
+                    existing.score = p.score;
+                }
+            }
         }
     }
+
+    let mut out: Vec<_> = map.into_values().collect();
+    // Sort by score DESC
+    out.sort_by(|a, b| b.score.cmp(&a.score));
     out
 }
 
