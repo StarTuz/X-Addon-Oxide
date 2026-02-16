@@ -732,19 +732,27 @@ pub fn fetch_weather_for_plan(
         Ok(s) => s,
         Err(_) => return (None, None),
     };
-    let blocks: Vec<String> = body
-        .split("METAR for ")
-        .filter_map(|s| {
-            let t = s.trim();
-            if t.is_empty() {
-                None
-            } else {
-                Some(format!("METAR for {}", t))
-            }
-        })
-        .collect();
-    let origin = blocks.get(0).cloned();
-    let dest = blocks.get(1).cloned();
+
+    // Parse response into a map of ICAO -> Raw Text
+    let mut metar_map = std::collections::HashMap::new();
+    for s in body.split("METAR for ") {
+        let t = s.trim();
+        if t.is_empty() {
+            continue;
+        }
+        // Extract ICAO from the start (e.g. "KDLS ...")
+        if let Some(icao) = t.split_whitespace().next() {
+            // The API sometimes returns "KDLS (The Dalles..." so we just take the first token
+            let key = icao
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_uppercase();
+            metar_map.insert(key, format!("METAR for {}", t));
+        }
+    }
+
+    let origin = metar_map.get(&origin_icao.trim().to_uppercase()).cloned();
+    let dest = metar_map.get(&dest_icao.trim().to_uppercase()).cloned();
+
     (origin, dest)
 }
 
