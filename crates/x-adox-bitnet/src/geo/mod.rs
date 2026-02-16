@@ -89,3 +89,17 @@ impl RegionIndex {
             .find(|r| r.name.to_lowercase().contains(&q))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_search_alaska() {
+        let index = RegionIndex::new();
+        // Should find "Alaska" by name match
+        let r = index.search("Alaska");
+        assert!(r.is_some(), "Should find Alaska by name");
+        assert_eq!(r.unwrap().id, "US:AK");
+    }
+}

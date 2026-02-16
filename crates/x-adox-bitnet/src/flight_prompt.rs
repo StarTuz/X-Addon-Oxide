@@ -258,7 +258,6 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         }
         "oregon" => Some(LocationConstraint::Region("US:OR".to_string())),
         "pnw" | "pacific northwest" => Some(LocationConstraint::Region("US:OR".to_string())),
-        "alaska" | "ak" => Some(LocationConstraint::Region("US:AK".to_string())),
         "alps" => Some(LocationConstraint::Region("Alps".to_string())),
         "rockies" => Some(LocationConstraint::Region("Rockies".to_string())),
         "caribbean" => Some(LocationConstraint::Region("Caribbean".to_string())),

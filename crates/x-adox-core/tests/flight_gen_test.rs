@@ -683,7 +683,13 @@ mod tests {
         let aircraft = vec![make_test_aircraft("Cessna 172", vec!["GA", "Prop"])];
 
         for _ in 0..5 {
-            let plan = generate_flight(&manager.packs, &aircraft, "Flight from Socal to Norcal", None, None);
+            let plan = generate_flight(
+                &manager.packs,
+                &aircraft,
+                "Flight from Socal to Norcal",
+                None,
+                None,
+            );
             assert!(plan.is_ok(), "SoCal → NorCal should work: {:?}", plan.err());
             let p = plan.unwrap();
             assert_eq!(p.origin.id, "KLAX");
@@ -748,7 +754,13 @@ mod tests {
         assert_eq!(p.destination.id, "KSEA");
 
         // Using ICAO codes — both explicit
-        let plan2 = generate_flight(&manager.packs, &aircraft, "Flight from KLAX to KSEA", None, None);
+        let plan2 = generate_flight(
+            &manager.packs,
+            &aircraft,
+            "Flight from KLAX to KSEA",
+            None,
+            None,
+        );
         assert!(
             plan2.is_ok(),
             "Explicit ICAO-to-ICAO should bypass distance filter: {:?}",
@@ -849,7 +861,13 @@ mod tests {
         }];
         let aircraft = vec![make_test_aircraft("Cessna 172", vec!["GA"])];
 
-        let plan = generate_flight(&packs, &aircraft, "Flight from Oregon to anywhere", None, None);
+        let plan = generate_flight(
+            &packs,
+            &aircraft,
+            "Flight from Oregon to anywhere",
+            None,
+            None,
+        );
         assert!(
             plan.is_ok(),
             "Oregon region should be recognized: {:?}",
@@ -958,8 +976,73 @@ mod tests {
         // 2. Heavy aircraft SHOULD NOT find the unknown strip
         let heavy_aircraft = vec![make_test_aircraft("B747", vec!["Heavy", "Jet"])];
         for _ in 0..10 {
-            let plan = generate_flight(&packs, &heavy_aircraft, "Flight from UNKN to any", None, None);
+            let plan = generate_flight(
+                &packs,
+                &heavy_aircraft,
+                "Flight from UNKN to any",
+                None,
+                None,
+            );
             assert!(plan.is_err(), "Heavy aircraft should reject unknown length");
         }
+    }
+    #[test]
+    fn test_alaska_flight_generation() {
+        // "F70 to Alaska"
+        // F70 = French Valley (CA)
+        // Alaska = Region US:AK
+        let mut manager = SceneryManager::new(PathBuf::from("/tmp/scenery_packs.ini"));
+        manager.packs.push(SceneryPack {
+            name: "California".to_string(),
+            path: PathBuf::from("CA"),
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            airports: vec![make_test_airport(
+                "F70",
+                "French Valley",
+                33.57,
+                -117.13,
+                4600,
+                SurfaceType::Hard,
+            )],
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+            region: Some("US:SoCal".to_string()),
+        });
+        manager.packs.push(SceneryPack {
+            name: "Alaska".to_string(),
+            path: PathBuf::from("AK"),
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            airports: vec![make_test_airport(
+                "PANC",
+                "Anchorage Intl",
+                61.17,
+                -149.99,
+                10000,
+                SurfaceType::Hard,
+            )],
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+            region: Some("US:AK".to_string()),
+        });
+
+        // Need long range aircraft. F70->PANC is ~1800nm.
+        let aircraft = vec![make_test_aircraft("Boeing 747", vec!["Heavy", "Jet"])];
+
+        // "F70 to Alaska" -> "Alaska" matches Region US:AK via RegionIndex (or alias)
+        // This test proves that if parsing works, flight gen works.
+        let plan = generate_flight(&manager.packs, &aircraft, "F70 to Alaska", None, None);
+        assert!(
+            plan.is_ok(),
+            "Should find PANC in Alaska from F70: {:?}",
+            plan.err()
+        );
+        let p = plan.unwrap();
+        assert_eq!(p.destination.id, "PANC");
     }
 }

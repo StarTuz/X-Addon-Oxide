@@ -1169,6 +1169,7 @@ fn icao_prefixes_for_region(region_id: &str) -> Option<Vec<&'static str>> {
         "CZ" => Some(vec!["LK"]),
         "TR" => Some(vec!["LT"]),
         // Americas
+        "US:AK" | "US:HI" => Some(vec!["P"]), // Alaska (PA..) & Hawaii (PH..)
         "US" => Some(vec!["K"]),
         "CA" => Some(vec!["C"]),
         "MX" => Some(vec!["MM"]),
@@ -1267,6 +1268,16 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
         "ES" => vec![
             seed_airport("LEMD", "Madrid Barajas", 40.4983, -3.5676),
             seed_airport("LEBL", "Barcelona El Prat", 41.2971, 2.0785),
+        ],
+        "US:AK" => vec![
+            seed_airport("PANC", "Anchorage Ted Stevens", 61.1743, -149.9962),
+            seed_airport("PAFA", "Fairbanks Intl", 64.8151, -147.8561),
+            seed_airport("PAJN", "Juneau Intl", 58.3549, -134.5762),
+            seed_airport("PABT", "Bettles", 66.9139, -151.5291), // Bush flavor
+        ],
+        "US:HI" => vec![
+            seed_airport("PHNL", "Honolulu Intl", 21.3187, -157.9225),
+            seed_airport("PHOG", "Kahului", 20.8986, -156.4305),
         ],
         "US" => vec![
             seed_airport("KJFK", "New York JFK", 40.6398, -73.7789),
