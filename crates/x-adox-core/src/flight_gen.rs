@@ -723,23 +723,13 @@ pub fn generate_flight(
             }
         };
 
-        // Explicit Endpoint Check (Fix for "London to London")
-        let endpoints_explicit = matches!(
-            (&prompt.origin, &prompt.destination),
-            (
-                Some(LocationConstraint::AirportName(_)),
-                Some(LocationConstraint::AirportName(_))
-            ) | (
-                Some(LocationConstraint::ICAO(_)),
-                Some(LocationConstraint::ICAO(_))
-            ) | (
-                Some(LocationConstraint::ICAO(_)),
-                Some(LocationConstraint::AirportName(_))
-            ) | (
-                Some(LocationConstraint::AirportName(_)),
-                Some(LocationConstraint::ICAO(_))
-            )
-        );
+        // Explicit Endpoint Check (Relax distance logic if both ends are specific)
+        let endpoints_explicit = match (&prompt.origin, &prompt.destination) {
+            (Some(o), Some(d)) => {
+                !matches!(o, LocationConstraint::Any) && !matches!(d, LocationConstraint::Any)
+            }
+            _ => false,
+        };
 
         // Destination selection (same combined pool)
         let candidate_dests: Vec<&Airport> = match prompt.destination {

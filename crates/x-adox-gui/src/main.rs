@@ -255,6 +255,10 @@ enum Message {
     FlightGen(flight_gen_gui::Message),
     /// Result of save-file export (FMS / LNM).
     FlightGenExportSaved(Result<PathBuf, String>),
+    /// Result of Phase 2b fetch context (API + cache).
+    FlightContextFetched(Result<x_adox_core::flight_gen::FlightContext, String>),
+    /// Result of weather fetch for current plan (origin METAR, dest METAR).
+    FlightWeatherFetched(Option<String>, Option<String>),
     ExportHeuristics,
     ResetHeuristics,
     ClearOverrides,
@@ -364,6 +368,9 @@ enum Message {
     RemoveCompanionApp(usize),
     ToggleMapFilterSettings,
     ToggleMapFilter(MapFilterType),
+    ToggleFlightContextFetch(bool),
+    #[allow(dead_code)] // Kept for config round-trip and optional future "Backup context URL"
+    FlightContextApiUrlChanged(String),
 
     // Logbook Filters
     LogbookFilterAircraftChanged(String),
@@ -705,6 +712,10 @@ struct App {
     show_map_filter_settings: bool,
     map_filters: MapFilters,
 
+    // Flight context fetch (Phase 2b): default off
+    pub flight_context_fetch_enabled: bool,
+    pub flight_context_api_url: Option<String>,
+
     // Logbook Filtering
     logbook_filter_aircraft: String,
     logbook_filter_circular: bool,
@@ -751,7 +762,8 @@ impl App {
         let available_roots = XPlaneManager::find_all_xplane_roots();
 
         // Try to load persisted selection, fallback to first available or try_find_root
-        let (saved_root, companion_apps, map_filters) = Self::load_app_config();
+        let (saved_root, companion_apps, map_filters, flight_ctx_fetch, flight_ctx_url) =
+            Self::load_app_config();
         let root = if let Some(ref saved) = saved_root {
             if available_roots.contains(saved) || saved.exists() {
                 Some(saved.clone())
@@ -907,6 +919,8 @@ impl App {
             new_companion_path: None,
             show_map_filter_settings: false,
             map_filters,
+            flight_context_fetch_enabled: flight_ctx_fetch,
+            flight_context_api_url: flight_ctx_url,
             logbook_filter_aircraft: String::new(),
             logbook_filter_circular: false,
             logbook_filter_duration_min: String::new(),
@@ -1579,6 +1593,20 @@ impl App {
                     app.auto_launch = !app.auto_launch;
                     let _ = self.save_app_config();
                 }
+                Task::none()
+            }
+            Message::ToggleFlightContextFetch(enabled) => {
+                self.flight_context_fetch_enabled = enabled;
+                self.save_app_config();
+                Task::none()
+            }
+            Message::FlightContextApiUrlChanged(url) => {
+                self.flight_context_api_url = if url.trim().is_empty() {
+                    None
+                } else {
+                    Some(url.trim().to_string())
+                };
+                self.save_app_config();
                 Task::none()
             }
             Message::ToggleMapFilterSettings => {
@@ -3703,6 +3731,32 @@ impl App {
                         }
                         Task::none()
                     }
+                    flight_gen_gui::Message::FetchContext => {
+                        // Always fetch from Wikipedia/Wikidata when user explicitly clicks "Fetch context"
+                        // (the flight_context_fetch_enabled setting only controls auto-fetch after generation)
+                        if let Some(plan) = &self.flight_gen.current_plan {
+                            self.flight_gen.status_message = Some("Fetching history & landmarks…".to_string());
+                            let config_root = x_adox_core::get_config_root();
+                            let origin = plan.origin.clone();
+                            let destination = plan.destination.clone();
+                            return Task::perform(
+                                async move {
+                                    tokio::task::spawn_blocking(move || {
+                                        flight_gen_gui::load_or_fetch_flight_context_blocking(
+                                            config_root,
+                                            origin,
+                                            destination,
+                                            true,
+                                        )
+                                    })
+                                    .await
+                                    .unwrap_or_else(|e| Err(e.to_string()))
+                                },
+                                Message::FlightContextFetched,
+                            );
+                        }
+                        Task::none()
+                    }
                     _ => {
                         let packs = &self.packs;
                         let aircraft_list = &self.aircraft;
@@ -3715,6 +3769,37 @@ impl App {
                             xplane_root,
                             Some(prefs),
                         );
+                        // Auto-fetch history when "enhanced" is on and we just generated a plan with no context
+                        if self.flight_gen.pending_auto_fetch && self.flight_context_fetch_enabled {
+                            self.flight_gen.pending_auto_fetch = false;
+                            if let Some(plan) = &self.flight_gen.current_plan {
+                                if flight_gen_gui::plan_context_is_empty(plan) {
+                                    self.flight_gen.status_message =
+                                        Some("Fetching enhanced history…".to_string());
+                                    let config_root = x_adox_core::get_config_root();
+                                    let origin = plan.origin.clone();
+                                    let destination = plan.destination.clone();
+                                    return Task::perform(
+                                        async move {
+                                            tokio::task::spawn_blocking(move || {
+                                                flight_gen_gui::load_or_fetch_flight_context_blocking(
+                                                    config_root,
+                                                    origin,
+                                                    destination,
+                                                    true,
+                                                )
+                                            })
+                                            .await
+                                            .unwrap_or_else(|e| Err(e.to_string()))
+                                        },
+                                        Message::FlightContextFetched,
+                                    );
+                                }
+                            }
+                        }
+                        if self.flight_gen.pending_auto_fetch {
+                            self.flight_gen.pending_auto_fetch = false;
+                        }
                         Task::none()
                     }
                 }
@@ -3725,6 +3810,34 @@ impl App {
                     Err(e) if e == "Cancelled" => "Save cancelled.".to_string(),
                     Err(e) => format!("Save failed: {}", e),
                 });
+                Task::none()
+            }
+            Message::FlightContextFetched(result) => {
+                self.flight_gen.apply_fetched_context(result);
+                if let Some(plan) = &self.flight_gen.current_plan {
+                    let origin_icao = plan.origin.id.clone();
+                    let dest_icao = plan.destination.id.clone();
+                    return Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || {
+                                flight_gen_gui::fetch_weather_for_plan(&origin_icao, &dest_icao)
+                            })
+                            .await
+                            .unwrap_or((None, None))
+                        },
+                        |(origin, dest)| Message::FlightWeatherFetched(origin, dest),
+                    );
+                }
+                Task::none()
+            }
+            Message::FlightWeatherFetched(origin, dest) => {
+                self.flight_gen.update(
+                    flight_gen_gui::Message::WeatherFetched(origin, dest),
+                    &self.packs,
+                    &self.aircraft,
+                    self.xplane_root.as_deref(),
+                    Some(self.heuristics_model.config.as_ref()),
+                );
                 Task::none()
             }
             Message::ExportHeuristics => {
@@ -6274,7 +6387,16 @@ impl App {
             } else {
                 column![
                     text("Inspector Panel").size(18),
-                    container(if let Some(airport_id) = self.hovered_airport_id.as_ref() {
+                    container({
+                        // When on Flight Gen with a plan and nothing hovered, show origin so context matches History & context.
+                        let inspector_airport_id = self.hovered_airport_id.as_ref().or_else(|| {
+                            if self.active_tab == Tab::FlightGenerator {
+                                self.flight_gen.current_plan.as_ref().map(|p| &p.origin.id)
+                            } else {
+                                None
+                            }
+                        });
+                        if let Some(airport_id) = inspector_airport_id {
                         if let Some(airport) = self.airports.get(airport_id) {
                             column![
                                 text(format!("Airport: {}", airport.id)).size(20).color(style::palette::ACCENT_BLUE),
@@ -6531,6 +6653,7 @@ impl App {
                         }
                     } else {
                         column![text("None").size(12)].spacing(10)
+                    }
                     })
                     .style(|_| container::Style::default())
                 ]
@@ -7413,6 +7536,31 @@ impl App {
         .width(Length::Fill)
         .into();
 
+        // 2b. Airport History & Trivia (Option B: bundled first, optional enhanced from Wikipedia)
+        let flight_context_section: Element<'_, Message> = container(
+            column![
+                text("Airport History & Trivia").size(18),
+                text("Adds short historical notes and nearby points of interest for departure and arrival airports when you generate a flight. Works automatically for many airports from built-in data.")
+                    .size(12)
+                    .color(style::palette::TEXT_SECONDARY),
+                checkbox(
+                    "Enable enhanced history from Wikipedia (for more airports)",
+                    self.flight_context_fetch_enabled,
+                )
+                .on_toggle(Message::ToggleFlightContextFetch)
+                .size(18)
+                .text_size(14),
+                text("Uses a built-in service to fetch summaries when an airport isn't in the built-in set. Results are cached for speed and offline use.")
+                    .size(12)
+                    .color(style::palette::TEXT_SECONDARY),
+            ]
+            .spacing(10),
+        )
+        .padding(20)
+        .style(style::container_card)
+        .width(Length::Fill)
+        .into();
+
         // 3. Map Filter Section
         let mut filter_content = Column::<'_, Message, Theme, Renderer>::new().spacing(5);
 
@@ -7522,6 +7670,7 @@ impl App {
                 
                 backup_section,
                 export_settings,
+                flight_context_section,
 
                 iced::widget::horizontal_rule(1.0),
 
@@ -9274,7 +9423,13 @@ impl App {
         Some(x_adox_core::get_config_root().join("app_config.json"))
     }
 
-    fn load_app_config() -> (Option<PathBuf>, Vec<CompanionApp>, MapFilters) {
+    fn load_app_config() -> (
+        Option<PathBuf>,
+        Vec<CompanionApp>,
+        MapFilters,
+        bool,
+        Option<String>,
+    ) {
         if let Some(path) = Self::get_app_config_path() {
             if let Ok(file) = std::fs::File::open(path) {
                 let reader = std::io::BufReader::new(file);
@@ -9284,6 +9439,9 @@ impl App {
                     selected_xplane_path: Option<PathBuf>,
                     companion_apps: Option<Vec<CompanionApp>>,
                     map_filters: Option<MapFilters>,
+                    #[serde(default)]
+                    flight_context_fetch_enabled: bool,
+                    flight_context_api_url: Option<String>,
                 }
 
                 if let Ok(config) = serde_json::from_reader::<_, AppConfig>(reader) {
@@ -9291,11 +9449,13 @@ impl App {
                         config.selected_xplane_path,
                         config.companion_apps.unwrap_or_default(),
                         config.map_filters.unwrap_or_default(),
+                        config.flight_context_fetch_enabled,
+                        config.flight_context_api_url,
                     );
                 }
             }
         }
-        (None, Vec::new(), MapFilters::default())
+        (None, Vec::new(), MapFilters::default(), false, None)
     }
 
     fn initialize_heuristics(xplane_root: &Path) -> BitNetModel {
@@ -9326,11 +9486,15 @@ impl App {
                     selected_xplane_path: Option<&'a PathBuf>,
                     companion_apps: &'a Vec<CompanionApp>,
                     map_filters: &'a MapFilters,
+                    flight_context_fetch_enabled: bool,
+                    flight_context_api_url: Option<&'a String>,
                 }
                 let config = AppConfig {
                     selected_xplane_path: self.xplane_root.as_ref(),
                     companion_apps: &self.companion_apps,
                     map_filters: &self.map_filters,
+                    flight_context_fetch_enabled: self.flight_context_fetch_enabled,
+                    flight_context_api_url: self.flight_context_api_url.as_ref(),
                 };
                 let writer = std::io::BufWriter::new(file);
                 let _ = serde_json::to_writer_pretty(writer, &config);

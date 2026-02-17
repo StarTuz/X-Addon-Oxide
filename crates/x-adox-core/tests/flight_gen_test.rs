@@ -1045,4 +1045,59 @@ mod tests {
         let p = plan.unwrap();
         assert_eq!(p.destination.id, "PANC");
     }
+
+    #[test]
+    fn test_alaska_flight_generation_cessna() {
+        let mut manager = SceneryManager::new(PathBuf::from("/tmp/scenery_packs.ini"));
+        manager.packs.push(SceneryPack {
+            name: "California".to_string(),
+            path: PathBuf::from("CA"),
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            airports: vec![make_test_airport(
+                "F70",
+                "French Valley",
+                33.57,
+                -117.13,
+                4600,
+                SurfaceType::Hard,
+            )],
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+            region: Some("US:SoCal".to_string()),
+        });
+        manager.packs.push(SceneryPack {
+            name: "Alaska".to_string(),
+            path: PathBuf::from("AK"),
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            airports: vec![make_test_airport(
+                "PANC",
+                "Anchorage",
+                61.17,
+                -149.99,
+                10000,
+                SurfaceType::Hard,
+            )],
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+            region: Some("US:AK".to_string()),
+        });
+
+        // Cessna 172 (GA, Prop) -> Default range 30-500nm, but should RELAX because endpoints are explicit
+        let aircraft = vec![make_test_aircraft("Cessna 172", vec!["GA", "Prop"])];
+
+        let plan = generate_flight(&manager.packs, &aircraft, "F70 to Alaska", None, None);
+        assert!(
+            plan.is_ok(),
+            "Should find PANC (Anchorage) from F70 even with Cessna, because destination is explicit: {:?}",
+            plan.err()
+        );
+        let p = plan.unwrap();
+        assert_eq!(p.destination.id, "PANC");
+    }
 }

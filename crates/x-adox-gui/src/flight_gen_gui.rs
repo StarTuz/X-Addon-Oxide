@@ -713,7 +713,23 @@ pub fn fetch_weather_for_plan(
     origin_icao: &str,
     dest_icao: &str,
 ) -> (Option<String>, Option<String>) {
-    let ids = format!("{},{}", origin_icao.trim(), dest_icao.trim());
+    let mut requested_ids = vec![
+        origin_icao.trim().to_uppercase(),
+        dest_icao.trim().to_uppercase(),
+    ];
+
+    // Add K-prefixed versions for 3-char US airports (e.g. F70 -> KF70)
+    let origin_icao_up = origin_icao.trim().to_uppercase();
+    let dest_icao_up = dest_icao.trim().to_uppercase();
+
+    if origin_icao_up.len() == 3 {
+        requested_ids.push(format!("K{}", origin_icao_up));
+    }
+    if dest_icao_up.len() == 3 {
+        requested_ids.push(format!("K{}", dest_icao_up));
+    }
+
+    let ids = requested_ids.join(",");
     let url = format!(
         "{}?ids={}&format=decoded",
         AWC_METAR_URL,
@@ -750,8 +766,22 @@ pub fn fetch_weather_for_plan(
         }
     }
 
-    let origin = metar_map.get(&origin_icao.trim().to_uppercase()).cloned();
-    let dest = metar_map.get(&dest_icao.trim().to_uppercase()).cloned();
+    let get_with_fallback = |icao: &str| {
+        let icao = icao.to_uppercase();
+        if let Some(m) = metar_map.get(&icao) {
+            return Some(m.clone());
+        }
+        if icao.len() == 3 {
+            let k_icao = format!("K{}", icao);
+            if let Some(m) = metar_map.get(&k_icao) {
+                return Some(m.clone());
+            }
+        }
+        None
+    };
+
+    let origin = get_with_fallback(&origin_icao_up);
+    let dest = get_with_fallback(&dest_icao_up);
 
     (origin, dest)
 }

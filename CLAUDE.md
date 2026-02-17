@@ -39,7 +39,7 @@ git tag v2.x.x && git push origin v2.x.x
 
 ## Architecture
 
-Rust stable toolchain (nightly not required). Release profile uses `lto = "fat"`, `codegen-units = 1`, `strip = true`, `panic = "abort"` — note that `panic = "abort"` means no stack unwinding in release builds, so `catch_unwind` won't work and panics are immediate process termination.
+Rust stable toolchain (nightly not required). Release profile uses `lto = "thin"`, `strip = true`, `panic = "abort"` — note that `panic = "abort"` means no stack unwinding in release builds, so `catch_unwind` won't work and panics are immediate process termination.
 
 Rust workspace with 4 crates:
 
@@ -84,19 +84,19 @@ Rules-based heuristics engine (not ML despite the name) that:
 
 ### x-adox-gui
 
-Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~10480 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
+Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~10800 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
 
 **Key landmarks in `main.rs`** (use these to navigate):
 
 - `enum Message` (~line 167) — all message variants, grouped by feature
-- `struct App` (~line 571) — all application state fields
-- `fn update()` (~line 1148) — message handling / business logic dispatch
-- `fn subscription()` (~line 4301) — event subscriptions (timers, keyboard)
-- `fn view()` (~line 4387) — top-level view routing by tab
-- `fn view_scenery()` (~line 6584) — scenery tab layout
-- `fn view_scenery_basket()` (~line 6899) — scenery basket panel (selection, bulk toggle)
-- `fn view_addon_list()` (~line 8020) — reusable list for plugins/CSLs
-- `fn view_aircraft_tree()` (~line 8285) — aircraft tree with smart view
+- `struct App` (~line 580) — all application state fields
+- `fn update()` (~line 1164) — message handling / business logic dispatch
+- `fn subscription()` (~line 4544) — event subscriptions (timers, keyboard)
+- `fn view()` (~line 4630) — top-level view routing by tab
+- `fn view_scenery()` (~line 6854) — scenery tab layout
+- `fn view_scenery_basket()` (~line 7169) — scenery basket panel (selection, bulk toggle)
+- `fn view_addon_list()` (~line 8316) — reusable list for plugins/CSLs
+- `fn view_aircraft_tree()` (~line 8581) — aircraft tree with smart view
 
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, FlightGenerator, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
