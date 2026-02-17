@@ -1,6 +1,6 @@
 use crate::style;
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
-use iced::{Element, Length, Padding};
+use iced::{Element, Length, Padding, Task};
 use std::path::{Path, PathBuf};
 use x_adox_bitnet::HeuristicsConfig;
 use x_adox_core::apt_dat::Airport;
@@ -28,6 +28,10 @@ pub struct FlightGenState {
     pub origin_weather: Option<String>,
     /// As-of-now weather (decoded METAR) for destination airport.
     pub dest_weather: Option<String>,
+    /// If set, shows a modal with this text (for "Show full context").
+    pub full_context_modal_text: Option<String>,
+    /// If set, shows a temporary notification like "Copied!" for the copy button.
+    pub context_copy_feedback: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +67,14 @@ pub enum Message {
     WeatherFetched(Option<String>, Option<String>),
     /// Toggle the entire History & context block expanded/collapsed.
     ToggleHistoryContext,
+    /// Copy the full context text to clipboard.
+    CopyContext,
+    /// Open a modal to show the full context text.
+    ShowFullContext(String),
+    /// Close the full context modal.
+    CloseFullContext,
+    /// Result of clipboard copy (internal use).
+    CopyContextDone,
 }
 
 impl Default for FlightGenState {
@@ -83,23 +95,13 @@ impl Default for FlightGenState {
             history_context_expanded: true,
             origin_weather: None,
             dest_weather: None,
+            full_context_modal_text: None,
+            context_copy_feedback: None,
         }
     }
 }
 
 /// True when the plan has no history content to show (no snippets, no POIs).
-pub fn plan_context_is_empty(plan: &FlightPlan) -> bool {
-    match &plan.context {
-        None => true,
-        Some(ctx) => {
-            ctx.origin.snippet.is_empty()
-                && ctx.origin.points_nearby.is_empty()
-                && ctx.destination.snippet.is_empty()
-                && ctx.destination.points_nearby.is_empty()
-        }
-    }
-}
-
 use x_adox_core::scenery::SceneryPack;
 
 impl FlightGenState {
@@ -110,14 +112,15 @@ impl FlightGenState {
         aircraft_list: &[DiscoveredAddon],
         xplane_root: Option<&Path>,
         prefs: Option<&HeuristicsConfig>,
-    ) {
+    ) -> Task<Message> {
         match message {
             Message::InputChanged(val) => {
                 self.input_value = val;
+                Task::none()
             }
             Message::Submit => {
                 if self.input_value.trim().is_empty() {
-                    return;
+                    return Task::none();
                 }
                 // Option B: load base airport layer once when we have X-Plane root
                 if xplane_root.is_some() && self.base_airports.is_none() {
@@ -158,8 +161,7 @@ impl FlightGenState {
                         self.current_plan = Some(plan);
                         self.origin_context_expanded = true;
                         self.dest_context_expanded = true;
-                        self.pending_auto_fetch =
-                            plan_context_is_empty(self.current_plan.as_ref().unwrap());
+                        self.pending_auto_fetch = true;
                         self.status_message = Some("Flight generated successfully.".to_string());
                     }
                     Err(e) => {
@@ -189,6 +191,7 @@ impl FlightGenState {
                         self.status_message = Some(text);
                     }
                 }
+                Task::none()
             }
             Message::Regenerate => {
                 let prompt = self
@@ -224,8 +227,7 @@ impl FlightGenState {
                             self.current_plan = Some(plan);
                             self.origin_context_expanded = true;
                             self.dest_context_expanded = true;
-                            self.pending_auto_fetch =
-                                plan_context_is_empty(self.current_plan.as_ref().unwrap());
+                            self.pending_auto_fetch = true;
                             self.status_message = Some("Flight regenerated.".to_string());
                         }
                         Err(e) => {
@@ -257,6 +259,7 @@ impl FlightGenState {
                         }
                     }
                 }
+                Task::none()
             }
             Message::ExportFms11 => {
                 if let Some(plan) = &self.current_plan {
@@ -265,18 +268,21 @@ impl FlightGenState {
                     // For now just simulation
                     self.status_message = Some("Exported FMS 11 (simulated)".to_string());
                 }
+                Task::none()
             }
             Message::ExportFms12 => {
                 if let Some(plan) = &self.current_plan {
                     let _ = flight_gen::export_fms_12(plan);
                     self.status_message = Some("Exported FMS 12 (simulated)".to_string());
                 }
+                Task::none()
             }
             Message::ExportLnm => {
                 if let Some(plan) = &self.current_plan {
                     let _ = flight_gen::export_lnmpln(plan);
                     self.status_message = Some("Exported Little Navmap (simulated)".to_string());
                 }
+                Task::none()
             }
             Message::ExportSimbrief => {
                 if let Some(plan) = &self.current_plan {
@@ -284,27 +290,81 @@ impl FlightGenState {
                     // Open URL?
                     self.status_message = Some(format!("SimBrief URL: {}", url));
                 }
+                Task::none()
             }
             // Handled in main (Task::run + FlightContextFetched).
-            Message::FetchContext => {}
+            Message::FetchContext => Task::none(),
             Message::ToggleOriginContext => {
                 self.origin_context_expanded = !self.origin_context_expanded;
+                Task::none()
             }
             Message::ToggleDestinationContext => {
                 self.dest_context_expanded = !self.dest_context_expanded;
+                Task::none()
             }
             Message::WeatherFetched(origin, dest) => {
                 self.origin_weather = origin;
                 self.dest_weather = dest;
+                Task::none()
             }
             Message::ToggleHistoryContext => {
                 self.history_context_expanded = !self.history_context_expanded;
+                Task::none()
             }
-
             // Handled in main (mutate heuristics_model); no-op here.
             Message::RememberThisFlight
             | Message::PreferThisOrigin
-            | Message::PreferThisDestination => {}
+            | Message::PreferThisDestination => Task::none(),
+            Message::CopyContext => {
+                if let Some(plan) = &self.current_plan {
+                    if let Some(ctx) = &plan.context {
+                        let mut full_text = String::new();
+                        full_text.push_str(&format!(
+                            "Origin: {} ({})\n",
+                            plan.origin.name, plan.origin.id
+                        ));
+                        full_text.push_str(&format!(
+                            "Weather: {}\n",
+                            self.origin_weather.as_deref().unwrap_or("N/A")
+                        ));
+                        full_text.push_str(&ctx.origin.snippet);
+                        full_text.push_str("\n\nLandmarks:\n");
+                        for poi in &ctx.origin.points_nearby {
+                            full_text.push_str(&format!("- {} ({})\n", poi.name, poi.snippet));
+                        }
+
+                        full_text.push_str("\n----------------\n\n");
+
+                        full_text.push_str(&format!(
+                            "Destination: {} ({})\n",
+                            plan.destination.name, plan.destination.id
+                        ));
+                        full_text.push_str(&format!(
+                            "Weather: {}\n",
+                            self.dest_weather.as_deref().unwrap_or("N/A")
+                        ));
+                        full_text.push_str(&ctx.destination.snippet);
+                        full_text.push_str("\n\nLandmarks:\n");
+                        for poi in &ctx.destination.points_nearby {
+                            full_text.push_str(&format!("- {} ({})\n", poi.name, poi.snippet));
+                        }
+
+                        self.context_copy_feedback = Some(std::time::Instant::now());
+                        return iced::clipboard::write(full_text)
+                            .map(|_: ()| Message::CopyContextDone);
+                    }
+                }
+                Task::none()
+            }
+            Message::CopyContextDone => Task::none(),
+            Message::ShowFullContext(text) => {
+                self.full_context_modal_text = Some(text);
+                Task::none()
+            }
+            Message::CloseFullContext => {
+                self.full_context_modal_text = None;
+                Task::none()
+            }
         }
     }
 
@@ -335,23 +395,80 @@ impl FlightGenState {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
+        // If modal open, show it on top of everything
+        if let Some(full_text) = &self.full_context_modal_text {
+            let modal_content = container(
+                column![
+                    row![
+                        text("Full Context")
+                            .size(20)
+                            .color(style::palette::TEXT_PRIMARY)
+                            .width(Length::Fill),
+                        button(text("X").size(16))
+                            .on_press(Message::CloseFullContext)
+                            .style(style::button_ghost)
+                            .padding(5)
+                    ]
+                    .align_y(iced::Alignment::Center),
+                    scrollable(text(full_text).size(14).line_height(1.6).style(move |_| {
+                        iced::widget::text::Style {
+                            color: Some(style::palette::TEXT_PRIMARY),
+                        }
+                    }))
+                    .height(Length::Fill),
+                    button(text("Close").size(14))
+                        .on_press(Message::CloseFullContext)
+                        .style(style::button_secondary)
+                        .padding([8, 16])
+                        .width(Length::Fill)
+                ]
+                .spacing(15),
+            )
+            .style(style::container_modal)
+            .padding(20)
+            .width(Length::FillPortion(1))
+            .height(Length::FillPortion(1)); // Make it take good space
+
+            // Center modal in a larger container
+            return container(modal_content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .style(|_| container::Style {
+                    background: Some(iced::Background::Color(iced::Color::from_rgba(
+                        0.0, 0.0, 0.0, 0.7,
+                    ))),
+                    ..Default::default()
+                })
+                .into();
+        }
+
         let chat_history = scrollable(
             column(self.history.iter().map(|msg| {
                 container(column![
                     text(&msg.sender).size(12).style(move |_| if msg.is_user {
-                        iced::widget::text::Style::default()
+                        iced::widget::text::Style {
+                            color: Some(iced::Color::from_rgb(0.6, 0.8, 1.0)), // Lighter blue for User
+                        }
                     } else {
-                        iced::widget::text::Style::default()
+                        iced::widget::text::Style {
+                            color: Some(iced::Color::from_rgb(0.6, 1.0, 0.8)), // Mint for System
+                        }
                     }),
-                    text(&msg.text).size(16)
+                    text(&msg.text).size(15).line_height(1.5)
                 ])
                 .padding(10)
                 .style(move |_| {
                     if msg.is_user {
                         container::Style {
                             background: Some(iced::Background::Color(iced::Color::from_rgb(
-                                0.2, 0.2, 0.3,
+                                0.18, 0.18, 0.22,
                             ))),
+                            border: iced::Border {
+                                radius: 8.0.into(),
+                                ..Default::default()
+                            },
                             ..Default::default()
                         }
                     } else {
@@ -359,6 +476,10 @@ impl FlightGenState {
                             background: Some(iced::Background::Color(iced::Color::from_rgb(
                                 0.15, 0.15, 0.15,
                             ))),
+                            border: iced::Border {
+                                radius: 8.0.into(),
+                                ..Default::default()
+                            },
                             ..Default::default()
                         }
                     }
@@ -374,8 +495,12 @@ impl FlightGenState {
             text_input("Ask for a flight...", &self.input_value)
                 .on_input(Message::InputChanged)
                 .on_submit(Message::Submit)
-                .padding(10),
-            button("Send").on_press(Message::Submit).padding(10)
+                .padding(10)
+                .style(style::text_input_primary),
+            button("Send")
+                .on_press(Message::Submit)
+                .padding(10)
+                .style(style::button_primary)
         ]
         .spacing(10);
 
@@ -383,39 +508,81 @@ impl FlightGenState {
 
         // Always show Regenerate if we have at least one user prompt to regenerate from
         if self.history.iter().any(|m| m.is_user) {
-            controls = controls.push(button("Regenerate").on_press(Message::Regenerate));
+            controls = controls.push(
+                button("Regenerate")
+                    .on_press(Message::Regenerate)
+                    .style(style::button_secondary),
+            );
         }
 
         if let Some(plan) = &self.current_plan {
-            controls = controls.push(button("FMS 11").on_press(Message::ExportFms11));
-            controls = controls.push(button("FMS 12").on_press(Message::ExportFms12));
-            controls = controls.push(button("LNM").on_press(Message::ExportLnm));
-            controls = controls.push(button("SimBrief").on_press(Message::ExportSimbrief));
+            controls = controls.push(
+                button("FMS 11")
+                    .on_press(Message::ExportFms11)
+                    .style(style::button_secondary),
+            );
+            controls = controls.push(
+                button("FMS 12")
+                    .on_press(Message::ExportFms12)
+                    .style(style::button_secondary),
+            );
+            controls = controls.push(
+                button("LNM")
+                    .on_press(Message::ExportLnm)
+                    .style(style::button_secondary),
+            );
+            controls = controls.push(
+                button("SimBrief")
+                    .on_press(Message::ExportSimbrief)
+                    .style(style::button_secondary),
+            );
 
             if plan.origin_region_id.is_some() && plan.dest_region_id.is_some() {
-                controls = controls
-                    .push(button("Remember this flight").on_press(Message::RememberThisFlight));
+                controls = controls.push(
+                    button("Remember this flight")
+                        .on_press(Message::RememberThisFlight)
+                        .style(style::button_pin_ghost),
+                );
             }
             if plan.origin_region_id.is_some() {
-                controls =
-                    controls.push(button("Prefer this origin").on_press(Message::PreferThisOrigin));
+                controls = controls.push(
+                    button("Prefer this origin")
+                        .on_press(Message::PreferThisOrigin)
+                        .style(style::button_pin_ghost),
+                );
             }
             if plan.dest_region_id.is_some() {
                 controls = controls.push(
-                    button("Prefer this destination").on_press(Message::PreferThisDestination),
+                    button("Prefer this destination")
+                        .on_press(Message::PreferThisDestination)
+                        .style(style::button_pin_ghost),
                 );
             }
-            controls = controls.push(button("Fetch context").on_press(Message::FetchContext));
+            controls = controls.push(
+                button("Fetch context")
+                    .on_press(Message::FetchContext)
+                    .style(style::button_primary_glow),
+            );
         }
 
-        let status_row = text(self.status_message.as_deref().unwrap_or("")).size(14);
+        let status_row = text(self.status_message.as_deref().unwrap_or(""))
+            .size(13)
+            .color(style::palette::TEXT_SECONDARY);
 
         let history_block = self.view_history_and_context();
 
+        // Adaptive Layout: History block consumes flexible space (FillPortion 1),
+        // but if collapsed or empty, it naturally shrinks.
+        // We use FillPortion(1) for chat and history to share 50/50 when both active.
+
         column![
-            container(chat_history).height(Length::FillPortion(1)),
+            container(chat_history)
+                .height(Length::FillPortion(1))
+                .style(style::container_main_content)
+                .padding(5),
             iced::widget::horizontal_rule(1.0),
             controls,
+            // Adaptive History container
             container(history_block).height(
                 if self.history_context_expanded && self.current_plan.is_some() {
                     Length::FillPortion(1)
@@ -437,37 +604,77 @@ impl FlightGenState {
             return column![].into();
         };
 
-        // 1. Top-level Header
-        let main_title = row![
+        // 1. Top-level Header (Enhanced)
+        let header_row = row![
+            // Collapse Toggle
             button(
                 text(if self.history_context_expanded {
-                    "v "
+                    "v"
                 } else {
-                    "> "
+                    ">"
                 })
-                .size(14)
+                .size(16)
                 .style(move |_| iced::widget::text::Style {
-                    color: Some(style::palette::ACCENT_BLUE),
+                    color: Some(style::palette::TEXT_SECONDARY),
                 })
             )
             .on_press(Message::ToggleHistoryContext)
-            .padding(2)
-            .style(|_theme, _status| style::button_ghost(_theme, _status)),
+            .padding(4)
+            .style(style::button_ghost),
+            // Badge "CONTEXT"
+            container(
+                text("CONTEXT")
+                    .size(10)
+                    .style(move |_| iced::widget::text::Style {
+                        color: Some(iced::Color::from_rgb(0.1, 0.12, 0.15)), // Dark text on badge
+                    })
+            )
+            .style(|_| container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgb(
+                    0.2, 0.8, 0.6
+                ))), // Emerald
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .padding([2, 6]),
             button(text("History & context").size(14).style(move |_| {
                 iced::widget::text::Style {
-                    color: Some(style::palette::ACCENT_BLUE),
+                    color: Some(style::palette::TEXT_PRIMARY),
                 }
             }))
             .on_press(Message::ToggleHistoryContext)
             .padding(2)
-            .style(|_theme, _status| style::button_ghost(_theme, _status)),
+            .style(style::button_ghost),
+            iced::widget::horizontal_space(), // Push copy button to right
+            // Copy Button
+            if self.history_context_expanded {
+                Element::from(
+                    button(
+                        text(if self.context_copy_feedback.is_some() {
+                            "Copied!"
+                        } else {
+                            "Copy"
+                        })
+                        .size(12),
+                    )
+                    .on_press(Message::CopyContext)
+                    .padding([4, 10])
+                    .style(style::button_secondary),
+                )
+            } else {
+                iced::widget::Space::new(Length::Fixed(0.0), Length::Fixed(0.0)).into()
+            }
         ]
-        .spacing(4);
+        .align_y(iced::Alignment::Center)
+        .spacing(8);
 
         if !self.history_context_expanded {
-            return container(main_title)
+            return container(header_row)
                 .padding(10)
-                .style(|_theme| style::container_card(_theme))
+                .style(style::container_card)
                 .into();
         }
 
@@ -477,23 +684,23 @@ impl FlightGenState {
             None => (
                 column![
                     text("No context loaded. Click \"Fetch context\" to load history and weather.")
-                        .size(11)
+                        .size(12)
                         .color(style::palette::TEXT_SECONDARY),
                     text("Weather (as of now)")
                         .size(11)
-                        .color(iced::Color::from_rgb(0.7, 0.7, 0.75)),
-                    text(self.origin_weather.as_deref().unwrap_or("—")).size(11),
+                        .color(iced::Color::from_rgb(0.6, 0.6, 0.65)),
+                    text(self.origin_weather.as_deref().unwrap_or("—")).size(12),
                 ]
                 .spacing(6)
                 .into(),
                 column![
                     text("No context loaded. Click \"Fetch context\" to load history and weather.")
-                        .size(11)
+                        .size(12)
                         .color(style::palette::TEXT_SECONDARY),
                     text("Weather (as of now)")
                         .size(11)
-                        .color(iced::Color::from_rgb(0.7, 0.7, 0.75)),
-                    text(self.dest_weather.as_deref().unwrap_or("—")).size(11),
+                        .color(iced::Color::from_rgb(0.6, 0.6, 0.65)),
+                    text(self.dest_weather.as_deref().unwrap_or("—")).size(12),
                 ]
                 .spacing(6)
                 .into(),
@@ -503,44 +710,46 @@ impl FlightGenState {
         let origin_header = row![
             button(
                 text(if self.origin_context_expanded {
-                    "v "
+                    "v"
                 } else {
-                    "> "
+                    ">"
                 })
                 .size(12)
             )
             .on_press(Message::ToggleOriginContext)
             .padding(2)
-            .style(|_theme, _status| style::button_ghost(_theme, _status)),
-            button(text(format!("Origin: {} ({})", plan.origin.name, plan.origin.id)).size(12))
-                .on_press(Message::ToggleOriginContext)
-                .padding(2)
-                .style(|_theme, _status| style::button_ghost(_theme, _status)),
+            .style(style::button_ghost),
+            button(
+                text(format!("Origin: {} ({})", plan.origin.name, plan.origin.id))
+                    .size(13)
+                    .style(move |_| iced::widget::text::Style {
+                        color: Some(style::palette::ACCENT_BLUE)
+                    })
+            )
+            .on_press(Message::ToggleOriginContext)
+            .padding(2)
+            .style(style::button_ghost),
         ]
         .spacing(4);
 
         let dest_header = row![
-            button(
-                text(if self.dest_context_expanded {
-                    "v "
-                } else {
-                    "> "
-                })
-                .size(12)
-            )
-            .on_press(Message::ToggleDestinationContext)
-            .padding(2)
-            .style(|_theme, _status| style::button_ghost(_theme, _status)),
+            button(text(if self.dest_context_expanded { "v" } else { ">" }).size(12))
+                .on_press(Message::ToggleDestinationContext)
+                .padding(2)
+                .style(style::button_ghost),
             button(
                 text(format!(
                     "Destination: {} ({})",
                     plan.destination.name, plan.destination.id
                 ))
-                .size(12)
+                .size(13)
+                .style(move |_| iced::widget::text::Style {
+                    color: Some(style::palette::ACCENT_BLUE)
+                })
             )
             .on_press(Message::ToggleDestinationContext)
             .padding(2)
-            .style(|_theme, _status| style::button_ghost(_theme, _status)),
+            .style(style::button_ghost),
         ]
         .spacing(4);
 
@@ -548,9 +757,9 @@ impl FlightGenState {
             origin_header,
             if self.origin_context_expanded {
                 column![origin_inner].padding(Padding {
-                    top: 10.0,
-                    bottom: 0.0,
-                    left: 20.0,
+                    top: 8.0,
+                    bottom: 4.0,
+                    left: 16.0,
                     right: 0.0,
                 })
             } else {
@@ -563,9 +772,9 @@ impl FlightGenState {
             dest_header,
             if self.dest_context_expanded {
                 column![dest_inner].padding(Padding {
-                    top: 10.0,
-                    bottom: 0.0,
-                    left: 20.0,
+                    top: 8.0,
+                    bottom: 4.0,
+                    left: 16.0,
                     right: 0.0,
                 })
             } else {
@@ -581,8 +790,8 @@ impl FlightGenState {
         let content = scrollable(column![origin_section, dest_section, enroute_note].spacing(16))
             .height(Length::Fill);
 
-        container(column![main_title, content].spacing(12).padding(15))
-            .style(|_theme| style::container_card(_theme))
+        container(column![header_row, content].spacing(12).padding(15))
+            .style(style::container_card)
             .into()
     }
 
@@ -590,28 +799,60 @@ impl FlightGenState {
         let history_label = text("History")
             .size(11)
             .style(move |_| iced::widget::text::Style {
-                color: Some(iced::Color::from_rgb(0.7, 0.7, 0.75)),
+                color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
             });
-        let history_body = if ctx.origin.snippet.is_empty() {
-            text("No Wikipedia summary for this airport. Enable \"Enhanced history from Wikipedia\" in Settings and click \"Fetch context\" to load one.")
-                .size(11)
+
+        let mut history_elements = vec![];
+        if ctx.origin.snippet.is_empty() {
+            history_elements.push(
+                text("No Wikipedia summary for this airport. Enable \"Enhanced history from Wikipedia\" in Settings and click \"Fetch context\" to load one.")
+                .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .width(Length::Fill)
+                .into()
+             );
         } else {
-            text(&ctx.origin.snippet).size(12).width(Length::Fill)
+            // Typography upgrade: 13.5px size, 1.7 line height (approx via spacing)
+            // Truncation check
+            let snippet = &ctx.origin.snippet;
+
+            // Show snippet
+            history_elements.push(
+                text(snippet)
+                    .size(13)
+                    .line_height(1.6)
+                    .width(Length::Fill)
+                    .into(),
+            );
+
+            if snippet.len() > 1500 {
+                history_elements.push(
+                    button(
+                        text("Show full context")
+                            .size(12)
+                            .color(style::palette::ACCENT_BLUE),
+                    )
+                    .on_press(Message::ShowFullContext(snippet.clone()))
+                    .style(style::button_ghost)
+                    .padding(0)
+                    .into(),
+                );
+            }
         };
+
         let landmarks_label =
             text("Surrounding Landmarks (within 10 nm)")
                 .size(11)
                 .style(move |_| iced::widget::text::Style {
-                    color: Some(iced::Color::from_rgb(0.7, 0.7, 0.75)),
+                    color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
                 });
         let landmarks_attribution = text("From Wikipedia and Wikidata (geo-tagged). Wrong or missing? Edit on Wikipedia or add to the overlay (see docs).")
             .size(10)
             .color(style::palette::TEXT_SECONDARY);
+
         let landmarks_list: Vec<Element<_>> = if ctx.origin.points_nearby.is_empty() {
             vec![text("No landmarks in range. Click \"Fetch context\" to load from Wikipedia and Wikidata.")
-                .size(11)
+                .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .into()]
         } else {
@@ -625,33 +866,36 @@ impl FlightGenState {
                         format!("• {} — {}", poi.name, poi.snippet)
                     };
                     text(line)
-                        .size(11)
+                        .size(13)
+                        .line_height(1.5)
                         .color(style::palette::TEXT_PRIMARY)
                         .width(Length::Fill)
                         .into()
                 })
                 .collect()
         };
+
         let weather_label =
             text("Weather (as of now)")
                 .size(11)
                 .style(move |_| iced::widget::text::Style {
-                    color: Some(iced::Color::from_rgb(0.7, 0.7, 0.75)),
+                    color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
                 });
         let weather_body = text(
             self.origin_weather
                 .as_deref()
                 .unwrap_or("Click \"Fetch context\" to load METAR."),
         )
-        .size(11)
+        .size(13)
         .width(Length::Fill);
+
         column![
-            column![history_label, history_body].spacing(4),
+            column![history_label, column(history_elements).spacing(5)].spacing(4),
             iced::widget::horizontal_rule(1.0),
             column![
                 landmarks_label,
                 landmarks_attribution,
-                column(landmarks_list).spacing(4)
+                column(landmarks_list).spacing(6)
             ]
             .spacing(4),
             iced::widget::horizontal_rule(1.0),
@@ -665,28 +909,56 @@ impl FlightGenState {
         let history_label = text("History")
             .size(11)
             .style(move |_| iced::widget::text::Style {
-                color: Some(iced::Color::from_rgb(0.7, 0.7, 0.75)),
+                color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
             });
-        let history_body = if ctx.destination.snippet.is_empty() {
-            text("No Wikipedia summary for this airport. Enable \"Enhanced history from Wikipedia\" in Settings and click \"Fetch context\" to load one.")
-                .size(11)
+
+        let mut history_elements = vec![];
+        if ctx.destination.snippet.is_empty() {
+            history_elements.push(
+                text("No Wikipedia summary for this airport. Enable \"Enhanced history from Wikipedia\" in Settings and click \"Fetch context\" to load one.")
+                .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .width(Length::Fill)
+                .into()
+             );
         } else {
-            text(&ctx.destination.snippet).size(12).width(Length::Fill)
+            let snippet = &ctx.destination.snippet;
+
+            history_elements.push(
+                text(snippet)
+                    .size(13)
+                    .line_height(1.6)
+                    .width(Length::Fill)
+                    .into(),
+            );
+
+            if snippet.len() > 1500 {
+                history_elements.push(
+                    button(
+                        text("Show full context")
+                            .size(12)
+                            .color(style::palette::ACCENT_BLUE),
+                    )
+                    .on_press(Message::ShowFullContext(snippet.clone()))
+                    .style(style::button_ghost)
+                    .padding(0)
+                    .into(),
+                );
+            }
         };
+
         let landmarks_label =
             text("Surrounding Landmarks (within 10 nm)")
                 .size(11)
                 .style(move |_| iced::widget::text::Style {
-                    color: Some(iced::Color::from_rgb(0.7, 0.7, 0.75)),
+                    color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
                 });
         let landmarks_attribution = text("From Wikipedia and Wikidata (geo-tagged). Wrong or missing? Edit on Wikipedia or add to the overlay (see docs).")
             .size(10)
             .color(style::palette::TEXT_SECONDARY);
         let landmarks_list: Vec<Element<_>> = if ctx.destination.points_nearby.is_empty() {
             vec![text("No landmarks in range. Click \"Fetch context\" to load from Wikipedia and Wikidata.")
-                .size(11)
+                .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .into()]
         } else {
@@ -700,7 +972,8 @@ impl FlightGenState {
                         format!("• {} — {}", poi.name, poi.snippet)
                     };
                     text(line)
-                        .size(11)
+                        .size(13)
+                        .line_height(1.5)
                         .color(style::palette::TEXT_PRIMARY)
                         .width(Length::Fill)
                         .into()
@@ -711,22 +984,23 @@ impl FlightGenState {
             text("Weather (as of now)")
                 .size(11)
                 .style(move |_| iced::widget::text::Style {
-                    color: Some(iced::Color::from_rgb(0.7, 0.7, 0.75)),
+                    color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
                 });
         let weather_body = text(
             self.dest_weather
                 .as_deref()
                 .unwrap_or("Click \"Fetch context\" to load METAR."),
         )
-        .size(11)
+        .size(13)
         .width(Length::Fill);
+
         column![
-            column![history_label, history_body].spacing(4),
+            column![history_label, column(history_elements).spacing(5)].spacing(4),
             iced::widget::horizontal_rule(1.0),
             column![
                 landmarks_label,
                 landmarks_attribution,
-                column(landmarks_list).spacing(4)
+                column(landmarks_list).spacing(6)
             ]
             .spacing(4),
             iced::widget::horizontal_rule(1.0),

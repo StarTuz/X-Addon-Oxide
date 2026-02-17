@@ -24,6 +24,7 @@ fn in_bounds_london(lat: f64, lon: f64) -> bool {
 /// Returns combined, deduplicated list (by ICAO id). Used by flight gen when INI packs lack coverage.
 pub fn load_base_airports(xplane_root: &Path) -> Vec<Airport> {
     let mut all = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
 
     let resources_apt = xplane_root
         .join("Resources")
@@ -37,7 +38,11 @@ pub fn load_base_airports(xplane_root: &Path) -> Vec<Airport> {
                 "[flight_gen] Base layer: loaded {} airports from Resources",
                 airports.len()
             );
-            all.extend(airports);
+            for a in airports {
+                if seen_ids.insert(a.id.to_uppercase()) {
+                    all.push(a);
+                }
+            }
         }
     }
 
@@ -54,7 +59,7 @@ pub fn load_base_airports(xplane_root: &Path) -> Vec<Airport> {
             );
             let before = all.len();
             for a in airports {
-                if !all.iter().any(|x| x.id.eq_ignore_ascii_case(&a.id)) {
+                if seen_ids.insert(a.id.to_uppercase()) {
                     all.push(a);
                 }
             }
@@ -527,11 +532,18 @@ pub fn generate_flight(
     // Determine Aircraft Capabilities with Keyword Overrides
     let speed_kts = estimate_speed(selected_aircraft, &prompt);
     let (min_rwy, req_surface) = estimate_runway_reqs(selected_aircraft, &prompt);
+    log::debug!(
+        "[flight_gen] selected_aircraft='{}' tags={:?} min_rwy={} req_surface={:?}",
+        selected_aircraft.name,
+        selected_aircraft.tags,
+        min_rwy,
+        req_surface
+    );
 
     // 2. Select Origin
     let is_b314 = selected_aircraft.name.contains("Boeing 314");
 
-    // Combined pool: pack airports + base layer (Option B). For B314, exclude base and non-Sealanes packs.
+    // Combined pool: pack airports + base layer merged. For B314, exclude base and non-Sealanes packs.
     let pack_iter = packs.iter().filter(|p| {
         if is_b314
             && (prompt.origin.is_none() || matches!(prompt.origin, Some(LocationConstraint::Any)))
@@ -546,12 +558,52 @@ pub fn generate_flight(
     } else {
         base_airports.unwrap_or(&[])
     };
-    let all_airports: Vec<&Airport> = pack_iter
-        .flat_map(|p| p.airports.iter())
-        .chain(base_slice.iter())
-        .collect();
+
+    // 1. Build total airport pool (packs + base layer merged)
+    let mut pool: BTreeMap<String, Airport> = BTreeMap::new();
+
+    // Add base layer first (baseline data)
+    for apt in base_slice {
+        pool.insert(apt.id.to_uppercase(), apt.clone());
+    }
+
+    // Add pack airports (higher priority for name/metadata, merge runways)
+    for pack in pack_iter {
+        for apt in &pack.airports {
+            let key = apt.id.to_uppercase();
+            if let Some(existing) = pool.get_mut(&key) {
+                // Name: Pack priority
+                existing.name = apt.name.clone();
+
+                // Lat/Lon: Pack priority if present
+                if apt.lat.is_some() {
+                    existing.lat = apt.lat;
+                    existing.lon = apt.lon;
+                    existing.proj_x = apt.proj_x;
+                    existing.proj_y = apt.proj_y;
+                }
+
+                // Max Runway Length: Always take the LONGEST found across all sources
+                // This prevents partial scenery packs from "shrinking" or deleting runways
+                let p_len = apt.max_runway_length.unwrap_or(0);
+                let e_len = existing.max_runway_length.unwrap_or(0);
+                if p_len > e_len || existing.max_runway_length.is_none() {
+                    existing.max_runway_length = apt.max_runway_length;
+                    existing.surface_type = apt.surface_type;
+                } else if p_len == e_len && existing.surface_type.is_none() {
+                    existing.surface_type = apt.surface_type;
+                }
+            } else {
+                pool.insert(key, apt.clone());
+            }
+        }
+    }
+
+    let all_airports_vec: Vec<Airport> = pool.into_values().collect();
+    let all_airports: Vec<&Airport> = all_airports_vec.iter().collect();
+
     log::debug!(
-        "[flight_gen] airport pool: {} from packs + base",
+        "[flight_gen] merged airport pool: {} unique ICAOs",
         all_airports.len()
     );
 
@@ -800,6 +852,14 @@ pub fn generate_flight(
             }
         }
 
+        let candidate_dests_count = candidate_dests.len();
+        if candidate_dests_count == 0 {
+            log::debug!(
+                "[flight_gen] origin='{}': candidate_dests is empty",
+                origin.id
+            );
+        }
+
         let valid_dests: Vec<&Airport> = candidate_dests
             .into_iter()
             .filter(|dest| {
@@ -820,17 +880,34 @@ pub fn generate_flight(
                     (origin.lat, origin.lon, dest.lat, dest.lon)
                 {
                     let dist = haversine_nm(lat1, lon1, lat2, lon2);
-                    if endpoints_explicit {
+                    let result = if endpoints_explicit {
                         // Allow very short flights if explicit
                         dist > 2.0 && dist <= 20000.0
                     } else {
                         dist >= min_dist && dist <= max_dist
+                    };
+                    if !result {
+                        log::debug!(
+                            "[flight_gen] dest='{}' rejected by range: dist={:.1} min={:.1} max={:.1} explicit={}",
+                            dest.id,
+                            dist,
+                            min_dist,
+                            max_dist,
+                            endpoints_explicit
+                        );
                     }
+                    result
                 } else {
                     false
                 }
             })
             .collect();
+        log::debug!(
+            "[flight_gen] origin='{}': candidate_dests={}, valid_dests={}",
+            origin.id,
+            candidate_dests_count,
+            valid_dests.len()
+        );
 
         if !valid_dests.is_empty() {
             let preferred_dest_icaos: Vec<String> = match &prompt.destination {
@@ -950,18 +1027,38 @@ fn check_safety_constraints(
 
     if let Some(surf) = apt.surface_type {
         if req_surf == SurfaceType::Water && surf != SurfaceType::Water {
+            log::debug!(
+                "[flight_gen] apt='{}' rejected by surface: req=Water, got={:?}",
+                apt.id,
+                surf
+            );
             return false;
         }
         if req_surf == SurfaceType::Hard && surf != SurfaceType::Hard {
+            log::debug!(
+                "[flight_gen] apt='{}' rejected by surface: req=Hard, got={:?}",
+                apt.id,
+                surf
+            );
             return false;
         }
     }
 
     if let Some(len) = apt.max_runway_length {
         if (len as u32) < min_rwy {
+            log::debug!(
+                "[flight_gen] apt='{}' rejected by runway length: req={}, got={}",
+                apt.id,
+                min_rwy,
+                len
+            );
             return false;
         }
     } else if min_rwy > 500 {
+        log::debug!(
+            "[flight_gen] apt='{}' rejected: no runway length and req > 500",
+            apt.id
+        );
         return false;
     }
     true

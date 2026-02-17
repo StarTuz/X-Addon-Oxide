@@ -25,3 +25,4 @@ csv = "1.3"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+simplelog = "0.12"

@@ -115,10 +115,15 @@ impl AptDatParser {
 
                     current_airport = parse_airport_header(line, apt_type);
                 }
-                "100" | "101" => {
-                    // Runway or Water Runway
+                "100" => {
                     if let Some(ref mut builder) = current_airport {
                         parse_runway(line, builder);
+                    }
+                }
+                "101" => {
+                    // Water Runway
+                    if let Some(ref mut builder) = current_airport {
+                        parse_water_runway(line, builder);
                     }
                 }
                 "102" => {
@@ -315,6 +320,41 @@ fn parse_runway(line: &str, builder: &mut AirportBuilder) {
         builder.max_rwy_len = length;
         // If this is the longest runway, assume its surface is the airport's primary surface
         builder.primary_surface = surface;
+    }
+}
+
+fn parse_water_runway(line: &str, builder: &mut AirportBuilder) {
+    let mut parts = line.split_whitespace();
+    parts.next(); // 101
+    parts.next(); // width
+    parts.next(); // surface
+
+    let mut lat1 = 0.0;
+    let mut lon1 = 0.0;
+    if let (Some(_id), Some(lat_s), Some(lon_s)) = (parts.next(), parts.next(), parts.next()) {
+        if let (Ok(lat), Ok(lon)) = (lat_s.parse::<f64>(), lon_s.parse::<f64>()) {
+            lat1 = lat;
+            lon1 = lon;
+            builder.lats.push(lat);
+            builder.lons.push(lon);
+        }
+    }
+
+    let mut lat2 = 0.0;
+    let mut lon2 = 0.0;
+    if let (Some(_id), Some(lat_s), Some(lon_s)) = (parts.next(), parts.next(), parts.next()) {
+        if let (Ok(lat), Ok(lon)) = (lat_s.parse::<f64>(), lon_s.parse::<f64>()) {
+            lat2 = lat;
+            lon2 = lon;
+            builder.lats.push(lat);
+            builder.lons.push(lon);
+        }
+    }
+
+    let length = haversine_dist(lat1, lon1, lat2, lon2);
+    if length > builder.max_rwy_len {
+        builder.max_rwy_len = length;
+        builder.primary_surface = SurfaceType::Water;
     }
 }
 

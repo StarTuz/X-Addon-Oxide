@@ -3762,45 +3762,50 @@ impl App {
                         let aircraft_list = &self.aircraft;
                         let xplane_root = self.xplane_root.as_deref();
                         let prefs = self.heuristics_model.config.as_ref();
-                        self.flight_gen.update(
+                        let cmd = self.flight_gen.update(
                             msg.clone(),
                             packs,
                             aircraft_list,
                             xplane_root,
                             Some(prefs),
                         );
+                        
+                        let mut tasks = vec![cmd.map(Message::FlightGen)];
+
                         // Auto-fetch history when "enhanced" is on and we just generated a plan with no context
                         if self.flight_gen.pending_auto_fetch && self.flight_context_fetch_enabled {
+                            // Don't clear pending here yet if we are launching async task? 
+                            // Actually existing code clears it inside the if block for success case, and outside for general case.
+                            // keeping logic similar but careful about ownership.
+                            
                             self.flight_gen.pending_auto_fetch = false;
                             if let Some(plan) = &self.flight_gen.current_plan {
-                                if flight_gen_gui::plan_context_is_empty(plan) {
-                                    self.flight_gen.status_message =
-                                        Some("Fetching enhanced history…".to_string());
-                                    let config_root = x_adox_core::get_config_root();
-                                    let origin = plan.origin.clone();
-                                    let destination = plan.destination.clone();
-                                    return Task::perform(
-                                        async move {
-                                            tokio::task::spawn_blocking(move || {
-                                                flight_gen_gui::load_or_fetch_flight_context_blocking(
-                                                    config_root,
-                                                    origin,
-                                                    destination,
-                                                    true,
-                                                )
-                                            })
-                                            .await
-                                            .unwrap_or_else(|e| Err(e.to_string()))
-                                        },
-                                        Message::FlightContextFetched,
-                                    );
-                                }
+                                self.flight_gen.status_message =
+                                    Some("Fetching enhanced history…".to_string());
+                                let config_root = x_adox_core::get_config_root();
+                                let origin = plan.origin.clone();
+                                let destination = plan.destination.clone();
+                                tasks.push(Task::perform(
+                                    async move {
+                                        tokio::task::spawn_blocking(move || {
+                                            flight_gen_gui::load_or_fetch_flight_context_blocking(
+                                                config_root,
+                                                origin,
+                                                destination,
+                                                true,
+                                            )
+                                        })
+                                        .await
+                                        .unwrap_or_else(|e| Err(e.to_string()))
+                                    },
+                                    Message::FlightContextFetched,
+                                ));
                             }
                         }
                         if self.flight_gen.pending_auto_fetch {
                             self.flight_gen.pending_auto_fetch = false;
                         }
-                        Task::none()
+                        Task::batch(tasks)
                     }
                 }
             }
@@ -3837,8 +3842,7 @@ impl App {
                     &self.aircraft,
                     self.xplane_root.as_deref(),
                     Some(self.heuristics_model.config.as_ref()),
-                );
-                Task::none()
+                ).map(Message::FlightGen)
             }
             Message::ExportHeuristics => {
                 let text = self.heuristics_json.text();
