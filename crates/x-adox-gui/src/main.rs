@@ -414,6 +414,10 @@ enum Message {
     BasketResizeStart(ResizeEdge),
     BasketResized(Point),
     BasketResizeEnd,
+    ToggleFlightContextWindow,
+    FlightContextWindowDragStart,
+    FlightContextWindowDragged(Point),
+    FlightContextWindowDragEnd,
     ModifiersChanged(keyboard::Modifiers),
 
     // Backup & Restore
@@ -752,6 +756,10 @@ struct App {
     export_include_liveries: bool,
     export_expanded_format: bool,
 
+    pub show_flight_context_window: bool,
+    pub flight_context_window_offset: iced::Vector,
+    pub flight_context_drag_origin: Option<Point>,
+    pub is_flight_context_dragging: bool,
     // Modal
     active_modal: Option<ModalState>,
 }
@@ -961,6 +969,10 @@ impl App {
             scenery_save_pending: false,
             export_include_liveries: true,
             export_expanded_format: false,
+            show_flight_context_window: false,
+            flight_context_window_offset: iced::Vector::new(400.0, 100.0),
+            flight_context_drag_origin: None,
+            is_flight_context_dragging: false,
             active_modal: None,
         };
 
@@ -1043,6 +1055,56 @@ impl App {
         };
 
         (app, tasks)
+    }
+
+    fn view_flight_context_window(&self) -> Element<'_, Message> {
+        let plan = match &self.flight_gen.current_plan {
+            Some(p) => p,
+            None => return Column::new().into(),
+        };
+
+        let header = container(
+            row![
+                mouse_area(
+                    container(
+                        row![
+                            svg(self.icon_grip.clone())
+                                .width(14)
+                                .height(14)
+                                .style(|_, _| svg::Style {
+                                    color: Some(style::palette::ACCENT_BLUE)
+                                }),
+                            text("Flight context").size(16),
+                        ]
+                        .spacing(8)
+                        .align_y(iced::Alignment::Center)
+                    )
+                    .width(Length::Fill)
+                )
+                .on_press(Message::FlightContextWindowDragStart)
+                .interaction(mouse::Interaction::Grab),
+                button(text("Close").size(10))
+                    .on_press(Message::ToggleFlightContextWindow)
+                    .style(style::button_ghost)
+            ]
+            .align_y(iced::Alignment::Center)
+        )
+        .padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 10.0,
+            left: 0.0,
+        });
+
+        let content = scrollable(self.flight_gen.view_context_content(plan).map(Message::FlightGen))
+            .height(Length::Fill);
+
+        container(column![header, content].spacing(10))
+            .width(Length::Fixed(400.0))
+            .height(Length::Fixed(500.0))
+            .style(style::container_modal)
+            .padding(15)
+            .into()
     }
 
     fn check_loading_complete(&mut self) {
@@ -3600,6 +3662,10 @@ impl App {
             }
             Message::FlightGen(msg) => {
                 match &msg {
+                    flight_gen_gui::Message::ToggleFlightContextWindow => {
+                        self.show_flight_context_window = !self.show_flight_context_window;
+                        return Task::none();
+                    }
                     flight_gen_gui::Message::RememberThisFlight => {
                         if let Some(plan) = &self.flight_gen.current_plan {
                             if let (Some(orig_r), Some(dest_r)) =
@@ -4297,6 +4363,10 @@ impl App {
                 self.show_scenery_basket = !self.show_scenery_basket;
                 Task::none()
             }
+            Message::ToggleFlightContextWindow => {
+                self.show_flight_context_window = !self.show_flight_context_window;
+                Task::none()
+            }
             Message::ToggleBasketSelection(name) => {
                 if self.selected_basket_items.contains(&name) {
                     self.selected_basket_items.remove(&name);
@@ -4335,6 +4405,27 @@ impl App {
             Message::BasketDragEnd => {
                 self.is_basket_dragging = false;
                 self.basket_drag_origin = None;
+                Task::none()
+            }
+            Message::FlightContextWindowDragStart => {
+                self.is_flight_context_dragging = true;
+                self.flight_context_drag_origin = None;
+                Task::none()
+            }
+            Message::FlightContextWindowDragged(pos) => {
+                if let Some(origin) = self.flight_context_drag_origin {
+                    let delta = pos - origin;
+                    self.flight_context_window_offset.x = (self.flight_context_window_offset.x + delta.x).max(0.0);
+                    self.flight_context_window_offset.y = (self.flight_context_window_offset.y + delta.y).max(0.0);
+                    self.flight_context_drag_origin = Some(pos);
+                } else {
+                    self.flight_context_drag_origin = Some(pos);
+                }
+                Task::none()
+            }
+            Message::FlightContextWindowDragEnd => {
+                self.is_flight_context_dragging = false;
+                self.flight_context_drag_origin = None;
                 Task::none()
             }
             Message::BasketResizeStart(edge) => {
@@ -4579,6 +4670,20 @@ impl App {
             Subscription::none()
         };
 
+        let context_dragging = if self.is_flight_context_dragging {
+            event::listen_with(|event, _status, _window| match event {
+                Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                    Some(Message::FlightContextWindowDragged(position))
+                }
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    Some(Message::FlightContextWindowDragEnd)
+                }
+                _ => None,
+            })
+        } else {
+            Subscription::none()
+        };
+
         let basket_resizing = if self.active_resize_edge.is_some() {
             event::listen_with(|event, _status, _window| match event {
                 Event::Mouse(mouse::Event::CursorMoved { position }) => {
@@ -4596,6 +4701,7 @@ impl App {
         let tick = if self.loading_state.is_loading
             || self.drag_context.is_some()
             || self.is_basket_dragging
+            || self.is_flight_context_dragging
             || self.active_resize_edge.is_some()
             || self.tile_manager.has_pending()
             || !self.map_initialized
@@ -4615,6 +4721,7 @@ impl App {
         Subscription::batch(vec![
             dragging,
             basket_dragging,
+            context_dragging,
             basket_resizing,
             tick,
             kb_sub,
@@ -4683,6 +4790,24 @@ impl App {
                             right: self.basket_offset.x,
                             bottom: 0.0,
                             left: 0.0,
+                        })
+                );
+            }
+
+            if self.show_flight_context_window {
+                let context_window = self.view_flight_context_window();
+
+                final_view = final_view.push(
+                    container(context_window)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .align_x(iced::alignment::Horizontal::Left)
+                        .align_y(iced::alignment::Vertical::Top)
+                        .padding(Padding {
+                            top: self.flight_context_window_offset.y,
+                            left: self.flight_context_window_offset.x,
+                            bottom: 0.0,
+                            right: 0.0,
                         })
                 );
             }

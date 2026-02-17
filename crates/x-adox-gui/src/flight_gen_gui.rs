@@ -57,6 +57,8 @@ pub enum Message {
     PreferThisOrigin,
     /// Prefer this destination airport for its region.
     PreferThisDestination,
+    /// Toggles the floating context window (handled in main).
+    ToggleFlightContextWindow,
     /// Fetch context from API (Phase 2b); handled in main with Task::run, then ContextFetched.
     FetchContext,
     /// Toggle Origin tree section expanded/collapsed in History & context.
@@ -357,6 +359,7 @@ impl FlightGenState {
                 Task::none()
             }
             Message::CopyContextDone => Task::none(),
+            Message::ToggleFlightContextWindow => Task::none(),
             Message::ShowFullContext(text) => {
                 self.full_context_modal_text = Some(text);
                 Task::none()
@@ -599,9 +602,18 @@ impl FlightGenState {
     }
 
     /// "History & context" block: tree view with Origin and Destination sections.
-    fn view_history_and_context(&self) -> Element<'_, Message> {
-        let Some(plan) = &self.current_plan else {
-            return column![].into();
+    pub fn view_history_and_context(&self) -> Element<'_, Message> {
+        let plan = match &self.current_plan {
+            Some(p) => p,
+            None => {
+                return container(
+                    text("No flight plan generated yet.").color(style::palette::TEXT_SECONDARY),
+                )
+                .padding(20)
+                .style(style::container_card)
+                .width(Length::Fill)
+                .into();
+            }
         };
 
         // 1. Top-level Header (Enhanced)
@@ -648,7 +660,12 @@ impl FlightGenState {
             .on_press(Message::ToggleHistoryContext)
             .padding(2)
             .style(style::button_ghost),
-            iced::widget::horizontal_space(), // Push copy button to right
+            iced::widget::horizontal_space(), // Push action buttons to right
+            // Pop out button (New)
+            button(text("Pop out").size(12))
+                .on_press(Message::ToggleFlightContextWindow)
+                .style(style::button_ghost)
+                .padding([4, 10]),
             // Copy Button
             if self.history_context_expanded {
                 Element::from(
@@ -678,6 +695,15 @@ impl FlightGenState {
                 .into();
         }
 
+        let content = scrollable(self.view_context_content(plan)).height(Length::Fill);
+
+        container(column![header_row, content].spacing(12).padding(15))
+            .style(style::container_card)
+            .into()
+    }
+
+    /// Renders just the origin and destination details for the context window or inline panel.
+    pub fn view_context_content<'a>(&'a self, plan: &'a FlightPlan) -> Element<'a, Message> {
         // 2. Core content (Origin + Destination)
         let (origin_inner, dest_inner) = match &plan.context {
             Some(ctx) => (self.origin_tree_content(ctx), self.dest_tree_content(ctx)),
@@ -787,11 +813,8 @@ impl FlightGenState {
             .size(11)
             .color(style::palette::TEXT_SECONDARY);
 
-        let content = scrollable(column![origin_section, dest_section, enroute_note].spacing(16))
-            .height(Length::Fill);
-
-        container(column![header_row, content].spacing(12).padding(15))
-            .style(style::container_card)
+        column![origin_section, dest_section, enroute_note]
+            .spacing(16)
             .into()
     }
 
