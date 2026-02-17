@@ -1,0 +1,20 @@
+{
+  "EGLL": [
+    {
+      "name": "Windsor Castle",
+      "kind": "landmark",
+      "snippet": "Royal residence and fortress since the 11th century.",
+      "lat": 51.4839,
+      "lon": -0.6044
+    }
+  ],
+  "LIRF": [
+    {
+      "name": "Ostia Antica",
+      "kind": "archaeological",
+      "snippet": "Ancient Roman port city ruins near the mouth of the Tiber.",
+      "lat": 41.7492,
+      "lon": 12.2893
+    }
+  ]
+}

@@ -198,14 +198,17 @@ impl FlightPrompt {
 
 fn parse_location(s: &str) -> LocationConstraint {
     let s = s.strip_prefix("the ").unwrap_or(s).trim();
-    if s.len() == 4 && s.chars().all(|c| c.is_alphabetic()) {
-        LocationConstraint::ICAO(s.to_uppercase())
-    } else if s == "here" || s == "current location" {
+    if s == "here" || s == "current location" {
         LocationConstraint::Region("Here".to_string())
     } else if s == "anywhere" || s == "any" || s == "random" {
         LocationConstraint::Any
     } else if let Some(region) = try_as_region(s) {
+        // Check region/city aliases BEFORE the 4-letter ICAO heuristic.
+        // This prevents city names like "Lamu" or "Lima" from being
+        // misidentified as ICAO codes.
         region
+    } else if s.len() == 4 && s.chars().all(|c| c.is_alphabetic()) {
+        LocationConstraint::ICAO(s.to_uppercase())
     } else {
         LocationConstraint::AirportName(s.to_string())
     }
@@ -234,18 +237,36 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
     // "City Country" patterns avoid ambiguous name match (e.g. Rome Georgia vs Rome Italy)
     let key = normalize_for_region_match(s);
     match key.as_str() {
+        // British Isles & UK
         "british isles" => Some(LocationConstraint::Region("BI".to_string())),
         "ireland" | "eire" => Some(LocationConstraint::Region("IE".to_string())),
         "uk" | "united kingdom" => Some(LocationConstraint::Region("UK".to_string())),
         "gb" | "great britain" => Some(LocationConstraint::Region("GB".to_string())),
         "london" | "london uk" => Some(LocationConstraint::Region("UK:London".to_string())),
         "england" | "scotland" | "wales" => Some(LocationConstraint::Region("UK".to_string())),
+        // Europe — countries
         "italy" => Some(LocationConstraint::Region("IT".to_string())),
         "rome italy" | "rome, italy" => Some(LocationConstraint::Region("IT".to_string())),
         "france" => Some(LocationConstraint::Region("FR".to_string())),
         "paris france" | "paris, france" => Some(LocationConstraint::Region("FR".to_string())),
         "germany" => Some(LocationConstraint::Region("DE".to_string())),
         "spain" => Some(LocationConstraint::Region("ES".to_string())),
+        // Europe — cities
+        "amsterdam" => Some(LocationConstraint::Region("NL".to_string())),
+        "zurich" | "geneva" => Some(LocationConstraint::Region("CH".to_string())),
+        "vienna" | "wien" => Some(LocationConstraint::Region("AT".to_string())),
+        "brussels" => Some(LocationConstraint::Region("BE".to_string())),
+        "istanbul" => Some(LocationConstraint::Region("TR".to_string())),
+        "lisbon" | "porto" => Some(LocationConstraint::Region("PT".to_string())),
+        "athens" => Some(LocationConstraint::Region("GR".to_string())),
+        "oslo" => Some(LocationConstraint::Region("NO".to_string())),
+        "stockholm" => Some(LocationConstraint::Region("SE".to_string())),
+        "copenhagen" => Some(LocationConstraint::Region("DK".to_string())),
+        "helsinki" => Some(LocationConstraint::Region("FI".to_string())),
+        "reykjavik" => Some(LocationConstraint::Region("IS".to_string())),
+        "warsaw" | "krakow" => Some(LocationConstraint::Region("PL".to_string())),
+        "prague" => Some(LocationConstraint::Region("CZ".to_string())),
+        // North America
         "usa" | "us" | "united states" => Some(LocationConstraint::Region("US".to_string())),
         "canada" => Some(LocationConstraint::Region("CA".to_string())),
         "mexico" => Some(LocationConstraint::Region("MX".to_string())),
@@ -258,11 +279,73 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         }
         "oregon" => Some(LocationConstraint::Region("US:OR".to_string())),
         "pnw" | "pacific northwest" => Some(LocationConstraint::Region("US:OR".to_string())),
+        // Geographic features
         "alps" => Some(LocationConstraint::Region("Alps".to_string())),
         "rockies" => Some(LocationConstraint::Region("Rockies".to_string())),
         "caribbean" => Some(LocationConstraint::Region("Caribbean".to_string())),
+        // Africa — countries
         "south africa" => Some(LocationConstraint::Region("ZA".to_string())),
         "kenya" => Some(LocationConstraint::Region("KE".to_string())),
+        "egypt" => Some(LocationConstraint::Region("EG".to_string())),
+        "tanzania" => Some(LocationConstraint::Region("TZ".to_string())),
+        "ethiopia" => Some(LocationConstraint::Region("ET".to_string())),
+        "nigeria" => Some(LocationConstraint::Region("NG".to_string())),
+        "morocco" => Some(LocationConstraint::Region("MA".to_string())),
+        // Africa — cities
+        "nairobi" => Some(LocationConstraint::Region("KE".to_string())),
+        "mombasa" => Some(LocationConstraint::Region("KE".to_string())),
+        "lamu" => Some(LocationConstraint::Region("KE".to_string())),
+        "malindi" => Some(LocationConstraint::Region("KE".to_string())),
+        "johannesburg" | "joburg" => Some(LocationConstraint::Region("ZA".to_string())),
+        "cape town" => Some(LocationConstraint::Region("ZA".to_string())),
+        "durban" => Some(LocationConstraint::Region("ZA".to_string())),
+        "cairo" => Some(LocationConstraint::Region("EG".to_string())),
+        "addis ababa" | "addis" => Some(LocationConstraint::Region("ET".to_string())),
+        "lagos" => Some(LocationConstraint::Region("NG".to_string())),
+        "abuja" => Some(LocationConstraint::Region("NG".to_string())),
+        "dar es salaam" | "dar" => Some(LocationConstraint::Region("TZ".to_string())),
+        "zanzibar" => Some(LocationConstraint::Region("TZ".to_string())),
+        "kilimanjaro" => Some(LocationConstraint::Region("TZ".to_string())),
+        "marrakech" | "casablanca" => Some(LocationConstraint::Region("MA".to_string())),
+        // Asia — cities
+        "tokyo" => Some(LocationConstraint::Region("JP".to_string())),
+        "osaka" => Some(LocationConstraint::Region("JP".to_string())),
+        "bangkok" => Some(LocationConstraint::Region("TH".to_string())),
+        "singapore" => Some(LocationConstraint::Region("SG".to_string())),
+        "hong kong" => Some(LocationConstraint::Region("HK".to_string())),
+        "taipei" => Some(LocationConstraint::Region("TW".to_string())),
+        "seoul" => Some(LocationConstraint::Region("KR".to_string())),
+        "beijing" | "shanghai" | "guangzhou" => Some(LocationConstraint::Region("CN".to_string())),
+        "mumbai" | "delhi" | "bangalore" | "chennai" | "kolkata" => {
+            Some(LocationConstraint::Region("IN".to_string()))
+        }
+        "dubai" | "abu dhabi" => Some(LocationConstraint::Region("UAE".to_string())),
+        "doha" => Some(LocationConstraint::Region("QA".to_string())),
+        "tel aviv" | "jerusalem" => Some(LocationConstraint::Region("IL".to_string())),
+        "kuala lumpur" => Some(LocationConstraint::Region("MY".to_string())),
+        "manila" => Some(LocationConstraint::Region("PH".to_string())),
+        "hanoi" | "ho chi minh" | "saigon" => Some(LocationConstraint::Region("VN".to_string())),
+        "bali" | "jakarta" => Some(LocationConstraint::Region("ID".to_string())),
+        // South America — countries & cities
+        "brazil" => Some(LocationConstraint::Region("BR".to_string())),
+        "argentina" => Some(LocationConstraint::Region("AR".to_string())),
+        "colombia" => Some(LocationConstraint::Region("CO".to_string())),
+        "peru" => Some(LocationConstraint::Region("PE".to_string())),
+        "chile" => Some(LocationConstraint::Region("CL".to_string())),
+        "rio" | "rio de janeiro" | "sao paulo" => {
+            Some(LocationConstraint::Region("BR".to_string()))
+        }
+        "buenos aires" => Some(LocationConstraint::Region("AR".to_string())),
+        "bogota" => Some(LocationConstraint::Region("CO".to_string())),
+        "lima" => Some(LocationConstraint::Region("PE".to_string())),
+        "santiago" => Some(LocationConstraint::Region("CL".to_string())),
+        // Oceania — cities
+        "sydney" | "melbourne" | "brisbane" | "perth" => {
+            Some(LocationConstraint::Region("AU".to_string()))
+        }
+        "auckland" | "wellington" | "queenstown" => {
+            Some(LocationConstraint::Region("NZ".to_string()))
+        }
         _ => None,
     }
 }
@@ -475,6 +558,57 @@ mod tests {
         assert_eq!(
             p.destination,
             Some(LocationConstraint::Region("US:AK".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_nairobi_to_lamu() {
+        let p = FlightPrompt::parse("Nairobi to Lamu");
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::Region("KE".to_string())),
+            "Nairobi should resolve to Kenya region"
+        );
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("KE".to_string())),
+            "Lamu should resolve to Kenya region, not ICAO 'LAMU'"
+        );
+    }
+
+    #[test]
+    fn test_parse_nairobi_to_mombasa() {
+        let p = FlightPrompt::parse("Nairobi to Mombasa");
+        assert_eq!(p.origin, Some(LocationConstraint::Region("KE".to_string())),);
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("KE".to_string())),
+        );
+    }
+
+    #[test]
+    fn test_parse_tokyo_to_bangkok() {
+        let p = FlightPrompt::parse("Tokyo to Bangkok");
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::Region("JP".to_string())),
+            "Tokyo should resolve to Japan region"
+        );
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("TH".to_string())),
+            "Bangkok should resolve to Thailand region"
+        );
+    }
+
+    #[test]
+    fn test_parse_icao_still_works_after_reorder() {
+        // Ensure the parse_location reorder didn't break real ICAO codes
+        let p = FlightPrompt::parse("Flight from EGLL to KJFK");
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::ICAO("KJFK".to_string()))
         );
     }
 }

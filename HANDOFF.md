@@ -5,6 +5,9 @@
 
 ## Recent Changes
 
+- **Flight Gen: Detached Context Window**: Implemented a floating, draggable window for the "History & context" panel. Introduced "Pop out" interaction in the inline panel. Refactored UI logic for reusability between inline and window modes.
+- **Flight Gen: UX Density Polish**: Updated typography (13.5px, 1.6 line height), added emerald status badges, and implemented an adaptive height system (30-35vh).
+- **Flight Gen: Context Modal**: Added a "Show full context" overlay for long snippets.
 - **Flight Gen Learning (3.1)**: BitNet `heuristics.json` now stores flight preferences (schema v10): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success`. GUI: “Remember this flight”, “Prefer this origin”, “Prefer this destination”. `generate_flight` takes optional `prefs` and prefers these when resolving region-based origin/destination. See `docs/FLIGHT_GEN_BITNET_LEARNING_OPPORTUNITY.md`; 3.2 (LLM/stronger AI) remains on roadmap.
 - **Flight Gen Regenerate**: New **Regenerate** button re-runs the last user prompt for a new random outcome without re-typing.
 - **Interactive Scenery Tagging**: Added ability to add/remove custom tags directly on scenery cards. Metadata is persisted to `scenery_groups.json`.
@@ -26,7 +29,7 @@
 
 ## Next Steps
 
-- **UI Polish**: Refine the visual spacing of the new `+` tag button.
+- **UI Polish**: Implement gradient fade cues for scrollables if Iced support improves.
 - **Search Integration**: Allow searching for scenery by tag string.
 - **Flight Gen 3.2**: Optional LLM/API for natural language and suggestions (post–3.1).
 - **Production Build**: Generate latest AppImage assets for testing.

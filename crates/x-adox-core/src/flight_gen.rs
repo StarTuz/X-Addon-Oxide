@@ -1270,12 +1270,28 @@ fn icao_prefixes_for_region(region_id: &str) -> Option<Vec<&'static str>> {
         "VN" => Some(vec!["VV"]),
         "ID" => Some(vec!["WI"]),
         "AU" => Some(vec!["Y"]),
+        "SG" => Some(vec!["WS"]),
+        "MY" => Some(vec!["WM"]),
+        "PH" => Some(vec!["RP"]),
+        "HK" => Some(vec!["VH"]),
+        "TW" => Some(vec!["RC"]),
+        "NZ" => Some(vec!["NZ"]),
         // Middle East & Africa
         "IL" => Some(vec!["LL"]),
         "EG" => Some(vec!["HE"]),
         "ZA" => Some(vec!["FA"]),
         "KE" => Some(vec!["HK"]),
+        "TZ" => Some(vec!["HT"]),
+        "ET" => Some(vec!["HA"]),
+        "NG" => Some(vec!["DN"]),
+        "MA" => Some(vec!["GM"]),
         "UAE" => Some(vec!["OM"]),
+        "QA" => Some(vec!["OT"]),
+        // South America
+        "AR" => Some(vec!["SA"]),
+        "CO" => Some(vec!["SK"]),
+        "PE" => Some(vec!["SP"]),
+        "CL" => Some(vec!["SC"]),
         _ => None,
     };
     if direct.is_some() {
@@ -1390,6 +1406,8 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
         "KE" => vec![
             seed_airport("HKJK", "Nairobi Jomo Kenyatta", -1.3192, 36.9275),
             seed_airport("HKMO", "Mombasa Moi", -4.0348, 39.5943),
+            seed_airport("HKLU", "Lamu Manda", -2.2717, 40.9131),
+            seed_airport("HKML", "Malindi", -3.2293, 40.1017),
         ],
         "IE" => vec![
             seed_airport("EIDW", "Dublin", 53.4263, -6.2499),
@@ -1399,6 +1417,57 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
         "NL" => vec![seed_airport("EHAM", "Amsterdam Schiphol", 52.3086, 4.7639)],
         "CH" => vec![seed_airport("LSZH", "Zurich", 47.4647, 8.5492)],
         "AT" => vec![seed_airport("LOWW", "Vienna", 48.1103, 16.5697)],
+        // Africa (new)
+        "TZ" => vec![
+            seed_airport("HTDA", "Dar es Salaam Julius Nyerere", -6.8781, 39.2026),
+            seed_airport("HTZA", "Zanzibar Abeid Amani Karume", -6.2220, 39.2249),
+            seed_airport("HTKJ", "Kilimanjaro Intl", -3.4294, 37.0745),
+        ],
+        "ET" => vec![seed_airport("HAAB", "Addis Ababa Bole", 8.9779, 38.7993)],
+        "NG" => vec![
+            seed_airport("DNMM", "Lagos Murtala Muhammed", 6.5774, 3.3211),
+            seed_airport("DNAA", "Abuja Nnamdi Azikiwe", 9.0068, 7.2632),
+        ],
+        "MA" => vec![
+            seed_airport("GMMN", "Casablanca Mohammed V", 33.3675, -7.5898),
+            seed_airport("GMMX", "Marrakech Menara", 31.6069, -8.0363),
+        ],
+        "EG" => vec![seed_airport("HECA", "Cairo Intl", 30.1219, 31.4056)],
+        // Asia-Pacific (new)
+        "SG" => vec![seed_airport("WSSS", "Singapore Changi", 1.3502, 103.9940)],
+        "MY" => vec![seed_airport("WMKK", "Kuala Lumpur Intl", 2.7456, 101.7099)],
+        "PH" => vec![
+            seed_airport("RPLL", "Manila Ninoy Aquino", 14.5086, 121.0198),
+            seed_airport("RPVM", "Cebu Mactan", 10.3097, 123.9792),
+        ],
+        "HK" => vec![seed_airport("VHHH", "Hong Kong Intl", 22.3080, 113.9185)],
+        "TW" => vec![seed_airport("RCTP", "Taipei Taoyuan", 25.0777, 121.2325)],
+        "QA" => vec![seed_airport("OTHH", "Doha Hamad", 25.2731, 51.6081)],
+        "NZ" => vec![
+            seed_airport("NZAA", "Auckland", -37.0082, 174.7917),
+            seed_airport("NZWN", "Wellington", -41.3272, 174.8053),
+            seed_airport("NZQN", "Queenstown", -45.0211, 168.7392),
+        ],
+        // South America (new)
+        "AR" => vec![seed_airport(
+            "SAEZ",
+            "Buenos Aires Ezeiza",
+            -34.8222,
+            -58.5358,
+        )],
+        "CO" => vec![seed_airport("SKBO", "Bogota El Dorado", 4.7016, -74.1469)],
+        "PE" => vec![seed_airport(
+            "SPJC",
+            "Lima Jorge Chavez",
+            -12.0219,
+            -77.1143,
+        )],
+        "CL" => vec![seed_airport(
+            "SCEL",
+            "Santiago Arturo Merino Benitez",
+            -33.3930,
+            -70.7858,
+        )],
         _ => Vec::new(),
     };
     if !direct.is_empty() {

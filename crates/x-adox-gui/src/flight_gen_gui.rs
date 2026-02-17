@@ -23,7 +23,7 @@ pub struct FlightGenState {
     /// Tree view: Destination section expanded in History & context.
     pub dest_context_expanded: bool,
     /// Tree view: Top-level History & context section expanded.
-    pub history_context_expanded: bool,
+
     /// As-of-now weather (decoded METAR) for departure airport. Set when context/weather is fetched.
     pub origin_weather: Option<String>,
     /// As-of-now weather (decoded METAR) for destination airport.
@@ -67,8 +67,7 @@ pub enum Message {
     ToggleDestinationContext,
     /// Weather fetched for current plan (origin, dest). Called from main after FlightWeatherFetched.
     WeatherFetched(Option<String>, Option<String>),
-    /// Toggle the entire History & context block expanded/collapsed.
-    ToggleHistoryContext,
+
     /// Copy the full context text to clipboard.
     CopyContext,
     /// Open a modal to show the full context text.
@@ -94,7 +93,7 @@ impl Default for FlightGenState {
             pending_auto_fetch: false,
             origin_context_expanded: true,
             dest_context_expanded: true,
-            history_context_expanded: true,
+
             origin_weather: None,
             dest_weather: None,
             full_context_modal_text: None,
@@ -309,10 +308,7 @@ impl FlightGenState {
                 self.dest_weather = dest;
                 Task::none()
             }
-            Message::ToggleHistoryContext => {
-                self.history_context_expanded = !self.history_context_expanded;
-                Task::none()
-            }
+
             // Handled in main (mutate heuristics_model); no-op here.
             Message::RememberThisFlight
             | Message::PreferThisOrigin
@@ -383,10 +379,10 @@ impl FlightGenState {
                 self.origin_context_expanded = true;
                 self.dest_context_expanded = true;
                 self.status_message = Some(if no_origin_landmarks && no_dest_landmarks {
-                    "Context loaded. No landmarks found — try Fetch context again (check network)."
+                    "Context loaded. No landmarks found — try Fetch Context again (check network)."
                         .to_string()
                 } else if no_origin_landmarks || no_dest_landmarks {
-                    "Context loaded. Some landmarks missing — try Fetch context again.".to_string()
+                    "Context loaded. Some landmarks missing — try Fetch Context again.".to_string()
                 } else {
                     "Context loaded.".to_string()
                 });
@@ -562,144 +558,24 @@ impl FlightGenState {
                 );
             }
             controls = controls.push(
-                button("Fetch context")
-                    .on_press(Message::FetchContext)
+                button("History & Context")
+                    .on_press(Message::ToggleFlightContextWindow)
                     .style(style::button_primary_glow),
             );
         }
 
-        let status_row = text(self.status_message.as_deref().unwrap_or(""))
-            .size(13)
-            .color(style::palette::TEXT_SECONDARY);
-
-        let history_block = self.view_history_and_context();
-
-        // Adaptive Layout: History block consumes flexible space (FillPortion 1),
-        // but if collapsed or empty, it naturally shrinks.
-        // We use FillPortion(1) for chat and history to share 50/50 when both active.
-
         column![
             container(chat_history)
-                .height(Length::FillPortion(1))
+                .height(Length::Fill)
                 .style(style::container_main_content)
                 .padding(5),
             iced::widget::horizontal_rule(1.0),
             controls,
-            // Adaptive History container
-            container(history_block).height(
-                if self.history_context_expanded && self.current_plan.is_some() {
-                    Length::FillPortion(1)
-                } else {
-                    Length::Shrink
-                }
-            ),
-            status_row,
             input_area
         ]
         .spacing(15)
         .padding(20)
         .into()
-    }
-
-    /// "History & context" block: tree view with Origin and Destination sections.
-    pub fn view_history_and_context(&self) -> Element<'_, Message> {
-        let plan = match &self.current_plan {
-            Some(p) => p,
-            None => {
-                return container(
-                    text("No flight plan generated yet.").color(style::palette::TEXT_SECONDARY),
-                )
-                .padding(20)
-                .style(style::container_card)
-                .width(Length::Fill)
-                .into();
-            }
-        };
-
-        // 1. Top-level Header (Enhanced)
-        let header_row = row![
-            // Collapse Toggle
-            button(
-                text(if self.history_context_expanded {
-                    "v"
-                } else {
-                    ">"
-                })
-                .size(16)
-                .style(move |_| iced::widget::text::Style {
-                    color: Some(style::palette::TEXT_SECONDARY),
-                })
-            )
-            .on_press(Message::ToggleHistoryContext)
-            .padding(4)
-            .style(style::button_ghost),
-            // Badge "CONTEXT"
-            container(
-                text("CONTEXT")
-                    .size(10)
-                    .style(move |_| iced::widget::text::Style {
-                        color: Some(iced::Color::from_rgb(0.1, 0.12, 0.15)), // Dark text on badge
-                    })
-            )
-            .style(|_| container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb(
-                    0.2, 0.8, 0.6
-                ))), // Emerald
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            })
-            .padding([2, 6]),
-            button(text("History & context").size(14).style(move |_| {
-                iced::widget::text::Style {
-                    color: Some(style::palette::TEXT_PRIMARY),
-                }
-            }))
-            .on_press(Message::ToggleHistoryContext)
-            .padding(2)
-            .style(style::button_ghost),
-            iced::widget::horizontal_space(), // Push action buttons to right
-            // Pop out button (New)
-            button(text("Pop out").size(12))
-                .on_press(Message::ToggleFlightContextWindow)
-                .style(style::button_ghost)
-                .padding([4, 10]),
-            // Copy Button
-            if self.history_context_expanded {
-                Element::from(
-                    button(
-                        text(if self.context_copy_feedback.is_some() {
-                            "Copied!"
-                        } else {
-                            "Copy"
-                        })
-                        .size(12),
-                    )
-                    .on_press(Message::CopyContext)
-                    .padding([4, 10])
-                    .style(style::button_secondary),
-                )
-            } else {
-                iced::widget::Space::new(Length::Fixed(0.0), Length::Fixed(0.0)).into()
-            }
-        ]
-        .align_y(iced::Alignment::Center)
-        .spacing(8);
-
-        if !self.history_context_expanded {
-            return container(header_row)
-                .padding(10)
-                .style(style::container_card)
-                .into();
-        }
-
-        let content = scrollable(self.view_context_content(plan)).height(Length::Fill);
-
-        container(column![header_row, content].spacing(12).padding(15))
-            .style(style::container_card)
-            .into()
     }
 
     /// Renders just the origin and destination details for the context window or inline panel.
@@ -709,7 +585,7 @@ impl FlightGenState {
             Some(ctx) => (self.origin_tree_content(ctx), self.dest_tree_content(ctx)),
             None => (
                 column![
-                    text("No context loaded. Click \"Fetch context\" to load history and weather.")
+                    text("No context loaded. Click \"Fetch Context\" to load history and weather.")
                         .size(12)
                         .color(style::palette::TEXT_SECONDARY),
                     text("Weather (as of now)")
@@ -720,7 +596,7 @@ impl FlightGenState {
                 .spacing(6)
                 .into(),
                 column![
-                    text("No context loaded. Click \"Fetch context\" to load history and weather.")
+                    text("No context loaded. Click \"Fetch Context\" to load history and weather.")
                         .size(12)
                         .color(style::palette::TEXT_SECONDARY),
                     text("Weather (as of now)")
@@ -828,7 +704,7 @@ impl FlightGenState {
         let mut history_elements = vec![];
         if ctx.origin.snippet.is_empty() {
             history_elements.push(
-                text("No Wikipedia summary for this airport. Enable \"Enhanced history from Wikipedia\" in Settings and click \"Fetch context\" to load one.")
+                text("No Wikipedia summary for this airport. Enable \"Enhanced history from Wikipedia\" in Settings and click \"Fetch Context\" to load one.")
                 .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .width(Length::Fill)
@@ -874,7 +750,7 @@ impl FlightGenState {
             .color(style::palette::TEXT_SECONDARY);
 
         let landmarks_list: Vec<Element<_>> = if ctx.origin.points_nearby.is_empty() {
-            vec![text("No landmarks in range. Click \"Fetch context\" to load from Wikipedia and Wikidata.")
+            vec![text("No landmarks in range. Click \"Fetch Context\" to load from Wikipedia and Wikidata.")
                 .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .into()]
@@ -907,7 +783,7 @@ impl FlightGenState {
         let weather_body = text(
             self.origin_weather
                 .as_deref()
-                .unwrap_or("Click \"Fetch context\" to load METAR."),
+                .unwrap_or("Click \"Fetch Context\" to load METAR."),
         )
         .size(13)
         .width(Length::Fill);
@@ -980,7 +856,7 @@ impl FlightGenState {
             .size(10)
             .color(style::palette::TEXT_SECONDARY);
         let landmarks_list: Vec<Element<_>> = if ctx.destination.points_nearby.is_empty() {
-            vec![text("No landmarks in range. Click \"Fetch context\" to load from Wikipedia and Wikidata.")
+            vec![text("No landmarks in range. Click \"Fetch Context\" to load from Wikipedia and Wikidata.")
                 .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .into()]
@@ -1012,7 +888,7 @@ impl FlightGenState {
         let weather_body = text(
             self.dest_weather
                 .as_deref()
-                .unwrap_or("Click \"Fetch context\" to load METAR."),
+                .unwrap_or("Click \"Fetch Context\" to load METAR."),
         )
         .size(13)
         .width(Length::Fill);

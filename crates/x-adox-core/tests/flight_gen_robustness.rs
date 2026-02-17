@@ -427,3 +427,29 @@ fn test_search_accuracy_london_england() {
         plan.origin.id, plan.origin.name
     );
 }
+
+/// "Nairobi to Lamu" must produce a valid Kenya flight plan using seed airports.
+/// Before the fix, "Lamu" was misidentified as ICAO "LAMU" and "Nairobi" fell
+/// through to AirportName with no match.
+#[test]
+fn test_nairobi_to_lamu() {
+    // Empty pack: flight gen should fall back to seed airports for Kenya
+    let pack = create_mock_pack("Empty");
+    let cessna = create_mock_aircraft("Cessna 208", vec!["General Aviation"]);
+    let packs = vec![pack];
+
+    let plan = generate_flight(&packs, &[cessna], "Nairobi to Lamu", None, None)
+        .expect("Nairobi to Lamu should produce a valid flight plan");
+
+    // Both should be Kenyan airports (HK prefix)
+    assert!(
+        plan.origin.id.starts_with("HK"),
+        "Origin should be a Kenyan airport (HK*), got {}",
+        plan.origin.id
+    );
+    assert!(
+        plan.destination.id.starts_with("HK"),
+        "Destination should be a Kenyan airport (HK*), got {}",
+        plan.destination.id
+    );
+}

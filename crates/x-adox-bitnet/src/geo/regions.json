@@ -933,5 +933,200 @@
             }
         ],
         "parent_id": "OC"
+    },
+    {
+        "id": "TZ",
+        "name": "Tanzania",
+        "bounds": [
+            {
+                "min_lat": -11.8,
+                "max_lat": -1.0,
+                "min_lon": 29.3,
+                "max_lon": 40.5
+            }
+        ],
+        "parent_id": "AF"
+    },
+    {
+        "id": "ET",
+        "name": "Ethiopia",
+        "bounds": [
+            {
+                "min_lat": 3.4,
+                "max_lat": 14.9,
+                "min_lon": 33.0,
+                "max_lon": 48.0
+            }
+        ],
+        "parent_id": "AF"
+    },
+    {
+        "id": "NG",
+        "name": "Nigeria",
+        "bounds": [
+            {
+                "min_lat": 4.2,
+                "max_lat": 13.9,
+                "min_lon": 2.7,
+                "max_lon": 14.7
+            }
+        ],
+        "parent_id": "AF"
+    },
+    {
+        "id": "MA",
+        "name": "Morocco",
+        "bounds": [
+            {
+                "min_lat": 27.7,
+                "max_lat": 35.9,
+                "min_lon": -13.2,
+                "max_lon": -1.0
+            }
+        ],
+        "parent_id": "AF"
+    },
+    {
+        "id": "SG",
+        "name": "Singapore",
+        "bounds": [
+            {
+                "min_lat": 1.15,
+                "max_lat": 1.47,
+                "min_lon": 103.6,
+                "max_lon": 104.1
+            }
+        ],
+        "parent_id": "AS"
+    },
+    {
+        "id": "MY",
+        "name": "Malaysia",
+        "bounds": [
+            {
+                "min_lat": 0.8,
+                "max_lat": 7.4,
+                "min_lon": 99.6,
+                "max_lon": 119.3
+            }
+        ],
+        "parent_id": "AS"
+    },
+    {
+        "id": "PH",
+        "name": "Philippines",
+        "bounds": [
+            {
+                "min_lat": 4.6,
+                "max_lat": 21.2,
+                "min_lon": 116.9,
+                "max_lon": 126.6
+            }
+        ],
+        "parent_id": "AS"
+    },
+    {
+        "id": "HK",
+        "name": "Hong Kong",
+        "bounds": [
+            {
+                "min_lat": 22.15,
+                "max_lat": 22.56,
+                "min_lon": 113.82,
+                "max_lon": 114.43
+            }
+        ],
+        "parent_id": "AS"
+    },
+    {
+        "id": "TW",
+        "name": "Taiwan",
+        "bounds": [
+            {
+                "min_lat": 21.9,
+                "max_lat": 25.3,
+                "min_lon": 120.0,
+                "max_lon": 122.0
+            }
+        ],
+        "parent_id": "AS"
+    },
+    {
+        "id": "QA",
+        "name": "Qatar",
+        "bounds": [
+            {
+                "min_lat": 24.5,
+                "max_lat": 26.2,
+                "min_lon": 50.7,
+                "max_lon": 51.7
+            }
+        ],
+        "parent_id": "AS"
+    },
+    {
+        "id": "NZ",
+        "name": "New Zealand",
+        "bounds": [
+            {
+                "min_lat": -47.3,
+                "max_lat": -34.4,
+                "min_lon": 166.4,
+                "max_lon": 178.6
+            }
+        ],
+        "parent_id": "OC"
+    },
+    {
+        "id": "AR",
+        "name": "Argentina",
+        "bounds": [
+            {
+                "min_lat": -55.1,
+                "max_lat": -21.8,
+                "min_lon": -73.6,
+                "max_lon": -53.6
+            }
+        ],
+        "parent_id": "SA"
+    },
+    {
+        "id": "CO",
+        "name": "Colombia",
+        "bounds": [
+            {
+                "min_lat": -4.2,
+                "max_lat": 13.4,
+                "min_lon": -79.0,
+                "max_lon": -66.9
+            }
+        ],
+        "parent_id": "SA"
+    },
+    {
+        "id": "PE",
+        "name": "Peru",
+        "bounds": [
+            {
+                "min_lat": -18.4,
+                "max_lat": -0.0,
+                "min_lon": -81.3,
+                "max_lon": -68.7
+            }
+        ],
+        "parent_id": "SA"
+    },
+    {
+        "id": "CL",
+        "name": "Chile",
+        "bounds": [
+            {
+                "min_lat": -55.9,
+                "max_lat": -17.5,
+                "min_lon": -75.6,
+                "max_lon": -66.9
+            }
+        ],
+        "parent_id": "SA"
     }
 ]

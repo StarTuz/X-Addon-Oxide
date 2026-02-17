@@ -1096,12 +1096,35 @@ impl App {
             left: 0.0,
         });
 
+        // Toolbar: Fetch Context + Copy + status
+        let copy_label = if self.flight_gen.context_copy_feedback.is_some() {
+            "Copied!"
+        } else {
+            "Copy"
+        };
+        let toolbar = row![
+            button(text("Fetch Context").size(12))
+                .on_press(Message::FlightGen(flight_gen_gui::Message::FetchContext))
+                .style(style::button_primary_glow)
+                .padding([6, 14]),
+            button(text(copy_label).size(12))
+                .on_press(Message::FlightGen(flight_gen_gui::Message::CopyContext))
+                .style(style::button_secondary)
+                .padding([6, 14]),
+            iced::widget::horizontal_space(),
+            text(self.flight_gen.status_message.as_deref().unwrap_or(""))
+                .size(11)
+                .color(style::palette::TEXT_SECONDARY),
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center);
+
         let content = scrollable(self.flight_gen.view_context_content(plan).map(Message::FlightGen))
             .height(Length::Fill);
 
-        container(column![header, content].spacing(10))
-            .width(Length::Fixed(400.0))
-            .height(Length::Fixed(500.0))
+        container(column![header, toolbar, content].spacing(10))
+            .width(Length::Fixed(420.0))
+            .height(Length::Fixed(520.0))
             .style(style::container_modal)
             .padding(15)
             .into()
