@@ -64,6 +64,7 @@ crates/
 - `apt_dat.rs` - Parser for X-Plane `apt.dat` airport data files (runways, coordinates, ICAO codes, datum row 1302)
 - `groups.rs` - User-defined tag/group management for scenery packs (persisted per-config)
 - `flight_gen.rs` - Flight plan generation: airport matching, route building, failure logging, multi-format export. `AirportPool` is the public type for pre-indexed airport sets; use `generate_flight_with_pool()` for repeated generation without re-scanning. Bundled data assets (`flight_context_bundle.json`, `flight_context_pois_overlay.json`, `icao_to_wikipedia.csv`) are embedded via `include_bytes!` and loaded by `get_bundled_flight_context()`, `get_poi_overlay()`, `get_icao_to_wikipedia()`.
+  - **Guardrail design**: Only two hard constraints — helipad/seaplane-base type matching (helicopter ↔ heliport, floatplane ↔ seaplane base), and keyword-driven surface preference (`grass`/`tarmac`/`bush` keywords set `req_surface`). Runway length and aircraft-type distance limits are intentionally absent — users control range via keywords (`short`, `long haul`, `2 hour flight`) and can swap aircraft after export. Default distance when no keyword given: 10–5000nm.
 - `data/` - Embedded binary assets: `flight_context_bundle.json` (63 airport history snippets), `flight_context_pois_overlay.json` (curated POIs for EGLL/LIRF), `icao_to_wikipedia.csv` (ICAO→Wikipedia title map for ~16k airports)
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
   - `ini_handler.rs` - Reads/writes `scenery_packs.ini` with raw_path round-trip preservation
@@ -87,20 +88,20 @@ Rules-based heuristics engine (not ML despite the name) that:
 
 ### x-adox-gui
 
-Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~11084 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
+Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~11116 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
 
 **Key landmarks in `main.rs`** (use these to navigate):
 
 - `enum Message` (~line 167) — all message variants, grouped by feature
-- `struct App` (~line 587) — all application state fields
-- `fn update()` (~line 1307) — message handling / business logic dispatch
-- `fn view_flight_context_window()` (~line 1067) — detached draggable flight context panel
-- `fn subscription()` (~line 4784) — event subscriptions (timers, keyboard)
-- `fn view()` (~line 4902) — top-level view routing by tab
-- `fn view_scenery()` (~line 7144) — scenery tab layout
-- `fn view_scenery_basket()` (~line 7459) — scenery basket panel (selection, bulk toggle)
-- `fn view_addon_list()` (~line 8606) — reusable list for plugins/CSLs
-- `fn view_aircraft_tree()` (~line 8871) — aircraft tree with smart view
+- `struct App` (~line 589) — all application state fields
+- `fn update()` (~line 1314) — message handling / business logic dispatch
+- `fn view_flight_context_window()` (~line 1074) — detached draggable flight context panel
+- `fn subscription()` (~line 4815) — event subscriptions (timers, keyboard)
+- `fn view()` (~line 4933) — top-level view routing by tab
+- `fn view_scenery()` (~line 7176) — scenery tab layout
+- `fn view_scenery_basket()` (~line 7491) — scenery basket panel (selection, bulk toggle)
+- `fn view_addon_list()` (~line 8638) — reusable list for plugins/CSLs
+- `fn view_aircraft_tree()` (~line 8903) — aircraft tree with smart view
 
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, FlightGenerator, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)

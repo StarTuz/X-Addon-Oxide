@@ -487,37 +487,6 @@ fn estimate_speed(a: &DiscoveredAddon, prompt: &FlightPrompt) -> u32 {
     }
 }
 
-fn estimate_runway_reqs(a: &DiscoveredAddon, prompt: &FlightPrompt) -> (u32, SurfaceType) {
-    // Keyword Override: Surface
-    let forced_surface = match prompt.keywords.surface {
-        Some(SurfaceKeyword::Soft) => Some(SurfaceType::Soft),
-        Some(SurfaceKeyword::Hard) => Some(SurfaceType::Hard),
-        None => None,
-    };
-
-    let tags_joined = a.tags.join(" ").to_lowercase();
-    if tags_joined.contains("heavy") || tags_joined.contains("airliner") {
-        (1500, forced_surface.unwrap_or(SurfaceType::Hard))
-    } else if tags_joined.contains("jet") {
-        // Relaxed for "Bush" jets (rare but possible in sims)
-        if let Some(TypeKeyword::Bush) = prompt.keywords.flight_type {
-            (600, forced_surface.unwrap_or(SurfaceType::Hard))
-        } else {
-            (800, forced_surface.unwrap_or(SurfaceType::Hard))
-        }
-    } else if tags_joined.contains("seaplane") || tags_joined.contains("amphibian") {
-        (0, SurfaceType::Water)
-    } else if tags_joined.contains("helicopter") {
-        (0, SurfaceType::Soft)
-    } else {
-        // GA / Bush
-        if let Some(TypeKeyword::Bush) = prompt.keywords.flight_type {
-            (300, forced_surface.unwrap_or(SurfaceType::Soft))
-        } else {
-            (500, forced_surface.unwrap_or(SurfaceType::Soft))
-        }
-    }
-}
 
 /// Orchestrates flight generation based on scenery packs, available aircraft, and a natural language prompt.
 pub fn generate_flight(
@@ -592,14 +561,18 @@ pub fn generate_flight_from_prompt(
     }
     let selected_aircraft = *suitable_aircraft.choose(&mut rng).unwrap();
 
-    // Determine Aircraft Capabilities with Keyword Overrides
+    // Speed for duration-based distance calculation
     let speed_kts = estimate_speed(selected_aircraft, &prompt);
-    let (min_rwy, req_surface) = estimate_runway_reqs(selected_aircraft, &prompt);
+    // Surface preference comes from keywords only — not aircraft type
+    let req_surface: Option<SurfaceType> = match prompt.keywords.surface {
+        Some(SurfaceKeyword::Soft) => Some(SurfaceType::Soft),
+        Some(SurfaceKeyword::Hard) => Some(SurfaceType::Hard),
+        None => None,
+    };
     log::debug!(
-        "[flight_gen] selected_aircraft='{}' tags={:?} min_rwy={} req_surface={:?}",
+        "[flight_gen] selected_aircraft='{}' tags={:?} req_surface={:?}",
         selected_aircraft.name,
         selected_aircraft.tags,
-        min_rwy,
         req_surface
     );
 
@@ -719,7 +692,7 @@ pub fn generate_flight_from_prompt(
                         }
                     }
                     if !prompt.ignore_guardrails {
-                        if !check_safety_constraints(apt, selected_aircraft, min_rwy, req_surface) {
+                        if !check_safety_constraints(apt, selected_aircraft, req_surface) {
                             return false;
                         }
                     }
@@ -735,7 +708,6 @@ pub fn generate_flight_from_prompt(
             name,
             prompt.ignore_guardrails,
             selected_aircraft,
-            min_rwy,
             req_surface,
         ),
         Some(LocationConstraint::NearCity { lat, lon, .. }) => {
@@ -751,12 +723,7 @@ pub fn generate_flight_from_prompt(
                         let dist = haversine_nm(lat, lon, alat, alon);
                         if dist <= 50.0
                             && (prompt.ignore_guardrails
-                                || check_safety_constraints(
-                                    apt,
-                                    selected_aircraft,
-                                    min_rwy,
-                                    req_surface,
-                                ))
+                                || check_safety_constraints(apt, selected_aircraft, req_surface))
                         {
                             Some((*apt, dist))
                         } else {
@@ -785,12 +752,12 @@ pub fn generate_flight_from_prompt(
             results
         }
         _ => {
-            // Wildcard origin: Filter by constraints
+            // Wildcard origin: Filter by type compatibility only
             all_airports
                 .iter()
                 .filter(|a| {
                     if !prompt.ignore_guardrails {
-                        check_safety_constraints(a, selected_aircraft, min_rwy, req_surface)
+                        check_safety_constraints(a, selected_aircraft, req_surface)
                     } else {
                         true
                     }
@@ -900,22 +867,13 @@ pub fn generate_flight_from_prompt(
                 DurationKeyword::Long => (800.0, 2500.0),
                 DurationKeyword::Haul => (2500.0, 12000.0),
             }
+        } else if prompt.ignore_guardrails {
+            (0.0, 20000.0)
         } else {
-            // Fallback to Aircraft Defaults
-            if prompt.ignore_guardrails {
-                (0.0, 20000.0)
-            } else if is_glider(selected_aircraft) {
-                (5.0, 60.0)
-            } else if is_heavy(selected_aircraft) {
-                (200.0, 8000.0)
-            } else if is_jet(selected_aircraft) {
-                // FIXED: Lower minimum to 50nm but allow override if endpoints explicit
-                (50.0, 3000.0)
-            } else if is_heli(selected_aircraft) {
-                (5.0, 200.0)
-            } else {
-                (30.0, 500.0)
-            }
+            // No keyword constraint: wide-open random discovery.
+            // Keywords (short/medium/long/haul) and duration_minutes are the
+            // intended controls — aircraft type no longer sets distance limits.
+            (10.0, 5000.0)
         };
 
         // Explicit Endpoint Check (Relax distance logic if both ends are specific)
@@ -954,12 +912,7 @@ pub fn generate_flight_from_prompt(
                             }
                         }
                         if !prompt.ignore_guardrails {
-                            if !check_safety_constraints(
-                                apt,
-                                selected_aircraft,
-                                min_rwy,
-                                req_surface,
-                            ) {
+                            if !check_safety_constraints(apt, selected_aircraft, req_surface) {
                                 return false;
                             }
                         }
@@ -975,7 +928,6 @@ pub fn generate_flight_from_prompt(
                 name,
                 true, // skip safety: user explicitly named this destination
                 selected_aircraft,
-                min_rwy,
                 req_surface,
             ),
             Some(LocationConstraint::NearCity { lat, lon, .. }) => {
@@ -1102,23 +1054,11 @@ pub fn generate_flight_from_prompt(
                     }
                 }
 
-                // Safety Check:
-                // • NearCity / AirportName destinations: engine applied safety during candidate
-                //   generation; skip here so the user's city/name choice is always honoured.
-                // • ICAO destination with KNOWN data: apply guardrails — user named a specific
-                //   airport whose data clearly violates aircraft constraints (e.g. 747→soft strip).
-                // • ICAO destination with NO data (missing runway/surface): skip safety — the
-                //   airport is in the database but lacks metadata; trust the user's explicit pick.
-                let dest_is_icao =
-                    matches!(&prompt.destination, Some(LocationConstraint::ICAO(_)));
-                if !prompt.ignore_guardrails && dest_is_icao {
-                    let has_no_data =
-                        dest.max_runway_length.is_none() && dest.surface_type.is_none();
-                    if !has_no_data
-                        && !check_safety_constraints(dest, selected_aircraft, min_rwy, req_surface)
-                    {
-                        return false;
-                    }
+                // Type safety + keyword surface preference.
+                if !prompt.ignore_guardrails
+                    && !check_safety_constraints(dest, selected_aircraft, req_surface)
+                {
+                    return false;
                 }
                 true
             })
@@ -1221,69 +1161,36 @@ pub fn generate_flight_from_prompt(
     Err("No suitable destination found.".to_string())
 }
 
-// Re-usable constraint checker
+// Type-compatibility and keyword surface check.
+// Runway length and aircraft-type surface requirements have been removed — this is a
+// random flight generator where users control distance via keywords and can swap
+// aircraft after export. Only genuine type mismatches (helipads, seaplane bases) and
+// explicit keyword surface preferences are enforced.
 fn check_safety_constraints(
     apt: &Airport,
     aircraft: &DiscoveredAddon,
-    min_rwy: u32,
-    req_surf: SurfaceType,
+    req_surface: Option<SurfaceType>,
 ) -> bool {
-    let is_heli = is_heli(aircraft);
-    let is_seaplane = is_seaplane(aircraft);
-
+    // Type: helipad → helicopters only; seaplane base → seaplanes only
     match apt.airport_type {
-        AirportType::Heliport => {
-            if !is_heli {
-                return false;
-            }
-        }
-        AirportType::Seaplane => {
-            if !is_seaplane {
-                return false;
-            }
-        }
+        AirportType::Heliport => return is_heli(aircraft),
+        AirportType::Seaplane => return is_seaplane(aircraft),
         AirportType::Land => {
-            if is_seaplane && apt.surface_type != Some(SurfaceType::Water) {
+            // Floatplanes/seaplanes need water surface
+            if is_seaplane(aircraft) && apt.surface_type != Some(SurfaceType::Water) {
                 return false;
             }
         }
     }
-
-    if let Some(surf) = apt.surface_type {
-        if req_surf == SurfaceType::Water && surf != SurfaceType::Water {
-            log::debug!(
-                "[flight_gen] apt='{}' rejected by surface: req=Water, got={:?}",
-                apt.id,
-                surf
-            );
-            return false;
+    // Keyword surface preference (grass/paved keywords, or bush → soft)
+    if let Some(req_surf) = req_surface {
+        if let Some(surf) = apt.surface_type {
+            match req_surf {
+                SurfaceType::Soft if surf != SurfaceType::Soft => return false,
+                SurfaceType::Hard if surf != SurfaceType::Hard => return false,
+                _ => {}
+            }
         }
-        if req_surf == SurfaceType::Hard && surf != SurfaceType::Hard {
-            log::debug!(
-                "[flight_gen] apt='{}' rejected by surface: req=Hard, got={:?}",
-                apt.id,
-                surf
-            );
-            return false;
-        }
-    }
-
-    if let Some(len) = apt.max_runway_length {
-        if (len as u32) < min_rwy {
-            log::debug!(
-                "[flight_gen] apt='{}' rejected by runway length: req={}, got={}",
-                apt.id,
-                min_rwy,
-                len
-            );
-            return false;
-        }
-    } else if min_rwy > 500 {
-        log::debug!(
-            "[flight_gen] apt='{}' rejected: no runway length and req > 500",
-            apt.id
-        );
-        return false;
     }
     true
 }
@@ -1295,8 +1202,7 @@ fn score_airports_by_name<'a>(
     search_str: &str,
     ignore_guardrails: bool,
     selected_aircraft: &DiscoveredAddon,
-    min_rwy: u32,
-    req_surface: SurfaceType,
+    req_surface: Option<SurfaceType>,
 ) -> Vec<&'a Airport> {
     let search_lower = search_str.to_lowercase();
     let search_tokens: Vec<&str> = search_lower.split_whitespace().collect();
@@ -1308,7 +1214,7 @@ fn score_airports_by_name<'a>(
             for &idx in indices {
                 let apt = airports[idx];
                 if ignore_guardrails
-                    || check_safety_constraints(apt, selected_aircraft, min_rwy, req_surface)
+                    || check_safety_constraints(apt, selected_aircraft, req_surface)
                 {
                     results.push(apt);
                 }
@@ -1325,7 +1231,7 @@ fn score_airports_by_name<'a>(
         .map(|(i, &apt)| (i, apt))
         .filter(|(_, apt)| {
             if !ignore_guardrails {
-                check_safety_constraints(apt, selected_aircraft, min_rwy, req_surface)
+                check_safety_constraints(apt, selected_aircraft, req_surface)
             } else {
                 true
             }
@@ -1451,16 +1357,6 @@ mod legacy_tests {
     }
 }
 
-fn is_jet(a: &DiscoveredAddon) -> bool {
-    a.tags.iter().any(|t| t.to_lowercase().contains("jet"))
-}
-
-fn is_heavy(a: &DiscoveredAddon) -> bool {
-    a.tags
-        .iter()
-        .any(|t| t.to_lowercase().contains("heavy") || t.to_lowercase().contains("airliner"))
-}
-
 fn is_heli(a: &DiscoveredAddon) -> bool {
     a.tags
         .iter()
@@ -1474,12 +1370,6 @@ fn is_seaplane(a: &DiscoveredAddon) -> bool {
     })
 }
 
-fn is_glider(a: &DiscoveredAddon) -> bool {
-    a.tags.iter().any(|t| t.to_lowercase().contains("glider"))
-        || a.name.to_lowercase().contains("glider")
-        || a.name.to_lowercase().contains("ask 21")
-        || a.name.to_lowercase().contains("ask21")
-}
 
 /// ICAO location prefix(es) per region. Used to restrict origin/destination to the correct
 /// country (e.g. "Mexico" → MM only, so US airports in the same bounding box are excluded).
@@ -2114,31 +2004,20 @@ mod tests {
     }
 
     #[test]
-    fn test_jet_runway_estimates() {
+    fn test_jet_speed_estimate() {
         let aircraft = make_addon("Learjet 35", vec!["General Aviation", "Jet"]);
         let prompt = FlightPrompt::default();
         let speed = estimate_speed(&aircraft, &prompt);
         assert_eq!(speed, 350, "Light jets should have 350kts speed");
-
-        let (rwy, surface) = estimate_runway_reqs(&aircraft, &prompt);
-        assert_eq!(rwy, 800, "Light jets should need 800m runway");
-        assert_eq!(surface, SurfaceType::Hard);
     }
 
     #[test]
-    fn test_bush_keyword_override() {
+    fn test_bush_speed_override() {
         let aircraft = make_addon("Cessna 208", vec!["General Aviation", "Turboprop"]);
         let mut prompt = FlightPrompt::default();
         prompt.keywords.flight_type = Some(TypeKeyword::Bush);
-
         let speed = estimate_speed(&aircraft, &prompt);
-        // Bush override makes it slower
-        assert_eq!(speed, 100);
-
-        let (rwy, surface) = estimate_runway_reqs(&aircraft, &prompt);
-        // Bush override lowers runway requirement
-        assert_eq!(rwy, 300);
-        assert_eq!(surface, SurfaceType::Soft);
+        assert_eq!(speed, 100, "Bush keyword slows the aircraft speed");
     }
 
     fn create_test_airport(id: &str, lat: f64, lon: f64) -> Airport {

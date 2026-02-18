@@ -143,17 +143,19 @@ mod tests {
         .unwrap();
         assert_eq!(plan_short.destination.id, "LFPG");
 
-        // 3. Guardrail Check: 747 into small airport?
-        let res = generate_flight(
+        // 3. 747 into small soft airport — no runway/surface guardrails anymore,
+        //    users control this via keywords and can swap aircraft after export.
+        let plan_small = generate_flight(
             &manager.packs,
             &aircraft,
             "Flight from EGLL to EGKB using Boeing 747",
             None,
             None,
-        );
-        assert!(res.is_err()); // Guardrail stopped it
+        )
+        .unwrap();
+        assert_eq!(plan_small.destination.id, "EGKB");
 
-        // 4. Ignore Guardrails (Should pass)
+        // 4. Ignore Guardrails still works (bypasses even type checks)
         let plan_wild = generate_flight(
             &manager.packs,
             &aircraft,
@@ -932,7 +934,10 @@ mod tests {
         assert_eq!(p.destination.id, "EGLL");
     }
     #[test]
-    fn test_unknown_runway_length_filtering() {
+    fn test_unknown_runway_length_not_filtered() {
+        // After the guardrail simplification, runway length is no longer enforced.
+        // Any aircraft (GA or heavy) can use an airport with unknown runway data —
+        // the user controls appropriateness via keywords and can swap aircraft after export.
         let packs = vec![SceneryPack {
             path: PathBuf::from("Custom Scenery/TestPack"),
             name: "TestPack".to_string(),
@@ -945,7 +950,7 @@ mod tests {
                     lon: Some(-0.12),
                     proj_x: None,
                     proj_y: None,
-                    max_runway_length: None, // Missing length
+                    max_runway_length: None,
                     surface_type: Some(SurfaceType::Soft),
                 },
                 make_test_airport("EGLL", "Heathrow", 52.5, -0.45, 12000, SurfaceType::Hard),
@@ -959,31 +964,21 @@ mod tests {
             descriptor: SceneryDescriptor::default(),
         }];
 
-        // 1. Small aircraft SHOULD find the unknown strip (since it's not a heliport)
-        let ga_aircraft = vec![make_test_aircraft("Cessna 172", vec!["GA", "Prop"])];
-        let mut found_unkn = false;
-        for _ in 0..20 {
-            let plan = generate_flight(&packs, &ga_aircraft, "Flight from UNKN to any", None, None);
-            if let Ok(p) = plan {
-                if p.origin.id == "UNKN" {
-                    found_unkn = true;
-                    break;
+        // Both GA and heavy aircraft should freely use UNKN (no runway length filter)
+        for tags in [vec!["GA", "Prop"], vec!["Heavy", "Jet"]] {
+            let aircraft = vec![make_test_aircraft("Test Aircraft", tags)];
+            let mut found_unkn = false;
+            for _ in 0..20 {
+                let plan =
+                    generate_flight(&packs, &aircraft, "Flight from UNKN to any", None, None);
+                if let Ok(p) = plan {
+                    if p.origin.id == "UNKN" {
+                        found_unkn = true;
+                        break;
+                    }
                 }
             }
-        }
-        assert!(found_unkn, "GA aircraft should be able to pick UNKN");
-
-        // 2. Heavy aircraft SHOULD NOT find the unknown strip
-        let heavy_aircraft = vec![make_test_aircraft("B747", vec!["Heavy", "Jet"])];
-        for _ in 0..10 {
-            let plan = generate_flight(
-                &packs,
-                &heavy_aircraft,
-                "Flight from UNKN to any",
-                None,
-                None,
-            );
-            assert!(plan.is_err(), "Heavy aircraft should reject unknown length");
+            assert!(found_unkn, "Aircraft should be able to depart from UNKN regardless of runway data");
         }
     }
     #[test]
@@ -1099,5 +1094,62 @@ mod tests {
         );
         let p = plan.unwrap();
         assert_eq!(p.destination.id, "PANC");
+    }
+
+    /// When the destination is a NearCity, a helipad that is the geometrically closest airport
+    /// must NOT be selected for a non-helicopter aircraft.  Regression for the bug where
+    /// valid_dests only applied type-safety for ICAO destinations, allowing helipads through
+    /// for NearCity / Region / AirportName targets.
+    #[test]
+    fn test_nearcity_dest_does_not_pick_helipad() {
+        let helipad = Airport {
+            id: "HOSP".to_string(),
+            name: "City Hospital Helipad".to_string(),
+            airport_type: AirportType::Heliport,
+            lat: Some(51.50),
+            lon: Some(-0.12),
+            proj_x: None,
+            proj_y: None,
+            max_runway_length: None,
+            surface_type: Some(SurfaceType::Hard),
+        };
+        let real_airport = make_test_airport(
+            "EGLL",
+            "London Heathrow",
+            51.47,
+            -0.45,
+            3900,
+            SurfaceType::Hard,
+        );
+        let origin = make_test_airport("EHAM", "Amsterdam Schiphol", 52.31, 4.76, 3800, SurfaceType::Hard);
+
+        let pack = SceneryPack {
+            path: PathBuf::from("Custom Scenery/Test"),
+            name: "Test".to_string(),
+            airports: vec![helipad, real_airport, origin],
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::GlobalAirport,
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+            region: None,
+        };
+
+        // Use "Jet" only (not "Airliner") — "Airliner" triggers is_heavy → min_dist=200nm,
+        // but EHAM→EGLL is only ~199nm. With just "Jet", min_dist=50nm so the route passes.
+        let aircraft = vec![make_test_aircraft("Boeing 737", vec!["Jet"])];
+
+        // "to London" uses the TO_RE path → destination = NearCity("London"), origin = wildcard.
+        for _ in 0..20 {
+            let plan = generate_flight(&[pack.clone()], &aircraft, "to London", None, None);
+            assert!(plan.is_ok(), "Should find EGLL, not fail: {:?}", plan.err());
+            let p = plan.unwrap();
+            assert_ne!(
+                p.destination.id, "HOSP",
+                "Helipad must NOT be picked as destination for a Jet (NearCity bug)"
+            );
+            assert_eq!(p.destination.id, "EGLL", "Should pick EGLL, not the helipad");
+        }
     }
 }

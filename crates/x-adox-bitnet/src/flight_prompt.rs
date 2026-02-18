@@ -168,6 +168,15 @@ impl FlightPrompt {
                         prompt.origin = Some(parse_location(origin_str));
                     }
                 }
+
+                // Final fallback: bare region/city name with no directional keyword.
+                // e.g. "Washington State", "Alaska", "London" — treat as destination.
+                if prompt.origin.is_none() && prompt.destination.is_none() {
+                    let candidate = normalize_for_region_match(&clean_input);
+                    if let Some(region) = try_as_region(&candidate) {
+                        prompt.destination = Some(region);
+                    }
+                }
             }
         }
 
@@ -427,7 +436,12 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "phoenix" => nc("Phoenix", 33.4484, -112.0740),
         "houston" => nc("Houston", 29.7604, -95.3698),
         "las vegas" => nc("Las Vegas", 36.1699, -115.1398),
-        "washington" | "washington dc" | "dc" => nc("Washington DC", 38.9072, -77.0369),
+        // "washington" alone falls through to RegionIndex → US:WA (Washington State).
+        // Only explicit "washington dc" / "dc" phrases map to the capital.
+        "washington dc" | "dc" => nc("Washington DC", 38.9072, -77.0369),
+        "washington state" | "state of washington" | "wa state" => {
+            Some(LocationConstraint::Region("US:WA".to_string()))
+        }
         "philadelphia" | "philly" => nc("Philadelphia", 39.9526, -75.1652),
         "minneapolis" => nc("Minneapolis", 44.9778, -93.2650),
         "detroit" => nc("Detroit", 42.3314, -83.0458),
@@ -770,6 +784,55 @@ mod tests {
         assert_eq!(
             p.destination,
             Some(LocationConstraint::ICAO("KJFK".to_string()))
+        );
+    }
+
+    /// "washington" alone must resolve to Washington State (US:WA), NOT Washington D.C.
+    /// Bare "washington" is ambiguous; the Pacific Northwest state is the more useful
+    /// flight-gen target. Use "washington dc" or "dc" to get the capital.
+    #[test]
+    fn test_parse_washington_resolves_to_wa_state() {
+        let p = FlightPrompt::parse("F70 to Washington");
+        // F70 is 3 chars → AirportName
+        assert!(
+            matches!(&p.origin, Some(LocationConstraint::AirportName(s)) if s == "f70"),
+            "Origin should be AirportName(f70), got {:?}",
+            p.origin
+        );
+        // "Washington" must be Washington State, not D.C.
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("US:WA".to_string())),
+            "Bare 'washington' should resolve to US:WA, got {:?}",
+            p.destination
+        );
+    }
+
+    /// "washington state" must resolve to Region(US:WA).
+    #[test]
+    fn test_parse_washington_state_explicit() {
+        let p = FlightPrompt::parse("Washington State");
+        assert_eq!(
+            p.destination.or(p.origin.clone()),
+            Some(LocationConstraint::Region("US:WA".to_string())),
+            "'Washington State' should be Region(US:WA)"
+        );
+    }
+
+    /// "washington dc" and "dc" must still resolve to the capital NearCity.
+    #[test]
+    fn test_parse_washington_dc_still_works() {
+        let p = FlightPrompt::parse("fly to washington dc");
+        assert!(
+            matches!(&p.destination, Some(LocationConstraint::NearCity { name, .. }) if name == "Washington DC"),
+            "washington dc should still be NearCity(Washington DC), got {:?}",
+            p.destination
+        );
+        let p2 = FlightPrompt::parse("fly to dc");
+        assert!(
+            matches!(&p2.destination, Some(LocationConstraint::NearCity { name, .. }) if name == "Washington DC"),
+            "dc should still be NearCity(Washington DC), got {:?}",
+            p2.destination
         );
     }
 }

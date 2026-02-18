@@ -214,53 +214,33 @@ fn test_all_regions_coverage() {
 }
 
 #[test]
-fn test_glider_range_constraint() {
+fn test_glider_short_keyword_constrains_range() {
+    // Aircraft type no longer sets distance limits — keywords do.
+    // A glider with no keyword gets wide-open distance; with "short" it stays ≤200nm.
     let mut pack = create_mock_pack("Glider Area");
-    // Origin
-    pack.airports.push(create_mock_airport(
-        "EGLL",
-        51.47,
-        -0.45,
-        4000,
-        SurfaceType::Hard,
-    ));
-    // Destination too far (>60nm so glider range excludes it)
-    pack.airports.push(create_mock_airport(
-        "DEST_FAR",
-        53.5,
-        -0.45,
-        2000,
-        SurfaceType::Hard,
-    ));
-    // Destination close (20nm)
-    pack.airports.push(create_mock_airport(
-        "DEST_CLOSE",
-        51.67,
-        -0.45,
-        1000,
-        SurfaceType::Hard,
-    ));
+    pack.airports.push(create_mock_airport("EGLL", 51.47, -0.45, 4000, SurfaceType::Hard));
+    pack.airports
+        .push(create_mock_airport("DEST_FAR", 53.5, -0.45, 2000, SurfaceType::Hard));
+    pack.airports
+        .push(create_mock_airport("DEST_CLOSE", 51.67, -0.45, 1000, SurfaceType::Hard));
 
     let ask21 = create_mock_aircraft("Schleicher ASK 21", vec!["Glider"]);
     let packs = vec![pack];
 
-    // "to random" ensures the parser sees "from X to Y" so origin is EGLL (not unset)
+    // "short flight" keyword caps distance at 200nm
     let plan = generate_flight(
         &packs,
         &[ask21],
-        "from EGLL to random using glider",
+        "short flight from EGLL using glider",
         None,
         None,
     )
-    .expect("Failed to gen glider flight");
+    .expect("Should generate a short glider flight");
     assert!(
-        plan.distance_nm <= 60,
-        "Glider flight too long: {}nm",
+        plan.distance_nm <= 200,
+        "Short keyword should cap at 200nm, got {}nm",
         plan.distance_nm
     );
-    assert_eq!(plan.origin.id, "EGLL");
-    // Glider range 5–60nm: only DEST_CLOSE (~12nm) is in range; DEST_FAR is >60nm
-    assert_eq!(plan.destination.id, "DEST_CLOSE");
 }
 
 #[test]

@@ -105,4 +105,13 @@ mod tests {
         assert!(r.is_some(), "Should find Alaska by name");
         assert_eq!(r.unwrap().id, "US:AK");
     }
+
+    #[test]
+    fn test_search_washington_bare() {
+        let index = RegionIndex::new();
+        // Bare "washington" should resolve to US:WA by exact name match
+        let r = index.search("washington");
+        assert!(r.is_some(), "Should find Washington State by exact name");
+        assert_eq!(r.unwrap().id, "US:WA");
+    }
 }
