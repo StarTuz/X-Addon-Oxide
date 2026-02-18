@@ -63,7 +63,8 @@ crates/
 - `logbook.rs` - X-Plane Pilot.txt parsing (character-perfect for X-Plane 12)
 - `apt_dat.rs` - Parser for X-Plane `apt.dat` airport data files (runways, coordinates, ICAO codes, datum row 1302)
 - `groups.rs` - User-defined tag/group management for scenery packs (persisted per-config)
-- `flight_gen.rs` - Flight plan generation: airport matching (includes "British Isles" region support), route building, failure logging, multi-format export
+- `flight_gen.rs` - Flight plan generation: airport matching, route building, failure logging, multi-format export. `AirportPool` is the public type for pre-indexed airport sets; use `generate_flight_with_pool()` for repeated generation without re-scanning. Bundled data assets (`flight_context_bundle.json`, `flight_context_pois_overlay.json`, `icao_to_wikipedia.csv`) are embedded via `include_bytes!` and loaded by `get_bundled_flight_context()`, `get_poi_overlay()`, `get_icao_to_wikipedia()`.
+- `data/` - Embedded binary assets: `flight_context_bundle.json` (63 airport history snippets), `flight_context_pois_overlay.json` (curated POIs for EGLL/LIRF), `icao_to_wikipedia.csv` (ICAO→Wikipedia title map for ~16k airports)
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
   - `ini_handler.rs` - Reads/writes `scenery_packs.ini` with raw_path round-trip preservation
   - `sorter.rs` - Smart sort using stable `sort_by` to preserve manual pins
@@ -82,26 +83,29 @@ Rules-based heuristics engine (not ML despite the name) that:
 - **Flight preferences** (schema v10): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; used by flight gen to prefer airports/remember last flight for region-based prompts
 - Lower score = higher priority (inverted from category scores)
 
+**`geo/` module** — `RegionIndex` backed by bundled `regions.json`. Provides `Region` (with one or more `BoundingBox` spans) and fuzzy `search(query)` for resolving natural-language region names (e.g., "British Isles", "Alaska") to bounding boxes used by flight gen for filtering airports.
+
 ### x-adox-gui
 
-Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~10800 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
+Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~11084 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
 
 **Key landmarks in `main.rs`** (use these to navigate):
 
 - `enum Message` (~line 167) — all message variants, grouped by feature
-- `struct App` (~line 580) — all application state fields
-- `fn update()` (~line 1164) — message handling / business logic dispatch
-- `fn subscription()` (~line 4544) — event subscriptions (timers, keyboard)
-- `fn view()` (~line 4630) — top-level view routing by tab
-- `fn view_scenery()` (~line 6854) — scenery tab layout
-- `fn view_scenery_basket()` (~line 7169) — scenery basket panel (selection, bulk toggle)
-- `fn view_addon_list()` (~line 8316) — reusable list for plugins/CSLs
-- `fn view_aircraft_tree()` (~line 8581) — aircraft tree with smart view
+- `struct App` (~line 587) — all application state fields
+- `fn update()` (~line 1307) — message handling / business logic dispatch
+- `fn view_flight_context_window()` (~line 1067) — detached draggable flight context panel
+- `fn subscription()` (~line 4784) — event subscriptions (timers, keyboard)
+- `fn view()` (~line 4902) — top-level view routing by tab
+- `fn view_scenery()` (~line 7144) — scenery tab layout
+- `fn view_scenery_basket()` (~line 7459) — scenery basket panel (selection, bulk toggle)
+- `fn view_addon_list()` (~line 8606) — reusable list for plugins/CSLs
+- `fn view_aircraft_tree()` (~line 8871) — aircraft tree with smart view
 
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, FlightGenerator, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
 - `style.rs` - Dark theme with neon glow effects and animated splash screen (driven by `animation_time` state)
-- `flight_gen_gui.rs` - Chat-based flight plan generator UI (natural language input, Regenerate, format selection, export; “Remember this flight”, “Prefer this origin/destination” persist to BitNet)
+- `flight_gen_gui.rs` - Chat-based flight plan generator UI (natural language input, Regenerate, format selection, export; "Remember this flight", "Prefer this origin/destination" persist to BitNet). Also contains Wikipedia/Wikidata POI fetch functions — see `docs/FLIGHT_CONTEXT.md` for the full architecture of the Flight Context system (bundled data + per-ICAO cache + live API fetch).
 - **Drag-and-Drop**:
   - Parity-first design: Drops trigger physical move + pin + save to `scenery_packs.ini`
   - The `save_scenery_packs` helper does a "dumb write" of exact GUI state, bypassing the SceneryManager load/merge cycle for responsiveness
@@ -226,6 +230,7 @@ Follow conventional commits: `feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `release
 - Regression tests use naming convention `regression_*.rs` in `crates/x-adox-core/tests/`
 - If you create a new test file, run it explicitly: `cargo test -p <crate> --test <filename>`
 - **Env var tests must serialize**: `X_ADOX_CONFIG_DIR` is process-global. Tests that call `set_var("X_ADOX_CONFIG_DIR", ...)` must acquire a shared `static ENV_MUTEX: Mutex<()>` to avoid racing. See `regression_hashing_migration.rs` for the pattern.
+- **Flight gen tests**: `flight_gen_stress.rs` runs randomized prompts; set `STRESS_SEED=<u64>` for reproducible failures. Run with `--nocapture` to see per-iteration output. `flight_gen_robustness.rs` and `flight_gen_test.rs` cover deterministic edge cases.
 
 ## CI/CD
 

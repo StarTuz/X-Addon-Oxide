@@ -253,6 +253,8 @@ enum Message {
 
     // Flight Generator
     FlightGen(flight_gen_gui::Message),
+    /// Global apt.dat airports loaded in the background for flight generation.
+    FlightGenBaseAirportsLoaded(Vec<x_adox_core::apt_dat::Airport>),
     /// Result of save-file export (FMS / LNM).
     FlightGenExportSaved(Result<PathBuf, String>),
     /// Result of Phase 2b fetch context (API + cache).
@@ -418,6 +420,9 @@ enum Message {
     FlightContextWindowDragStart,
     FlightContextWindowDragged(Point),
     FlightContextWindowDragEnd,
+    FlightContextResizeStart(ResizeEdge),
+    FlightContextResized(Point),
+    FlightContextResizeEnd,
     ModifiersChanged(keyboard::Modifiers),
 
     // Backup & Restore
@@ -760,6 +765,8 @@ struct App {
     pub flight_context_window_offset: iced::Vector,
     pub flight_context_drag_origin: Option<Point>,
     pub is_flight_context_dragging: bool,
+    pub flight_context_window_size: iced::Vector,
+    pub active_context_resize_edge: Option<ResizeEdge>,
     // Modal
     active_modal: Option<ModalState>,
 }
@@ -973,6 +980,8 @@ impl App {
             flight_context_window_offset: iced::Vector::new(400.0, 100.0),
             flight_context_drag_origin: None,
             is_flight_context_dragging: false,
+            flight_context_window_size: iced::Vector::new(420.0, 520.0),
+            active_context_resize_edge: None,
             active_modal: None,
         };
 
@@ -1122,12 +1131,63 @@ impl App {
         let content = scrollable(self.flight_gen.view_context_content(plan).map(Message::FlightGen))
             .height(Length::Fill);
 
-        container(column![header, toolbar, content].spacing(10))
-            .width(Length::Fixed(420.0))
-            .height(Length::Fixed(520.0))
+        let inner = container(column![header, toolbar, content].spacing(10))
+            .width(Length::Fill)
+            .height(Length::Fill)
             .style(style::container_modal)
-            .padding(15)
-            .into()
+            .padding(15);
+
+        // Wrap in a stack with resize edge/corner handles
+        container(
+            stack![
+                inner,
+                // Top edge
+                mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
+                    .on_press(Message::FlightContextResizeStart(ResizeEdge::Top))
+                    .interaction(mouse::Interaction::ResizingVertically),
+                // Bottom edge
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(Length::Fill).height(5))
+                        .on_press(Message::FlightContextResizeStart(ResizeEdge::Bottom))
+                        .interaction(mouse::Interaction::ResizingVertically)
+                ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
+                // Left edge
+                mouse_area(container(iced::widget::horizontal_space()).width(5).height(Length::Fill))
+                    .on_press(Message::FlightContextResizeStart(ResizeEdge::Left))
+                    .interaction(mouse::Interaction::ResizingHorizontally),
+                // Right edge
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(5).height(Length::Fill))
+                        .on_press(Message::FlightContextResizeStart(ResizeEdge::Right))
+                        .interaction(mouse::Interaction::ResizingHorizontally)
+                ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
+                // Top Left corner
+                mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                    .on_press(Message::FlightContextResizeStart(ResizeEdge::TopLeft))
+                    .interaction(mouse::Interaction::ResizingDiagonallyDown),
+                // Top Right corner
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                        .on_press(Message::FlightContextResizeStart(ResizeEdge::TopRight))
+                        .interaction(mouse::Interaction::ResizingDiagonallyUp)
+                ).width(Length::Fill).align_x(iced::alignment::Horizontal::Right),
+                // Bottom Left corner
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                        .on_press(Message::FlightContextResizeStart(ResizeEdge::BottomLeft))
+                        .interaction(mouse::Interaction::ResizingDiagonallyUp)
+                ).height(Length::Fill).align_y(iced::alignment::Vertical::Bottom),
+                // Bottom Right corner
+                container(
+                    mouse_area(container(iced::widget::horizontal_space()).width(10).height(10))
+                        .on_press(Message::FlightContextResizeStart(ResizeEdge::BottomRight))
+                        .interaction(mouse::Interaction::ResizingDiagonallyDown)
+                ).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom),
+            ]
+        )
+        .width(Length::Fixed(self.flight_context_window_size.x))
+        .height(Length::Fixed(self.flight_context_window_size.y))
+        .into()
     }
 
     fn check_loading_complete(&mut self) {
@@ -1285,6 +1345,23 @@ impl App {
                 if tab == Tab::Utilities {
                     if let Some(log_path) = &self.selected_logbook_path {
                         return Task::perform(load_logbook_data(log_path.0.clone()), Message::LogbookLoaded);
+                    }
+                }
+
+                // Eagerly load global airports when the Flight Generator tab is first opened,
+                // so the airport pool is ready before the user submits a prompt.
+                if tab == Tab::FlightGenerator
+                    && self.flight_gen.base_airports.is_none()
+                    && self.flight_gen.base_airports_loading.is_none()
+                {
+                    if let Some(root) = self.xplane_root.clone() {
+                        self.flight_gen.base_airports_loading = Some("Loading global airports…".to_string());
+                        return Task::perform(
+                            async move {
+                                x_adox_core::flight_gen::load_base_airports(&root)
+                            },
+                            Message::FlightGenBaseAirportsLoaded,
+                        );
                     }
                 }
 
@@ -3683,6 +3760,13 @@ impl App {
                 self.status = "JSON imported. Click Save to apply.".to_string();
                 Task::none()
             }
+            Message::FlightGenBaseAirportsLoaded(airports) => {
+                let count = airports.len();
+                self.flight_gen.base_airports = Some(airports);
+                self.flight_gen.base_airports_loading = None;
+                log::info!("[flight_gen] Global airport pool ready: {} airports", count);
+                Task::none()
+            }
             Message::FlightGen(msg) => {
                 match &msg {
                     flight_gen_gui::Message::ToggleFlightContextWindow => {
@@ -4451,6 +4535,79 @@ impl App {
                 self.flight_context_drag_origin = None;
                 Task::none()
             }
+            Message::FlightContextResizeStart(edge) => {
+                self.active_context_resize_edge = Some(edge);
+                self.flight_context_drag_origin = None;
+                Task::none()
+            }
+            Message::FlightContextResized(pos) => {
+                if let (Some(origin), Some(edge)) = (self.flight_context_drag_origin, self.active_context_resize_edge) {
+                    let delta = pos - origin;
+
+                    match edge {
+                        ResizeEdge::Top => {
+                            let new_height = (self.flight_context_window_size.y - delta.y).max(200.0);
+                            let actual_dy = self.flight_context_window_size.y - new_height;
+                            self.flight_context_window_size.y = new_height;
+                            self.flight_context_window_offset.y += actual_dy;
+                        }
+                        ResizeEdge::Bottom => {
+                            self.flight_context_window_size.y = (self.flight_context_window_size.y + delta.y).max(200.0);
+                        }
+                        ResizeEdge::Left => {
+                            let new_width = (self.flight_context_window_size.x - delta.x).max(250.0);
+                            let actual_dx = self.flight_context_window_size.x - new_width;
+                            self.flight_context_window_size.x = new_width;
+                            self.flight_context_window_offset.x += actual_dx;
+                        }
+                        ResizeEdge::Right => {
+                            self.flight_context_window_size.x = (self.flight_context_window_size.x + delta.x).max(250.0);
+                        }
+                        ResizeEdge::TopLeft => {
+                            let new_height = (self.flight_context_window_size.y - delta.y).max(200.0);
+                            let actual_dy = self.flight_context_window_size.y - new_height;
+                            self.flight_context_window_size.y = new_height;
+                            self.flight_context_window_offset.y += actual_dy;
+                            let new_width = (self.flight_context_window_size.x - delta.x).max(250.0);
+                            let actual_dx = self.flight_context_window_size.x - new_width;
+                            self.flight_context_window_size.x = new_width;
+                            self.flight_context_window_offset.x += actual_dx;
+                        }
+                        ResizeEdge::TopRight => {
+                            let new_height = (self.flight_context_window_size.y - delta.y).max(200.0);
+                            let actual_dy = self.flight_context_window_size.y - new_height;
+                            self.flight_context_window_size.y = new_height;
+                            self.flight_context_window_offset.y += actual_dy;
+                            self.flight_context_window_size.x = (self.flight_context_window_size.x + delta.x).max(250.0);
+                        }
+                        ResizeEdge::BottomLeft => {
+                            self.flight_context_window_size.y = (self.flight_context_window_size.y + delta.y).max(200.0);
+                            let new_width = (self.flight_context_window_size.x - delta.x).max(250.0);
+                            let actual_dx = self.flight_context_window_size.x - new_width;
+                            self.flight_context_window_size.x = new_width;
+                            self.flight_context_window_offset.x += actual_dx;
+                        }
+                        ResizeEdge::BottomRight => {
+                            self.flight_context_window_size.y = (self.flight_context_window_size.y + delta.y).max(200.0);
+                            self.flight_context_window_size.x = (self.flight_context_window_size.x + delta.x).max(250.0);
+                        }
+                    }
+
+                    // Clamp offset
+                    self.flight_context_window_offset.x = self.flight_context_window_offset.x.max(0.0);
+                    self.flight_context_window_offset.y = self.flight_context_window_offset.y.max(0.0);
+
+                    self.flight_context_drag_origin = Some(pos);
+                } else {
+                    self.flight_context_drag_origin = Some(pos);
+                }
+                Task::none()
+            }
+            Message::FlightContextResizeEnd => {
+                self.active_context_resize_edge = None;
+                self.flight_context_drag_origin = None;
+                Task::none()
+            }
             Message::BasketResizeStart(edge) => {
                 self.active_resize_edge = Some(edge);
                 self.basket_drag_origin = None;
@@ -4721,11 +4878,26 @@ impl App {
             Subscription::none()
         };
 
+        let context_resizing = if self.active_context_resize_edge.is_some() {
+            event::listen_with(|event, _status, _window| match event {
+                Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                    Some(Message::FlightContextResized(position))
+                }
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    Some(Message::FlightContextResizeEnd)
+                }
+                _ => None,
+            })
+        } else {
+            Subscription::none()
+        };
+
         let tick = if self.loading_state.is_loading
             || self.drag_context.is_some()
             || self.is_basket_dragging
             || self.is_flight_context_dragging
             || self.active_resize_edge.is_some()
+            || self.active_context_resize_edge.is_some()
             || self.tile_manager.has_pending()
             || !self.map_initialized
         {
@@ -4746,6 +4918,7 @@ impl App {
             basket_dragging,
             context_dragging,
             basket_resizing,
+            context_resizing,
             tick,
             kb_sub,
             window_sub,

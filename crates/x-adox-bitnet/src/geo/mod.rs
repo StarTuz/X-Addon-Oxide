@@ -42,14 +42,17 @@ impl Region {
     }
 }
 
+use std::sync::Arc;
+
 pub struct RegionIndex {
-    regions: Vec<Region>,
+    regions: Arc<Vec<Region>>,
 }
 
 impl RegionIndex {
     pub fn new() -> Self {
+        static CACHE: crate::geo::data::CachedRegions = crate::geo::data::CachedRegions::new();
         Self {
-            regions: data::get_all_regions(),
+            regions: Arc::clone(CACHE.get_arc()),
         }
     }
 

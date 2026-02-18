@@ -77,7 +77,37 @@ pub fn load_base_airports(xplane_root: &Path) -> Vec<Airport> {
     all
 }
 
-// --- Flight context (3.2 history & flavor) ---------------------------------
+/// Pre-computed airport pool for high-performance lookups.
+pub struct AirportPool<'a> {
+    pub airports: Vec<&'a Airport>,
+    pub icao_map: std::collections::HashMap<&'a str, &'a Airport>,
+    pub name_map: std::collections::HashMap<String, Vec<usize>>, // Lowercase name -> indices in airports
+    pub search_names: Vec<String>, // Parallel to airports, pre-lowercased
+}
+
+impl<'a> AirportPool<'a> {
+    pub fn new(source: &'a [Airport]) -> Self {
+        let airports: Vec<&Airport> = source.iter().collect();
+        let mut icao_map = std::collections::HashMap::with_capacity(airports.len());
+        let mut name_map = std::collections::HashMap::with_capacity(airports.len());
+        let mut search_names = Vec::with_capacity(airports.len());
+        for (i, apt) in airports.iter().enumerate() {
+            icao_map.insert(apt.id.as_str(), *apt);
+            let lower = apt.name.to_lowercase();
+            name_map
+                .entry(lower.clone())
+                .or_insert_with(Vec::new)
+                .push(i);
+            search_names.push(lower);
+        }
+        Self {
+            airports,
+            icao_map,
+            name_map,
+            search_names,
+        }
+    }
+}
 
 /// A point of interest within ~10 nm of an airport (landmark, event, etc.).
 #[derive(Debug, Clone)]
@@ -489,6 +519,7 @@ fn estimate_runway_reqs(a: &DiscoveredAddon, prompt: &FlightPrompt) -> (u32, Sur
     }
 }
 
+/// Orchestrates flight generation based on scenery packs, available aircraft, and a natural language prompt.
 pub fn generate_flight(
     packs: &[SceneryPack],
     aircraft_list: &[DiscoveredAddon],
@@ -496,7 +527,39 @@ pub fn generate_flight(
     base_airports: Option<&[Airport]>,
     prefs: Option<&HeuristicsConfig>,
 ) -> Result<FlightPlan, String> {
+    generate_flight_with_pool(packs, aircraft_list, prompt_str, base_airports, prefs, None)
+}
+
+/// A high-performance version of [generate_flight] that can use a pre-computed airport pool.
+pub fn generate_flight_with_pool(
+    packs: &[SceneryPack],
+    aircraft_list: &[DiscoveredAddon],
+    prompt_str: &str,
+    base_airports: Option<&[Airport]>,
+    prefs: Option<&HeuristicsConfig>,
+    precomputed_pool: Option<&AirportPool>,
+) -> Result<FlightPlan, String> {
     let prompt = FlightPrompt::parse(prompt_str);
+    generate_flight_from_prompt(
+        packs,
+        aircraft_list,
+        &prompt,
+        base_airports,
+        prefs,
+        precomputed_pool,
+    )
+}
+
+/// Core generation logic accepting a pre-parsed [FlightPrompt] struct.
+/// Use this for maximum throughput (skips regex parsing).
+pub fn generate_flight_from_prompt(
+    packs: &[SceneryPack],
+    aircraft_list: &[DiscoveredAddon],
+    prompt: &FlightPrompt,
+    base_airports: Option<&[Airport]>,
+    prefs: Option<&HeuristicsConfig>,
+    precomputed_pool: Option<&AirportPool>,
+) -> Result<FlightPlan, String> {
     log::debug!(
         "[flight_gen] origin={:?} dest={:?}",
         prompt.origin,
@@ -560,52 +623,70 @@ pub fn generate_flight(
     };
 
     // 1. Build total airport pool (packs + base layer merged)
-    let mut pool: BTreeMap<String, Airport> = BTreeMap::new();
+    // FAST PATH: If no packs to merge and only base layer is provided, avoid the expensive BTreeMap + cloning.
+    let all_airports_owned: Vec<Airport>;
+    let all_airports_ref_owned: Vec<&Airport>;
+    let all_airports: &[&Airport] = if let Some(p) = precomputed_pool {
+        &p.airports
+    } else if packs.is_empty() {
+        all_airports_ref_owned = base_slice.iter().collect();
+        &all_airports_ref_owned
+    } else {
+        let mut pool: BTreeMap<String, Airport> = BTreeMap::new();
 
-    // Add base layer first (baseline data)
-    for apt in base_slice {
-        pool.insert(apt.id.to_uppercase(), apt.clone());
-    }
+        // Add base layer first (baseline data)
+        for apt in base_slice {
+            pool.insert(apt.id.to_uppercase(), apt.clone());
+        }
 
-    // Add pack airports (higher priority for name/metadata, merge runways)
-    for pack in pack_iter {
-        for apt in &pack.airports {
-            let key = apt.id.to_uppercase();
-            if let Some(existing) = pool.get_mut(&key) {
-                // Name: Pack priority
-                existing.name = apt.name.clone();
+        // Add pack airports (higher priority for name/metadata, merge runways)
+        for pack in pack_iter {
+            for apt in &pack.airports {
+                let key = apt.id.to_uppercase();
+                if let Some(existing) = pool.get_mut(&key) {
+                    // Name: Pack priority
+                    existing.name = apt.name.clone();
 
-                // Lat/Lon: Pack priority if present
-                if apt.lat.is_some() {
-                    existing.lat = apt.lat;
-                    existing.lon = apt.lon;
-                    existing.proj_x = apt.proj_x;
-                    existing.proj_y = apt.proj_y;
+                    // Lat/Lon: Pack priority if present
+                    if apt.lat.is_some() {
+                        existing.lat = apt.lat;
+                        existing.lon = apt.lon;
+                        existing.proj_x = apt.proj_x;
+                        existing.proj_y = apt.proj_y;
+                    }
+
+                    // Max Runway Length: Always take the LONGEST found across all sources
+                    let p_len = apt.max_runway_length.unwrap_or(0);
+                    let e_len = existing.max_runway_length.unwrap_or(0);
+                    if p_len > e_len || existing.max_runway_length.is_none() {
+                        existing.max_runway_length = apt.max_runway_length;
+                        existing.surface_type = apt.surface_type;
+                    } else if p_len == e_len && existing.surface_type.is_none() {
+                        existing.surface_type = apt.surface_type;
+                    }
+                } else {
+                    pool.insert(key, apt.clone());
                 }
-
-                // Max Runway Length: Always take the LONGEST found across all sources
-                // This prevents partial scenery packs from "shrinking" or deleting runways
-                let p_len = apt.max_runway_length.unwrap_or(0);
-                let e_len = existing.max_runway_length.unwrap_or(0);
-                if p_len > e_len || existing.max_runway_length.is_none() {
-                    existing.max_runway_length = apt.max_runway_length;
-                    existing.surface_type = apt.surface_type;
-                } else if p_len == e_len && existing.surface_type.is_none() {
-                    existing.surface_type = apt.surface_type;
-                }
-            } else {
-                pool.insert(key, apt.clone());
             }
         }
-    }
-
-    let all_airports_vec: Vec<Airport> = pool.into_values().collect();
-    let all_airports: Vec<&Airport> = all_airports_vec.iter().collect();
+        all_airports_owned = pool.into_values().collect();
+        all_airports_ref_owned = all_airports_owned.iter().collect();
+        &all_airports_ref_owned
+    };
 
     log::debug!(
         "[flight_gen] merged airport pool: {} unique ICAOs",
         all_airports.len()
     );
+
+    // 1b. Build ICAO index for O(1) lookups
+    let icao_index_owned: std::collections::HashMap<&str, &Airport>;
+    let icao_index = if let Some(p) = precomputed_pool {
+        &p.icao_map
+    } else {
+        icao_index_owned = all_airports.iter().map(|a| (a.id.as_str(), *a)).collect();
+        &icao_index_owned
+    };
 
     // Refined Origin Selection
     let mut candidate_origins: Vec<&Airport> = match prompt.origin {
@@ -649,17 +730,60 @@ pub fn generate_flight(
         }
         Some(LocationConstraint::AirportName(ref name)) => score_airports_by_name(
             &all_airports,
+            precomputed_pool.map(|p| p.search_names.as_slice()),
+            precomputed_pool.map(|p| &p.name_map),
             name,
             prompt.ignore_guardrails,
             selected_aircraft,
             min_rwy,
             req_surface,
         ),
-        Some(LocationConstraint::ICAO(ref code)) => all_airports
-            .iter()
-            .filter(|a| a.id.eq_ignore_ascii_case(code))
-            .copied()
-            .collect(),
+        Some(LocationConstraint::NearCity { lat, lon, .. }) => {
+            let mut nearby: Vec<(&Airport, f64)> = all_airports
+                .iter()
+                .filter_map(|apt| {
+                    if let (Some(alat), Some(alon)) = (apt.lat, apt.lon) {
+                        // Spatial Pruning: Bounding box check (+/- 1.0 deg is roughly 60nm)
+                        if (alat - lat).abs() > 1.0 || (alon - lon).abs() > 1.5 {
+                            return None;
+                        }
+
+                        let dist = haversine_nm(lat, lon, alat, alon);
+                        if dist <= 50.0
+                            && (prompt.ignore_guardrails
+                                || check_safety_constraints(
+                                    apt,
+                                    selected_aircraft,
+                                    min_rwy,
+                                    req_surface,
+                                ))
+                        {
+                            Some((*apt, dist))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            nearby.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            nearby.into_iter().map(|(apt, _)| apt).collect()
+        }
+        Some(LocationConstraint::ICAO(ref code)) => {
+            // Priority: Index lookup (case-insensitive keys would be better, but we can try exact and then fallback)
+            let mut results = Vec::new();
+            if let Some(apt) = icao_index.get(code.as_str()) {
+                results.push(*apt);
+            } else {
+                // FALLBACK: case-insensitive scan (if code is not uppercase)
+                let code_upper = code.to_uppercase();
+                if let Some(apt) = icao_index.get(code_upper.as_str()) {
+                    results.push(*apt);
+                }
+            }
+            results
+        }
         _ => {
             // Wildcard origin: Filter by constraints
             all_airports
@@ -676,7 +800,7 @@ pub fn generate_flight(
         }
     };
 
-    // Fallback: use embedded seed airports when no pack has data for this region
+    // Fallback: use embedded seed airports when no pack has data for this region/city.
     #[allow(unused_assignments)]
     let mut seed_origin_fallback: Vec<Airport> = Vec::new();
     if candidate_origins.is_empty() {
@@ -685,15 +809,32 @@ pub fn generate_flight(
             if !seed_origin_fallback.is_empty() {
                 candidate_origins = seed_origin_fallback.iter().collect();
             }
+        } else if let Some(LocationConstraint::NearCity { lat, lon, .. }) = &prompt.origin {
+            // No pack airports near the city — derive region from coordinates and use seeds.
+            for region in region_index.find_regions(*lat, *lon) {
+                let seeds = get_seed_airports_for_region(&region.id);
+                if !seeds.is_empty() {
+                    seed_origin_fallback = seeds;
+                    candidate_origins = seed_origin_fallback.iter().collect();
+                    break;
+                }
+            }
         }
     }
 
     if candidate_origins.is_empty() {
         log::debug!(
-            "[flight_gen] No departure candidates (origin={:?})",
-            prompt.origin
+            "[flight_gen] No departure candidates (origin={:?}) all_airports={}",
+            prompt.origin,
+            all_airports.len()
         );
         return Err("No suitable departure airport found.".to_string());
+    } else {
+        log::debug!(
+            "[flight_gen] Found {} departure candidates for {:?}",
+            candidate_origins.len(),
+            prompt.origin
+        );
     }
 
     // Apply flight preferences: preferred origin ICAOs first
@@ -736,6 +877,8 @@ pub fn generate_flight(
         }
     } else if let Some(LocationConstraint::AirportName(_)) = &prompt.origin {
         // FIXED: Do NOT shuffle if search was by name. Preserve the scoring from score_airports_by_name.
+    } else if let Some(LocationConstraint::NearCity { .. }) = &prompt.origin {
+        // NearCity: already sorted by proximity, don't shuffle.
     } else {
         candidate_origins.shuffle(&mut rng);
     }
@@ -827,18 +970,53 @@ pub fn generate_flight(
             }
             Some(LocationConstraint::AirportName(ref name)) => score_airports_by_name(
                 &all_airports,
+                precomputed_pool.map(|p| p.search_names.as_slice()),
+                precomputed_pool.map(|p| &p.name_map),
                 name,
-                prompt.ignore_guardrails,
+                true, // skip safety: user explicitly named this destination
                 selected_aircraft,
                 min_rwy,
                 req_surface,
             ),
-            Some(LocationConstraint::ICAO(ref code)) => all_airports
-                .iter()
-                .filter(|a| a.id.eq_ignore_ascii_case(code))
-                .copied()
-                .collect(),
-            _ => all_airports.clone(),
+            Some(LocationConstraint::NearCity { lat, lon, .. }) => {
+                // User explicitly named this city — skip safety constraints
+                // during candidate generation (they are handled in valid_dests).
+                let mut nearby: Vec<(&Airport, f64)> = all_airports
+                    .iter()
+                    .filter_map(|apt| {
+                        if let (Some(alat), Some(alon)) = (apt.lat, apt.lon) {
+                            // Spatial Pruning: Bounding box check (+/- 1.0 deg is roughly 60nm)
+                            if (alat - lat).abs() > 1.0 || (alon - lon).abs() > 1.5 {
+                                return None;
+                            }
+
+                            let dist = haversine_nm(lat, lon, alat, alon);
+                            if dist <= 50.0 {
+                                Some((*apt, dist))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                nearby.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                nearby.into_iter().map(|(apt, _)| apt).collect()
+            }
+            Some(LocationConstraint::ICAO(ref code)) => {
+                let mut results = Vec::new();
+                if let Some(apt) = icao_index.get(code.as_str()) {
+                    results.push(*apt);
+                } else {
+                    let code_upper = code.to_uppercase();
+                    if let Some(apt) = icao_index.get(code_upper.as_str()) {
+                        results.push(*apt);
+                    }
+                }
+                results
+            }
+            _ => all_airports.to_vec(),
         };
 
         // Fallback: use embedded seed airports when no pack has dests for this region
@@ -849,10 +1027,28 @@ pub fn generate_flight(
                 if !seed_dest_fallback.is_empty() {
                     candidate_dests = seed_dest_fallback.iter().collect();
                 }
+            } else if let Some(LocationConstraint::NearCity { lat, lon, .. }) =
+                &prompt.destination
+            {
+                // No pack airports near the city — derive region and use seeds.
+                for region in region_index.find_regions(*lat, *lon) {
+                    let seeds = get_seed_airports_for_region(&region.id);
+                    if !seeds.is_empty() {
+                        seed_dest_fallback = seeds;
+                        candidate_dests = seed_dest_fallback.iter().collect();
+                        break;
+                    }
+                }
             }
         }
 
         let candidate_dests_count = candidate_dests.len();
+        log::debug!(
+            "[flight_gen] origin='{}' found {} destination candidates for {:?}",
+            origin.id,
+            candidate_dests_count,
+            prompt.destination
+        );
         if candidate_dests_count == 0 {
             log::debug!(
                 "[flight_gen] origin='{}': candidate_dests is empty",
@@ -860,46 +1056,71 @@ pub fn generate_flight(
             );
         }
 
+        // Pre-calculate spatial bounds for pruning if origin has coordinates.
+        // When both endpoints are explicit (user named origin+dest), relax the bbox to the
+        // maximum possible distance so that distant-but-valid destinations aren't pruned
+        // before the haversine check can apply the `endpoints_explicit` relaxation.
+        let spatial_bounds = if let (Some(lat1), Some(lon1)) = (origin.lat, origin.lon) {
+            let lat_rad = lat1.to_radians();
+            let cos_lat = lat_rad.cos().abs().max(0.1);
+            let bbox_max = if endpoints_explicit { 20000.0 } else { max_dist };
+            let dlat = (bbox_max / 60.0) + 0.1;
+            let dlon = (bbox_max / (60.0 * cos_lat)) + 0.1;
+            Some((lat1, lon1, dlat, dlon))
+        } else {
+            None
+        };
+
         let valid_dests: Vec<&Airport> = candidate_dests
             .into_iter()
             .filter(|dest| {
-                if dest.id == origin.id {
+                // Exclude same airport as origin (by pointer or ICAO — needed when
+                // origin/dest come from different seed-fallback Vec<Airport> allocations).
+                if std::ptr::eq(dest, origin) || dest.id.eq_ignore_ascii_case(&origin.id) {
                     return false;
                 }
-                // Safety Check
-                if !prompt.ignore_guardrails {
-                    // Check safety but relax if keyword override present (e.g. Bush)
-                    // Or if destination is explicit, we might assume user knows best?
-                    // For now, respect runway limits unless Ignore Guardrails
-                    if !check_safety_constraints(dest, selected_aircraft, min_rwy, req_surface) {
-                        return false;
+                if let Some((lat1, lon1, dlat_lim, dlon_lim)) = spatial_bounds {
+                    if let (Some(lat2), Some(lon2)) = (dest.lat, dest.lon) {
+                        // SPATIAL PRUNING: Bounding box check before Haversine.
+                        // Use shortest longitude arc to handle date-line crossings correctly.
+                        let dlon_abs = (lon2 - lon1).abs();
+                        let dlon_wrap = dlon_abs.min(360.0 - dlon_abs);
+                        if (lat2 - lat1).abs() > dlat_lim || dlon_wrap > dlon_lim {
+                            return false;
+                        }
+
+                        let dist = haversine_nm(lat1, lon1, lat2, lon2);
+                        let result = if endpoints_explicit {
+                            // Allow very short flights if explicit
+                            dist > 2.0 && dist <= 20000.0
+                        } else {
+                            dist >= min_dist && dist <= max_dist
+                        };
+                        if !result {
+                            return false;
+                        }
                     }
                 }
 
-                if let (Some(lat1), Some(lon1), Some(lat2), Some(lon2)) =
-                    (origin.lat, origin.lon, dest.lat, dest.lon)
-                {
-                    let dist = haversine_nm(lat1, lon1, lat2, lon2);
-                    let result = if endpoints_explicit {
-                        // Allow very short flights if explicit
-                        dist > 2.0 && dist <= 20000.0
-                    } else {
-                        dist >= min_dist && dist <= max_dist
-                    };
-                    if !result {
-                        log::debug!(
-                            "[flight_gen] dest='{}' rejected by range: dist={:.1} min={:.1} max={:.1} explicit={}",
-                            dest.id,
-                            dist,
-                            min_dist,
-                            max_dist,
-                            endpoints_explicit
-                        );
+                // Safety Check:
+                // • NearCity / AirportName destinations: engine applied safety during candidate
+                //   generation; skip here so the user's city/name choice is always honoured.
+                // • ICAO destination with KNOWN data: apply guardrails — user named a specific
+                //   airport whose data clearly violates aircraft constraints (e.g. 747→soft strip).
+                // • ICAO destination with NO data (missing runway/surface): skip safety — the
+                //   airport is in the database but lacks metadata; trust the user's explicit pick.
+                let dest_is_icao =
+                    matches!(&prompt.destination, Some(LocationConstraint::ICAO(_)));
+                if !prompt.ignore_guardrails && dest_is_icao {
+                    let has_no_data =
+                        dest.max_runway_length.is_none() && dest.surface_type.is_none();
+                    if !has_no_data
+                        && !check_safety_constraints(dest, selected_aircraft, min_rwy, req_surface)
+                    {
+                        return false;
                     }
-                    result
-                } else {
-                    false
                 }
+                true
             })
             .collect();
         log::debug!(
@@ -936,6 +1157,9 @@ pub fn generate_flight(
             {
                 // FIXED: Preserve scoring for name-based destination search.
                 // Pick the first one (highest score) from the valid list.
+                *valid_dests.first().unwrap()
+            } else if let Some(LocationConstraint::NearCity { .. }) = &prompt.destination {
+                // NearCity: pick closest (already sorted by proximity in candidate list).
                 *valid_dests.first().unwrap()
             } else if preferred_dest_icaos.is_empty() {
                 *valid_dests.choose(&mut rng).unwrap()
@@ -1066,6 +1290,8 @@ fn check_safety_constraints(
 
 fn score_airports_by_name<'a>(
     airports: &[&'a Airport],
+    search_names: Option<&[String]>,
+    name_map: Option<&std::collections::HashMap<String, Vec<usize>>>,
     search_str: &str,
     ignore_guardrails: bool,
     selected_aircraft: &DiscoveredAddon,
@@ -1073,48 +1299,76 @@ fn score_airports_by_name<'a>(
     req_surface: SurfaceType,
 ) -> Vec<&'a Airport> {
     let search_lower = search_str.to_lowercase();
+    let search_tokens: Vec<&str> = search_lower.split_whitespace().collect();
+
+    // FAST PATH: Exact Name Match via name_map
+    if let (Some(nm), Some(_sn)) = (name_map, search_names) {
+        if let Some(indices) = nm.get(&search_lower) {
+            let mut results = Vec::new();
+            for &idx in indices {
+                let apt = airports[idx];
+                if ignore_guardrails
+                    || check_safety_constraints(apt, selected_aircraft, min_rwy, req_surface)
+                {
+                    results.push(apt);
+                }
+            }
+            if !results.is_empty() {
+                return results;
+            }
+        }
+    }
+
     let mut scored: Vec<(i32, &'a Airport)> = airports
         .iter()
-        .copied()
-        .filter(|apt| {
+        .enumerate()
+        .map(|(i, &apt)| (i, apt))
+        .filter(|(_, apt)| {
             if !ignore_guardrails {
                 check_safety_constraints(apt, selected_aircraft, min_rwy, req_surface)
             } else {
                 true
             }
         })
-        .map(|apt| {
-            let name_lower = apt.name.to_lowercase();
-            let id_lower = apt.id.to_lowercase();
+        .map(|(idx, apt)| {
             let mut score = 0;
 
-            if id_lower == search_lower {
+            // ID Match (Case-insensitive, no allocation)
+            if apt.id.eq_ignore_ascii_case(&search_lower) {
                 score += 1000;
-            } else if id_lower.contains(&search_lower) {
+            } else if apt.id.len() < 16 && apt.id.to_lowercase().contains(&search_lower) {
+                // We still do one lowercase for ID if it's a substring match, but ID is short.
                 score += 500;
             }
 
-            if name_lower == search_lower {
+            if apt.name.eq_ignore_ascii_case(&search_lower) {
                 score += 800;
-            } else if name_lower.contains(&search_lower) {
-                score += 300;
-            }
+            } else {
+                let name_lower_owned: String;
+                let name_lower: &str = if let Some(sn) = search_names {
+                    &sn[idx]
+                } else {
+                    name_lower_owned = apt.name.to_lowercase();
+                    &name_lower_owned
+                };
 
-            // Token-based matching: Give a boost for each word in the search string that matches a word in the airport name.
-            let search_tokens: Vec<&str> = search_lower.split_whitespace().collect();
-            let name_words: Vec<&str> = name_lower.split_whitespace().collect();
+                if name_lower.contains(&search_lower) {
+                    score += 300;
+                }
 
-            for token in &search_tokens {
-                if name_words.iter().any(|&w| w == *token) {
-                    score += 500; // INCREASED: Word match is much more important
-                } else if name_lower.contains(token) {
-                    score += 200; // INCREASED: Contained token is more important
+                // Token-based matching
+                for token in &search_tokens {
+                    if name_lower.contains(token) {
+                        score += 200;
+                        if name_lower.split_whitespace().any(|w| w == *token) {
+                            score += 300;
+                        }
+                    }
                 }
             }
 
-            // Accuracy Boost: If search_str contains a region token (e.g. "Paris FR" or "London UK")
-            // check if the airport's ICAO matches that region's prefix.
-            for token in search_tokens {
+            // Accuracy Boost: If search_str contains a region token
+            for token in &search_tokens {
                 if token.len() >= 2 {
                     if let Some(region_id) = try_map_token_to_region_id(token) {
                         if let Some(prefixes) = icao_prefixes_for_region(region_id) {
@@ -1389,9 +1643,10 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
             seed_airport("KATL", "Atlanta", 33.6367, -84.4281),
         ],
         "MX" => vec![
-            seed_airport("MMMX", "Mexico City", 19.4363, -99.0721),
+            seed_airport("MMMX", "Mexico City Benito Juarez", 19.4363, -99.0721),
             seed_airport("MMUN", "Cancun", 21.0365, -86.8770),
             seed_airport("MMMD", "Monterrey", 25.7785, -100.1070),
+            seed_airport("MMGL", "Guadalajara Miguel Hidalgo", 20.5218, -103.3107),
         ],
         "CA" => vec![
             seed_airport("CYVR", "Vancouver", 49.1967, -123.1815),
@@ -1433,9 +1688,71 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
             seed_airport("GMMX", "Marrakech Menara", 31.6069, -8.0363),
         ],
         "EG" => vec![seed_airport("HECA", "Cairo Intl", 30.1219, 31.4056)],
-        // Asia-Pacific (new)
+        // Asia-Pacific
+        "JP" => vec![
+            seed_airport("RJAA", "Tokyo Narita", 35.7653, 140.3856),
+            seed_airport("RJTT", "Tokyo Haneda", 35.5494, 139.7798),
+            seed_airport("RJBB", "Osaka Kansai", 34.4347, 135.2440),
+            seed_airport("RJOO", "Osaka Itami", 34.7855, 135.4380),
+            seed_airport("RJCC", "Sapporo New Chitose", 42.7752, 141.6922),
+            seed_airport("RJFF", "Fukuoka", 33.5858, 130.4511),
+            seed_airport("ROAH", "Okinawa Naha", 26.1958, 127.6461),
+        ],
+        "KR" => vec![
+            seed_airport("RKSI", "Seoul Incheon", 37.4691, 126.4510),
+            seed_airport("RKSS", "Seoul Gimpo", 37.5583, 126.7908),
+            seed_airport("RKPK", "Busan Gimhae", 35.1795, 128.9382),
+        ],
+        "CN" => vec![
+            seed_airport("ZBAA", "Beijing Capital", 40.0799, 116.6031),
+            seed_airport("ZBAD", "Beijing Daxing", 39.5093, 116.4105),
+            seed_airport("ZSPD", "Shanghai Pudong", 31.1434, 121.8052),
+            seed_airport("ZSSS", "Shanghai Hongqiao", 31.1979, 121.3362),
+            seed_airport("ZGGG", "Guangzhou Baiyun", 23.3924, 113.2990),
+            seed_airport("ZUCK", "Chongqing Jiangbei", 29.7192, 106.6417),
+            seed_airport("ZUUU", "Chengdu Shuangliu", 30.5783, 103.9472),
+            seed_airport("ZLXY", "Xi'an Xianyang", 34.4471, 108.7516),
+        ],
+        "IN" => vec![
+            seed_airport("VABB", "Mumbai Chhatrapati Shivaji", 19.0887, 72.8679),
+            seed_airport("VIDP", "Delhi Indira Gandhi", 28.5665, 77.1031),
+            seed_airport("VOMM", "Chennai", 12.9900, 80.1693),
+            seed_airport("VOBL", "Bangalore Kempegowda", 13.1979, 77.7063),
+            seed_airport("VECC", "Kolkata Netaji Subhas", 22.6527, 88.4463),
+            seed_airport("VAAH", "Ahmedabad Sardar Vallabhbhai Patel", 23.0772, 72.6347),
+        ],
+        "AU" => vec![
+            seed_airport("YSSY", "Sydney Kingsford Smith", -33.9461, 151.1772),
+            seed_airport("YMML", "Melbourne Tullamarine", -37.6733, 144.8430),
+            seed_airport("YBBN", "Brisbane", -27.3842, 153.1175),
+            seed_airport("YPPH", "Perth", -31.9403, 115.9669),
+            seed_airport("YPAD", "Adelaide", -34.9450, 138.5308),
+            seed_airport("YBCS", "Cairns", -16.8858, 145.7553),
+            seed_airport("YPDN", "Darwin", -12.4147, 130.8766),
+            seed_airport("YMHB", "Hobart", -42.8361, 147.5103),
+        ],
+        "ID" => vec![
+            seed_airport("WADD", "Bali Ngurah Rai", -8.7482, 115.1670),
+            seed_airport("WIII", "Jakarta Soekarno-Hatta", -6.1256, 106.6559),
+            seed_airport("WBSB", "Bandar Seri Begawan", 4.9442, 114.9283),
+            seed_airport("WAAA", "Makassar Sultan Hasanuddin", -5.0616, 119.5540),
+        ],
+        "TH" => vec![
+            seed_airport("VTBS", "Bangkok Suvarnabhumi", 13.6811, 100.7477),
+            seed_airport("VTBD", "Bangkok Don Mueang", 13.9126, 100.6072),
+            seed_airport("VTSP", "Phuket", 8.1132, 98.3169),
+            seed_airport("VTCC", "Chiang Mai", 18.7667, 98.9626),
+        ],
+        "VN" => vec![
+            seed_airport("VVTS", "Ho Chi Minh City Tan Son Nhat", 10.8188, 106.6519),
+            seed_airport("VVNB", "Hanoi Noi Bai", 21.2212, 105.8072),
+            seed_airport("VVDN", "Da Nang", 16.0439, 108.1993),
+        ],
         "SG" => vec![seed_airport("WSSS", "Singapore Changi", 1.3502, 103.9940)],
-        "MY" => vec![seed_airport("WMKK", "Kuala Lumpur Intl", 2.7456, 101.7099)],
+        "MY" => vec![
+            seed_airport("WMKK", "Kuala Lumpur Intl", 2.7456, 101.7099),
+            seed_airport("WMKC", "Kuala Lumpur City (Subang)", 3.1308, 101.5494),
+        ],
         "PH" => vec![
             seed_airport("RPLL", "Manila Ninoy Aquino", 14.5086, 121.0198),
             seed_airport("RPVM", "Cebu Mactan", 10.3097, 123.9792),
@@ -1443,31 +1760,118 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
         "HK" => vec![seed_airport("VHHH", "Hong Kong Intl", 22.3080, 113.9185)],
         "TW" => vec![seed_airport("RCTP", "Taipei Taoyuan", 25.0777, 121.2325)],
         "QA" => vec![seed_airport("OTHH", "Doha Hamad", 25.2731, 51.6081)],
+        "AE" => vec![
+            seed_airport("OMDB", "Dubai Intl", 25.2528, 55.3644),
+            seed_airport("OMAA", "Abu Dhabi", 24.4328, 54.6511),
+        ],
+        "SA" => vec![
+            seed_airport("OERK", "Riyadh King Khalid", 24.9576, 46.6988),
+            seed_airport("OEJN", "Jeddah King Abdulaziz", 21.6796, 39.1565),
+        ],
+        "TR" => vec![
+            seed_airport("LTFM", "Istanbul", 41.2753, 28.7519),
+            seed_airport("LTAI", "Antalya", 36.8988, 30.7992),
+        ],
+        "GR" => vec![
+            seed_airport("LGAV", "Athens Eleftherios Venizelos", 37.9364, 23.9445),
+            seed_airport("LGRP", "Rhodes Diagoras", 36.4054, 28.0862),
+        ],
+        "PT" => vec![
+            seed_airport("LPPT", "Lisbon Humberto Delgado", 38.7756, -9.1354),
+            seed_airport("LPPR", "Porto Francisco Sa Carneiro", 41.2481, -8.6814),
+        ],
+        "CU" => vec![seed_airport("MUHA", "Havana Jose Marti", 22.9892, -82.4091)],
+        "PA" => vec![seed_airport("MPTO", "Panama City Tocumen", 9.0714, -79.3835)],
+        "CR" => vec![seed_airport("MROC", "San Jose Juan Santamaria", 9.9939, -84.2088)],
+        "LK" => vec![seed_airport("VCBI", "Colombo Bandaranaike", 7.1808, 79.8841)],
+        "NP" => vec![seed_airport("VNKT", "Kathmandu Tribhuvan", 27.6966, 85.3591)],
+        "PK" => vec![
+            seed_airport("OPKC", "Karachi Jinnah", 24.9065, 67.1608),
+            seed_airport("OPLA", "Lahore Allama Iqbal", 31.5216, 74.4036),
+            seed_airport("OPRN", "Islamabad New", 33.6167, 73.0997),
+        ],
+        "BD" => vec![seed_airport("VGHS", "Dhaka Hazrat Shahjalal", 23.8433, 90.3978)],
+        "MM" => vec![seed_airport("VYYY", "Yangon", 16.9073, 96.1332)],
         "NZ" => vec![
             seed_airport("NZAA", "Auckland", -37.0082, 174.7917),
             seed_airport("NZWN", "Wellington", -41.3272, 174.8053),
             seed_airport("NZQN", "Queenstown", -45.0211, 168.7392),
+            seed_airport("NZCH", "Christchurch", -43.4894, 172.5322),
         ],
-        // South America (new)
-        "AR" => vec![seed_airport(
-            "SAEZ",
-            "Buenos Aires Ezeiza",
-            -34.8222,
-            -58.5358,
-        )],
+        "FJ" => vec![seed_airport("NFFN", "Nadi", -17.7554, 177.4431)],
+        // South America
+        "BR" => vec![
+            seed_airport("SBGR", "Sao Paulo Guarulhos", -23.4356, -46.4731),
+            seed_airport("SBGL", "Rio de Janeiro Galeao", -22.8099, -43.2505),
+            seed_airport("SBSV", "Salvador", -12.9086, -38.3225),
+            seed_airport("SBFZ", "Fortaleza", -3.7763, -38.5326),
+            seed_airport("SBPA", "Porto Alegre", -29.9944, -51.1714),
+            seed_airport("SBMN", "Manaus Eduardo Gomes", -3.0386, -60.0497),
+        ],
+        "AR" => vec![
+            seed_airport("SAEZ", "Buenos Aires Ezeiza", -34.8222, -58.5358),
+            seed_airport("SABE", "Buenos Aires Aeroparque", -34.5592, -58.4156),
+        ],
         "CO" => vec![seed_airport("SKBO", "Bogota El Dorado", 4.7016, -74.1469)],
-        "PE" => vec![seed_airport(
-            "SPJC",
-            "Lima Jorge Chavez",
-            -12.0219,
-            -77.1143,
-        )],
-        "CL" => vec![seed_airport(
-            "SCEL",
-            "Santiago Arturo Merino Benitez",
-            -33.3930,
-            -70.7858,
-        )],
+        "PE" => vec![seed_airport("SPJC", "Lima Jorge Chavez", -12.0219, -77.1143)],
+        "CL" => vec![seed_airport("SCEL", "Santiago Arturo Merino Benitez", -33.3930, -70.7858)],
+        "VE" => vec![seed_airport("SVMI", "Caracas Simon Bolivar", 10.6031, -66.9906)],
+        "EC" => vec![seed_airport("SEQU", "Quito Mariscal Sucre", -0.1292, -78.3576)],
+        "UY" => vec![seed_airport("SUMU", "Montevideo Carrasco", -34.8384, -56.0308)],
+        "PY" => vec![seed_airport("SGAS", "Asuncion Silvio Pettirossi", -25.2400, -57.5197)],
+        "BO" => vec![seed_airport("SLLP", "La Paz El Alto", -16.5133, -68.1922)],
+        // Africa extras
+        "GH" => vec![seed_airport("DGAA", "Accra Kotoka", 5.6052, -0.1668)],
+        "SN" => vec![seed_airport("GOBD", "Dakar Blaise Diagne", 14.6706, -17.1025)],
+        "TN" => vec![seed_airport("DTTA", "Tunis Carthage", 36.8510, 10.2272)],
+        "LY" => vec![seed_airport("HLLT", "Tripoli Mitiga", 32.8942, 13.2760)],
+        "SD" => vec![seed_airport("HSSS", "Khartoum", 15.5895, 32.5532)],
+        "UG" => vec![seed_airport("HUEN", "Entebbe", 0.0424, 32.4435)],
+        "RW" => vec![seed_airport("HRYR", "Kigali", -1.9686, 30.1395)],
+        "ZM" => vec![seed_airport("FLKK", "Lusaka Kenneth Kaunda", -15.3308, 28.4526)],
+        "ZW" => vec![seed_airport("FVHA", "Harare", -17.9318, 31.0928)],
+        "MG" => vec![seed_airport("FMMI", "Antananarivo Ivato", -18.7969, 47.4788)],
+        // Central America / Caribbean extras
+        "JM" => vec![seed_airport("MKJP", "Kingston Norman Manley", 17.9357, -76.7875)],
+        "BS" => vec![seed_airport("MYNN", "Nassau Lynden Pindling", 25.0390, -77.4662)],
+        "HT" => vec![seed_airport("MTPP", "Port-au-Prince Toussaint", 18.5800, -72.2926)],
+        "DO" => vec![seed_airport("MDSD", "Santo Domingo Las Americas", 18.4297, -69.6689)],
+        "GT" => vec![seed_airport("MGGT", "Guatemala City La Aurora", 14.5832, -90.5275)],
+        "SV" => vec![seed_airport("MSSS", "San Salvador", 13.4409, -89.0557)],
+        "HN" => vec![seed_airport("MHLM", "San Pedro Sula", 15.4527, -87.9236)],
+        "NI" => vec![seed_airport("MNMG", "Managua", 12.1415, -86.1682)],
+        // Europe extras
+        "PL" => vec![
+            seed_airport("EPWA", "Warsaw Chopin", 52.1657, 20.9671),
+            seed_airport("EPKK", "Krakow John Paul II", 50.0778, 19.7848),
+        ],
+        "CZ" => vec![seed_airport("LKPR", "Prague Vaclav Havel", 50.1008, 14.2600)],
+        "HU" => vec![seed_airport("LHBP", "Budapest Ferenc Liszt", 47.4390, 19.2611)],
+        "RO" => vec![seed_airport("LROP", "Bucharest Henri Coanda", 44.5711, 26.0850)],
+        "BG" => vec![seed_airport("LBSF", "Sofia", 42.6967, 23.4114)],
+        "RS" => vec![seed_airport("LYBE", "Belgrade Nikola Tesla", 44.8184, 20.3091)],
+        "HR" => vec![
+            seed_airport("LDZA", "Zagreb", 45.7429, 16.0688),
+            seed_airport("LDDU", "Dubrovnik", 42.5614, 18.2682),
+            seed_airport("LDSP", "Split", 43.5390, 16.2980),
+        ],
+        "LV" => vec![seed_airport("EVRA", "Riga", 56.9236, 23.9711)],
+        "EE" => vec![seed_airport("EETN", "Tallinn Lennart Meri", 59.4133, 24.8328)],
+        "LT" => vec![seed_airport("EYVI", "Vilnius", 54.6341, 25.2858)],
+        "SK" => vec![seed_airport("LZIB", "Bratislava", 48.1702, 17.2127)],
+        "LU" => vec![seed_airport("ELLX", "Luxembourg Findel", 49.6234, 6.2044)],
+        "IS" => vec![seed_airport("BIRK", "Reykjavik", 64.1300, -21.9406)],
+        "NO" => vec![seed_airport("ENGM", "Oslo Gardermoen", 60.1939, 11.1004)],
+        "SE" => vec![seed_airport("ESSA", "Stockholm Arlanda", 59.6519, 17.9186)],
+        "DK" => vec![seed_airport("EKCH", "Copenhagen Kastrup", 55.6180, 12.6561)],
+        "FI" => vec![seed_airport("EFHK", "Helsinki Vantaa", 60.3172, 24.9633)],
+        "IL" => vec![seed_airport("LLBG", "Tel Aviv Ben Gurion", 32.0114, 34.8867)],
+        "JO" => vec![seed_airport("OJAI", "Amman Queen Alia", 31.7226, 35.9932)],
+        "LB" => vec![seed_airport("OLBA", "Beirut Rafic Hariri", 33.8209, 35.4883)],
+        "KW" => vec![seed_airport("OKBK", "Kuwait Intl", 29.2266, 47.9689)],
+        "OM" => vec![seed_airport("OOMS", "Muscat", 23.5933, 58.2844)],
+        "IQ" => vec![seed_airport("ORBI", "Baghdad", 33.2626, 44.2346)],
+        "IR" => vec![seed_airport("OIIE", "Tehran Imam Khomeini", 35.4161, 51.1522)],
         _ => Vec::new(),
     };
     if !direct.is_empty() {

@@ -1,6 +1,33 @@
 use super::Region;
 use serde_json;
 
+use std::sync::{Arc, OnceLock};
+
+pub struct CachedRegions {
+    inner: OnceLock<Arc<Vec<Region>>>,
+}
+
+impl CachedRegions {
+    pub const fn new() -> Self {
+        Self {
+            inner: OnceLock::new(),
+        }
+    }
+
+    pub fn get_arc(&self) -> &Arc<Vec<Region>> {
+        self.inner.get_or_init(|| {
+            Arc::new(
+                serde_json::from_str(include_str!("regions.json"))
+                    .expect("Failed to parse regions.json"),
+            )
+        })
+    }
+
+    pub fn get(&self) -> &Vec<Region> {
+        self.get_arc().as_ref()
+    }
+}
+
 pub fn get_all_regions() -> Vec<Region> {
     serde_json::from_str(include_str!("regions.json")).expect("Failed to parse regions.json")
 }

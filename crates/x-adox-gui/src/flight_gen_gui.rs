@@ -14,8 +14,11 @@ pub struct FlightGenState {
     pub history: Vec<ChatMessage>,
     pub current_plan: Option<FlightPlan>,
     pub status_message: Option<String>,
-    /// Base airport layer (Option B): loaded from X-Plane Resources/Global Scenery when root is set.
+    /// Base airport layer: loaded asynchronously from X-Plane's Global Airports/Resources when the
+    /// FlightGenerator tab is first opened. None = not yet loaded; Some = ready.
     pub base_airports: Option<Vec<Airport>>,
+    /// Loading status message shown while apt.dat is being parsed in the background.
+    pub base_airports_loading: Option<String>,
     /// When true, main should run enhanced context fetch if the setting is on (so history appears without clicking "Fetch context").
     pub pending_auto_fetch: bool,
     /// Tree view: Origin section expanded in History & context.
@@ -90,6 +93,7 @@ impl Default for FlightGenState {
             current_plan: None,
             status_message: None,
             base_airports: None,
+            base_airports_loading: None,
             pending_auto_fetch: false,
             origin_context_expanded: true,
             dest_context_expanded: true,
@@ -111,7 +115,7 @@ impl FlightGenState {
         message: Message,
         packs: &[SceneryPack],
         aircraft_list: &[DiscoveredAddon],
-        xplane_root: Option<&Path>,
+        _xplane_root: Option<&Path>,
         prefs: Option<&HeuristicsConfig>,
     ) -> Task<Message> {
         match message {
@@ -122,10 +126,6 @@ impl FlightGenState {
             Message::Submit => {
                 if self.input_value.trim().is_empty() {
                     return Task::none();
-                }
-                // Option B: load base airport layer once when we have X-Plane root
-                if xplane_root.is_some() && self.base_airports.is_none() {
-                    self.base_airports = Some(flight_gen::load_base_airports(xplane_root.unwrap()));
                 }
 
                 let prompt = self.input_value.clone();
@@ -503,79 +503,107 @@ impl FlightGenState {
         ]
         .spacing(10);
 
-        let mut controls = row![].spacing(10);
+        // Row 1: Regenerate + Export format buttons
+        let mut export_controls = row![].spacing(10);
 
         // Always show Regenerate if we have at least one user prompt to regenerate from
         if self.history.iter().any(|m| m.is_user) {
-            controls = controls.push(
+            export_controls = export_controls.push(
                 button("Regenerate")
                     .on_press(Message::Regenerate)
                     .style(style::button_secondary),
             );
         }
 
+        // Row 2: Learning + Context buttons (only shown when a plan exists)
+        let mut learning_controls = row![].spacing(10);
+
         if let Some(plan) = &self.current_plan {
-            controls = controls.push(
+            export_controls = export_controls.push(
                 button("FMS 11")
                     .on_press(Message::ExportFms11)
                     .style(style::button_secondary),
             );
-            controls = controls.push(
+            export_controls = export_controls.push(
                 button("FMS 12")
                     .on_press(Message::ExportFms12)
                     .style(style::button_secondary),
             );
-            controls = controls.push(
+            export_controls = export_controls.push(
                 button("LNM")
                     .on_press(Message::ExportLnm)
                     .style(style::button_secondary),
             );
-            controls = controls.push(
+            export_controls = export_controls.push(
                 button("SimBrief")
                     .on_press(Message::ExportSimbrief)
                     .style(style::button_secondary),
             );
 
             if plan.origin_region_id.is_some() && plan.dest_region_id.is_some() {
-                controls = controls.push(
+                learning_controls = learning_controls.push(
                     button("Remember this flight")
                         .on_press(Message::RememberThisFlight)
                         .style(style::button_pin_ghost),
                 );
             }
             if plan.origin_region_id.is_some() {
-                controls = controls.push(
+                learning_controls = learning_controls.push(
                     button("Prefer this origin")
                         .on_press(Message::PreferThisOrigin)
                         .style(style::button_pin_ghost),
                 );
             }
             if plan.dest_region_id.is_some() {
-                controls = controls.push(
+                learning_controls = learning_controls.push(
                     button("Prefer this destination")
                         .on_press(Message::PreferThisDestination)
                         .style(style::button_pin_ghost),
                 );
             }
-            controls = controls.push(
+            learning_controls = learning_controls.push(
                 button("History & Context")
                     .on_press(Message::ToggleFlightContextWindow)
                     .style(style::button_primary_glow),
             );
         }
 
-        column![
+        let controls = column![export_controls, learning_controls].spacing(6);
+
+        let mut col = column![
             container(chat_history)
                 .height(Length::Fill)
                 .style(style::container_main_content)
                 .padding(5),
             iced::widget::horizontal_rule(1.0),
             controls,
-            input_area
         ]
         .spacing(15)
-        .padding(20)
-        .into()
+        .padding(20);
+
+        // Show global airports loading indicator below the controls
+        if let Some(loading_msg) = &self.base_airports_loading {
+            col = col.push(
+                text(loading_msg)
+                    .size(12)
+                    .style(|_| iced::widget::text::Style {
+                        color: Some(iced::Color::from_rgb(0.5, 0.8, 0.5)),
+                    }),
+            );
+        } else if self.base_airports.is_some() {
+            // Subtle indicator that global airports are ready
+            let count = self.base_airports.as_ref().map(|v| v.len()).unwrap_or(0);
+            col = col.push(
+                text(format!("Global airport database: {} airports", count))
+                    .size(11)
+                    .style(|_| iced::widget::text::Style {
+                        color: Some(iced::Color::from_rgb(0.35, 0.55, 0.35)),
+                    }),
+            );
+        }
+
+        col = col.push(input_area);
+        col.into()
     }
 
     /// Renders just the origin and destination details for the context window or inline panel.
@@ -1041,8 +1069,18 @@ pub fn fetch_weather_for_plan(
         None
     };
 
-    let origin = get_with_fallback(&origin_icao_up);
-    let dest = get_with_fallback(&dest_icao_up);
+    let origin = get_with_fallback(&origin_icao_up).or_else(|| {
+        Some(format!(
+            "No METAR available for {} (no reporting station).",
+            origin_icao_up
+        ))
+    });
+    let dest = get_with_fallback(&dest_icao_up).or_else(|| {
+        Some(format!(
+            "No METAR available for {} (no reporting station).",
+            dest_icao_up
+        ))
+    });
 
     (origin, dest)
 }
