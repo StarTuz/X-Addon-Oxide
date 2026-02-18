@@ -2,6 +2,7 @@ use crate::style;
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
 use iced::{Element, Length, Padding, Task};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use x_adox_bitnet::HeuristicsConfig;
 use x_adox_core::apt_dat::Airport;
 use x_adox_core::discovery::DiscoveredAddon;
@@ -16,7 +17,7 @@ pub struct FlightGenState {
     pub status_message: Option<String>,
     /// Base airport layer: loaded asynchronously from X-Plane's Global Airports/Resources when the
     /// FlightGenerator tab is first opened. None = not yet loaded; Some = ready.
-    pub base_airports: Option<Vec<Airport>>,
+    pub base_airports: Option<std::sync::Arc<Vec<Airport>>>,
     /// Loading status message shown while apt.dat is being parsed in the background.
     pub base_airports_loading: Option<String>,
     /// When true, main should run enhanced context fetch if the setting is on (so history appears without clicking "Fetch context").
@@ -79,6 +80,8 @@ pub enum Message {
     CloseFullContext,
     /// Result of clipboard copy (internal use).
     CopyContextDone,
+    /// Result of background flight generation.
+    FlightGenerated(Result<FlightPlan, String>),
 }
 
 impl Default for FlightGenState {
@@ -113,8 +116,8 @@ impl FlightGenState {
     pub fn update(
         &mut self,
         message: Message,
-        packs: &[SceneryPack],
-        aircraft_list: &[DiscoveredAddon],
+        packs: &Arc<Vec<SceneryPack>>,
+        aircraft_list: &Arc<Vec<DiscoveredAddon>>,
         _xplane_root: Option<&Path>,
         prefs: Option<&HeuristicsConfig>,
     ) -> Task<Message> {
@@ -135,9 +138,68 @@ impl FlightGenState {
                     is_user: true,
                 });
                 self.input_value.clear();
+                self.status_message = Some("Generating flight plan...".to_string());
 
-                let base = self.base_airports.as_deref();
-                match flight_gen::generate_flight(packs, aircraft_list, &prompt, base, prefs) {
+                let packs = packs.clone();
+                let aircraft_list = aircraft_list.clone();
+                let base = self.base_airports.clone();
+                let prefs = prefs.cloned();
+
+                Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            let base_slice = base.as_deref().map(|v| v.as_slice());
+                            flight_gen::generate_flight(
+                                &packs,
+                                &aircraft_list,
+                                &prompt,
+                                base_slice,
+                                prefs.as_ref(),
+                            )
+                        })
+                        .await
+                        .unwrap_or_else(|e| Err(e.to_string()))
+                    },
+                    Message::FlightGenerated,
+                )
+            }
+            Message::Regenerate => {
+                let prompt = self
+                    .history
+                    .iter()
+                    .rev()
+                    .find(|m| m.is_user)
+                    .map(|m| m.text.clone());
+                if let Some(prompt) = prompt {
+                    self.status_message = Some("Regenerating flight plan...".to_string());
+                    let packs = packs.clone();
+                    let aircraft_list = aircraft_list.clone();
+                    let base = self.base_airports.clone();
+                    let prefs = prefs.cloned();
+
+                    Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || {
+                                let base_slice = base.as_deref().map(|v| v.as_slice());
+                                flight_gen::generate_flight(
+                                    &packs,
+                                    &aircraft_list,
+                                    &prompt,
+                                    base_slice,
+                                    prefs.as_ref(),
+                                )
+                            })
+                            .await
+                            .unwrap_or_else(|e| Err(e.to_string()))
+                        },
+                        Message::FlightGenerated,
+                    )
+                } else {
+                    Task::none()
+                }
+            }
+            Message::FlightGenerated(result) => {
+                match result {
                     Ok(mut plan) => {
                         if let Some(ctx) = load_flight_context_for_plan(
                             get_config_root().as_path(),
@@ -167,97 +229,20 @@ impl FlightGenState {
                     }
                     Err(e) => {
                         let mut text = format!("Error: {}", e);
-                        // Option A: suggest adding Global Airports when not in list
-                        let has_global = packs.iter().any(|p| {
-                            p.name == "Global Airports"
-                                || p.name == "*GLOBAL_AIRPORTS*"
-                                || p.path
-                                    .to_string_lossy()
-                                    .to_lowercase()
-                                    .contains("global airports")
-                        });
-                        if !has_global
-                            && (e.contains("No suitable departure")
-                                || e.contains("No suitable destination"))
+                        // We can't access `packs` easily here for the "Global Airports" hint check
+                        // without making it more complex, but we can check if the error is about suitable airports.
+                        if e.contains("No suitable departure")
+                            || e.contains("No suitable destination")
                         {
-                            text.push_str(
-                                "\nTip: Add Global Airports in Scenery for more options.",
-                            );
+                            text.push_str("\nTip: Ensure airports are installed and enabled.");
                         }
+
                         self.history.push(ChatMessage {
                             sender: "System".to_string(),
-                            text: text.clone(),
+                            text,
                             is_user: false,
                         });
-                        self.status_message = Some(text);
-                    }
-                }
-                Task::none()
-            }
-            Message::Regenerate => {
-                let prompt = self
-                    .history
-                    .iter()
-                    .rev()
-                    .find(|m| m.is_user)
-                    .map(|m| m.text.clone());
-                if let Some(prompt) = prompt {
-                    let base = self.base_airports.as_deref();
-                    match flight_gen::generate_flight(packs, aircraft_list, &prompt, base, prefs) {
-                        Ok(mut plan) => {
-                            if let Some(ctx) = load_flight_context_for_plan(
-                                get_config_root().as_path(),
-                                &plan.origin,
-                                &plan.destination,
-                            ) {
-                                plan.context = Some(ctx);
-                            }
-                            let response = format!(
-                                "Generated Flight:\nOrigin: {} ({})\nDestination: {} ({})\nAircraft: {}\nDistance: {} nm\nDuration: {} mins",
-                                plan.origin.id, plan.origin.name,
-                                plan.destination.id, plan.destination.name,
-                                plan.aircraft.name,
-                                plan.distance_nm,
-                                plan.duration_minutes
-                            );
-                            self.history.push(ChatMessage {
-                                sender: "System".to_string(),
-                                text: response,
-                                is_user: false,
-                            });
-                            self.current_plan = Some(plan);
-                            self.origin_context_expanded = true;
-                            self.dest_context_expanded = true;
-                            self.pending_auto_fetch = true;
-                            self.status_message = Some("Flight regenerated.".to_string());
-                        }
-                        Err(e) => {
-                            let mut text = format!("Error: {}", e);
-                            let has_global = packs.iter().any(|p| {
-                                p.name == "Global Airports"
-                                    || p.name == "*GLOBAL_AIRPORTS*"
-                                    || p.path
-                                        .to_string_lossy()
-                                        .to_lowercase()
-                                        .contains("global airports")
-                            });
-                            if !has_global
-                                && (e.contains("No suitable departure")
-                                    || e.contains("No suitable destination"))
-                            {
-                                text.push_str(
-                                    "\nTip: Add Global Airports in Scenery for more options.",
-                                );
-                            }
-                            self.history.push(ChatMessage {
-                                sender: "System".to_string(),
-                                text,
-                                is_user: false,
-                            });
-                            // FIXED: Do NOT clear current_plan here.
-                            // If we fail a regenerate, we should keep the previous plan's buttons
-                            // so the user can still export it or try regenerating again.
-                        }
+                        self.status_message = Some("Generation failed.".to_string());
                     }
                 }
                 Task::none()
@@ -511,7 +496,7 @@ impl FlightGenState {
             export_controls = export_controls.push(
                 button("Regenerate")
                     .on_press(Message::Regenerate)
-                    .style(style::button_secondary),
+                    .style(style::button_success_glow),
             );
         }
 
@@ -522,22 +507,22 @@ impl FlightGenState {
             export_controls = export_controls.push(
                 button("FMS 11")
                     .on_press(Message::ExportFms11)
-                    .style(style::button_secondary),
+                    .style(style::button_cyan_glow),
             );
             export_controls = export_controls.push(
                 button("FMS 12")
                     .on_press(Message::ExportFms12)
-                    .style(style::button_secondary),
+                    .style(style::button_cyan_glow),
             );
             export_controls = export_controls.push(
                 button("LNM")
                     .on_press(Message::ExportLnm)
-                    .style(style::button_secondary),
+                    .style(style::button_orange_glow),
             );
             export_controls = export_controls.push(
                 button("SimBrief")
                     .on_press(Message::ExportSimbrief)
-                    .style(style::button_secondary),
+                    .style(style::button_purple_glow),
             );
 
             if plan.origin_region_id.is_some() && plan.dest_region_id.is_some() {

@@ -3762,7 +3762,7 @@ impl App {
             }
             Message::FlightGenBaseAirportsLoaded(airports) => {
                 let count = airports.len();
-                self.flight_gen.base_airports = Some(airports);
+                self.flight_gen.base_airports = Some(std::sync::Arc::new(airports));
                 self.flight_gen.base_airports_loading = None;
                 log::info!("[flight_gen] Global airport pool ready: {} airports", count);
                 Task::none()

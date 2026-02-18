@@ -20,6 +20,7 @@ pub mod palette {
     pub const TEXT_SECONDARY: Color = Color::from_rgb(0.6, 0.6, 0.6);
     pub const BORDER: Color = Color::from_rgb(0.25, 0.25, 0.25);
     pub const SURFACE_VARIANT: Color = Color::from_rgb(0.25, 0.25, 0.25);
+    pub const ACCENT_CYAN: Color = Color::from_rgb(0.0, 0.8, 0.82); // Cyan 500
 }
 
 // Container Styles
@@ -844,6 +845,142 @@ pub fn pick_list_secondary(_theme: &Theme, status: pick_list::Status) -> pick_li
                 radius: 6.0.into(),
             },
             background: Background::Color(Color::from_rgb(0.2, 0.2, 0.2)),
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_success_glow(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::ACCENT_GREEN)),
+        text_color: Color::WHITE,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: Color::from_rgba(0.2, 0.7, 0.3, 0.5),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.2, 0.7, 0.3, 0.6),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 12.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.25, 0.8, 0.35))),
+            shadow: Shadow {
+                color: Color::from_rgba(0.2, 0.7, 0.3, 1.0),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.15, 0.6, 0.25))),
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_cyan_glow(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::ACCENT_CYAN)),
+        text_color: Color::BLACK,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: Color::from_rgba(0.0, 0.8, 0.82, 0.5),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.0, 0.8, 0.82, 0.6),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 12.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.2, 0.9, 0.92))),
+            shadow: Shadow {
+                color: Color::from_rgba(0.0, 0.8, 0.82, 1.0),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.0, 0.7, 0.72))),
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_orange_glow(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::ACCENT_ORANGE)),
+        text_color: Color::WHITE,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: Color::from_rgba(0.98, 0.45, 0.09, 0.5),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.98, 0.45, 0.09, 0.6),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 12.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(1.0, 0.55, 0.2))),
+            shadow: Shadow {
+                color: Color::from_rgba(0.98, 0.45, 0.09, 1.0),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.9, 0.4, 0.05))),
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_purple_glow(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::ACCENT_PURPLE)),
+        text_color: Color::WHITE,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: Color::from_rgba(0.66, 0.33, 0.97, 0.5),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.66, 0.33, 0.97, 0.6),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 12.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.75, 0.45, 1.0))),
+            shadow: Shadow {
+                color: Color::from_rgba(0.66, 0.33, 0.97, 1.0),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.6, 0.3, 0.9))),
             ..base
         },
         _ => base,
