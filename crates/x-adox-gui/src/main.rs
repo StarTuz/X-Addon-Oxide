@@ -746,7 +746,9 @@ struct App {
     pub scenery_last_bucket_index: Option<usize>,
     pub keyboard_modifiers: keyboard::Modifiers,
     icon_basket: svg::Handle,
+
     icon_paste: svg::Handle,
+    icon_flight_gen: svg::Handle,
     pub show_scenery_basket: bool,
     pub selected_basket_items: std::collections::HashSet<String>,
     pub basket_offset: iced::Vector,
@@ -962,6 +964,9 @@ impl App {
             ),
             icon_paste: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/paste.svg").to_vec(),
+            ),
+            icon_flight_gen: svg::Handle::from_memory(
+                include_bytes!("../assets/icons/flight_gen.svg").to_vec(),
             ),
             show_scenery_basket: false,
             selected_basket_items: std::collections::HashSet::new(),
@@ -7044,7 +7049,8 @@ impl App {
             Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
             Tab::Issues => (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)), // Always red for Issues
             Tab::Settings => (&self.icon_settings, style::palette::ACCENT_PURPLE), // Violet for settings
-            Tab::FlightGenerator => (&self.icon_aircraft, Color::from_rgb(0.0, 0.8, 0.8)), // Cyan for Flight Gen
+
+            Tab::FlightGenerator => (&self.icon_flight_gen, Color::from_rgb(0.0, 0.8, 0.8)), // Cyan for Flight Gen
         };
 
         let icon = svg(icon_handle.clone())
