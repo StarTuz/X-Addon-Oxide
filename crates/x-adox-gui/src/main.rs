@@ -7301,8 +7301,11 @@ impl App {
             row![
                 iced::widget::Space::new(Length::Fixed(4.0), Length::Fill), // Balancing spacer
                 btn,
+                // Glow pill: fixed spacer offset centres the pill within the button.
+                // Button height ≈ 15 (pad) + 48 (icon) + 8 (gap) + 17 (text) + 15 (pad) = 103px
+                // Pill centre offset = (103 - 32) / 2 = 35.5 → 36px
                 column![
-                    iced::widget::Space::new(Length::Fill, Length::Fixed(23.0)),
+                    iced::widget::Space::new(Length::Fill, Length::Fixed(36.0)),
                     container(iced::widget::Space::new(
                         Length::Fixed(4.0),
                         Length::Fixed(32.0)
@@ -7318,10 +7321,10 @@ impl App {
                                 active_color.r,
                                 active_color.g,
                                 active_color.b,
-                                0.8
+                                0.8,
                             ),
                             offset: iced::Vector::new(0.0, 0.0),
-                            blur_radius: 12.0,
+                            blur_radius: 14.0,
                         },
                         ..Default::default()
                     })
