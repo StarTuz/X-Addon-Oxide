@@ -115,13 +115,16 @@ fn test_library_txt_prevents_airport_promotion() {
         }
     }
 
-    // Step 3b: Post-Discovery Promotion
+    // Step 3b: Post-Discovery Promotion (must mirror mod.rs exactly)
     if !airports.is_empty() {
         match category {
             SceneryCategory::GlobalAirport
             | SceneryCategory::Library
             | SceneryCategory::GlobalBase
-            | SceneryCategory::Landmark => {
+            | SceneryCategory::Landmark
+            | SceneryCategory::OrthoBase
+            | SceneryCategory::Mesh
+            | SceneryCategory::SpecificMesh => {
                 // Keep — Library is protected
             }
             _ => {
@@ -209,4 +212,66 @@ fn test_flytampa_mesh_still_classified_as_mesh() {
         SceneryCategory::Mesh,
         "Non-Orbx mesh packs should still be classified as Mesh"
     );
+}
+
+#[test]
+fn test_orthobase_with_airports_stays_orthobase() {
+    // Regression: OrthoBase packs (Orbx TrueEarth Orthos, XPME base packages,
+    // z_autoortho) often contain DSF data that discovers airports in their coverage
+    // area. The post-discovery promotion in mod.rs must NOT promote these packs to
+    // CustomAirport, which would misplace them high in the INI and cause the Smart
+    // Sort validator to fire a spurious "Mesh/Ortho above 'XPME_South_America'" warning.
+    let orthobase_packs = [
+        "XPME_South_America",
+        "XPME_Europe",
+        "Orbx_C_GB_South_TrueEarth_Orthos",
+        "Orbx_C_GB_Central_TrueEarth_Orthos",
+        "Orbx_D_GB_North_TrueEarth_Orthos",
+        "z_autoortho",
+        "z_ao_eur",
+        "ortho4xp_tile",
+    ];
+
+    for name in &orthobase_packs {
+        let path = PathBuf::from(format!("Custom Scenery/{}", name));
+        let mut category = Classifier::classify_heuristic(&path, name);
+
+        // Simulate discovering airports (as happens when DSF tiles cover airport areas)
+        let fake_airports_found = true;
+
+        // Reproduce the post-discovery promotion logic from mod.rs
+        if fake_airports_found {
+            let nl = name.to_lowercase();
+            let is_companion = nl.contains("mesh")
+                || nl.contains("terrain")
+                || nl.contains("3dgrass")
+                || nl.contains("grass")
+                || nl.contains("sealane");
+
+            match category {
+                SceneryCategory::GlobalAirport
+                | SceneryCategory::Library
+                | SceneryCategory::GlobalBase
+                | SceneryCategory::Landmark
+                | SceneryCategory::OrthoBase
+                | SceneryCategory::Mesh
+                | SceneryCategory::SpecificMesh => {
+                    // Keep structural category
+                }
+                _ => {
+                    if !is_companion {
+                        category = SceneryCategory::CustomAirport;
+                    }
+                }
+            }
+        }
+
+        assert_eq!(
+            category,
+            SceneryCategory::OrthoBase,
+            "'{}' with discovered airports must stay OrthoBase, got {:?}",
+            name,
+            category
+        );
+    }
 }

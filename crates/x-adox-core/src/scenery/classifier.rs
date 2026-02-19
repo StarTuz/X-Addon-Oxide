@@ -125,6 +125,13 @@ impl Classifier {
             return SceneryCategory::AirportOverlay;
         }
 
+        // 9b. Map Enhancement Base (must come before ICAO detection)
+        // "XPME_South_America" etc. contain a 4-letter prefix that looks like an ICAO
+        // code; intercept them here before rule 10 misclassifies them as CustomAirport.
+        if name_lower.starts_with("xpme") {
+            return SceneryCategory::OrthoBase;
+        }
+
         // 10. Custom Airports (Level 1 - Score 100)
         // Add DarkBlue, and verify it's not a generic overlay/library already caught.
         // Companion packs (mesh/terrain/grass) with ICAO codes are NOT airports.
@@ -165,6 +172,7 @@ impl Classifier {
             || name_lower.contains("z_ao_")
             || name_lower.contains("z_autoortho")
             || name_lower.contains("ortho4xp")
+            || name_lower.starts_with("xpme") // Map Enhancement base packages
             || name_lower.starts_with("z_")
             || name_lower.starts_with("y_")
         {

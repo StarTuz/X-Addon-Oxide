@@ -163,7 +163,7 @@ Startup uses a **two-phase load** to keep the UI responsive even on cold-start (
 1. Read existing INI entries (preserves order and raw_path)
 2. Scan filesystem for folders via `discovery.rs` (filesystem order, no sorting)
 3. Reconcile: match discovered folders to INI entries by name/path
-4. Heuristic classify all packs + load any cached airport/tile data. **Uncached packs get empty airports/tiles** — no disk I/O.
+4. Heuristic classify all packs + load any cached airport/tile data. **Uncached packs get empty airports/tiles** — no disk I/O. The `library.txt` presence check (Library category healing in `mod.rs`) is also skipped in quick mode to avoid blocking on slow/locked paths (Windows Defender, network drives); Phase 2 re-classifies.
 5. Loading overlay dismisses once all subsystems complete; scenery list is immediately usable.
 
 **Phase 2 — `SceneryManager::load_with_progress(cb)`** (fires `Message::SceneryDeepScanComplete`):

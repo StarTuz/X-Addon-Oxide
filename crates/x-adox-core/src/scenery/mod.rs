@@ -544,8 +544,14 @@ impl SceneryManager {
 
         use rayon::prelude::*;
 
-        let cache_ref = &cache;
         let total_packs = packs.len();
+        log::info!(
+            "[SceneryManager] Starting parallel scan of {} packs (quick={})",
+            total_packs,
+            quick
+        );
+
+        let cache_ref = &cache;
         let completed_count = AtomicUsize::new(0);
         // Wrap the FnMut callback in Mutex so it can be called from multiple rayon threads
         let progress_cb = std::sync::Mutex::new(on_progress);
@@ -623,7 +629,10 @@ impl SceneryManager {
                 // community libraries like world-models, Sea_Life, ruscenery that
                 // contain incidental airport data (helipads, POIs) aren't misclassified
                 // as CustomAirport.
-                if pack.category == SceneryCategory::Unknown {
+                // In quick mode we skip this filesystem check to avoid blocking on slow
+                // or locked paths (e.g. Windows Defender, network drives); Phase 2 deep
+                // scan will re-classify when it has full pack data.
+                if pack.category == SceneryCategory::Unknown && !quick {
                     if pack.path.join("library.txt").exists() {
                         pack.category = SceneryCategory::Library;
                     }
@@ -645,8 +654,14 @@ impl SceneryManager {
                         SceneryCategory::GlobalAirport
                         | SceneryCategory::Library
                         | SceneryCategory::GlobalBase
-                        | SceneryCategory::Landmark => {
-                            // Keep existing system/structural category
+                        | SceneryCategory::Landmark
+                        | SceneryCategory::OrthoBase
+                        | SceneryCategory::Mesh
+                        | SceneryCategory::SpecificMesh => {
+                            // Keep existing structural/terrain category.
+                            // Ortho/mesh/base packs routinely contain incidental airport DSF
+                            // data for airports in their coverage area; this must NOT promote
+                            // them to CustomAirport and displace them from the bottom of the INI.
                         }
                         _ => {
                             if !is_companion {

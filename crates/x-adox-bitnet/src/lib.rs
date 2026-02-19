@@ -62,7 +62,7 @@ pub struct HeuristicsConfig {
 }
 
 /// When a user's file has a lower version, their `overrides` will be cleared on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 10;
+pub const CURRENT_SCHEMA_VERSION: u32 = 11;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
@@ -236,6 +236,12 @@ impl Default for HeuristicsConfig {
                     score: 95,
                     is_exclusion: false,
                 },
+                Rule {
+                    name: "Map Enhancement Base".to_string(),
+                    keywords: vec!["xpme".to_string()],
+                    score: 95, // Bottom of stack (same as AutoOrtho Base); XPME FAQ requires lowest priority
+                    is_exclusion: false,
+                },
             ],
             fallback_score: 30,
             overrides: std::collections::BTreeMap::new(),
@@ -370,6 +376,13 @@ impl BitNetModel {
                 // v9→v10: Flight gen preferences (origin/dest prefs, last success). New fields use #[serde(default)].
                 if config.schema_version <= 9 {
                     log::info!("[BitNet] v9→v10: Flight preferences (origin/dest prefs, last success)");
+                }
+
+                // v10→v11: Add Map Enhancement Base rule (xpme_basepackage → score 95).
+                if config.schema_version <= 10 {
+                    let defaults = HeuristicsConfig::default();
+                    config.rules = defaults.rules;
+                    log::info!("[BitNet] v10→v11: Reset rules to defaults (Map Enhancement Base)");
                 }
 
                 config.schema_version = CURRENT_SCHEMA_VERSION;

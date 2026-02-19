@@ -172,6 +172,7 @@ enum Message {
     SceneryLoaded(Result<Arc<Vec<SceneryPack>>, String>),
     SceneryProgress(f32),
     SceneryDeepScanComplete(Result<Arc<Vec<SceneryPack>>, String>),
+    #[cfg(target_os = "windows")]
     DismissAvTip,
     WindowResized(iced::Size),
     TogglePack(String),
@@ -634,6 +635,7 @@ struct App {
     scenery_scan_progress: f32,
     deep_scan_progress: Option<f32>,        // Some(p) while background deep scan is running
     deep_scan_start: Option<std::time::Instant>, // Set when quick load completes
+    #[cfg(target_os = "windows")]
     show_av_tip: bool,                      // Show AV-exclusion tip banner
     av_tip_dismissed: bool,                 // Persisted — don't re-show after dismiss
     // Heuristics
@@ -853,6 +855,7 @@ impl App {
             scenery_scan_progress: 0.0,
             deep_scan_progress: None,
             deep_scan_start: None,
+            #[cfg(target_os = "windows")]
             show_av_tip: false,
             av_tip_dismissed: false,
             // Heuristics are GLOBAL (not per-install) - use BitNetModel's global config path
@@ -1549,6 +1552,7 @@ impl App {
                 }
                 return Task::none();
             }
+            #[cfg(target_os = "windows")]
             Message::DismissAvTip => {
                 self.show_av_tip = false;
                 self.av_tip_dismissed = true;
