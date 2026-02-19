@@ -170,6 +170,9 @@ enum Message {
 
     // Scenery
     SceneryLoaded(Result<Arc<Vec<SceneryPack>>, String>),
+    SceneryProgress(f32),
+    SceneryDeepScanComplete(Result<Arc<Vec<SceneryPack>>, String>),
+    DismissAvTip,
     WindowResized(iced::Size),
     TogglePack(String),
     PackToggled(Result<(), String>),
@@ -628,6 +631,11 @@ struct App {
     scenery_scroll_id: scrollable::Id,
     aircraft_scroll_id: scrollable::Id,
     install_progress: Option<f32>,
+    scenery_scan_progress: f32,
+    deep_scan_progress: Option<f32>,        // Some(p) while background deep scan is running
+    deep_scan_start: Option<std::time::Instant>, // Set when quick load completes
+    show_av_tip: bool,                      // Show AV-exclusion tip banner
+    av_tip_dismissed: bool,                 // Persisted — don't re-show after dismiss
     // Heuristics
     heuristics_model: BitNetModel,
     heuristics_json: text_editor::Content,
@@ -842,6 +850,11 @@ impl App {
             scenery_scroll_id: scrollable::Id::unique(),
             aircraft_scroll_id: scrollable::Id::unique(),
             install_progress: None,
+            scenery_scan_progress: 0.0,
+            deep_scan_progress: None,
+            deep_scan_start: None,
+            show_av_tip: false,
+            av_tip_dismissed: false,
             // Heuristics are GLOBAL (not per-install) - use BitNetModel's global config path
             heuristics_model: root.as_ref()
                 .map(|r| Self::initialize_heuristics(r))
@@ -1024,6 +1037,7 @@ impl App {
             app.loading_state.is_loading = true;
 
             let r1 = r.clone();
+            let r1_deep = r.clone(); // For background deep scan
             let r2 = r.clone();
             let r3 = r.clone();
             let r4 = r.clone();
@@ -1036,7 +1050,35 @@ impl App {
             let exclusions2 = app.scan_exclusions.clone();
 
             Task::batch(vec![
-                Task::perform(async move { load_packs(Some(r1)) }, Message::SceneryLoaded),
+                // Two-phase scenery load:
+                // Phase 1 (quick): heuristics + cache only → SceneryLoaded fires fast, UI shows
+                // Phase 2 (deep): full disk scan for uncached packs → SceneryDeepScanComplete
+                Task::run(
+                    iced::stream::channel(
+                        100,
+                        move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+                            // Phase 1 — quick, no disk I/O for uncached packs
+                            let quick_result = tokio::task::spawn_blocking(move || {
+                                load_packs_quick(Some(r1))
+                            })
+                            .await
+                            .unwrap_or_else(|e| Err(e.to_string()));
+                            let _ = output.try_send(Message::SceneryLoaded(quick_result));
+
+                            // Phase 2 — deep background scan for uncached packs
+                            let mut po = output.clone();
+                            let deep_result = tokio::task::spawn_blocking(move || {
+                                load_packs_with_progress(Some(r1_deep), move |p| {
+                                    let _ = po.try_send(Message::SceneryProgress(p));
+                                })
+                            })
+                            .await
+                            .unwrap_or_else(|e| Err(e.to_string()));
+                            let _ = output.try_send(Message::SceneryDeepScanComplete(deep_result));
+                        },
+                    ),
+                    |msg| msg,
+                ),
                 Task::perform(
                     async move { load_aircraft(Some(r2), exclusions1) },
                     Message::AircraftLoaded,
@@ -1462,7 +1504,60 @@ impl App {
                     },
                 )
             }
+            Message::SceneryProgress(p) => {
+                // After the quick load (SceneryLoaded), progress is for the deep background scan
+                if self.loading_state.scenery {
+                    self.deep_scan_progress = Some(p);
+                } else {
+                    self.scenery_scan_progress = p;
+                }
+                return Task::none();
+            }
+            Message::SceneryDeepScanComplete(result) => {
+                self.deep_scan_progress = None;
+                // Check if deep scan was slow — show AV tip on Windows for scans > 10s
+                #[cfg(target_os = "windows")]
+                if !self.av_tip_dismissed {
+                    if let Some(start) = self.deep_scan_start.take() {
+                        if start.elapsed().as_secs() > 10 {
+                            self.show_av_tip = true;
+                        }
+                    }
+                }
+                self.deep_scan_start = None;
+                if let Ok(deep_packs) = result {
+                    // Merge airport/tile/category data into existing packs (preserving
+                    // user-applied status changes and INI order from the quick load)
+                    let merged: Vec<SceneryPack> = self.packs.iter().map(|existing| {
+                        if let Some(deep) = deep_packs.iter().find(|d| d.name == existing.name) {
+                            let mut updated = existing.clone();
+                            updated.airports = deep.airports.clone();
+                            updated.tiles = deep.tiles.clone();
+                            updated.descriptor = deep.descriptor.clone();
+                            updated.category = deep.category.clone();
+                            updated.region = deep.region.clone();
+                            updated
+                        } else {
+                            existing.clone()
+                        }
+                    }).collect();
+                    self.packs = Arc::new(merged);
+                    self.merge_custom_airports();
+                    self.validation_report = Some(
+                        x_adox_core::scenery::validator::SceneryValidator::validate(&self.packs),
+                    );
+                }
+                return Task::none();
+            }
+            Message::DismissAvTip => {
+                self.show_av_tip = false;
+                self.av_tip_dismissed = true;
+                self.save_scan_config();
+                return Task::none();
+            }
             Message::SceneryLoaded(result) => {
+                self.scenery_scan_progress = 1.0;
+                self.deep_scan_start = Some(std::time::Instant::now());
                 self.loading_state.scenery = true;
                 match result {
                     Ok(packs) => {
@@ -5119,8 +5214,7 @@ impl App {
             .size(14)
             .color(style::palette::TEXT_SECONDARY);
 
-        let items = [
-            ("Scenery Library", self.loading_state.scenery),
+        let other_items = [
             ("Aircraft Addons", self.loading_state.aircraft),
             (
                 "Plugins & CSLs",
@@ -5130,8 +5224,49 @@ impl App {
             ("Pilot Logbook", self.loading_state.logbook),
         ];
 
+        let scenery_done = self.loading_state.scenery;
+        let scan_pct = (self.scenery_scan_progress * 100.0) as u32;
+        let scan_alpha = (self.animation_time * 3.0).sin() * 0.3 + 0.7;
+
+        // Scenery Library row — shows a mini progress bar while scanning
+        let scenery_row: Element<'_, Message> = if scenery_done {
+            row![
+                text("Scenery Library").size(12).color(style::palette::TEXT_PRIMARY),
+                iced::widget::horizontal_space(),
+                text("COMPLETE").size(10).color(style::palette::ACCENT_GREEN),
+            ]
+            .align_y(iced::Alignment::Center)
+            .into()
+        } else {
+            column![
+                row![
+                    text("Scenery Library")
+                        .size(12)
+                        .color(style::palette::TEXT_SECONDARY),
+                    iced::widget::horizontal_space(),
+                    text(format!("{}%", scan_pct))
+                        .size(10)
+                        .color(Color { a: scan_alpha, ..style::palette::ACCENT_BLUE }),
+                ]
+                .align_y(iced::Alignment::Center),
+                progress_bar(0.0..=1.0, self.scenery_scan_progress)
+                    .height(4)
+                    .style(move |_theme: &Theme| progress_bar::Style {
+                        background: Background::Color(style::palette::SURFACE_VARIANT),
+                        bar: Background::Color(style::palette::ACCENT_BLUE),
+                        border: Border {
+                            radius: 2.0.into(),
+                            ..Default::default()
+                        },
+                    }),
+            ]
+            .spacing(4)
+            .into()
+        };
+
         let mut status_grid = Column::new().spacing(10).width(Length::Fixed(300.0));
-        for (label, done) in items {
+        status_grid = status_grid.push(scenery_row);
+        for (label, done) in other_items {
             status_grid = status_grid.push(
                 row![
                     text(label).size(12).color(if done {
@@ -7481,7 +7616,116 @@ impl App {
                 bottom: 10.0,
                 left: 10.0,
             }),
-            list_container
+            {
+                // Build the content area: optional banners + list
+                let mut content_col: iced::widget::Column<'_, Message, Theme, Renderer> =
+                    Column::new().spacing(8);
+
+                // Deep scan progress bar (shows while background scan fills in airport data)
+                if let Some(p) = self.deep_scan_progress {
+                    let pct = (p * 100.0) as u32;
+                    content_col = content_col.push(
+                        container(
+                            column![
+                                row![
+                                    text(format!("Scanning airport data… {}%", pct))
+                                        .size(11)
+                                        .color(style::palette::TEXT_SECONDARY),
+                                    iced::widget::horizontal_space(),
+                                ]
+                                .align_y(iced::Alignment::Center),
+                                progress_bar(0.0..=1.0, p)
+                                    .height(3)
+                                    .style(|_theme: &Theme| progress_bar::Style {
+                                        background: Background::Color(
+                                            style::palette::SURFACE_VARIANT,
+                                        ),
+                                        bar: Background::Color(style::palette::ACCENT_BLUE),
+                                        border: Border {
+                                            radius: 2.0.into(),
+                                            ..Default::default()
+                                        },
+                                    }),
+                            ]
+                            .spacing(4),
+                        )
+                        .padding([6, 10])
+                        .style(|_| container::Style {
+                            background: Some(Background::Color(Color::from_rgba(
+                                0.1, 0.4, 0.8, 0.08,
+                            ))),
+                            border: Border {
+                                radius: 6.0.into(),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }),
+                    );
+                }
+
+                // Windows Defender / AV exclusion tip (shown once if deep scan was slow)
+                #[cfg(target_os = "windows")]
+                if self.show_av_tip && !self.av_tip_dismissed {
+                    let ps_cmd = format!(
+                        "Add-MpPreference -ExclusionPath \"{}\"",
+                        self.xplane_root
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| "C:\\X-Plane 12".to_string())
+                    );
+                    content_col = content_col.push(
+                        container(
+                            row![
+                                column![
+                                    row![
+                                        text("⚡ Slow startup detected").size(12).color(style::palette::ACCENT_ORANGE),
+                                        iced::widget::horizontal_space(),
+                                    ],
+                                    text("Windows Defender may be scanning your scenery files. Add X-Plane to its exclusion list for faster startup:")
+                                        .size(11)
+                                        .color(style::palette::TEXT_SECONDARY),
+                                    container(
+                                        text(ps_cmd).size(10).font(iced::Font::MONOSPACE)
+                                            .color(style::palette::TEXT_PRIMARY)
+                                    )
+                                    .padding([4, 8])
+                                    .style(|_| container::Style {
+                                        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.3))),
+                                        border: Border { radius: 4.0.into(), ..Default::default() },
+                                        ..Default::default()
+                                    }),
+                                    text("Run the above in PowerShell (Admin) — or open Windows Security → Virus & threat protection → Manage settings → Add an exclusion.")
+                                        .size(10)
+                                        .color(style::palette::TEXT_SECONDARY),
+                                ]
+                                .spacing(6)
+                                .width(Length::Fill),
+                                button(text("Dismiss").size(11))
+                                    .on_press(Message::DismissAvTip)
+                                    .style(style::button_secondary)
+                                    .padding([4, 10]),
+                            ]
+                            .spacing(12)
+                            .align_y(iced::Alignment::Start),
+                        )
+                        .padding([10, 12])
+                        .style(|_| container::Style {
+                            background: Some(Background::Color(Color::from_rgba(
+                                0.8, 0.6, 0.0, 0.08,
+                            ))),
+                            border: Border {
+                                radius: 6.0.into(),
+                                color: Color::from_rgba(0.8, 0.6, 0.0, 0.3),
+                                width: 1.0,
+                            },
+                            ..Default::default()
+                        }),
+                    );
+                }
+
+                content_col = content_col.push(list_container);
+                content_col
+            }
         ]
         .spacing(10);
 
@@ -9686,6 +9930,8 @@ impl App {
                     exclusions: Vec<PathBuf>,
                     #[serde(default)]
                     inclusions: Vec<PathBuf>,
+                    #[serde(default)]
+                    av_tip_dismissed: bool,
                 }
 
                 if let Ok(config) = serde_json::from_reader::<_, ScanConfig>(reader) {
@@ -9695,6 +9941,7 @@ impl App {
                         .map(|p| p.canonicalize().unwrap_or(p))
                         .collect();
                     self.scan_inclusions = config.inclusions;
+                    self.av_tip_dismissed = config.av_tip_dismissed;
                     println!("Loaded {} excluded paths from scoped config", self.scan_exclusions.len());
                     loaded = true;
                 }
@@ -9712,6 +9959,8 @@ impl App {
                         exclusions: Vec<PathBuf>,
                         #[serde(default)]
                         inclusions: Vec<PathBuf>,
+                        #[serde(default)]
+                        av_tip_dismissed: bool,
                     }
 
                     if let Ok(config) = serde_json::from_reader::<_, ScanConfig>(reader) {
@@ -9721,6 +9970,7 @@ impl App {
                             .map(|p| p.canonicalize().unwrap_or(p))
                             .collect();
                         self.scan_inclusions = config.inclusions;
+                        self.av_tip_dismissed = config.av_tip_dismissed;
                         println!("Loaded {} excluded paths from global config (fallback)", self.scan_exclusions.len());
                     }
                 }
@@ -9739,10 +9989,12 @@ impl App {
                 struct ScanConfig<'a> {
                     exclusions: &'a [PathBuf],
                     inclusions: &'a [PathBuf],
+                    av_tip_dismissed: bool,
                 }
                 let config = ScanConfig {
                     exclusions: &self.scan_exclusions,
                     inclusions: &self.scan_inclusions,
+                    av_tip_dismissed: self.av_tip_dismissed,
                 };
                 let writer = std::io::BufWriter::new(file);
                 let _ = serde_json::to_writer_pretty(writer, &config);
@@ -9904,10 +10156,25 @@ fn is_path_excluded(path: &Path, exclusions: &[PathBuf]) -> bool {
 
 // Data loading functions
 fn load_packs(root: Option<PathBuf>) -> Result<Arc<Vec<SceneryPack>>, String> {
+    load_packs_with_progress(root, |_| {})
+}
+
+fn load_packs_quick(root: Option<PathBuf>) -> Result<Arc<Vec<SceneryPack>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
-    sm.load().map_err(|e| e.to_string())?;
+    sm.load_quick().map_err(|e| e.to_string())?;
+    Ok(Arc::new(sm.packs))
+}
+
+fn load_packs_with_progress(
+    root: Option<PathBuf>,
+    on_progress: impl FnMut(f32) + Send + 'static,
+) -> Result<Arc<Vec<SceneryPack>>, String> {
+    let root = root.ok_or("X-Plane root not found")?;
+    let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+    let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
+    sm.load_with_progress(on_progress).map_err(|e| e.to_string())?;
     Ok(Arc::new(sm.packs))
 }
 

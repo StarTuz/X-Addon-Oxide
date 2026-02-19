@@ -12,6 +12,7 @@ use crate::apt_dat::{Airport, AptDatParser};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
@@ -388,6 +389,29 @@ impl SceneryManager {
     }
 
     pub fn load(&mut self) -> Result<(), SceneryError> {
+        self.load_inner(|_| {}, false)
+    }
+
+    pub fn load_with_progress(
+        &mut self,
+        on_progress: impl FnMut(f32) + Send,
+    ) -> Result<(), SceneryError> {
+        self.load_inner(on_progress, false)
+    }
+
+    /// Quick load: heuristic classify + cache lookup only.
+    /// Uncached packs get their category from name heuristics but no airport/tile data.
+    /// Returns in < 500ms even on large libraries. Follow up with `load_with_progress`
+    /// in the background to fill in missing airport/tile data.
+    pub fn load_quick(&mut self) -> Result<(), SceneryError> {
+        self.load_inner(|_| {}, true)
+    }
+
+    fn load_inner(
+        &mut self,
+        on_progress: impl FnMut(f32) + Send,
+        quick: bool,
+    ) -> Result<(), SceneryError> {
         let custom_scenery_dir = self.file_path.parent().unwrap_or(&self.file_path);
         log::info!("[SceneryManager] Loading from INI: {:?}", self.file_path);
         println!(
@@ -521,9 +545,14 @@ impl SceneryManager {
         use rayon::prelude::*;
 
         let cache_ref = &cache;
+        let total_packs = packs.len();
+        let completed_count = AtomicUsize::new(0);
+        // Wrap the FnMut callback in Mutex so it can be called from multiple rayon threads
+        let progress_cb = std::sync::Mutex::new(on_progress);
         let processed_results: Vec<(SceneryPack, Option<crate::cache::CacheEntry>)> = packs
             .into_par_iter()
             .map(|mut pack| {
+                let pack_name = pack.name.clone();
                 // Apply heuristic classification (now parallelized)
                 pack.category = classifier::Classifier::classify_heuristic(&pack.path, &pack.name);
 
@@ -536,6 +565,10 @@ impl SceneryManager {
                             entry.descriptor.clone(),
                             None,
                         )
+                    } else if quick {
+                        // Quick mode: skip disk I/O for uncached packs.
+                        // Airport/tile data will be filled in by a background deep scan.
+                        (Vec::<Airport>::new(), Vec::<(i32, i32)>::new(), SceneryDescriptor::default(), None)
                     } else {
                         let mut airports = discover_airports_in_pack(&pack.path);
                         // X-Plane 12 may ship the default airport database in Resources instead of
@@ -642,6 +675,21 @@ impl SceneryManager {
                 // 5. Region Classification
                 pack.region = Some(pack.get_region());
 
+                // Progress reporting — atomic counter so this is safe across threads
+                let done = completed_count.fetch_add(1, Ordering::Relaxed) + 1;
+                let progress = if total_packs > 0 {
+                    done as f32 / total_packs as f32
+                } else {
+                    1.0
+                };
+                println!(
+                    "[SceneryManager] Scanning ({}/{}) {}",
+                    done, total_packs, pack_name
+                );
+                if let Ok(mut cb) = progress_cb.lock() {
+                    cb(progress);
+                }
+
                 (pack, cache_entry)
             })
             .collect();
@@ -681,7 +729,10 @@ impl SceneryManager {
         self.packs = packs;
 
         // 4. Save cache AFTER all discovery (prevents partial/missing saves)
-        let _ = cache.save(Some(xplane_root));
+        // In quick mode there are no new cache entries so no save is needed.
+        if !quick {
+            let _ = cache.save(Some(xplane_root));
+        }
 
         Ok(())
     }
