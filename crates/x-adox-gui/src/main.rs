@@ -6187,7 +6187,6 @@ impl App {
                 ]
                 .spacing(15)
                 .height(Length::Fill)
-                .padding(Padding { top: 0.0, right: 15.0, bottom: 0.0, left: 0.0 })
                 .into()
             }
             Tab::CSLs => {
@@ -6206,7 +6205,6 @@ impl App {
                 ]
                 .spacing(15)
                 .height(Length::Fill)
-                .padding(Padding { top: 0.0, right: 15.0, bottom: 0.0, left: 0.0 })
                 .into()
             }
             Tab::Heuristics => self.view_heuristics_editor(),
@@ -9161,7 +9159,7 @@ impl App {
                             }
                         });
 
-                    scrollable(list)
+                    scrollable(list.padding(Padding { top: 0.0, right: 15.0, bottom: 0.0, left: 0.0 }))
                         .height(Length::Fill)
                         .width(Length::Fill)
                         .into()
@@ -9275,7 +9273,7 @@ impl App {
                             None => vec![Element::from(text("Loading aircraft...").size(14))],
                         }
                     };
-                    Element::from(column(items).spacing(2))
+                    Element::from(column(items).spacing(2).padding(Padding { top: 0.0, right: 15.0, bottom: 0.0, left: 0.0 }))
                 },
             ))
             .id(self.aircraft_scroll_id.clone())
