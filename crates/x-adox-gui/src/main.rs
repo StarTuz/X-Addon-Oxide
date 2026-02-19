@@ -562,6 +562,8 @@ pub enum SceneryViewMode {
     Flat,
     Region,
     Tags,
+    MapEnhancement,
+    AutoOrtho,
 }
 
 impl std::fmt::Display for SceneryViewMode {
@@ -573,6 +575,8 @@ impl std::fmt::Display for SceneryViewMode {
                 SceneryViewMode::Flat => "Flat View",
                 SceneryViewMode::Region => "Group by Region",
                 SceneryViewMode::Tags => "Group by Tag",
+                SceneryViewMode::MapEnhancement => "Group by Map Enhancement",
+                SceneryViewMode::AutoOrtho => "Group by AutoOrtho",
             }
         )
     }
@@ -582,6 +586,8 @@ pub const SCENERY_VIEW_MODES: &[SceneryViewMode] = &[
     SceneryViewMode::Flat,
     SceneryViewMode::Region,
     SceneryViewMode::Tags,
+    SceneryViewMode::MapEnhancement,
+    SceneryViewMode::AutoOrtho,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -2594,6 +2600,17 @@ impl App {
             }
             Message::SetSceneryViewMode(mode) => {
                 self.scenery_view_mode = mode;
+                // Auto-expand the primary group when entering a photo-streamer view
+                // so the user immediately sees the relevant packs.
+                match mode {
+                    SceneryViewMode::MapEnhancement => {
+                        self.scenery_groups_expanded.insert("Map Enhancement".to_string());
+                    }
+                    SceneryViewMode::AutoOrtho => {
+                        self.scenery_groups_expanded.insert("AutoOrtho".to_string());
+                    }
+                    _ => {}
+                }
                 Task::none()
             }
             Message::ToggleSceneryGroup(group) => {
@@ -2610,6 +2627,9 @@ impl App {
                     let pack_group = match self.scenery_view_mode {
                         SceneryViewMode::Region => pack.get_region(),
                         SceneryViewMode::Tags => pack.tags.first().cloned().unwrap_or_else(|| "Untagged".to_string()),
+                        SceneryViewMode::MapEnhancement | SceneryViewMode::AutoOrtho => {
+                            photo_streamer_group(&pack.name).unwrap_or("").to_string()
+                        }
                         _ => String::new(),
                     };
                     if pack_group == group {
@@ -2636,6 +2656,9 @@ impl App {
                     let pack_group = match self.scenery_view_mode {
                         SceneryViewMode::Region => pack.get_region(),
                         SceneryViewMode::Tags => pack.tags.first().cloned().unwrap_or_else(|| "Untagged".to_string()),
+                        SceneryViewMode::MapEnhancement | SceneryViewMode::AutoOrtho => {
+                            photo_streamer_group(&pack.name).unwrap_or("").to_string()
+                        }
                         _ => String::new(),
                     };
                     if pack_group == group {
@@ -7360,6 +7383,13 @@ impl App {
                     scenery_groups.entry(tag).or_default().push((idx, pack.clone()));
                 }
             }
+            SceneryViewMode::MapEnhancement | SceneryViewMode::AutoOrtho => {
+                for (idx, pack) in self.packs.iter().enumerate() {
+                    if let Some(group) = photo_streamer_group(&pack.name) {
+                        scenery_groups.entry(group.to_string()).or_default().push((idx, pack.clone()));
+                    }
+                }
+            }
             SceneryViewMode::Flat => {}
         }
         let scenery_groups = std::sync::Arc::new(scenery_groups);
@@ -7378,6 +7408,14 @@ impl App {
                         let is_expanded = scenery_groups_expanded.contains(group_name);
                         let is_any_enabled = group_packs.iter().any(|(_, p)| p.status == SceneryPackType::Active);
                         let is_any_in_bucket = group_packs.iter().any(|(_, p)| bucket.contains(&p.name));
+                        // A group is a "conflict" group when the current mode is focused
+                        // on the *other* photo-streamer system — e.g. in Map Enhancement
+                        // mode the AutoOrtho group is the conflict group, and vice versa.
+                        let is_conflict = matches!(
+                            (scenery_view_mode, group_name.as_str()),
+                            (SceneryViewMode::MapEnhancement, "AutoOrtho")
+                                | (SceneryViewMode::AutoOrtho, "Map Enhancement")
+                        );
 
                         items.push(Self::render_scenery_group_header(
                             group_name.to_string(),
@@ -7385,6 +7423,7 @@ impl App {
                             is_expanded,
                             is_any_enabled,
                             is_any_in_bucket,
+                            is_conflict,
                         ));
 
                         if is_expanded {
@@ -8485,19 +8524,38 @@ impl App {
         is_expanded: bool,
         is_any_enabled: bool,
         is_any_in_bucket: bool,
+        is_conflict: bool,
     ) -> Element<'static, Message> {
         let group_for_toggle = group.clone();
         let group_for_enabled = group.clone();
         let group_for_bucket = group.clone();
-        
+
+        // Badge text and color: conflict groups show a warning when packs are enabled.
+        let (badge_text, badge_color) = if is_conflict && is_any_enabled {
+            (
+                format!("({} enabled — conflicts)", count),
+                style::palette::ACCENT_ORANGE,
+            )
+        } else if is_conflict {
+            (
+                format!("({} packs — inactive)", count),
+                style::palette::ACCENT_GREEN,
+            )
+        } else {
+            (
+                format!("({} packs)", count),
+                style::palette::TEXT_SECONDARY,
+            )
+        };
+
         let content = row![
             text(if is_expanded { "v" } else { ">" })
                 .size(14)
                 .width(Length::Fixed(20.0)),
             text(group).size(16).width(Length::Fill),
-            text(format!("({} packs)", count))
+            text(badge_text)
                 .size(12)
-                .color(style::palette::TEXT_SECONDARY),
+                .color(badge_color),
             horizontal_space(),
             button(
                 text(if is_any_in_bucket {
@@ -8519,7 +8577,9 @@ impl App {
                 .size(10)
             )
             .on_press(Message::SetSceneryGroupEnabled(group_for_enabled, !is_any_enabled))
-            .style(if is_any_enabled {
+            .style(if is_conflict && is_any_enabled {
+                style::button_orange
+            } else if is_any_enabled {
                 style::button_danger
             } else {
                 style::button_enable_all
@@ -10143,6 +10203,23 @@ impl App {
         if let Err(e) = command.spawn() {
             self.status = format!("Failed to launch {}: {}", app.name, e);
         }
+    }
+}
+
+/// Returns the photo-streaming group name for a scenery pack, if any.
+/// Used by the MapEnhancement and AutoOrtho grouping modes to bucket packs
+/// into their respective categories without touching the classification pipeline.
+fn photo_streamer_group(name: &str) -> Option<&'static str> {
+    let nl = name.to_lowercase();
+    if nl.starts_with("xpme") {
+        Some("Map Enhancement")
+    } else if nl.starts_with("z_ao_")
+        || nl.contains("z_autoortho")
+        || nl.contains("yautoortho")
+    {
+        Some("AutoOrtho")
+    } else {
+        None
     }
 }
 

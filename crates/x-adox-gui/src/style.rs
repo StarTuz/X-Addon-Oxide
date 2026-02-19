@@ -271,6 +271,56 @@ pub fn button_danger(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+/// Orange action button — used for "Disable All" on conflict photo-streaming groups.
+pub fn button_orange(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: None,
+        text_color: palette::TEXT_PRIMARY,
+        border: Border::default(),
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(palette::ACCENT_ORANGE)),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            shadow: Shadow {
+                color: Color::from_rgba(0.98, 0.45, 0.09, 0.4),
+                offset: iced::Vector::new(0.0, 2.0),
+                blur_radius: 8.0,
+            },
+            ..base
+        },
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(1.0, 0.6, 0.2))),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            shadow: Shadow {
+                color: Color::from_rgba(0.98, 0.45, 0.09, 0.6),
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 12.0,
+            },
+            ..base
+        },
+        _ => button::Style {
+            background: Some(Background::Color(palette::ACCENT_ORANGE)),
+            border: Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            text_color: Color::WHITE,
+            ..base
+        },
+    }
+}
+
 pub fn button_danger_glow(_theme: &Theme, status: button::Status) -> button::Style {
     let base = button::Style {
         background: Some(Background::Color(palette::ACCENT_RED)),
