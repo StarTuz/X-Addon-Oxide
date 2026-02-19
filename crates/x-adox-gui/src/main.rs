@@ -89,7 +89,7 @@ fn main() -> iced::Result {
         .theme(|_| Theme::Dark)
         .subscription(App::subscription)
         .window(iced::window::Settings {
-            size: [1100.0, 900.0].into(),
+            size: [1280.0, 960.0].into(),
             icon: window_icon,
             ..Default::default()
         })
@@ -6161,7 +6161,7 @@ impl App {
                 .spacing(25)
                 .padding([20, 0]),
         )
-        .width(Length::Fixed(120.0))
+        .width(Length::Fixed(145.0))
         .height(Length::Fill)
         .style(style::container_sidebar)
         .into()
@@ -6187,6 +6187,7 @@ impl App {
                 ]
                 .spacing(15)
                 .height(Length::Fill)
+                .padding(Padding { top: 0.0, right: 15.0, bottom: 0.0, left: 0.0 })
                 .into()
             }
             Tab::CSLs => {
@@ -6205,6 +6206,7 @@ impl App {
                 ]
                 .spacing(15)
                 .height(Length::Fill)
+                .padding(Padding { top: 0.0, right: 15.0, bottom: 0.0, left: 0.0 })
                 .into()
             }
             Tab::Heuristics => self.view_heuristics_editor(),
