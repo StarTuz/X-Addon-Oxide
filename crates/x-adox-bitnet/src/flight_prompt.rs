@@ -29,8 +29,9 @@ pub enum DurationKeyword {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SurfaceKeyword {
-    Soft, // Grass, Dirt
-    Hard, // Paved, Tarmac
+    Soft,  // Grass, Dirt, Unpaved
+    Hard,  // Paved, Tarmac, Asphalt
+    Water, // Seaplane bases, floatplanes
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -86,7 +87,7 @@ impl FlightPrompt {
 
         // 2. Parse Keywords (Global search)
         // Duration
-        if clean_input.contains("short") || clean_input.contains("hop") {
+        if clean_input.contains("short") || clean_input.contains("hop") || clean_input.contains("quick") {
             prompt.keywords.duration = Some(DurationKeyword::Short);
         } else if clean_input.contains("medium") {
             prompt.keywords.duration = Some(DurationKeyword::Medium);
@@ -101,13 +102,21 @@ impl FlightPrompt {
             || clean_input.contains("dirt")
             || clean_input.contains("gravel")
             || clean_input.contains("strip")
+            || clean_input.contains("unpaved")
         {
             prompt.keywords.surface = Some(SurfaceKeyword::Soft);
         } else if clean_input.contains("paved")
             || clean_input.contains("tarmac")
             || clean_input.contains("concrete")
+            || clean_input.contains("asphalt")
         {
             prompt.keywords.surface = Some(SurfaceKeyword::Hard);
+        } else if clean_input.contains("water")
+            || clean_input.contains("seaplane")
+            || clean_input.contains("floatplane")
+            || clean_input.contains("amphibian")
+        {
+            prompt.keywords.surface = Some(SurfaceKeyword::Water);
         }
 
         // Type
@@ -135,8 +144,24 @@ impl FlightPrompt {
             let origin_str = caps[1].trim();
             let dest_str = caps[2].trim();
 
-            prompt.origin = Some(parse_location(origin_str));
-            prompt.destination = Some(parse_location(dest_str));
+            // Detect noise origins: words like "flight", "quick flight", "a hop" that
+            // appear before "to" but are not locations. The LOC_RE can match these when
+            // the optional "flight from" prefix is absent — e.g. "flight to Germany"
+            // captures origin="flight", dest="germany" instead of dest-only.
+            let is_noise_origin = origin_str == "flight"
+                || origin_str.ends_with(" flight")
+                || origin_str == "hop"
+                || origin_str.ends_with(" hop")
+                || origin_str == "a"
+                || origin_str == "the";
+
+            if is_noise_origin {
+                // Treat as destination-only (same as "flight to X" / "to X" path)
+                prompt.destination = Some(parse_location(dest_str));
+            } else {
+                prompt.origin = Some(parse_location(origin_str));
+                prompt.destination = Some(parse_location(dest_str));
+            }
         } else {
             // Fallback: Check for destination-only prompt "to X" or "flight to X"
             static TO_RE: OnceLock<Regex> = OnceLock::new();
@@ -281,8 +306,11 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "ireland" | "eire" => Some(LocationConstraint::Region("IE".to_string())),
         "uk" | "united kingdom" => Some(LocationConstraint::Region("UK".to_string())),
         "gb" | "great britain" => Some(LocationConstraint::Region("GB".to_string())),
-        "england" | "scotland" | "wales" => Some(LocationConstraint::Region("UK".to_string())),
+        "england" => Some(LocationConstraint::Region("UK:England".to_string())),
+        "scotland" => Some(LocationConstraint::Region("UK:Scotland".to_string())),
+        "wales" => Some(LocationConstraint::Region("UK:Wales".to_string())),
         // Europe — countries
+        "ukraine" | "ukr" => Some(LocationConstraint::Region("UA".to_string())),
         "italy" => Some(LocationConstraint::Region("IT".to_string())),
         "france" => Some(LocationConstraint::Region("FR".to_string())),
         "germany" => Some(LocationConstraint::Region("DE".to_string())),
@@ -304,8 +332,12 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "hawaii" => Some(LocationConstraint::Region("US:HI".to_string())),
         // Geographic features
         "alps" => Some(LocationConstraint::Region("Alps".to_string())),
-        "rockies" => Some(LocationConstraint::Region("Rockies".to_string())),
+        "rockies" | "rocky mountains" => Some(LocationConstraint::Region("Rockies".to_string())),
         "caribbean" => Some(LocationConstraint::Region("Caribbean".to_string())),
+        // Pacific Islands sub-regions
+        "micronesia" => Some(LocationConstraint::Region("PacIsles:Micronesia".to_string())),
+        "melanesia" => Some(LocationConstraint::Region("PacIsles:Melanesia".to_string())),
+        "polynesia" | "french polynesia" | "south pacific" => Some(LocationConstraint::Region("PacIsles:Polynesia".to_string())),
         // Africa — countries
         "south africa" => Some(LocationConstraint::Region("ZA".to_string())),
         "kenya" => Some(LocationConstraint::Region("KE".to_string())),
@@ -320,6 +352,12 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "colombia" => Some(LocationConstraint::Region("CO".to_string())),
         "peru" => Some(LocationConstraint::Region("PE".to_string())),
         "chile" => Some(LocationConstraint::Region("CL".to_string())),
+        // Alternative / historical names that RegionIndex can't catch
+        "burma" => Some(LocationConstraint::Region("MM".to_string())),
+        "persia" => Some(LocationConstraint::Region("IR".to_string())),
+        // Short forms / alternate spellings
+        "czechia" | "czech republic" | "czech" => Some(LocationConstraint::Region("CZ".to_string())),
+        "lao" | "lao pdr" => Some(LocationConstraint::Region("LA".to_string())),
 
         // ===================== CITIES → NearCity =====================
         // North America — US cities (many are 5-7 chars and would be mis-parsed as ICAO otherwise)
@@ -383,8 +421,8 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "tokyo" => nc("Tokyo", 35.6762, 139.6503),
         "osaka" => nc("Osaka", 34.6937, 135.5023),
         "bangkok" => nc("Bangkok", 13.7563, 100.5018),
-        "singapore" => nc("Singapore", 1.3521, 103.8198),
-        "hong kong" => nc("Hong Kong", 22.3193, 114.1694),
+        "singapore" => Some(LocationConstraint::Region("SG".to_string())),
+        "hong kong" => Some(LocationConstraint::Region("HK".to_string())),
         "taipei" => nc("Taipei", 25.0330, 121.5654),
         "seoul" => nc("Seoul", 37.5665, 126.9780),
         "beijing" => nc("Beijing", 39.9042, 116.4074),
@@ -398,7 +436,8 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "dubai" => nc("Dubai", 25.2048, 55.2708),
         "abu dhabi" => nc("Abu Dhabi", 24.4539, 54.3773),
         "doha" => nc("Doha", 25.2854, 51.5310),
-        "kuwait" | "kuwait city" => nc("Kuwait City", 29.3759, 47.9774),
+        "kuwait" => Some(LocationConstraint::Region("KW".to_string())),
+        "kuwait city" => nc("Kuwait City", 29.3759, 47.9774),
         "riyadh" => nc("Riyadh", 24.7136, 46.6753),
         "jeddah" => nc("Jeddah", 21.4858, 39.1925),
         "muscat" => nc("Muscat", 23.5880, 58.3829),
@@ -431,7 +470,8 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "hobart" => nc("Hobart", -42.8821, 147.3272),
         "darwin" => nc("Darwin", -12.4634, 130.8456),
         "cairns" => nc("Cairns", -16.9186, 145.7781),
-        "nadi" | "fiji" => nc("Nadi", -17.7559, 177.4515),
+        "fiji" => Some(LocationConstraint::Region("FJ".to_string())),
+        "nadi" => nc("Nadi", -17.7559, 177.4515),
         // US — more major cities
         "phoenix" => nc("Phoenix", 33.4484, -112.0740),
         "houston" => nc("Houston", 29.7604, -95.3698),
@@ -482,7 +522,7 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "tallinn" => nc("Tallinn", 59.4370, 24.7536),
         "vilnius" => nc("Vilnius", 54.6872, 25.2797),
         "bratislava" => nc("Bratislava", 48.1486, 17.1077),
-        "luxembourg" => nc("Luxembourg", 49.6117, 6.1319),
+        "luxembourg" => Some(LocationConstraint::Region("LU".to_string())),
         // Middle East / Africa — more cities
         "tehran" => nc("Tehran", 35.6892, 51.3890),
         "baghdad" => nc("Baghdad", 33.3152, 44.3661),
@@ -499,6 +539,11 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "tripoli" => nc("Tripoli", 32.9034, 13.1807),
         "khartoum" => nc("Khartoum", 15.5007, 32.5599),
         "kampala" => nc("Kampala", 0.3476, 32.5825),
+        "kyiv" | "kiev" => nc("Kyiv", 50.4501, 30.5234),
+        "lviv" | "lwow" => nc("Lviv", 49.8397, 24.0297),
+        "odessa" | "odesa" => nc("Odessa", 46.4825, 30.7233),
+        "kharkiv" | "kharkov" => nc("Kharkiv", 49.9935, 36.2304),
+        "dnipro" | "dnipropetrovsk" => nc("Dnipro", 48.4647, 35.0462),
         "kigali" => nc("Kigali", -1.9441, 30.0619),
         "lusaka" => nc("Lusaka", -15.4167, 28.2833),
         "harare" => nc("Harare", -17.8252, 31.0335),
@@ -510,7 +555,8 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "havana" | "la habana" => nc("Havana", 23.1136, -82.3666),
         "san juan" => nc("San Juan", 18.4655, -66.1057),
         "nassau" => nc("Nassau", 25.0480, -77.3554),
-        "panama city" | "panama" => nc("Panama City", 8.9936, -79.5197),
+        "panama" => Some(LocationConstraint::Region("PA".to_string())),
+        "panama city" => nc("Panama City", 8.9936, -79.5197),
         "san jose" => nc("San Jose", 9.9281, -84.0907),
         "quito" => nc("Quito", -0.1807, -78.4678),
         "caracas" => nc("Caracas", 10.4806, -66.9036),

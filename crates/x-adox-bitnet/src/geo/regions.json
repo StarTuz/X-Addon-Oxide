@@ -1,1132 +1,2053 @@
 [
-    {
-        "id": "EU",
-        "name": "Europe",
-        "bounds": [
-            {
-                "min_lat": 34.0,
-                "max_lat": 72.0,
-                "min_lon": -25.0,
-                "max_lon": 45.0
-            }
-        ],
-        "parent_id": null
-    },
-    {
-        "id": "NA",
-        "name": "North America",
-        "bounds": [
-            {
-                "min_lat": 15.0,
-                "max_lat": 85.0,
-                "min_lon": -170.0,
-                "max_lon": -50.0
-            }
-        ],
-        "parent_id": null
-    },
-    {
-        "id": "SA",
-        "name": "South America",
-        "bounds": [
-            {
-                "min_lat": -60.0,
-                "max_lat": 15.0,
-                "min_lon": -90.0,
-                "max_lon": -30.0
-            }
-        ],
-        "parent_id": null
-    },
-    {
-        "id": "AF",
-        "name": "Africa",
-        "bounds": [
-            {
-                "min_lat": -40.0,
-                "max_lat": 40.0,
-                "min_lon": -20.0,
-                "max_lon": 55.0
-            }
-        ],
-        "parent_id": null
-    },
-    {
-        "id": "AS",
-        "name": "Asia",
-        "bounds": [
-            {
-                "min_lat": -10.0,
-                "max_lat": 80.0,
-                "min_lon": 25.0,
-                "max_lon": 180.0
-            }
-        ],
-        "parent_id": null
-    },
-    {
-        "id": "OC",
-        "name": "Oceania",
-        "bounds": [
-            {
-                "min_lat": -50.0,
-                "max_lat": 0.0,
-                "min_lon": 110.0,
-                "max_lon": 180.0
-            }
-        ],
-        "parent_id": null
-    },
-    {
-        "id": "US",
-        "name": "United States",
-        "bounds": [
-            {
-                "min_lat": 24.0,
-                "max_lat": 50.0,
-                "min_lon": -125.0,
-                "max_lon": -66.0
-            },
-            {
-                "min_lat": 51.0,
-                "max_lat": 72.0,
-                "min_lon": -170.0,
-                "max_lon": -130.0
-            },
-            {
-                "min_lat": 18.0,
-                "max_lat": 23.0,
-                "min_lon": -161.0,
-                "max_lon": -154.0
-            }
-        ],
-        "parent_id": "NA"
-    },
-    {
-        "id": "US:WA",
-        "name": "Washington",
-        "bounds": [
-            {
-                "min_lat": 45.5,
-                "max_lat": 49.0,
-                "min_lon": -125.0,
-                "max_lon": -117.0
-            }
-        ],
-        "parent_id": "US"
-    },
-    {
-        "id": "US:OR",
-        "name": "Oregon",
-        "bounds": [
-            {
-                "min_lat": 42.0,
-                "max_lat": 46.5,
-                "min_lon": -125.0,
-                "max_lon": -116.5
-            }
-        ],
-        "parent_id": "US"
-    },
-    {
-        "id": "US:CA",
-        "name": "California",
-        "bounds": [
-            {
-                "min_lat": 32.5,
-                "max_lat": 42.0,
-                "min_lon": -124.5,
-                "max_lon": -114.0
-            }
-        ],
-        "parent_id": "US"
-    },
-    {
-        "id": "US:SoCal",
-        "name": "Southern California",
-        "bounds": [
-            {
-                "min_lat": 32.5,
-                "max_lat": 36.0,
-                "min_lon": -121.0,
-                "max_lon": -114.0
-            }
-        ],
-        "parent_id": "US:CA"
-    },
-    {
-        "id": "US:NorCal",
-        "name": "Northern California",
-        "bounds": [
-            {
-                "min_lat": 36.0,
-                "max_lat": 42.0,
-                "min_lon": -124.5,
-                "max_lon": -118.0
-            }
-        ],
-        "parent_id": "US:CA"
-    },
-    {
-        "id": "US:TX",
-        "name": "Texas",
-        "bounds": [
-            {
-                "min_lat": 25.8,
-                "max_lat": 36.5,
-                "min_lon": -106.6,
-                "max_lon": -93.5
-            }
-        ],
-        "parent_id": "US"
-    },
-    {
-        "id": "US:FL",
-        "name": "Florida",
-        "bounds": [
-            {
-                "min_lat": 24.5,
-                "max_lat": 31.0,
-                "min_lon": -87.6,
-                "max_lon": -80.0
-            }
-        ],
-        "parent_id": "US"
-    },
-    {
-        "id": "US:NY",
-        "name": "New York",
-        "bounds": [
-            {
-                "min_lat": 40.5,
-                "max_lat": 45.0,
-                "min_lon": -79.8,
-                "max_lon": -71.8
-            }
-        ],
-        "parent_id": "US"
-    },
-    {
-        "id": "US:HI",
-        "name": "Hawaii",
-        "bounds": [
-            {
-                "min_lat": 18.5,
-                "max_lat": 22.5,
-                "min_lon": -161.0,
-                "max_lon": -154.5
-            }
-        ],
-        "parent_id": "US"
-    },
-    {
-        "id": "US:AK",
-        "name": "Alaska",
-        "bounds": [
-            {
-                "min_lat": 51.0,
-                "max_lat": 72.0,
-                "min_lon": -170.0,
-                "max_lon": -130.0
-            }
-        ],
-        "parent_id": "US"
-    },
-    {
-        "id": "US:AK:SE",
-        "name": "Southeast Alaska",
-        "bounds": [
-            {
-                "min_lat": 54.0,
-                "max_lat": 60.0,
-                "min_lon": -141.0,
-                "max_lon": -130.0
-            }
-        ],
-        "parent_id": "US:AK"
-    },
-    {
-        "id": "UK",
-        "name": "United Kingdom",
-        "bounds": [
-            {
-                "min_lat": 49.9,
-                "max_lat": 61.0,
-                "min_lon": -8.2,
-                "max_lon": 1.8
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "GB",
-        "name": "Great Britain",
-        "bounds": [
-            {
-                "min_lat": 49.9,
-                "max_lat": 59.4,
-                "min_lon": -5.5,
-                "max_lon": 1.8
-            }
-        ],
-        "parent_id": "UK"
-    },
-    {
-        "id": "UK:London",
-        "name": "London",
-        "bounds": [
-            {
-                "min_lat": 51.0,
-                "max_lat": 52.0,
-                "min_lon": -1.0,
-                "max_lon": 0.6
-            }
-        ],
-        "parent_id": "UK"
-    },
-    {
-        "id": "FR",
-        "name": "France",
-        "bounds": [
-            {
-                "min_lat": 41.3,
-                "max_lat": 51.1,
-                "min_lon": -5.2,
-                "max_lon": 9.6
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "DE",
-        "name": "Germany",
-        "bounds": [
-            {
-                "min_lat": 47.2,
-                "max_lat": 55.1,
-                "min_lon": 5.8,
-                "max_lon": 15.1
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "IT",
-        "name": "Italy",
-        "bounds": [
-            {
-                "min_lat": 36.6,
-                "max_lat": 47.1,
-                "min_lon": 6.6,
-                "max_lon": 18.6
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "ES",
-        "name": "Spain",
-        "bounds": [
-            {
-                "min_lat": 36.0,
-                "max_lat": 43.8,
-                "min_lon": -9.4,
-                "max_lon": 3.4
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "IE",
-        "name": "Ireland",
-        "bounds": [
-            {
-                "min_lat": 51.4,
-                "max_lat": 55.4,
-                "min_lon": -10.5,
-                "max_lon": -6.0
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "CH",
-        "name": "Switzerland",
-        "bounds": [
-            {
-                "min_lat": 45.8,
-                "max_lat": 47.9,
-                "min_lon": 5.9,
-                "max_lon": 10.6
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "AT",
-        "name": "Austria",
-        "bounds": [
-            {
-                "min_lat": 46.3,
-                "max_lat": 49.1,
-                "min_lon": 9.5,
-                "max_lon": 17.2
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "BI",
-        "name": "British Isles",
-        "bounds": [
-            {
-                "min_lat": 49.9,
-                "max_lat": 61.0,
-                "min_lon": -10.5,
-                "max_lon": 1.8
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "BE",
-        "name": "Belgium",
-        "bounds": [
-            {
-                "min_lat": 49.5,
-                "max_lat": 51.5,
-                "min_lon": 2.5,
-                "max_lon": 6.4
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "NL",
-        "name": "Netherlands",
-        "bounds": [
-            {
-                "min_lat": 50.7,
-                "max_lat": 53.5,
-                "min_lon": 3.3,
-                "max_lon": 7.2
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "LU",
-        "name": "Luxembourg",
-        "bounds": [
-            {
-                "min_lat": 49.4,
-                "max_lat": 50.2,
-                "min_lon": 5.7,
-                "max_lon": 6.6
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "NO",
-        "name": "Norway",
-        "bounds": [
-            {
-                "min_lat": 58.0,
-                "max_lat": 71.0,
-                "min_lon": 4.0,
-                "max_lon": 31.0
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "SE",
-        "name": "Sweden",
-        "bounds": [
-            {
-                "min_lat": 55.3,
-                "max_lat": 69.1,
-                "min_lon": 11.0,
-                "max_lon": 24.2
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "FI",
-        "name": "Finland",
-        "bounds": [
-            {
-                "min_lat": 59.8,
-                "max_lat": 70.0,
-                "min_lon": 20.6,
-                "max_lon": 31.6
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "DK",
-        "name": "Denmark",
-        "bounds": [
-            {
-                "min_lat": 54.5,
-                "max_lat": 57.8,
-                "min_lon": 8.0,
-                "max_lon": 15.2
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "IS",
-        "name": "Iceland",
-        "bounds": [
-            {
-                "min_lat": 63.3,
-                "max_lat": 66.6,
-                "min_lon": -24.6,
-                "max_lon": -13.4
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "PL",
-        "name": "Poland",
-        "bounds": [
-            {
-                "min_lat": 49.0,
-                "max_lat": 54.9,
-                "min_lon": 14.1,
-                "max_lon": 24.2
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "CZ",
-        "name": "Czech Republic",
-        "bounds": [
-            {
-                "min_lat": 48.5,
-                "max_lat": 51.1,
-                "min_lon": 12.1,
-                "max_lon": 18.9
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "PT",
-        "name": "Portugal",
-        "bounds": [
-            {
-                "min_lat": 36.9,
-                "max_lat": 42.1,
-                "min_lon": -9.5,
-                "max_lon": -6.2
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "GR",
-        "name": "Greece",
-        "bounds": [
-            {
-                "min_lat": 34.8,
-                "max_lat": 41.8,
-                "min_lon": 19.3,
-                "max_lon": 28.3
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "TR",
-        "name": "Turkey",
-        "bounds": [
-            {
-                "min_lat": 35.8,
-                "max_lat": 42.1,
-                "min_lon": 25.7,
-                "max_lon": 44.8
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "CA",
-        "name": "Canada",
-        "bounds": [
-            {
-                "min_lat": 41.7,
-                "max_lat": 83.1,
-                "min_lon": -141.0,
-                "max_lon": -52.6
-            }
-        ],
-        "parent_id": "NA"
-    },
-    {
-        "id": "MX",
-        "name": "Mexico",
-        "bounds": [
-            {
-                "min_lat": 14.5,
-                "max_lat": 32.7,
-                "min_lon": -118.4,
-                "max_lon": -86.7
-            }
-        ],
-        "parent_id": "NA"
-    },
-    {
-        "id": "BR",
-        "name": "Brazil",
-        "bounds": [
-            {
-                "min_lat": -34.0,
-                "max_lat": 5.5,
-                "min_lon": -74.0,
-                "max_lon": -34.0
-            }
-        ],
-        "parent_id": "SA"
-    },
-    {
-        "id": "AU",
-        "name": "Australia",
-        "bounds": [
-            {
-                "min_lat": -44.0,
-                "max_lat": -10.0,
-                "min_lon": 112.0,
-                "max_lon": 154.0
-            }
-        ],
-        "parent_id": "OC"
-    },
-    {
-        "id": "JP",
-        "name": "Japan",
-        "bounds": [
-            {
-                "min_lat": 24.0,
-                "max_lat": 46.0,
-                "min_lon": 122.0,
-                "max_lon": 146.0
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "CN",
-        "name": "China",
-        "bounds": [
-            {
-                "min_lat": 18.0,
-                "max_lat": 54.0,
-                "min_lon": 73.0,
-                "max_lon": 135.0
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "KR",
-        "name": "South Korea",
-        "bounds": [
-            {
-                "min_lat": 34.0,
-                "max_lat": 38.6,
-                "min_lon": 125.0,
-                "max_lon": 130.0
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "IN",
-        "name": "India",
-        "bounds": [
-            {
-                "min_lat": 8.0,
-                "max_lat": 37.0,
-                "min_lon": 68.0,
-                "max_lon": 97.0
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "TH",
-        "name": "Thailand",
-        "bounds": [
-            {
-                "min_lat": 5.6,
-                "max_lat": 20.5,
-                "min_lon": 97.3,
-                "max_lon": 105.7
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "VN",
-        "name": "Vietnam",
-        "bounds": [
-            {
-                "min_lat": 8.5,
-                "max_lat": 23.4,
-                "min_lon": 102.1,
-                "max_lon": 109.5
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "ID",
-        "name": "Indonesia",
-        "bounds": [
-            {
-                "min_lat": -11.0,
-                "max_lat": 6.0,
-                "min_lon": 95.0,
-                "max_lon": 141.0
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "UAE",
-        "name": "United Arab Emirates",
-        "bounds": [
-            {
-                "min_lat": 22.5,
-                "max_lat": 26.2,
-                "min_lon": 51.5,
-                "max_lon": 56.5
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "SA",
-        "name": "Saudi Arabia",
-        "bounds": [
-            {
-                "min_lat": 16.0,
-                "max_lat": 32.2,
-                "min_lon": 34.5,
-                "max_lon": 56.0
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "IL",
-        "name": "Israel",
-        "bounds": [
-            {
-                "min_lat": 29.5,
-                "max_lat": 33.3,
-                "min_lon": 34.3,
-                "max_lon": 35.9
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "EG",
-        "name": "Egypt",
-        "bounds": [
-            {
-                "min_lat": 22.0,
-                "max_lat": 31.7,
-                "min_lon": 24.6,
-                "max_lon": 37.0
-            }
-        ],
-        "parent_id": "AF"
-    },
-    {
-        "id": "KE",
-        "name": "Kenya",
-        "bounds": [
-            {
-                "min_lat": -4.7,
-                "max_lat": 5.0,
-                "min_lon": 33.9,
-                "max_lon": 41.9
-            }
-        ],
-        "parent_id": "AF"
-    },
-    {
-        "id": "ZA",
-        "name": "South Africa",
-        "bounds": [
-            {
-                "min_lat": -34.9,
-                "max_lat": -22.1,
-                "min_lon": 16.3,
-                "max_lon": 33.0
-            }
-        ],
-        "parent_id": "AF"
-    },
-    {
-        "id": "Alps",
-        "name": "Alps",
-        "bounds": [
-            {
-                "min_lat": 43.0,
-                "max_lat": 48.0,
-                "min_lon": 4.0,
-                "max_lon": 16.0
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "Pyrenees",
-        "name": "Pyrenees",
-        "bounds": [
-            {
-                "min_lat": 42.0,
-                "max_lat": 43.5,
-                "min_lon": -2.0,
-                "max_lon": 3.0
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "Andes",
-        "name": "Andes",
-        "bounds": [
-            {
-                "min_lat": -56.0,
-                "max_lat": 11.0,
-                "min_lon": -80.0,
-                "max_lon": -60.0
-            }
-        ],
-        "parent_id": "SA"
-    },
-    {
-        "id": "Himalayas",
-        "name": "Himalayas",
-        "bounds": [
-            {
-                "min_lat": 26.0,
-                "max_lat": 36.0,
-                "min_lon": 70.0,
-                "max_lon": 98.0
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "Rockies",
-        "name": "Rocky Mountains",
-        "bounds": [
-            {
-                "min_lat": 35.0,
-                "max_lat": 60.0,
-                "min_lon": -120.0,
-                "max_lon": -105.0
-            }
-        ],
-        "parent_id": "NA"
-    },
-    {
-        "id": "Atlas",
-        "name": "Atlas Mountains",
-        "bounds": [
-            {
-                "min_lat": 30.0,
-                "max_lat": 37.0,
-                "min_lon": -10.0,
-                "max_lon": 10.0
-            }
-        ],
-        "parent_id": "AF"
-    },
-    {
-        "id": "Papua",
-        "name": "Papua New Guinea",
-        "bounds": [
-            {
-                "min_lat": -12.0,
-                "max_lat": 0.0,
-                "min_lon": 130.0,
-                "max_lon": 156.0
-            }
-        ],
-        "parent_id": "OC"
-    },
-    {
-        "id": "Amazon",
-        "name": "Amazon Rainforest",
-        "bounds": [
-            {
-                "min_lat": -10.0,
-                "max_lat": 5.0,
-                "min_lon": -75.0,
-                "max_lon": -50.0
-            }
-        ],
-        "parent_id": "SA"
-    },
-    {
-        "id": "Patagonia",
-        "name": "Patagonia",
-        "bounds": [
-            {
-                "min_lat": -56.0,
-                "max_lat": -40.0,
-                "min_lon": -76.0,
-                "max_lon": -60.0
-            }
-        ],
-        "parent_id": "SA"
-    },
-    {
-        "id": "Caribbean",
-        "name": "Caribbean",
-        "bounds": [
-            {
-                "min_lat": 10.0,
-                "max_lat": 27.0,
-                "min_lon": -85.0,
-                "max_lon": -60.0
-            }
-        ],
-        "parent_id": "NA"
-    },
-    {
-        "id": "Mediterranean",
-        "name": "Mediterranean",
-        "bounds": [
-            {
-                "min_lat": 30.0,
-                "max_lat": 46.0,
-                "min_lon": -6.0,
-                "max_lon": 36.0
-            }
-        ],
-        "parent_id": "EU"
-    },
-    {
-        "id": "PacIsles",
-        "name": "Pacific Islands",
-        "bounds": [
-            {
-                "min_lat": -30.0,
-                "max_lat": 25.0,
-                "min_lon": 130.0,
-                "max_lon": -130.0
-            }
-        ],
-        "parent_id": "OC"
-    },
-    {
-        "id": "TZ",
-        "name": "Tanzania",
-        "bounds": [
-            {
-                "min_lat": -11.8,
-                "max_lat": -1.0,
-                "min_lon": 29.3,
-                "max_lon": 40.5
-            }
-        ],
-        "parent_id": "AF"
-    },
-    {
-        "id": "ET",
-        "name": "Ethiopia",
-        "bounds": [
-            {
-                "min_lat": 3.4,
-                "max_lat": 14.9,
-                "min_lon": 33.0,
-                "max_lon": 48.0
-            }
-        ],
-        "parent_id": "AF"
-    },
-    {
-        "id": "NG",
-        "name": "Nigeria",
-        "bounds": [
-            {
-                "min_lat": 4.2,
-                "max_lat": 13.9,
-                "min_lon": 2.7,
-                "max_lon": 14.7
-            }
-        ],
-        "parent_id": "AF"
-    },
-    {
-        "id": "MA",
-        "name": "Morocco",
-        "bounds": [
-            {
-                "min_lat": 27.7,
-                "max_lat": 35.9,
-                "min_lon": -13.2,
-                "max_lon": -1.0
-            }
-        ],
-        "parent_id": "AF"
-    },
-    {
-        "id": "SG",
-        "name": "Singapore",
-        "bounds": [
-            {
-                "min_lat": 1.15,
-                "max_lat": 1.47,
-                "min_lon": 103.6,
-                "max_lon": 104.1
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "MY",
-        "name": "Malaysia",
-        "bounds": [
-            {
-                "min_lat": 0.8,
-                "max_lat": 7.4,
-                "min_lon": 99.6,
-                "max_lon": 119.3
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "PH",
-        "name": "Philippines",
-        "bounds": [
-            {
-                "min_lat": 4.6,
-                "max_lat": 21.2,
-                "min_lon": 116.9,
-                "max_lon": 126.6
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "HK",
-        "name": "Hong Kong",
-        "bounds": [
-            {
-                "min_lat": 22.15,
-                "max_lat": 22.56,
-                "min_lon": 113.82,
-                "max_lon": 114.43
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "TW",
-        "name": "Taiwan",
-        "bounds": [
-            {
-                "min_lat": 21.9,
-                "max_lat": 25.3,
-                "min_lon": 120.0,
-                "max_lon": 122.0
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "QA",
-        "name": "Qatar",
-        "bounds": [
-            {
-                "min_lat": 24.5,
-                "max_lat": 26.2,
-                "min_lon": 50.7,
-                "max_lon": 51.7
-            }
-        ],
-        "parent_id": "AS"
-    },
-    {
-        "id": "NZ",
-        "name": "New Zealand",
-        "bounds": [
-            {
-                "min_lat": -47.3,
-                "max_lat": -34.4,
-                "min_lon": 166.4,
-                "max_lon": 178.6
-            }
-        ],
-        "parent_id": "OC"
-    },
-    {
-        "id": "AR",
-        "name": "Argentina",
-        "bounds": [
-            {
-                "min_lat": -55.1,
-                "max_lat": -21.8,
-                "min_lon": -73.6,
-                "max_lon": -53.6
-            }
-        ],
-        "parent_id": "SA"
-    },
-    {
-        "id": "CO",
-        "name": "Colombia",
-        "bounds": [
-            {
-                "min_lat": -4.2,
-                "max_lat": 13.4,
-                "min_lon": -79.0,
-                "max_lon": -66.9
-            }
-        ],
-        "parent_id": "SA"
-    },
-    {
-        "id": "PE",
-        "name": "Peru",
-        "bounds": [
-            {
-                "min_lat": -18.4,
-                "max_lat": -0.0,
-                "min_lon": -81.3,
-                "max_lon": -68.7
-            }
-        ],
-        "parent_id": "SA"
-    },
-    {
-        "id": "CL",
-        "name": "Chile",
-        "bounds": [
-            {
-                "min_lat": -55.9,
-                "max_lat": -17.5,
-                "min_lon": -75.6,
-                "max_lon": -66.9
-            }
-        ],
-        "parent_id": "SA"
-    }
+  {
+    "id": "EU",
+    "name": "Europe",
+    "bounds": [
+      {
+        "min_lat": 34.0,
+        "max_lat": 72.0,
+        "min_lon": -25.0,
+        "max_lon": 45.0
+      }
+    ],
+    "parent_id": null
+  },
+  {
+    "id": "NA",
+    "name": "North America",
+    "bounds": [
+      {
+        "min_lat": 15.0,
+        "max_lat": 85.0,
+        "min_lon": -170.0,
+        "max_lon": -50.0
+      }
+    ],
+    "parent_id": null
+  },
+  {
+    "id": "SA",
+    "name": "South America",
+    "bounds": [
+      {
+        "min_lat": -60.0,
+        "max_lat": 15.0,
+        "min_lon": -90.0,
+        "max_lon": -30.0
+      }
+    ],
+    "parent_id": null
+  },
+  {
+    "id": "AF",
+    "name": "Africa",
+    "bounds": [
+      {
+        "min_lat": -40.0,
+        "max_lat": 40.0,
+        "min_lon": -20.0,
+        "max_lon": 55.0
+      }
+    ],
+    "parent_id": null
+  },
+  {
+    "id": "AS",
+    "name": "Asia",
+    "bounds": [
+      {
+        "min_lat": -10.0,
+        "max_lat": 80.0,
+        "min_lon": 25.0,
+        "max_lon": 180.0
+      }
+    ],
+    "parent_id": null
+  },
+  {
+    "id": "OC",
+    "name": "Oceania",
+    "bounds": [
+      {
+        "min_lat": -50.0,
+        "max_lat": 0.0,
+        "min_lon": 110.0,
+        "max_lon": 180.0
+      }
+    ],
+    "parent_id": null
+  },
+  {
+    "id": "US",
+    "name": "United States",
+    "bounds": [
+      {
+        "min_lat": 24.0,
+        "max_lat": 50.0,
+        "min_lon": -125.0,
+        "max_lon": -66.0
+      },
+      {
+        "min_lat": 51.0,
+        "max_lat": 72.0,
+        "min_lon": -170.0,
+        "max_lon": -130.0
+      },
+      {
+        "min_lat": 18.0,
+        "max_lat": 23.0,
+        "min_lon": -161.0,
+        "max_lon": -154.0
+      }
+    ],
+    "parent_id": "NA"
+  },
+  {
+    "id": "US:WA",
+    "name": "Washington",
+    "bounds": [
+      {
+        "min_lat": 45.5,
+        "max_lat": 49.0,
+        "min_lon": -125.0,
+        "max_lon": -117.0
+      }
+    ],
+    "parent_id": "US"
+  },
+  {
+    "id": "US:OR",
+    "name": "Oregon",
+    "bounds": [
+      {
+        "min_lat": 42.0,
+        "max_lat": 46.5,
+        "min_lon": -125.0,
+        "max_lon": -116.5
+      }
+    ],
+    "parent_id": "US"
+  },
+  {
+    "id": "US:CA",
+    "name": "California",
+    "bounds": [
+      {
+        "min_lat": 32.5,
+        "max_lat": 42.0,
+        "min_lon": -124.5,
+        "max_lon": -114.0
+      }
+    ],
+    "parent_id": "US"
+  },
+  {
+    "id": "US:SoCal",
+    "name": "Southern California",
+    "bounds": [
+      {
+        "min_lat": 32.5,
+        "max_lat": 36.0,
+        "min_lon": -121.0,
+        "max_lon": -114.0
+      }
+    ],
+    "parent_id": "US:CA"
+  },
+  {
+    "id": "US:NorCal",
+    "name": "Northern California",
+    "bounds": [
+      {
+        "min_lat": 36.0,
+        "max_lat": 42.0,
+        "min_lon": -124.5,
+        "max_lon": -118.0
+      }
+    ],
+    "parent_id": "US:CA"
+  },
+  {
+    "id": "US:TX",
+    "name": "Texas",
+    "bounds": [
+      {
+        "min_lat": 25.8,
+        "max_lat": 36.5,
+        "min_lon": -106.6,
+        "max_lon": -93.5
+      }
+    ],
+    "parent_id": "US"
+  },
+  {
+    "id": "US:FL",
+    "name": "Florida",
+    "bounds": [
+      {
+        "min_lat": 24.5,
+        "max_lat": 31.0,
+        "min_lon": -87.6,
+        "max_lon": -80.0
+      }
+    ],
+    "parent_id": "US"
+  },
+  {
+    "id": "US:NY",
+    "name": "New York",
+    "bounds": [
+      {
+        "min_lat": 40.5,
+        "max_lat": 45.0,
+        "min_lon": -79.8,
+        "max_lon": -71.8
+      }
+    ],
+    "parent_id": "US"
+  },
+  {
+    "id": "US:HI",
+    "name": "Hawaii",
+    "bounds": [
+      {
+        "min_lat": 18.5,
+        "max_lat": 22.5,
+        "min_lon": -161.0,
+        "max_lon": -154.5
+      }
+    ],
+    "parent_id": "US"
+  },
+  {
+    "id": "US:AK",
+    "name": "Alaska",
+    "bounds": [
+      {
+        "min_lat": 51.0,
+        "max_lat": 72.0,
+        "min_lon": -170.0,
+        "max_lon": -130.0
+      }
+    ],
+    "parent_id": "US"
+  },
+  {
+    "id": "US:AK:SE",
+    "name": "Southeast Alaska",
+    "bounds": [
+      {
+        "min_lat": 54.0,
+        "max_lat": 60.0,
+        "min_lon": -141.0,
+        "max_lon": -130.0
+      }
+    ],
+    "parent_id": "US:AK"
+  },
+  {
+    "id": "UK",
+    "name": "United Kingdom",
+    "bounds": [
+      {
+        "min_lat": 49.9,
+        "max_lat": 61.0,
+        "min_lon": -8.2,
+        "max_lon": 1.8
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "GB",
+    "name": "Great Britain",
+    "bounds": [
+      {
+        "min_lat": 49.9,
+        "max_lat": 59.4,
+        "min_lon": -5.5,
+        "max_lon": 1.8
+      }
+    ],
+    "parent_id": "UK"
+  },
+  {
+    "id": "UK:London",
+    "name": "London",
+    "bounds": [
+      {
+        "min_lat": 51.0,
+        "max_lat": 52.0,
+        "min_lon": -1.0,
+        "max_lon": 0.6
+      }
+    ],
+    "parent_id": "UK"
+  },
+  {
+    "id": "UK:England",
+    "name": "England",
+    "bounds": [
+      {
+        "min_lat": 49.9,
+        "max_lat": 55.8,
+        "min_lon": -5.7,
+        "max_lon": 2.0
+      }
+    ],
+    "parent_id": "UK"
+  },
+  {
+    "id": "UK:Scotland",
+    "name": "Scotland",
+    "bounds": [
+      {
+        "min_lat": 54.6,
+        "max_lat": 60.9,
+        "min_lon": -7.7,
+        "max_lon": 2.1
+      }
+    ],
+    "parent_id": "UK"
+  },
+  {
+    "id": "UK:Wales",
+    "name": "Wales",
+    "bounds": [
+      {
+        "min_lat": 51.3,
+        "max_lat": 53.5,
+        "min_lon": -5.4,
+        "max_lon": -2.6
+      }
+    ],
+    "parent_id": "UK"
+  },
+  {
+    "id": "UA",
+    "name": "Ukraine",
+    "bounds": [
+      {
+        "min_lat": 44.3,
+        "max_lat": 52.5,
+        "min_lon": 22.1,
+        "max_lon": 40.2
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "FR",
+    "name": "France",
+    "bounds": [
+      {
+        "min_lat": 41.3,
+        "max_lat": 51.1,
+        "min_lon": -5.2,
+        "max_lon": 9.6
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "DE",
+    "name": "Germany",
+    "bounds": [
+      {
+        "min_lat": 47.2,
+        "max_lat": 55.1,
+        "min_lon": 5.8,
+        "max_lon": 15.1
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "IT",
+    "name": "Italy",
+    "bounds": [
+      {
+        "min_lat": 36.6,
+        "max_lat": 47.1,
+        "min_lon": 6.6,
+        "max_lon": 18.6
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "ES",
+    "name": "Spain",
+    "bounds": [
+      {
+        "min_lat": 36.0,
+        "max_lat": 43.8,
+        "min_lon": -9.4,
+        "max_lon": 3.4
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "IE",
+    "name": "Ireland",
+    "bounds": [
+      {
+        "min_lat": 51.4,
+        "max_lat": 55.4,
+        "min_lon": -10.5,
+        "max_lon": -6.0
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "CH",
+    "name": "Switzerland",
+    "bounds": [
+      {
+        "min_lat": 45.8,
+        "max_lat": 47.9,
+        "min_lon": 5.9,
+        "max_lon": 10.6
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "AT",
+    "name": "Austria",
+    "bounds": [
+      {
+        "min_lat": 46.3,
+        "max_lat": 49.1,
+        "min_lon": 9.5,
+        "max_lon": 17.2
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "BI",
+    "name": "British Isles",
+    "bounds": [
+      {
+        "min_lat": 49.9,
+        "max_lat": 61.0,
+        "min_lon": -10.5,
+        "max_lon": 1.8
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "BE",
+    "name": "Belgium",
+    "bounds": [
+      {
+        "min_lat": 49.5,
+        "max_lat": 51.5,
+        "min_lon": 2.5,
+        "max_lon": 6.4
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "NL",
+    "name": "Netherlands",
+    "bounds": [
+      {
+        "min_lat": 50.7,
+        "max_lat": 53.5,
+        "min_lon": 3.3,
+        "max_lon": 7.2
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "LU",
+    "name": "Luxembourg",
+    "bounds": [
+      {
+        "min_lat": 49.4,
+        "max_lat": 50.2,
+        "min_lon": 5.7,
+        "max_lon": 6.6
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "NO",
+    "name": "Norway",
+    "bounds": [
+      {
+        "min_lat": 58.0,
+        "max_lat": 71.0,
+        "min_lon": 4.0,
+        "max_lon": 31.0
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "SE",
+    "name": "Sweden",
+    "bounds": [
+      {
+        "min_lat": 55.3,
+        "max_lat": 69.1,
+        "min_lon": 11.0,
+        "max_lon": 24.2
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "FI",
+    "name": "Finland",
+    "bounds": [
+      {
+        "min_lat": 59.8,
+        "max_lat": 70.0,
+        "min_lon": 20.6,
+        "max_lon": 31.6
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "DK",
+    "name": "Denmark",
+    "bounds": [
+      {
+        "min_lat": 54.5,
+        "max_lat": 57.8,
+        "min_lon": 8.0,
+        "max_lon": 15.2
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "IS",
+    "name": "Iceland",
+    "bounds": [
+      {
+        "min_lat": 63.3,
+        "max_lat": 66.6,
+        "min_lon": -24.6,
+        "max_lon": -13.4
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "PL",
+    "name": "Poland",
+    "bounds": [
+      {
+        "min_lat": 49.0,
+        "max_lat": 54.9,
+        "min_lon": 14.1,
+        "max_lon": 24.2
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "CZ",
+    "name": "Czech Republic",
+    "bounds": [
+      {
+        "min_lat": 48.5,
+        "max_lat": 51.1,
+        "min_lon": 12.1,
+        "max_lon": 18.9
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "PT",
+    "name": "Portugal",
+    "bounds": [
+      {
+        "min_lat": 36.9,
+        "max_lat": 42.1,
+        "min_lon": -9.5,
+        "max_lon": -6.2
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "GR",
+    "name": "Greece",
+    "bounds": [
+      {
+        "min_lat": 34.8,
+        "max_lat": 41.8,
+        "min_lon": 19.3,
+        "max_lon": 28.3
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "TR",
+    "name": "Turkey",
+    "bounds": [
+      {
+        "min_lat": 35.8,
+        "max_lat": 42.1,
+        "min_lon": 25.7,
+        "max_lon": 44.8
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "CA",
+    "name": "Canada",
+    "bounds": [
+      {
+        "min_lat": 41.7,
+        "max_lat": 83.1,
+        "min_lon": -141.0,
+        "max_lon": -52.6
+      }
+    ],
+    "parent_id": "NA"
+  },
+  {
+    "id": "MX",
+    "name": "Mexico",
+    "bounds": [
+      {
+        "min_lat": 14.5,
+        "max_lat": 32.7,
+        "min_lon": -118.4,
+        "max_lon": -86.7
+      }
+    ],
+    "parent_id": "NA"
+  },
+  {
+    "id": "BR",
+    "name": "Brazil",
+    "bounds": [
+      {
+        "min_lat": -34.0,
+        "max_lat": 5.5,
+        "min_lon": -74.0,
+        "max_lon": -34.0
+      }
+    ],
+    "parent_id": "SA"
+  },
+  {
+    "id": "AU",
+    "name": "Australia",
+    "bounds": [
+      {
+        "min_lat": -44.0,
+        "max_lat": -10.0,
+        "min_lon": 112.0,
+        "max_lon": 154.0
+      }
+    ],
+    "parent_id": "OC"
+  },
+  {
+    "id": "JP",
+    "name": "Japan",
+    "bounds": [
+      {
+        "min_lat": 24.0,
+        "max_lat": 46.0,
+        "min_lon": 122.0,
+        "max_lon": 146.0
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "CN",
+    "name": "China",
+    "bounds": [
+      {
+        "min_lat": 18.0,
+        "max_lat": 54.0,
+        "min_lon": 73.0,
+        "max_lon": 135.0
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "KR",
+    "name": "South Korea",
+    "bounds": [
+      {
+        "min_lat": 34.0,
+        "max_lat": 38.6,
+        "min_lon": 125.0,
+        "max_lon": 130.0
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "IN",
+    "name": "India",
+    "bounds": [
+      {
+        "min_lat": 8.0,
+        "max_lat": 37.0,
+        "min_lon": 68.0,
+        "max_lon": 97.0
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "TH",
+    "name": "Thailand",
+    "bounds": [
+      {
+        "min_lat": 5.6,
+        "max_lat": 20.5,
+        "min_lon": 97.3,
+        "max_lon": 105.7
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "VN",
+    "name": "Vietnam",
+    "bounds": [
+      {
+        "min_lat": 8.5,
+        "max_lat": 23.4,
+        "min_lon": 102.1,
+        "max_lon": 109.5
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "ID",
+    "name": "Indonesia",
+    "bounds": [
+      {
+        "min_lat": -11.0,
+        "max_lat": 6.0,
+        "min_lon": 95.0,
+        "max_lon": 141.0
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "UAE",
+    "name": "United Arab Emirates",
+    "bounds": [
+      {
+        "min_lat": 22.5,
+        "max_lat": 26.2,
+        "min_lon": 51.5,
+        "max_lon": 56.5
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "IL",
+    "name": "Israel",
+    "bounds": [
+      {
+        "min_lat": 29.5,
+        "max_lat": 33.3,
+        "min_lon": 34.3,
+        "max_lon": 35.9
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "EG",
+    "name": "Egypt",
+    "bounds": [
+      {
+        "min_lat": 22.0,
+        "max_lat": 31.7,
+        "min_lon": 24.6,
+        "max_lon": 37.0
+      }
+    ],
+    "parent_id": "AF"
+  },
+  {
+    "id": "KE",
+    "name": "Kenya",
+    "bounds": [
+      {
+        "min_lat": -4.7,
+        "max_lat": 5.0,
+        "min_lon": 33.9,
+        "max_lon": 41.9
+      }
+    ],
+    "parent_id": "AF"
+  },
+  {
+    "id": "ZA",
+    "name": "South Africa",
+    "bounds": [
+      {
+        "min_lat": -34.9,
+        "max_lat": -22.1,
+        "min_lon": 16.3,
+        "max_lon": 33.0
+      }
+    ],
+    "parent_id": "AF"
+  },
+  {
+    "id": "Alps",
+    "name": "Alps",
+    "bounds": [
+      {
+        "min_lat": 43.0,
+        "max_lat": 48.0,
+        "min_lon": 4.0,
+        "max_lon": 16.0
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "Pyrenees",
+    "name": "Pyrenees",
+    "bounds": [
+      {
+        "min_lat": 42.0,
+        "max_lat": 43.5,
+        "min_lon": -2.0,
+        "max_lon": 3.0
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "Andes",
+    "name": "Andes",
+    "bounds": [
+      {
+        "min_lat": -56.0,
+        "max_lat": 11.0,
+        "min_lon": -80.0,
+        "max_lon": -60.0
+      }
+    ],
+    "parent_id": "SA"
+  },
+  {
+    "id": "Himalayas",
+    "name": "Himalayas",
+    "bounds": [
+      {
+        "min_lat": 26.0,
+        "max_lat": 36.0,
+        "min_lon": 70.0,
+        "max_lon": 98.0
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "Rockies",
+    "name": "Rocky Mountains",
+    "bounds": [
+      {
+        "min_lat": 35.0,
+        "max_lat": 60.0,
+        "min_lon": -120.0,
+        "max_lon": -105.0
+      }
+    ],
+    "parent_id": "NA"
+  },
+  {
+    "id": "Atlas",
+    "name": "Atlas Mountains",
+    "bounds": [
+      {
+        "min_lat": 30.0,
+        "max_lat": 37.0,
+        "min_lon": -10.0,
+        "max_lon": 10.0
+      }
+    ],
+    "parent_id": "AF"
+  },
+  {
+    "id": "Amazon",
+    "name": "Amazon Rainforest",
+    "bounds": [
+      {
+        "min_lat": -10.0,
+        "max_lat": 5.0,
+        "min_lon": -75.0,
+        "max_lon": -50.0
+      }
+    ],
+    "parent_id": "SA"
+  },
+  {
+    "id": "Patagonia",
+    "name": "Patagonia",
+    "bounds": [
+      {
+        "min_lat": -56.0,
+        "max_lat": -40.0,
+        "min_lon": -76.0,
+        "max_lon": -60.0
+      }
+    ],
+    "parent_id": "SA"
+  },
+  {
+    "id": "Caribbean",
+    "name": "Caribbean",
+    "bounds": [
+      {
+        "min_lat": 10.0,
+        "max_lat": 27.0,
+        "min_lon": -85.0,
+        "max_lon": -60.0
+      }
+    ],
+    "parent_id": "NA"
+  },
+  {
+    "id": "Mediterranean",
+    "name": "Mediterranean",
+    "bounds": [
+      {
+        "min_lat": 30.0,
+        "max_lat": 46.0,
+        "min_lon": -6.0,
+        "max_lon": 36.0
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "PacIsles",
+    "name": "Pacific Islands",
+    "bounds": [
+      {
+        "min_lat": -30.0,
+        "max_lat": 25.0,
+        "min_lon": 130.0,
+        "max_lon": 180.0
+      },
+      {
+        "min_lat": -30.0,
+        "max_lat": 25.0,
+        "min_lon": -180.0,
+        "max_lon": -130.0
+      }
+    ],
+    "parent_id": "OC"
+  },
+  {
+    "id": "TZ",
+    "name": "Tanzania",
+    "bounds": [
+      {
+        "min_lat": -11.8,
+        "max_lat": -1.0,
+        "min_lon": 29.3,
+        "max_lon": 40.5
+      }
+    ],
+    "parent_id": "AF"
+  },
+  {
+    "id": "ET",
+    "name": "Ethiopia",
+    "bounds": [
+      {
+        "min_lat": 3.4,
+        "max_lat": 14.9,
+        "min_lon": 33.0,
+        "max_lon": 48.0
+      }
+    ],
+    "parent_id": "AF"
+  },
+  {
+    "id": "NG",
+    "name": "Nigeria",
+    "bounds": [
+      {
+        "min_lat": 4.2,
+        "max_lat": 13.9,
+        "min_lon": 2.7,
+        "max_lon": 14.7
+      }
+    ],
+    "parent_id": "AF"
+  },
+  {
+    "id": "MA",
+    "name": "Morocco",
+    "bounds": [
+      {
+        "min_lat": 27.7,
+        "max_lat": 35.9,
+        "min_lon": -13.2,
+        "max_lon": -1.0
+      }
+    ],
+    "parent_id": "AF"
+  },
+  {
+    "id": "SG",
+    "name": "Singapore",
+    "bounds": [
+      {
+        "min_lat": 1.15,
+        "max_lat": 1.47,
+        "min_lon": 103.6,
+        "max_lon": 104.1
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "MY",
+    "name": "Malaysia",
+    "bounds": [
+      {
+        "min_lat": 0.8,
+        "max_lat": 7.4,
+        "min_lon": 99.6,
+        "max_lon": 119.3
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "PH",
+    "name": "Philippines",
+    "bounds": [
+      {
+        "min_lat": 4.6,
+        "max_lat": 21.2,
+        "min_lon": 116.9,
+        "max_lon": 126.6
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "HK",
+    "name": "Hong Kong",
+    "bounds": [
+      {
+        "min_lat": 22.15,
+        "max_lat": 22.56,
+        "min_lon": 113.82,
+        "max_lon": 114.43
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "TW",
+    "name": "Taiwan",
+    "bounds": [
+      {
+        "min_lat": 21.9,
+        "max_lat": 25.3,
+        "min_lon": 120.0,
+        "max_lon": 122.0
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "QA",
+    "name": "Qatar",
+    "bounds": [
+      {
+        "min_lat": 24.5,
+        "max_lat": 26.2,
+        "min_lon": 50.7,
+        "max_lon": 51.7
+      }
+    ],
+    "parent_id": "AS"
+  },
+  {
+    "id": "NZ",
+    "name": "New Zealand",
+    "bounds": [
+      {
+        "min_lat": -47.3,
+        "max_lat": -34.4,
+        "min_lon": 166.4,
+        "max_lon": 178.6
+      }
+    ],
+    "parent_id": "OC"
+  },
+  {
+    "id": "AR",
+    "name": "Argentina",
+    "bounds": [
+      {
+        "min_lat": -55.1,
+        "max_lat": -21.8,
+        "min_lon": -73.6,
+        "max_lon": -53.6
+      }
+    ],
+    "parent_id": "SA"
+  },
+  {
+    "id": "CO",
+    "name": "Colombia",
+    "bounds": [
+      {
+        "min_lat": -4.2,
+        "max_lat": 13.4,
+        "min_lon": -79.0,
+        "max_lon": -66.9
+      }
+    ],
+    "parent_id": "SA"
+  },
+  {
+    "id": "PE",
+    "name": "Peru",
+    "bounds": [
+      {
+        "min_lat": -18.4,
+        "max_lat": -0.0,
+        "min_lon": -81.3,
+        "max_lon": -68.7
+      }
+    ],
+    "parent_id": "SA"
+  },
+  {
+    "id": "CL",
+    "name": "Chile",
+    "bounds": [
+      {
+        "min_lat": -55.9,
+        "max_lat": -17.5,
+        "min_lon": -75.6,
+        "max_lon": -66.9
+      }
+    ],
+    "parent_id": "SA"
+  },
+  {
+    "id": "BG",
+    "name": "Bulgaria",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 41.2,
+        "max_lat": 44.2,
+        "min_lon": 22.4,
+        "max_lon": 28.6
+      }
+    ]
+  },
+  {
+    "id": "EE",
+    "name": "Estonia",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 57.5,
+        "max_lat": 59.7,
+        "min_lon": 21.8,
+        "max_lon": 28.2
+      }
+    ]
+  },
+  {
+    "id": "HR",
+    "name": "Croatia",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 42.4,
+        "max_lat": 46.6,
+        "min_lon": 13.5,
+        "max_lon": 19.5
+      }
+    ]
+  },
+  {
+    "id": "HU",
+    "name": "Hungary",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 45.7,
+        "max_lat": 48.6,
+        "min_lon": 16.1,
+        "max_lon": 22.9
+      }
+    ]
+  },
+  {
+    "id": "LT",
+    "name": "Lithuania",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 53.9,
+        "max_lat": 56.5,
+        "min_lon": 20.9,
+        "max_lon": 26.8
+      }
+    ]
+  },
+  {
+    "id": "LV",
+    "name": "Latvia",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 55.7,
+        "max_lat": 58.1,
+        "min_lon": 20.8,
+        "max_lon": 28.2
+      }
+    ]
+  },
+  {
+    "id": "RO",
+    "name": "Romania",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 43.6,
+        "max_lat": 48.3,
+        "min_lon": 20.3,
+        "max_lon": 29.7
+      }
+    ]
+  },
+  {
+    "id": "RS",
+    "name": "Serbia",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 42.2,
+        "max_lat": 46.2,
+        "min_lon": 18.8,
+        "max_lon": 22.9
+      }
+    ]
+  },
+  {
+    "id": "SK",
+    "name": "Slovakia",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 47.7,
+        "max_lat": 49.6,
+        "min_lon": 16.8,
+        "max_lon": 22.6
+      }
+    ]
+  },
+  {
+    "id": "SI",
+    "name": "Slovenia",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 45.4,
+        "max_lat": 46.9,
+        "min_lon": 13.4,
+        "max_lon": 16.6
+      }
+    ]
+  },
+  {
+    "id": "BA",
+    "name": "Bosnia and Herzegovina",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 42.6,
+        "max_lat": 45.3,
+        "min_lon": 15.7,
+        "max_lon": 19.6
+      }
+    ]
+  },
+  {
+    "id": "MK",
+    "name": "North Macedonia",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 40.9,
+        "max_lat": 42.4,
+        "min_lon": 20.5,
+        "max_lon": 23.0
+      }
+    ]
+  },
+  {
+    "id": "AL",
+    "name": "Albania",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 39.6,
+        "max_lat": 42.7,
+        "min_lon": 19.3,
+        "max_lon": 21.1
+      }
+    ]
+  },
+  {
+    "id": "ME",
+    "name": "Montenegro",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 41.8,
+        "max_lat": 43.6,
+        "min_lon": 18.4,
+        "max_lon": 20.4
+      }
+    ]
+  },
+  {
+    "id": "MD",
+    "name": "Moldova",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 45.5,
+        "max_lat": 48.5,
+        "min_lon": 26.6,
+        "max_lon": 30.2
+      }
+    ]
+  },
+  {
+    "id": "BY",
+    "name": "Belarus",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 51.3,
+        "max_lat": 56.2,
+        "min_lon": 23.2,
+        "max_lon": 32.8
+      }
+    ]
+  },
+  {
+    "id": "RU",
+    "name": "Russia",
+    "parent_id": "EU",
+    "bounds": [
+      {
+        "min_lat": 41.2,
+        "max_lat": 77.7,
+        "min_lon": 19.9,
+        "max_lon": 180.0
+      },
+      {
+        "min_lat": 41.2,
+        "max_lat": 77.7,
+        "min_lon": -180.0,
+        "max_lon": -168.0
+      }
+    ]
+  },
+  {
+    "id": "IQ",
+    "name": "Iraq",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 29.1,
+        "max_lat": 37.4,
+        "min_lon": 38.8,
+        "max_lon": 48.6
+      }
+    ]
+  },
+  {
+    "id": "IR",
+    "name": "Iran",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 25.1,
+        "max_lat": 39.8,
+        "min_lon": 44.0,
+        "max_lon": 63.3
+      }
+    ]
+  },
+  {
+    "id": "JO",
+    "name": "Jordan",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 29.2,
+        "max_lat": 33.4,
+        "min_lon": 34.9,
+        "max_lon": 39.3
+      }
+    ]
+  },
+  {
+    "id": "KW",
+    "name": "Kuwait",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 28.5,
+        "max_lat": 30.1,
+        "min_lon": 46.5,
+        "max_lon": 48.4
+      }
+    ]
+  },
+  {
+    "id": "LB",
+    "name": "Lebanon",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 33.1,
+        "max_lat": 34.7,
+        "min_lon": 35.1,
+        "max_lon": 36.6
+      }
+    ]
+  },
+  {
+    "id": "OM",
+    "name": "Oman",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 16.6,
+        "max_lat": 26.4,
+        "min_lon": 52.0,
+        "max_lon": 59.8
+      }
+    ]
+  },
+  {
+    "id": "SAU",
+    "name": "Saudi Arabia",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 16.4,
+        "max_lat": 32.2,
+        "min_lon": 36.7,
+        "max_lon": 55.7
+      }
+    ]
+  },
+  {
+    "id": "BH",
+    "name": "Bahrain",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 25.8,
+        "max_lat": 26.4,
+        "min_lon": 50.3,
+        "max_lon": 50.8
+      }
+    ]
+  },
+  {
+    "id": "BD",
+    "name": "Bangladesh",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 20.5,
+        "max_lat": 26.7,
+        "min_lon": 88.0,
+        "max_lon": 92.7
+      }
+    ]
+  },
+  {
+    "id": "LK",
+    "name": "Sri Lanka",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 5.9,
+        "max_lat": 9.8,
+        "min_lon": 79.7,
+        "max_lon": 81.9
+      }
+    ]
+  },
+  {
+    "id": "MM",
+    "name": "Myanmar",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 9.8,
+        "max_lat": 28.6,
+        "min_lon": 92.2,
+        "max_lon": 101.2
+      }
+    ]
+  },
+  {
+    "id": "NP",
+    "name": "Nepal",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 26.3,
+        "max_lat": 30.5,
+        "min_lon": 80.0,
+        "max_lon": 88.2
+      }
+    ]
+  },
+  {
+    "id": "PK",
+    "name": "Pakistan",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 23.7,
+        "max_lat": 37.1,
+        "min_lon": 60.9,
+        "max_lon": 77.2
+      }
+    ]
+  },
+  {
+    "id": "KH",
+    "name": "Cambodia",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 10.4,
+        "max_lat": 14.7,
+        "min_lon": 102.3,
+        "max_lon": 107.6
+      }
+    ]
+  },
+  {
+    "id": "LA",
+    "name": "Laos",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 13.9,
+        "max_lat": 22.5,
+        "min_lon": 100.1,
+        "max_lon": 107.7
+      }
+    ]
+  },
+  {
+    "id": "MN",
+    "name": "Mongolia",
+    "parent_id": "AS",
+    "bounds": [
+      {
+        "min_lat": 41.6,
+        "max_lat": 52.2,
+        "min_lon": 87.8,
+        "max_lon": 119.9
+      }
+    ]
+  },
+  {
+    "id": "GH",
+    "name": "Ghana",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": 4.7,
+        "max_lat": 11.2,
+        "min_lon": -3.3,
+        "max_lon": 1.2
+      }
+    ]
+  },
+  {
+    "id": "LY",
+    "name": "Libya",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": 19.5,
+        "max_lat": 33.2,
+        "min_lon": 9.4,
+        "max_lon": 25.2
+      }
+    ]
+  },
+  {
+    "id": "MG",
+    "name": "Madagascar",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": -25.6,
+        "max_lat": -11.9,
+        "min_lon": 43.2,
+        "max_lon": 50.5
+      }
+    ]
+  },
+  {
+    "id": "RW",
+    "name": "Rwanda",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": -2.8,
+        "max_lat": -1.1,
+        "min_lon": 28.9,
+        "max_lon": 30.9
+      }
+    ]
+  },
+  {
+    "id": "SD",
+    "name": "Sudan",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": 8.7,
+        "max_lat": 22.2,
+        "min_lon": 21.9,
+        "max_lon": 38.7
+      }
+    ]
+  },
+  {
+    "id": "SN",
+    "name": "Senegal",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": 12.3,
+        "max_lat": 16.7,
+        "min_lon": -17.5,
+        "max_lon": -11.4
+      }
+    ]
+  },
+  {
+    "id": "TN",
+    "name": "Tunisia",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": 30.2,
+        "max_lat": 37.5,
+        "min_lon": 7.5,
+        "max_lon": 11.6
+      }
+    ]
+  },
+  {
+    "id": "UG",
+    "name": "Uganda",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": -1.5,
+        "max_lat": 4.2,
+        "min_lon": 29.6,
+        "max_lon": 35.0
+      }
+    ]
+  },
+  {
+    "id": "ZM",
+    "name": "Zambia",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": -18.1,
+        "max_lat": -8.2,
+        "min_lon": 21.9,
+        "max_lon": 33.7
+      }
+    ]
+  },
+  {
+    "id": "ZW",
+    "name": "Zimbabwe",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": -22.4,
+        "max_lat": -15.6,
+        "min_lon": 25.2,
+        "max_lon": 33.1
+      }
+    ]
+  },
+  {
+    "id": "AO",
+    "name": "Angola",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": -18.1,
+        "max_lat": -4.4,
+        "min_lon": 11.7,
+        "max_lon": 24.1
+      }
+    ]
+  },
+  {
+    "id": "CM",
+    "name": "Cameroon",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": 1.7,
+        "max_lat": 13.1,
+        "min_lon": 8.5,
+        "max_lon": 16.2
+      }
+    ]
+  },
+  {
+    "id": "MZ",
+    "name": "Mozambique",
+    "parent_id": "AF",
+    "bounds": [
+      {
+        "min_lat": -26.9,
+        "max_lat": -10.5,
+        "min_lon": 32.3,
+        "max_lon": 40.9
+      }
+    ]
+  },
+  {
+    "id": "BO",
+    "name": "Bolivia",
+    "parent_id": "SA",
+    "bounds": [
+      {
+        "min_lat": -22.9,
+        "max_lat": -9.7,
+        "min_lon": -69.7,
+        "max_lon": -57.5
+      }
+    ]
+  },
+  {
+    "id": "BS",
+    "name": "Bahamas",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 20.9,
+        "max_lat": 27.3,
+        "min_lon": -79.3,
+        "max_lon": -72.7
+      }
+    ]
+  },
+  {
+    "id": "CR",
+    "name": "Costa Rica",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 8.0,
+        "max_lat": 11.2,
+        "min_lon": -85.9,
+        "max_lon": -82.6
+      }
+    ]
+  },
+  {
+    "id": "CU",
+    "name": "Cuba",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 19.8,
+        "max_lat": 23.3,
+        "min_lon": -84.9,
+        "max_lon": -74.1
+      }
+    ]
+  },
+  {
+    "id": "DO",
+    "name": "Dominican Republic",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 17.5,
+        "max_lat": 19.9,
+        "min_lon": -71.9,
+        "max_lon": -68.3
+      }
+    ]
+  },
+  {
+    "id": "EC",
+    "name": "Ecuador",
+    "parent_id": "SA",
+    "bounds": [
+      {
+        "min_lat": -5.0,
+        "max_lat": 1.5,
+        "min_lon": -81.1,
+        "max_lon": -75.2
+      }
+    ]
+  },
+  {
+    "id": "GT",
+    "name": "Guatemala",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 13.7,
+        "max_lat": 17.8,
+        "min_lon": -92.2,
+        "max_lon": -88.2
+      }
+    ]
+  },
+  {
+    "id": "HN",
+    "name": "Honduras",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 12.9,
+        "max_lat": 16.5,
+        "min_lon": -89.4,
+        "max_lon": -83.2
+      }
+    ]
+  },
+  {
+    "id": "HT",
+    "name": "Haiti",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 18.0,
+        "max_lat": 20.1,
+        "min_lon": -74.5,
+        "max_lon": -71.6
+      }
+    ]
+  },
+  {
+    "id": "JM",
+    "name": "Jamaica",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 17.7,
+        "max_lat": 18.5,
+        "min_lon": -78.4,
+        "max_lon": -76.2
+      }
+    ]
+  },
+  {
+    "id": "NI",
+    "name": "Nicaragua",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 10.7,
+        "max_lat": 15.0,
+        "min_lon": -87.7,
+        "max_lon": -83.1
+      }
+    ]
+  },
+  {
+    "id": "PA",
+    "name": "Panama",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 7.2,
+        "max_lat": 9.7,
+        "min_lon": -83.0,
+        "max_lon": -77.1
+      }
+    ]
+  },
+  {
+    "id": "PY",
+    "name": "Paraguay",
+    "parent_id": "SA",
+    "bounds": [
+      {
+        "min_lat": -27.6,
+        "max_lat": -19.3,
+        "min_lon": -62.6,
+        "max_lon": -54.3
+      }
+    ]
+  },
+  {
+    "id": "SV",
+    "name": "El Salvador",
+    "parent_id": "NA",
+    "bounds": [
+      {
+        "min_lat": 13.2,
+        "max_lat": 14.5,
+        "min_lon": -90.1,
+        "max_lon": -87.7
+      }
+    ]
+  },
+  {
+    "id": "UY",
+    "name": "Uruguay",
+    "parent_id": "SA",
+    "bounds": [
+      {
+        "min_lat": -34.9,
+        "max_lat": -30.1,
+        "min_lon": -58.4,
+        "max_lon": -53.1
+      }
+    ]
+  },
+  {
+    "id": "VE",
+    "name": "Venezuela",
+    "parent_id": "SA",
+    "bounds": [
+      {
+        "min_lat": 0.7,
+        "max_lat": 12.2,
+        "min_lon": -73.3,
+        "max_lon": -59.8
+      }
+    ]
+  },
+  {
+    "id": "FJ",
+    "name": "Fiji",
+    "parent_id": "OC",
+    "bounds": [
+      {
+        "min_lat": -20.0,
+        "max_lat": -15.0,
+        "min_lon": 177.0,
+        "max_lon": 180.0
+      },
+      {
+        "min_lat": -20.0,
+        "max_lat": -15.0,
+        "min_lon": -180.0,
+        "max_lon": -178.0
+      }
+    ]
+  },
+  {
+    "id": "PG",
+    "name": "Papua New Guinea",
+    "parent_id": "OC",
+    "bounds": [
+      {
+        "min_lat": -11.7,
+        "max_lat": -1.3,
+        "min_lon": 140.8,
+        "max_lon": 155.0
+      }
+    ]
+  },
+  {
+    "id": "PacIsles:Micronesia",
+    "name": "Micronesia",
+    "bounds": [
+      {
+        "min_lat": 0.0,
+        "max_lat": 20.0,
+        "min_lon": 130.0,
+        "max_lon": 180.0
+      }
+    ],
+    "parent_id": "PacIsles"
+  },
+  {
+    "id": "PacIsles:Melanesia",
+    "name": "Melanesia",
+    "bounds": [
+      {
+        "min_lat": -25.0,
+        "max_lat": 5.0,
+        "min_lon": 130.0,
+        "max_lon": 175.0
+      }
+    ],
+    "parent_id": "PacIsles"
+  },
+  {
+    "id": "PacIsles:Polynesia",
+    "name": "Polynesia",
+    "bounds": [
+      {
+        "min_lat": -30.0,
+        "max_lat": 5.0,
+        "min_lon": 175.0,
+        "max_lon": 180.0
+      },
+      {
+        "min_lat": -30.0,
+        "max_lat": 25.0,
+        "min_lon": -180.0,
+        "max_lon": -110.0
+      }
+    ],
+    "parent_id": "PacIsles"
+  }
 ]

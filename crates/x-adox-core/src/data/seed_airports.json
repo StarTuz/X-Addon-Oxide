@@ -1,0 +1,2218 @@
+{
+  "UK:London": [
+    {
+      "id": "EGLL",
+      "name": "London Heathrow",
+      "lat": 51.47,
+      "lon": -0.4543
+    },
+    {
+      "id": "EGKK",
+      "name": "London Gatwick",
+      "lat": 51.1481,
+      "lon": -0.1903
+    },
+    {
+      "id": "EGGW",
+      "name": "London Luton",
+      "lat": 51.8747,
+      "lon": -0.3683
+    },
+    {
+      "id": "EGSS",
+      "name": "London Stansted",
+      "lat": 51.8849,
+      "lon": 0.2346
+    },
+    {
+      "id": "EGLC",
+      "name": "London City",
+      "lat": 51.5053,
+      "lon": 0.0553
+    },
+    {
+      "id": "EGKB",
+      "name": "London Biggin Hill",
+      "lat": 51.3308,
+      "lon": 0.0325
+    },
+    {
+      "id": "EGWU",
+      "name": "London Northolt",
+      "lat": 51.553,
+      "lon": -0.4182
+    },
+    {
+      "id": "EGLF",
+      "name": "Farnborough",
+      "lat": 51.2758,
+      "lon": -0.7763
+    }
+  ],
+  "UK": [
+    {
+      "id": "EGLL",
+      "name": "London Heathrow",
+      "lat": 51.47,
+      "lon": -0.4543
+    },
+    {
+      "id": "EGKK",
+      "name": "London Gatwick",
+      "lat": 51.1481,
+      "lon": -0.1903
+    },
+    {
+      "id": "EGGW",
+      "name": "London Luton",
+      "lat": 51.8747,
+      "lon": -0.3683
+    },
+    {
+      "id": "EGSS",
+      "name": "London Stansted",
+      "lat": 51.8849,
+      "lon": 0.2346
+    },
+    {
+      "id": "EGLC",
+      "name": "London City",
+      "lat": 51.5053,
+      "lon": 0.0553
+    },
+    {
+      "id": "EGKB",
+      "name": "London Biggin Hill",
+      "lat": 51.3308,
+      "lon": 0.0325
+    },
+    {
+      "id": "EGWU",
+      "name": "London Northolt",
+      "lat": 51.553,
+      "lon": -0.4182
+    },
+    {
+      "id": "EGLF",
+      "name": "Farnborough",
+      "lat": 51.2758,
+      "lon": -0.7763
+    },
+    {
+      "id": "EGCC",
+      "name": "Manchester",
+      "lat": 53.3537,
+      "lon": -2.275
+    },
+    {
+      "id": "EGBB",
+      "name": "Birmingham",
+      "lat": 52.4539,
+      "lon": -1.748
+    },
+    {
+      "id": "EGPH",
+      "name": "Edinburgh",
+      "lat": 55.95,
+      "lon": -3.3725
+    },
+    {
+      "id": "EGGP",
+      "name": "Liverpool",
+      "lat": 53.3336,
+      "lon": -2.8497
+    }
+  ],
+  "BI": [
+    {
+      "id": "EGLL",
+      "name": "London Heathrow",
+      "lat": 51.47,
+      "lon": -0.4543
+    },
+    {
+      "id": "EGKK",
+      "name": "London Gatwick",
+      "lat": 51.1481,
+      "lon": -0.1903
+    },
+    {
+      "id": "EGGW",
+      "name": "London Luton",
+      "lat": 51.8747,
+      "lon": -0.3683
+    },
+    {
+      "id": "EGSS",
+      "name": "London Stansted",
+      "lat": 51.8849,
+      "lon": 0.2346
+    },
+    {
+      "id": "EGLC",
+      "name": "London City",
+      "lat": 51.5053,
+      "lon": 0.0553
+    },
+    {
+      "id": "EGKB",
+      "name": "London Biggin Hill",
+      "lat": 51.3308,
+      "lon": 0.0325
+    },
+    {
+      "id": "EGWU",
+      "name": "London Northolt",
+      "lat": 51.553,
+      "lon": -0.4182
+    },
+    {
+      "id": "EGLF",
+      "name": "Farnborough",
+      "lat": 51.2758,
+      "lon": -0.7763
+    },
+    {
+      "id": "EGCC",
+      "name": "Manchester",
+      "lat": 53.3537,
+      "lon": -2.275
+    },
+    {
+      "id": "EGBB",
+      "name": "Birmingham",
+      "lat": 52.4539,
+      "lon": -1.748
+    },
+    {
+      "id": "EGPH",
+      "name": "Edinburgh",
+      "lat": 55.95,
+      "lon": -3.3725
+    },
+    {
+      "id": "EGGP",
+      "name": "Liverpool",
+      "lat": 53.3336,
+      "lon": -2.8497
+    }
+  ],
+  "UK:England": [
+    {
+      "id": "EGLL",
+      "name": "London Heathrow",
+      "lat": 51.47,
+      "lon": -0.4543
+    },
+    {
+      "id": "EGKK",
+      "name": "London Gatwick",
+      "lat": 51.1481,
+      "lon": -0.1903
+    },
+    {
+      "id": "EGGW",
+      "name": "London Luton",
+      "lat": 51.8747,
+      "lon": -0.3683
+    },
+    {
+      "id": "EGSS",
+      "name": "London Stansted",
+      "lat": 51.8849,
+      "lon": 0.2346
+    },
+    {
+      "id": "EGLC",
+      "name": "London City",
+      "lat": 51.5053,
+      "lon": 0.0553
+    },
+    {
+      "id": "EGCC",
+      "name": "Manchester",
+      "lat": 53.3537,
+      "lon": -2.275
+    },
+    {
+      "id": "EGBB",
+      "name": "Birmingham",
+      "lat": 52.4539,
+      "lon": -1.748
+    },
+    {
+      "id": "EGGP",
+      "name": "Liverpool",
+      "lat": 53.3336,
+      "lon": -2.8497
+    },
+    {
+      "id": "EGNX",
+      "name": "East Midlands",
+      "lat": 52.8311,
+      "lon": -1.3282
+    },
+    {
+      "id": "EGHI",
+      "name": "Southampton",
+      "lat": 50.9503,
+      "lon": -1.3568
+    }
+  ],
+  "UK:Scotland": [
+    {
+      "id": "EGPH",
+      "name": "Edinburgh",
+      "lat": 55.95,
+      "lon": -3.3725
+    },
+    {
+      "id": "EGPF",
+      "name": "Glasgow",
+      "lat": 55.8719,
+      "lon": -4.4333
+    },
+    {
+      "id": "EGPD",
+      "name": "Aberdeen",
+      "lat": 57.2019,
+      "lon": -2.1978
+    },
+    {
+      "id": "EGPE",
+      "name": "Inverness",
+      "lat": 57.5425,
+      "lon": -4.0475
+    }
+  ],
+  "UK:Wales": [
+    {
+      "id": "EGFF",
+      "name": "Cardiff Wales",
+      "lat": 51.3967,
+      "lon": -3.3433
+    }
+  ],
+  "UA": [
+    {
+      "id": "UKBB",
+      "name": "Kyiv Boryspil",
+      "lat": 50.345,
+      "lon": 30.8947
+    },
+    {
+      "id": "UKLL",
+      "name": "Lviv Danylo Halytskyi",
+      "lat": 49.8125,
+      "lon": 23.9561
+    },
+    {
+      "id": "UKOO",
+      "name": "Odessa",
+      "lat": 46.4268,
+      "lon": 30.6765
+    },
+    {
+      "id": "UKDD",
+      "name": "Dnipro Dnipropetrovsk",
+      "lat": 48.3572,
+      "lon": 35.1006
+    },
+    {
+      "id": "UKHH",
+      "name": "Kharkiv",
+      "lat": 49.9248,
+      "lon": 36.29
+    }
+  ],
+  "IT": [
+    {
+      "id": "LIRF",
+      "name": "Rome Fiumicino",
+      "lat": 41.8003,
+      "lon": 12.2389
+    },
+    {
+      "id": "LIML",
+      "name": "Milan Malpensa",
+      "lat": 45.6301,
+      "lon": 8.7281
+    },
+    {
+      "id": "LIPE",
+      "name": "Bologna",
+      "lat": 44.5354,
+      "lon": 11.2887
+    },
+    {
+      "id": "LIBD",
+      "name": "Bari",
+      "lat": 41.1389,
+      "lon": 16.7606
+    }
+  ],
+  "FR": [
+    {
+      "id": "LFPG",
+      "name": "Paris Charles de Gaulle",
+      "lat": 49.0097,
+      "lon": 2.5478
+    },
+    {
+      "id": "LFLL",
+      "name": "Lyon",
+      "lat": 45.7256,
+      "lon": 5.0811
+    },
+    {
+      "id": "LFML",
+      "name": "Marseille",
+      "lat": 43.4393,
+      "lon": 5.2214
+    }
+  ],
+  "DE": [
+    {
+      "id": "EDDF",
+      "name": "Frankfurt",
+      "lat": 50.0379,
+      "lon": 8.5622
+    },
+    {
+      "id": "EDDM",
+      "name": "Munich",
+      "lat": 48.3538,
+      "lon": 11.7751
+    },
+    {
+      "id": "EDDK",
+      "name": "Cologne Bonn",
+      "lat": 50.8659,
+      "lon": 7.1427
+    }
+  ],
+  "ES": [
+    {
+      "id": "LEMD",
+      "name": "Madrid Barajas",
+      "lat": 40.4983,
+      "lon": -3.5676
+    },
+    {
+      "id": "LEBL",
+      "name": "Barcelona El Prat",
+      "lat": 41.2971,
+      "lon": 2.0785
+    }
+  ],
+  "US:AK": [
+    {
+      "id": "PANC",
+      "name": "Anchorage Ted Stevens",
+      "lat": 61.1743,
+      "lon": -149.9962
+    },
+    {
+      "id": "PAFA",
+      "name": "Fairbanks Intl",
+      "lat": 64.8151,
+      "lon": -147.8561
+    },
+    {
+      "id": "PAJN",
+      "name": "Juneau Intl",
+      "lat": 58.3549,
+      "lon": -134.5762
+    },
+    {
+      "id": "PABT",
+      "name": "Bettles",
+      "lat": 66.9139,
+      "lon": -151.5291
+    }
+  ],
+  "US:HI": [
+    {
+      "id": "PHNL",
+      "name": "Honolulu Intl",
+      "lat": 21.3187,
+      "lon": -157.9225
+    },
+    {
+      "id": "PHOG",
+      "name": "Kahului",
+      "lat": 20.8986,
+      "lon": -156.4305
+    }
+  ],
+  "US": [
+    {
+      "id": "KJFK",
+      "name": "New York JFK",
+      "lat": 40.6398,
+      "lon": -73.7789
+    },
+    {
+      "id": "KLAX",
+      "name": "Los Angeles",
+      "lat": 33.9425,
+      "lon": -118.4081
+    },
+    {
+      "id": "KORD",
+      "name": "Chicago O'Hare",
+      "lat": 41.9786,
+      "lon": -87.9047
+    },
+    {
+      "id": "KATL",
+      "name": "Atlanta",
+      "lat": 33.6367,
+      "lon": -84.4281
+    }
+  ],
+  "MX": [
+    {
+      "id": "MMMX",
+      "name": "Mexico City Benito Juarez",
+      "lat": 19.4363,
+      "lon": -99.0721
+    },
+    {
+      "id": "MMUN",
+      "name": "Cancun",
+      "lat": 21.0365,
+      "lon": -86.877
+    },
+    {
+      "id": "MMMD",
+      "name": "Monterrey",
+      "lat": 25.7785,
+      "lon": -100.107
+    },
+    {
+      "id": "MMGL",
+      "name": "Guadalajara Miguel Hidalgo",
+      "lat": 20.5218,
+      "lon": -103.3107
+    }
+  ],
+  "CA": [
+    {
+      "id": "CYVR",
+      "name": "Vancouver",
+      "lat": 49.1967,
+      "lon": -123.1815
+    },
+    {
+      "id": "CYYZ",
+      "name": "Toronto Pearson",
+      "lat": 43.6777,
+      "lon": -79.6248
+    },
+    {
+      "id": "CYUL",
+      "name": "Montreal",
+      "lat": 45.4706,
+      "lon": -73.7408
+    }
+  ],
+  "ZA": [
+    {
+      "id": "FALE",
+      "name": "King Shaka Durban",
+      "lat": -29.6144,
+      "lon": 31.1197
+    },
+    {
+      "id": "FAOR",
+      "name": "Johannesburg O.R. Tambo",
+      "lat": -26.1367,
+      "lon": 28.2411
+    },
+    {
+      "id": "FACT",
+      "name": "Cape Town Intl",
+      "lat": -33.9715,
+      "lon": 18.6021
+    }
+  ],
+  "KE": [
+    {
+      "id": "HKJK",
+      "name": "Nairobi Jomo Kenyatta",
+      "lat": -1.3192,
+      "lon": 36.9275
+    },
+    {
+      "id": "HKMO",
+      "name": "Mombasa Moi",
+      "lat": -4.0348,
+      "lon": 39.5943
+    },
+    {
+      "id": "HKLU",
+      "name": "Lamu Manda",
+      "lat": -2.2717,
+      "lon": 40.9131
+    },
+    {
+      "id": "HKML",
+      "name": "Malindi",
+      "lat": -3.2293,
+      "lon": 40.1017
+    }
+  ],
+  "IE": [
+    {
+      "id": "EIDW",
+      "name": "Dublin",
+      "lat": 53.4263,
+      "lon": -6.2499
+    },
+    {
+      "id": "EICK",
+      "name": "Cork",
+      "lat": 51.8413,
+      "lon": -8.4911
+    }
+  ],
+  "BE": [
+    {
+      "id": "EBBR",
+      "name": "Brussels",
+      "lat": 50.9014,
+      "lon": 4.4844
+    }
+  ],
+  "NL": [
+    {
+      "id": "EHAM",
+      "name": "Amsterdam Schiphol",
+      "lat": 52.3086,
+      "lon": 4.7639
+    }
+  ],
+  "CH": [
+    {
+      "id": "LSZH",
+      "name": "Zurich",
+      "lat": 47.4647,
+      "lon": 8.5492
+    }
+  ],
+  "AT": [
+    {
+      "id": "LOWW",
+      "name": "Vienna",
+      "lat": 48.1103,
+      "lon": 16.5697
+    }
+  ],
+  "TZ": [
+    {
+      "id": "HTDA",
+      "name": "Dar es Salaam Julius Nyerere",
+      "lat": -6.8781,
+      "lon": 39.2026
+    },
+    {
+      "id": "HTZA",
+      "name": "Zanzibar Abeid Amani Karume",
+      "lat": -6.222,
+      "lon": 39.2249
+    },
+    {
+      "id": "HTKJ",
+      "name": "Kilimanjaro Intl",
+      "lat": -3.4294,
+      "lon": 37.0745
+    }
+  ],
+  "ET": [
+    {
+      "id": "HAAB",
+      "name": "Addis Ababa Bole",
+      "lat": 8.9779,
+      "lon": 38.7993
+    }
+  ],
+  "NG": [
+    {
+      "id": "DNMM",
+      "name": "Lagos Murtala Muhammed",
+      "lat": 6.5774,
+      "lon": 3.3211
+    },
+    {
+      "id": "DNAA",
+      "name": "Abuja Nnamdi Azikiwe",
+      "lat": 9.0068,
+      "lon": 7.2632
+    }
+  ],
+  "MA": [
+    {
+      "id": "GMMN",
+      "name": "Casablanca Mohammed V",
+      "lat": 33.3675,
+      "lon": -7.5898
+    },
+    {
+      "id": "GMMX",
+      "name": "Marrakech Menara",
+      "lat": 31.6069,
+      "lon": -8.0363
+    }
+  ],
+  "EG": [
+    {
+      "id": "HECA",
+      "name": "Cairo Intl",
+      "lat": 30.1219,
+      "lon": 31.4056
+    }
+  ],
+  "JP": [
+    {
+      "id": "RJAA",
+      "name": "Tokyo Narita",
+      "lat": 35.7653,
+      "lon": 140.3856
+    },
+    {
+      "id": "RJTT",
+      "name": "Tokyo Haneda",
+      "lat": 35.5494,
+      "lon": 139.7798
+    },
+    {
+      "id": "RJBB",
+      "name": "Osaka Kansai",
+      "lat": 34.4347,
+      "lon": 135.244
+    },
+    {
+      "id": "RJOO",
+      "name": "Osaka Itami",
+      "lat": 34.7855,
+      "lon": 135.438
+    },
+    {
+      "id": "RJCC",
+      "name": "Sapporo New Chitose",
+      "lat": 42.7752,
+      "lon": 141.6922
+    },
+    {
+      "id": "RJFF",
+      "name": "Fukuoka",
+      "lat": 33.5858,
+      "lon": 130.4511
+    },
+    {
+      "id": "ROAH",
+      "name": "Okinawa Naha",
+      "lat": 26.1958,
+      "lon": 127.6461
+    }
+  ],
+  "KR": [
+    {
+      "id": "RKSI",
+      "name": "Seoul Incheon",
+      "lat": 37.4691,
+      "lon": 126.451
+    },
+    {
+      "id": "RKSS",
+      "name": "Seoul Gimpo",
+      "lat": 37.5583,
+      "lon": 126.7908
+    },
+    {
+      "id": "RKPK",
+      "name": "Busan Gimhae",
+      "lat": 35.1795,
+      "lon": 128.9382
+    }
+  ],
+  "CN": [
+    {
+      "id": "ZBAA",
+      "name": "Beijing Capital",
+      "lat": 40.0799,
+      "lon": 116.6031
+    },
+    {
+      "id": "ZBAD",
+      "name": "Beijing Daxing",
+      "lat": 39.5093,
+      "lon": 116.4105
+    },
+    {
+      "id": "ZSPD",
+      "name": "Shanghai Pudong",
+      "lat": 31.1434,
+      "lon": 121.8052
+    },
+    {
+      "id": "ZSSS",
+      "name": "Shanghai Hongqiao",
+      "lat": 31.1979,
+      "lon": 121.3362
+    },
+    {
+      "id": "ZGGG",
+      "name": "Guangzhou Baiyun",
+      "lat": 23.3924,
+      "lon": 113.299
+    },
+    {
+      "id": "ZUCK",
+      "name": "Chongqing Jiangbei",
+      "lat": 29.7192,
+      "lon": 106.6417
+    },
+    {
+      "id": "ZUUU",
+      "name": "Chengdu Shuangliu",
+      "lat": 30.5783,
+      "lon": 103.9472
+    },
+    {
+      "id": "ZLXY",
+      "name": "Xi'an Xianyang",
+      "lat": 34.4471,
+      "lon": 108.7516
+    }
+  ],
+  "IN": [
+    {
+      "id": "VABB",
+      "name": "Mumbai Chhatrapati Shivaji",
+      "lat": 19.0887,
+      "lon": 72.8679
+    },
+    {
+      "id": "VIDP",
+      "name": "Delhi Indira Gandhi",
+      "lat": 28.5665,
+      "lon": 77.1031
+    },
+    {
+      "id": "VOMM",
+      "name": "Chennai",
+      "lat": 12.99,
+      "lon": 80.1693
+    },
+    {
+      "id": "VOBL",
+      "name": "Bangalore Kempegowda",
+      "lat": 13.1979,
+      "lon": 77.7063
+    },
+    {
+      "id": "VECC",
+      "name": "Kolkata Netaji Subhas",
+      "lat": 22.6527,
+      "lon": 88.4463
+    },
+    {
+      "id": "VAAH",
+      "name": "Ahmedabad Sardar Vallabhbhai Patel",
+      "lat": 23.0772,
+      "lon": 72.6347
+    }
+  ],
+  "AU": [
+    {
+      "id": "YSSY",
+      "name": "Sydney Kingsford Smith",
+      "lat": -33.9461,
+      "lon": 151.1772
+    },
+    {
+      "id": "YMML",
+      "name": "Melbourne Tullamarine",
+      "lat": -37.6733,
+      "lon": 144.843
+    },
+    {
+      "id": "YBBN",
+      "name": "Brisbane",
+      "lat": -27.3842,
+      "lon": 153.1175
+    },
+    {
+      "id": "YPPH",
+      "name": "Perth",
+      "lat": -31.9403,
+      "lon": 115.9669
+    },
+    {
+      "id": "YPAD",
+      "name": "Adelaide",
+      "lat": -34.945,
+      "lon": 138.5308
+    },
+    {
+      "id": "YBCS",
+      "name": "Cairns",
+      "lat": -16.8858,
+      "lon": 145.7553
+    },
+    {
+      "id": "YPDN",
+      "name": "Darwin",
+      "lat": -12.4147,
+      "lon": 130.8766
+    },
+    {
+      "id": "YMHB",
+      "name": "Hobart",
+      "lat": -42.8361,
+      "lon": 147.5103
+    }
+  ],
+  "ID": [
+    {
+      "id": "WADD",
+      "name": "Bali Ngurah Rai",
+      "lat": -8.7482,
+      "lon": 115.167
+    },
+    {
+      "id": "WIII",
+      "name": "Jakarta Soekarno-Hatta",
+      "lat": -6.1256,
+      "lon": 106.6559
+    },
+    {
+      "id": "WBSB",
+      "name": "Bandar Seri Begawan",
+      "lat": 4.9442,
+      "lon": 114.9283
+    },
+    {
+      "id": "WAAA",
+      "name": "Makassar Sultan Hasanuddin",
+      "lat": -5.0616,
+      "lon": 119.554
+    }
+  ],
+  "TH": [
+    {
+      "id": "VTBS",
+      "name": "Bangkok Suvarnabhumi",
+      "lat": 13.6811,
+      "lon": 100.7477
+    },
+    {
+      "id": "VTBD",
+      "name": "Bangkok Don Mueang",
+      "lat": 13.9126,
+      "lon": 100.6072
+    },
+    {
+      "id": "VTSP",
+      "name": "Phuket",
+      "lat": 8.1132,
+      "lon": 98.3169
+    },
+    {
+      "id": "VTCC",
+      "name": "Chiang Mai",
+      "lat": 18.7667,
+      "lon": 98.9626
+    }
+  ],
+  "VN": [
+    {
+      "id": "VVTS",
+      "name": "Ho Chi Minh City Tan Son Nhat",
+      "lat": 10.8188,
+      "lon": 106.6519
+    },
+    {
+      "id": "VVNB",
+      "name": "Hanoi Noi Bai",
+      "lat": 21.2212,
+      "lon": 105.8072
+    },
+    {
+      "id": "VVDN",
+      "name": "Da Nang",
+      "lat": 16.0439,
+      "lon": 108.1993
+    }
+  ],
+  "SG": [
+    {
+      "id": "WSSS",
+      "name": "Singapore Changi",
+      "lat": 1.3502,
+      "lon": 103.994
+    }
+  ],
+  "MY": [
+    {
+      "id": "WMKK",
+      "name": "Kuala Lumpur Intl",
+      "lat": 2.7456,
+      "lon": 101.7099
+    },
+    {
+      "id": "WMKC",
+      "name": "Kuala Lumpur City (Subang)",
+      "lat": 3.1308,
+      "lon": 101.5494
+    }
+  ],
+  "PH": [
+    {
+      "id": "RPLL",
+      "name": "Manila Ninoy Aquino",
+      "lat": 14.5086,
+      "lon": 121.0198
+    },
+    {
+      "id": "RPVM",
+      "name": "Cebu Mactan",
+      "lat": 10.3097,
+      "lon": 123.9792
+    }
+  ],
+  "HK": [
+    {
+      "id": "VHHH",
+      "name": "Hong Kong Intl",
+      "lat": 22.308,
+      "lon": 113.9185
+    }
+  ],
+  "TW": [
+    {
+      "id": "RCTP",
+      "name": "Taipei Taoyuan",
+      "lat": 25.0777,
+      "lon": 121.2325
+    }
+  ],
+  "QA": [
+    {
+      "id": "OTHH",
+      "name": "Doha Hamad",
+      "lat": 25.2731,
+      "lon": 51.6081
+    }
+  ],
+  "TR": [
+    {
+      "id": "LTFM",
+      "name": "Istanbul",
+      "lat": 41.2753,
+      "lon": 28.7519
+    },
+    {
+      "id": "LTAI",
+      "name": "Antalya",
+      "lat": 36.8988,
+      "lon": 30.7992
+    }
+  ],
+  "GR": [
+    {
+      "id": "LGAV",
+      "name": "Athens Eleftherios Venizelos",
+      "lat": 37.9364,
+      "lon": 23.9445
+    },
+    {
+      "id": "LGRP",
+      "name": "Rhodes Diagoras",
+      "lat": 36.4054,
+      "lon": 28.0862
+    }
+  ],
+  "PT": [
+    {
+      "id": "LPPT",
+      "name": "Lisbon Humberto Delgado",
+      "lat": 38.7756,
+      "lon": -9.1354
+    },
+    {
+      "id": "LPPR",
+      "name": "Porto Francisco Sa Carneiro",
+      "lat": 41.2481,
+      "lon": -8.6814
+    }
+  ],
+  "CU": [
+    {
+      "id": "MUHA",
+      "name": "Havana Jose Marti",
+      "lat": 22.9892,
+      "lon": -82.4091
+    }
+  ],
+  "PA": [
+    {
+      "id": "MPTO",
+      "name": "Panama City Tocumen",
+      "lat": 9.0714,
+      "lon": -79.3835
+    }
+  ],
+  "CR": [
+    {
+      "id": "MROC",
+      "name": "San Jose Juan Santamaria",
+      "lat": 9.9939,
+      "lon": -84.2088
+    }
+  ],
+  "LK": [
+    {
+      "id": "VCBI",
+      "name": "Colombo Bandaranaike",
+      "lat": 7.1808,
+      "lon": 79.8841
+    }
+  ],
+  "NP": [
+    {
+      "id": "VNKT",
+      "name": "Kathmandu Tribhuvan",
+      "lat": 27.6966,
+      "lon": 85.3591
+    }
+  ],
+  "PK": [
+    {
+      "id": "OPKC",
+      "name": "Karachi Jinnah",
+      "lat": 24.9065,
+      "lon": 67.1608
+    },
+    {
+      "id": "OPLA",
+      "name": "Lahore Allama Iqbal",
+      "lat": 31.5216,
+      "lon": 74.4036
+    },
+    {
+      "id": "OPRN",
+      "name": "Islamabad New",
+      "lat": 33.6167,
+      "lon": 73.0997
+    }
+  ],
+  "BD": [
+    {
+      "id": "VGHS",
+      "name": "Dhaka Hazrat Shahjalal",
+      "lat": 23.8433,
+      "lon": 90.3978
+    }
+  ],
+  "MM": [
+    {
+      "id": "VYYY",
+      "name": "Yangon",
+      "lat": 16.9073,
+      "lon": 96.1332
+    }
+  ],
+  "NZ": [
+    {
+      "id": "NZAA",
+      "name": "Auckland",
+      "lat": -37.0082,
+      "lon": 174.7917
+    },
+    {
+      "id": "NZWN",
+      "name": "Wellington",
+      "lat": -41.3272,
+      "lon": 174.8053
+    },
+    {
+      "id": "NZQN",
+      "name": "Queenstown",
+      "lat": -45.0211,
+      "lon": 168.7392
+    },
+    {
+      "id": "NZCH",
+      "name": "Christchurch",
+      "lat": -43.4894,
+      "lon": 172.5322
+    }
+  ],
+  "FJ": [
+    {
+      "id": "NFFN",
+      "name": "Nadi",
+      "lat": -17.7554,
+      "lon": 177.4431
+    }
+  ],
+  "BR": [
+    {
+      "id": "SBGR",
+      "name": "Sao Paulo Guarulhos",
+      "lat": -23.4356,
+      "lon": -46.4731
+    },
+    {
+      "id": "SBGL",
+      "name": "Rio de Janeiro Galeao",
+      "lat": -22.8099,
+      "lon": -43.2505
+    },
+    {
+      "id": "SBSV",
+      "name": "Salvador",
+      "lat": -12.9086,
+      "lon": -38.3225
+    },
+    {
+      "id": "SBFZ",
+      "name": "Fortaleza",
+      "lat": -3.7763,
+      "lon": -38.5326
+    },
+    {
+      "id": "SBPA",
+      "name": "Porto Alegre",
+      "lat": -29.9944,
+      "lon": -51.1714
+    },
+    {
+      "id": "SBMN",
+      "name": "Manaus Eduardo Gomes",
+      "lat": -3.0386,
+      "lon": -60.0497
+    }
+  ],
+  "AR": [
+    {
+      "id": "SAEZ",
+      "name": "Buenos Aires Ezeiza",
+      "lat": -34.8222,
+      "lon": -58.5358
+    },
+    {
+      "id": "SABE",
+      "name": "Buenos Aires Aeroparque",
+      "lat": -34.5592,
+      "lon": -58.4156
+    }
+  ],
+  "CO": [
+    {
+      "id": "SKBO",
+      "name": "Bogota El Dorado",
+      "lat": 4.7016,
+      "lon": -74.1469
+    }
+  ],
+  "PE": [
+    {
+      "id": "SPJC",
+      "name": "Lima Jorge Chavez",
+      "lat": -12.0219,
+      "lon": -77.1143
+    }
+  ],
+  "CL": [
+    {
+      "id": "SCEL",
+      "name": "Santiago Arturo Merino Benitez",
+      "lat": -33.393,
+      "lon": -70.7858
+    }
+  ],
+  "VE": [
+    {
+      "id": "SVMI",
+      "name": "Caracas Simon Bolivar",
+      "lat": 10.6031,
+      "lon": -66.9906
+    }
+  ],
+  "EC": [
+    {
+      "id": "SEQU",
+      "name": "Quito Mariscal Sucre",
+      "lat": -0.1292,
+      "lon": -78.3576
+    }
+  ],
+  "UY": [
+    {
+      "id": "SUMU",
+      "name": "Montevideo Carrasco",
+      "lat": -34.8384,
+      "lon": -56.0308
+    }
+  ],
+  "PY": [
+    {
+      "id": "SGAS",
+      "name": "Asuncion Silvio Pettirossi",
+      "lat": -25.24,
+      "lon": -57.5197
+    }
+  ],
+  "BO": [
+    {
+      "id": "SLLP",
+      "name": "La Paz El Alto",
+      "lat": -16.5133,
+      "lon": -68.1922
+    }
+  ],
+  "GH": [
+    {
+      "id": "DGAA",
+      "name": "Accra Kotoka",
+      "lat": 5.6052,
+      "lon": -0.1668
+    }
+  ],
+  "SN": [
+    {
+      "id": "GOBD",
+      "name": "Dakar Blaise Diagne",
+      "lat": 14.6706,
+      "lon": -17.1025
+    }
+  ],
+  "TN": [
+    {
+      "id": "DTTA",
+      "name": "Tunis Carthage",
+      "lat": 36.851,
+      "lon": 10.2272
+    }
+  ],
+  "LY": [
+    {
+      "id": "HLLT",
+      "name": "Tripoli Mitiga",
+      "lat": 32.8942,
+      "lon": 13.276
+    }
+  ],
+  "SD": [
+    {
+      "id": "HSSS",
+      "name": "Khartoum",
+      "lat": 15.5895,
+      "lon": 32.5532
+    }
+  ],
+  "UG": [
+    {
+      "id": "HUEN",
+      "name": "Entebbe",
+      "lat": 0.0424,
+      "lon": 32.4435
+    }
+  ],
+  "RW": [
+    {
+      "id": "HRYR",
+      "name": "Kigali",
+      "lat": -1.9686,
+      "lon": 30.1395
+    }
+  ],
+  "ZM": [
+    {
+      "id": "FLKK",
+      "name": "Lusaka Kenneth Kaunda",
+      "lat": -15.3308,
+      "lon": 28.4526
+    }
+  ],
+  "ZW": [
+    {
+      "id": "FVHA",
+      "name": "Harare",
+      "lat": -17.9318,
+      "lon": 31.0928
+    }
+  ],
+  "MG": [
+    {
+      "id": "FMMI",
+      "name": "Antananarivo Ivato",
+      "lat": -18.7969,
+      "lon": 47.4788
+    }
+  ],
+  "JM": [
+    {
+      "id": "MKJP",
+      "name": "Kingston Norman Manley",
+      "lat": 17.9357,
+      "lon": -76.7875
+    }
+  ],
+  "BS": [
+    {
+      "id": "MYNN",
+      "name": "Nassau Lynden Pindling",
+      "lat": 25.039,
+      "lon": -77.4662
+    }
+  ],
+  "HT": [
+    {
+      "id": "MTPP",
+      "name": "Port-au-Prince Toussaint",
+      "lat": 18.58,
+      "lon": -72.2926
+    }
+  ],
+  "DO": [
+    {
+      "id": "MDSD",
+      "name": "Santo Domingo Las Americas",
+      "lat": 18.4297,
+      "lon": -69.6689
+    }
+  ],
+  "GT": [
+    {
+      "id": "MGGT",
+      "name": "Guatemala City La Aurora",
+      "lat": 14.5832,
+      "lon": -90.5275
+    }
+  ],
+  "SV": [
+    {
+      "id": "MSSS",
+      "name": "San Salvador",
+      "lat": 13.4409,
+      "lon": -89.0557
+    }
+  ],
+  "HN": [
+    {
+      "id": "MHLM",
+      "name": "San Pedro Sula",
+      "lat": 15.4527,
+      "lon": -87.9236
+    }
+  ],
+  "NI": [
+    {
+      "id": "MNMG",
+      "name": "Managua",
+      "lat": 12.1415,
+      "lon": -86.1682
+    }
+  ],
+  "PL": [
+    {
+      "id": "EPWA",
+      "name": "Warsaw Chopin",
+      "lat": 52.1657,
+      "lon": 20.9671
+    },
+    {
+      "id": "EPKK",
+      "name": "Krakow John Paul II",
+      "lat": 50.0778,
+      "lon": 19.7848
+    }
+  ],
+  "CZ": [
+    {
+      "id": "LKPR",
+      "name": "Prague Vaclav Havel",
+      "lat": 50.1008,
+      "lon": 14.26
+    }
+  ],
+  "HU": [
+    {
+      "id": "LHBP",
+      "name": "Budapest Ferenc Liszt",
+      "lat": 47.439,
+      "lon": 19.2611
+    }
+  ],
+  "RO": [
+    {
+      "id": "LROP",
+      "name": "Bucharest Henri Coanda",
+      "lat": 44.5711,
+      "lon": 26.085
+    }
+  ],
+  "BG": [
+    {
+      "id": "LBSF",
+      "name": "Sofia",
+      "lat": 42.6967,
+      "lon": 23.4114
+    }
+  ],
+  "RS": [
+    {
+      "id": "LYBE",
+      "name": "Belgrade Nikola Tesla",
+      "lat": 44.8184,
+      "lon": 20.3091
+    }
+  ],
+  "HR": [
+    {
+      "id": "LDZA",
+      "name": "Zagreb",
+      "lat": 45.7429,
+      "lon": 16.0688
+    },
+    {
+      "id": "LDDU",
+      "name": "Dubrovnik",
+      "lat": 42.5614,
+      "lon": 18.2682
+    },
+    {
+      "id": "LDSP",
+      "name": "Split",
+      "lat": 43.539,
+      "lon": 16.298
+    }
+  ],
+  "LV": [
+    {
+      "id": "EVRA",
+      "name": "Riga",
+      "lat": 56.9236,
+      "lon": 23.9711
+    }
+  ],
+  "EE": [
+    {
+      "id": "EETN",
+      "name": "Tallinn Lennart Meri",
+      "lat": 59.4133,
+      "lon": 24.8328
+    }
+  ],
+  "LT": [
+    {
+      "id": "EYVI",
+      "name": "Vilnius",
+      "lat": 54.6341,
+      "lon": 25.2858
+    }
+  ],
+  "SK": [
+    {
+      "id": "LZIB",
+      "name": "Bratislava",
+      "lat": 48.1702,
+      "lon": 17.2127
+    }
+  ],
+  "LU": [
+    {
+      "id": "ELLX",
+      "name": "Luxembourg Findel",
+      "lat": 49.6234,
+      "lon": 6.2044
+    }
+  ],
+  "IS": [
+    {
+      "id": "BIRK",
+      "name": "Reykjavik",
+      "lat": 64.13,
+      "lon": -21.9406
+    }
+  ],
+  "NO": [
+    {
+      "id": "ENGM",
+      "name": "Oslo Gardermoen",
+      "lat": 60.1939,
+      "lon": 11.1004
+    }
+  ],
+  "SE": [
+    {
+      "id": "ESSA",
+      "name": "Stockholm Arlanda",
+      "lat": 59.6519,
+      "lon": 17.9186
+    }
+  ],
+  "DK": [
+    {
+      "id": "EKCH",
+      "name": "Copenhagen Kastrup",
+      "lat": 55.618,
+      "lon": 12.6561
+    }
+  ],
+  "FI": [
+    {
+      "id": "EFHK",
+      "name": "Helsinki Vantaa",
+      "lat": 60.3172,
+      "lon": 24.9633
+    }
+  ],
+  "IL": [
+    {
+      "id": "LLBG",
+      "name": "Tel Aviv Ben Gurion",
+      "lat": 32.0114,
+      "lon": 34.8867
+    }
+  ],
+  "JO": [
+    {
+      "id": "OJAI",
+      "name": "Amman Queen Alia",
+      "lat": 31.7226,
+      "lon": 35.9932
+    }
+  ],
+  "LB": [
+    {
+      "id": "OLBA",
+      "name": "Beirut Rafic Hariri",
+      "lat": 33.8209,
+      "lon": 35.4883
+    }
+  ],
+  "KW": [
+    {
+      "id": "OKBK",
+      "name": "Kuwait Intl",
+      "lat": 29.2266,
+      "lon": 47.9689
+    }
+  ],
+  "OM": [
+    {
+      "id": "OOMS",
+      "name": "Muscat",
+      "lat": 23.5933,
+      "lon": 58.2844
+    }
+  ],
+  "IQ": [
+    {
+      "id": "ORBI",
+      "name": "Baghdad",
+      "lat": 33.2626,
+      "lon": 44.2346
+    }
+  ],
+  "IR": [
+    {
+      "id": "OIIE",
+      "name": "Tehran Imam Khomeini",
+      "lat": 35.4161,
+      "lon": 51.1522
+    }
+  ],
+  "UAE": [
+    {
+      "id": "OMDB",
+      "name": "Dubai Intl",
+      "lat": 25.2528,
+      "lon": 55.3644
+    },
+    {
+      "id": "OMAA",
+      "name": "Abu Dhabi",
+      "lat": 24.4328,
+      "lon": 54.6511
+    }
+  ],
+  "SAU": [
+    {
+      "id": "OERK",
+      "name": "Riyadh King Khalid",
+      "lat": 24.9576,
+      "lon": 46.6988
+    },
+    {
+      "id": "OEJN",
+      "name": "Jeddah King Abdulaziz",
+      "lat": 21.6796,
+      "lon": 39.1565
+    }
+  ],
+  "RU": [
+    {
+      "id": "UUEE",
+      "name": "Moscow Sheremetyevo",
+      "lat": 55.9726,
+      "lon": 37.4146
+    },
+    {
+      "id": "UUDD",
+      "name": "Moscow Domodedovo",
+      "lat": 55.4088,
+      "lon": 37.9063
+    },
+    {
+      "id": "ULLI",
+      "name": "St Petersburg Pulkovo",
+      "lat": 59.8003,
+      "lon": 30.2625
+    },
+    {
+      "id": "USSS",
+      "name": "Yekaterinburg Koltsovo",
+      "lat": 56.8431,
+      "lon": 60.8027
+    },
+    {
+      "id": "UNNT",
+      "name": "Novosibirsk Tolmachevo",
+      "lat": 54.9663,
+      "lon": 82.6507
+    },
+    {
+      "id": "UEEE",
+      "name": "Yakutsk",
+      "lat": 62.0933,
+      "lon": 129.7725
+    }
+  ],
+  "BY": [
+    {
+      "id": "UMMS",
+      "name": "Minsk International",
+      "lat": 53.8825,
+      "lon": 28.0307
+    },
+    {
+      "id": "UMMG",
+      "name": "Grodno",
+      "lat": 53.602,
+      "lon": 24.0538
+    }
+  ],
+  "MN": [
+    {
+      "id": "ZMUB",
+      "name": "Ulaanbaatar Chinggis Khaan",
+      "lat": 47.8431,
+      "lon": 106.7664
+    }
+  ],
+  "AL": [
+    {
+      "id": "LATI",
+      "name": "Tirana Nene Tereza",
+      "lat": 41.4147,
+      "lon": 19.7206
+    }
+  ],
+  "BA": [
+    {
+      "id": "LQSA",
+      "name": "Sarajevo International",
+      "lat": 43.8246,
+      "lon": 18.3315
+    },
+    {
+      "id": "LQBK",
+      "name": "Banja Luka",
+      "lat": 44.9414,
+      "lon": 17.2975
+    }
+  ],
+  "ME": [
+    {
+      "id": "LYPO",
+      "name": "Podgorica",
+      "lat": 42.3594,
+      "lon": 19.2519
+    },
+    {
+      "id": "LYTV",
+      "name": "Tivat",
+      "lat": 42.4047,
+      "lon": 18.7233
+    }
+  ],
+  "MK": [
+    {
+      "id": "LWSK",
+      "name": "Skopje Alexander the Great",
+      "lat": 41.9616,
+      "lon": 21.6214
+    }
+  ],
+  "MD": [
+    {
+      "id": "LUKK",
+      "name": "Chisinau International",
+      "lat": 46.9277,
+      "lon": 28.9313
+    }
+  ],
+  "SI": [
+    {
+      "id": "LJLJ",
+      "name": "Ljubljana Joze Pucnik",
+      "lat": 46.2237,
+      "lon": 14.4576
+    },
+    {
+      "id": "LJMB",
+      "name": "Maribor Edvard Rusjan",
+      "lat": 46.4799,
+      "lon": 15.6861
+    }
+  ],
+  "KH": [
+    {
+      "id": "VDPP",
+      "name": "Phnom Penh International",
+      "lat": 11.5466,
+      "lon": 104.8441
+    },
+    {
+      "id": "VDSR",
+      "name": "Siem Reap Angkor",
+      "lat": 13.4107,
+      "lon": 103.8123
+    }
+  ],
+  "LA": [
+    {
+      "id": "VLVT",
+      "name": "Vientiane Wattay",
+      "lat": 17.9883,
+      "lon": 102.5633
+    },
+    {
+      "id": "VLPS",
+      "name": "Luang Prabang",
+      "lat": 19.897,
+      "lon": 102.1613
+    }
+  ],
+  "PG": [
+    {
+      "id": "AYPY",
+      "name": "Port Moresby Jacksons",
+      "lat": -9.4434,
+      "lon": 147.22
+    },
+    {
+      "id": "AYMH",
+      "name": "Mount Hagen Kagamuga",
+      "lat": -5.8267,
+      "lon": 144.2959
+    }
+  ],
+  "AO": [
+    {
+      "id": "FNLU",
+      "name": "Luanda Quatro de Fevereiro",
+      "lat": -8.8584,
+      "lon": 13.2312
+    },
+    {
+      "id": "FNHU",
+      "name": "Huambo Nova Lisboa",
+      "lat": -12.8088,
+      "lon": 15.7608
+    }
+  ],
+  "CM": [
+    {
+      "id": "FKKD",
+      "name": "Douala International",
+      "lat": 4.0061,
+      "lon": 9.7192
+    },
+    {
+      "id": "FKYS",
+      "name": "Yaounde Nsimalen",
+      "lat": 3.7226,
+      "lon": 11.5533
+    }
+  ],
+  "MZ": [
+    {
+      "id": "FQMA",
+      "name": "Maputo International",
+      "lat": -25.9208,
+      "lon": 32.5726
+    },
+    {
+      "id": "FQBR",
+      "name": "Beira",
+      "lat": -19.7964,
+      "lon": 34.9076
+    }
+  ],
+  "BH": [
+    {
+      "id": "OBBI",
+      "name": "Bahrain International",
+      "lat": 26.2708,
+      "lon": 50.6336
+    }
+  ],
+  "Alps": [
+    {
+      "id": "LOWI",
+      "name": "Innsbruck",
+      "lat": 47.26,
+      "lon": 11.344
+    },
+    {
+      "id": "LSGS",
+      "name": "Sion",
+      "lat": 46.2194,
+      "lon": 7.3268
+    },
+    {
+      "id": "LOWS",
+      "name": "Salzburg",
+      "lat": 47.7933,
+      "lon": 13.0043
+    },
+    {
+      "id": "LFLB",
+      "name": "Chambery",
+      "lat": 45.6381,
+      "lon": 5.8802
+    }
+  ],
+  "Pyrenees": [
+    {
+      "id": "LEPP",
+      "name": "Pamplona",
+      "lat": 42.77,
+      "lon": -1.6463
+    },
+    {
+      "id": "LFBT",
+      "name": "Lourdes-Tarbes",
+      "lat": 43.1787,
+      "lon": -0.0064
+    },
+    {
+      "id": "LFMP",
+      "name": "Perpignan",
+      "lat": 42.7401,
+      "lon": 2.8707
+    }
+  ],
+  "Himalayas": [
+    {
+      "id": "VNLK",
+      "name": "Lukla Tenzing-Hillary",
+      "lat": 27.6869,
+      "lon": 86.7314
+    },
+    {
+      "id": "VNKT",
+      "name": "Kathmandu Tribhuvan",
+      "lat": 27.6966,
+      "lon": 85.3591
+    },
+    {
+      "id": "VILH",
+      "name": "Leh Kushok Bakula Rimpochee",
+      "lat": 34.1359,
+      "lon": 77.5465
+    },
+    {
+      "id": "VQPR",
+      "name": "Paro",
+      "lat": 27.4032,
+      "lon": 89.4246
+    }
+  ],
+  "Atlas": [
+    {
+      "id": "GMMX",
+      "name": "Marrakech Menara",
+      "lat": 31.6069,
+      "lon": -8.0363
+    },
+    {
+      "id": "GMMZ",
+      "name": "Ouarzazate",
+      "lat": 30.9391,
+      "lon": -6.9094
+    },
+    {
+      "id": "GMFF",
+      "name": "Fez-Saiss",
+      "lat": 33.9273,
+      "lon": -4.9778
+    },
+    {
+      "id": "DABT",
+      "name": "Batna",
+      "lat": 35.7521,
+      "lon": 6.3085
+    }
+  ],
+  "PacIsles": [
+    {
+      "id": "NFFN",
+      "name": "Nadi International",
+      "lat": -17.7554,
+      "lon": 177.443
+    },
+    {
+      "id": "PGUM",
+      "name": "Guam Antonio B. Won Pat",
+      "lat": 13.4834,
+      "lon": 144.796
+    },
+    {
+      "id": "NTAA",
+      "name": "Papeete Faa'a",
+      "lat": -17.5534,
+      "lon": -149.6063
+    },
+    {
+      "id": "PHOG",
+      "name": "Maui Kahului",
+      "lat": 20.8986,
+      "lon": -156.4305
+    }
+  ],
+  "Mediterranean": [
+    {
+      "id": "LEPA",
+      "name": "Palma de Mallorca",
+      "lat": 39.5517,
+      "lon": 2.7388
+    },
+    {
+      "id": "LICJ",
+      "name": "Palermo Falcone-Borsellino",
+      "lat": 38.1756,
+      "lon": 13.091
+    },
+    {
+      "id": "LCPH",
+      "name": "Paphos",
+      "lat": 34.718,
+      "lon": 32.4857
+    },
+    {
+      "id": "LGKR",
+      "name": "Corfu",
+      "lat": 39.6019,
+      "lon": 19.9117
+    }
+  ],
+  "Andes": [
+    {
+      "id": "SPZO",
+      "name": "Cuzco Alejandro Velasco Astete",
+      "lat": -13.5357,
+      "lon": -71.9388
+    },
+    {
+      "id": "SLLP",
+      "name": "La Paz El Alto",
+      "lat": -16.5133,
+      "lon": -68.1922
+    },
+    {
+      "id": "SEQM",
+      "name": "Quito Mariscal Sucre",
+      "lat": -0.1292,
+      "lon": -78.3575
+    },
+    {
+      "id": "SCTE",
+      "name": "Puerto Montt El Tepual",
+      "lat": -41.4389,
+      "lon": -73.0944
+    }
+  ],
+  "Rockies": [
+    {
+      "id": "KASE",
+      "name": "Aspen-Pitkin County",
+      "lat": 39.2232,
+      "lon": -106.8689
+    },
+    {
+      "id": "KBZN",
+      "name": "Bozeman Yellowstone",
+      "lat": 45.7775,
+      "lon": -111.1531
+    },
+    {
+      "id": "KGJT",
+      "name": "Grand Junction Regional",
+      "lat": 39.1224,
+      "lon": -108.5267
+    },
+    {
+      "id": "KCOD",
+      "name": "Cody Yellowstone Regional",
+      "lat": 44.5202,
+      "lon": -109.0238
+    }
+  ],
+  "Amazon": [
+    {
+      "id": "SPQT",
+      "name": "Iquitos Francisco Secada Vignetta",
+      "lat": -3.7847,
+      "lon": -73.3088
+    },
+    {
+      "id": "SBEG",
+      "name": "Manaus Eduardo Gomes",
+      "lat": -3.0386,
+      "lon": -60.0497
+    },
+    {
+      "id": "SKLT",
+      "name": "Leticia Alfredo Vasquez Cobo",
+      "lat": -4.1936,
+      "lon": -69.9432
+    }
+  ],
+  "Patagonia": [
+    {
+      "id": "SCCI",
+      "name": "Punta Arenas Carlos Ibanez del Campo",
+      "lat": -53.0024,
+      "lon": -70.8546
+    },
+    {
+      "id": "SAWH",
+      "name": "Ushuaia Malvinas Argentinas",
+      "lat": -54.8433,
+      "lon": -68.2958
+    },
+    {
+      "id": "SAZB",
+      "name": "Bariloche Teniente Candelaria",
+      "lat": -41.1511,
+      "lon": -71.1575
+    }
+  ],
+  "Caribbean": [
+    {
+      "id": "MYNN",
+      "name": "Nassau Lynden Pindling",
+      "lat": 25.039,
+      "lon": -77.4662
+    },
+    {
+      "id": "MKJS",
+      "name": "Montego Bay Sangster",
+      "lat": 18.5037,
+      "lon": -77.9135
+    },
+    {
+      "id": "MDPC",
+      "name": "Punta Cana",
+      "lat": 18.5674,
+      "lon": -68.3634
+    },
+    {
+      "id": "TTPP",
+      "name": "Trinidad Piarco",
+      "lat": 10.5954,
+      "lon": -61.3372
+    }
+  ],
+  "PacIsles:Micronesia": [
+    {
+      "id": "PGUM",
+      "name": "Guam Antonio B. Won Pat",
+      "lat": 13.4834,
+      "lon": 144.796
+    },
+    {
+      "id": "PGSN",
+      "name": "Saipan Francisco C. Ada",
+      "lat": 15.1194,
+      "lon": 145.7294
+    },
+    {
+      "id": "PTRO",
+      "name": "Palau Babelthuap",
+      "lat": 7.3673,
+      "lon": 134.5442
+    },
+    {
+      "id": "PTTP",
+      "name": "Pohnpei FSM",
+      "lat": 6.9851,
+      "lon": 158.209
+    }
+  ],
+  "PacIsles:Melanesia": [
+    {
+      "id": "NVVV",
+      "name": "Port Vila Bauerfield",
+      "lat": -17.6993,
+      "lon": 168.3196
+    },
+    {
+      "id": "AGGH",
+      "name": "Honiara Henderson",
+      "lat": -9.428,
+      "lon": 160.0549
+    },
+    {
+      "id": "NWWW",
+      "name": "Noumea La Tontouta",
+      "lat": -22.0146,
+      "lon": 166.2128
+    }
+  ],
+  "PacIsles:Polynesia": [
+    {
+      "id": "NGFU",
+      "name": "Funafuti Tuvalu",
+      "lat": -8.525,
+      "lon": 179.1959
+    },
+    {
+      "id": "NSFA",
+      "name": "Apia Faleolo",
+      "lat": -13.83,
+      "lon": -172.009
+    },
+    {
+      "id": "NTAA",
+      "name": "Papeete Faaa",
+      "lat": -17.5534,
+      "lon": -149.6063
+    },
+    {
+      "id": "NCRG",
+      "name": "Rarotonga Cook Islands",
+      "lat": -21.2028,
+      "lon": -159.8028
+    }
+  ]
+}

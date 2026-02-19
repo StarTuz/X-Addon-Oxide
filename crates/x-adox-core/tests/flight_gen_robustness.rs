@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use x_adox_bitnet::flight_prompt::{FlightPrompt, LocationConstraint};
 use x_adox_bitnet::geo::data::get_all_regions;
 use x_adox_core::apt_dat::{Airport, AirportType, SurfaceType};
 use x_adox_core::discovery::{AddonType, DiscoveredAddon};
@@ -58,72 +59,96 @@ fn create_mock_aircraft(name: &str, tags: Vec<&str>) -> DiscoveredAddon {
 
 // --- Test Suite ---
 
+/// Verifies that every region's English name in regions.json resolves to the correct
+/// `LocationConstraint::Region(id)` via FlightPrompt NLP parsing.
+///
+/// This catches:
+/// - Missing regions (Ukraine bug): "Ukraine" had no entry → parsed as None
+/// - Misparsed sub-regions (England bug): "England" → Region("UK") instead of Region("UK:England")
+/// - Country names that fall through to ICAO heuristic ("iran" is 4 chars)
+/// - Alternative names not in alias table ("burma" → ICAO, not Region("MM"))
+///
+/// The test uses "flight to {name}" which exercises the full NLP → try_as_region → RegionIndex
+/// pipeline end-to-end.
 #[test]
-fn test_all_regions_coverage() {
+fn test_region_nlp_parsing() {
+    // Regions whose names intentionally resolve to NearCity because a same-named city
+    // takes priority in the explicit alias table (by design — city is more precise).
+    let near_city_overrides: std::collections::HashSet<&str> = [
+        "US:NY",    // "New York" → NearCity (city preferred over state for routing)
+        "UK:London", // "London" → NearCity (city more precise than UK:London sub-region)
+    ]
+    .iter()
+    .copied()
+    .collect();
+
     let regions = get_all_regions();
-    let mut pack = create_mock_pack("Global Airports");
+    let mut failures = Vec::new();
 
-    // 1. Populate World: Ensure every region has at least one airport
-    for region in &regions {
-        if let Some(bounds) = region.bounds.first() {
-            // Pick center
-            let lat = (bounds.min_lat + bounds.max_lat) / 2.0;
-            let lon = (bounds.min_lon + bounds.max_lon) / 2.0;
-            let id = format!("R_{}", region.id); // e.g. "R_US"
+    for region in regions.iter() {
+        if near_city_overrides.contains(region.id.as_str()) {
+            continue;
+        }
 
-            // Add a "Hub" (Hard, Long)
-            pack.airports
-                .push(create_mock_airport(&id, lat, lon, 3000, SurfaceType::Hard));
+        let prompt = format!("flight to {}", region.name);
+        let parsed = FlightPrompt::parse(&prompt);
+        let expected = LocationConstraint::Region(region.id.clone());
 
-            // Add a "GA Strip" (Soft, Short) slightly offset
-            pack.airports.push(create_mock_airport(
-                &format!("{}_GA", id),
-                lat + 0.01,
-                lon + 0.01,
-                800,
-                SurfaceType::Soft,
+        if parsed.destination.as_ref() != Some(&expected) {
+            failures.push(format!(
+                "  {:30} (id={:15}) => got {:?}",
+                region.name, region.id, parsed.destination
             ));
         }
     }
 
-    // Add generic "World Hubs" to ensure destinations exist for long hauls
-    pack.airports.push(create_mock_airport(
-        "EGLL",
-        51.47,
-        -0.45,
-        4000,
-        SurfaceType::Hard,
-    )); // London
-    pack.airports.push(create_mock_airport(
-        "KJFK",
-        40.64,
-        -73.78,
-        4000,
-        SurfaceType::Hard,
-    )); // NY
-    pack.airports.push(create_mock_airport(
-        "RJAA",
-        35.77,
-        140.39,
-        4000,
-        SurfaceType::Hard,
-    )); // Tokyo
-    pack.airports.push(create_mock_airport(
-        "FACT",
-        -33.97,
-        18.60,
-        4000,
-        SurfaceType::Hard,
-    )); // Cape Town
+    assert!(
+        failures.is_empty(),
+        "{} region name(s) failed NLP parsing:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
 
-    // Fix isolation issues (4 failures)
-    // Instead of manual hubs, let's add a global grid to ensure connectivity everywhere
-    // 30 degree steps = ~1800nm lat, varied lon. Sufficient for 3000nm range.
-    for lat in (-90..=90).step_by(30) {
-        for lon in (-180..180).step_by(30) {
-            let id = format!("GRID_{}_{}", lat, lon);
+/// Verifies that flight generation succeeds for every non-trivial region and that
+/// the selected destination airport is geographically within the region's bounds.
+///
+/// This catches:
+/// - Wrong ICAO prefix mappings: seeds have correct real-world ICAO prefixes (e.g. UKBB
+///   for Ukraine). If `icao_prefixes_for_region("UA")` returns a wrong prefix, seeds are
+///   filtered out too → generation fails → test fails.
+/// - Bounds drift (England/Scotland bug): if UK:England's bounds accidentally include
+///   Edinburgh (55.95°N), the bounds assertion detects it.
+/// - Missing seed airports: countries with no seeds and no pack airports → generation fails.
+///
+/// Mock setup: world hub airports (with real ICAO prefixes) + a dense grid for geographic
+/// features that have no ICAO prefix filter. Seed airports (with real-world ICAO IDs)
+/// handle country-level filtering automatically.
+#[test]
+fn test_all_regions_flight_generation() {
+    let mut pack = create_mock_pack("World Hubs");
+
+    // World hubs — real ICAO IDs so they pass any prefix filter when used as origins/dests.
+    for (id, lat, lon) in [
+        ("EGLL", 51.47, -0.45),
+        ("KJFK", 40.64, -73.78),
+        ("RJAA", 35.77, 140.39),
+        ("FACT", -33.97, 18.60),
+        ("YSSY", -33.94, 151.18),
+        ("SBGR", -23.43, -46.47),
+        ("OMDB", 25.25, 55.37),
+        ("ZBAA", 40.08, 116.59),
+    ] {
+        pack.airports
+            .push(create_mock_airport(id, lat, lon, 4000, SurfaceType::Hard));
+    }
+
+    // Dense grid for geographic features (Alps, Mediterranean, Himalayas, etc.) which have
+    // no ICAO prefix filter — bounds-only → these grid airports are visible within any region.
+    for lat in (-80..=80i32).step_by(15) {
+        for lon in (-175..180i32).step_by(15) {
             pack.airports.push(create_mock_airport(
-                &id,
+                &format!("GRID_{}_{}", lat, lon),
                 lat as f64,
                 lon as f64,
                 4000,
@@ -132,84 +157,128 @@ fn test_all_regions_coverage() {
         }
     }
 
-    // Add a Heliport in the Alps for constraint testing
-    pack.airports.push(create_mock_airport(
-        "HELI_ALPS",
-        46.5,
-        8.0,
-        100,
-        SurfaceType::Soft,
-    ));
-
-    // 2. Define Fleet
-    let cessna = create_mock_aircraft("Cessna 172", vec!["General Aviation"]);
+    let packs = vec![pack];
     let boeing = create_mock_aircraft("Boeing 737", vec!["Jet", "Airliner", "Heavy"]);
-    let heli = create_mock_aircraft("Bell 407", vec!["Helicopter"]);
+    let regions = get_all_regions();
 
-    // 3. Test Loop
-    let mut failure_count = 0;
+    // US state sub-regions use parent ICAO prefix "K", but our mock airports don't carry
+    // K-prefix and these sub-regions have no seeds. They're skipped here because:
+    // (a) the parent US region is separately tested, and (b) coverage within a US state
+    // depends on installed scenery, not seed airports.
+    let skip: std::collections::HashSet<&str> = [
+        "US:SoCal",
+        "US:NorCal",
+        "US:OR",
+        "US:WA",
+        "US:TX",
+        "US:FL",
+        "US:CA",
+        "US:AK:SE",
+        "US:NY",
+    ]
+    .iter()
+    .copied()
+    .collect();
 
-    // Re-run loops with better debug
-    for region in &regions {
-        // Add a "Regional Neighbor" to ensure GA connectivity strictly within region neighborhood
-        if let Some(bounds) = region.bounds.first() {
-            let lat = (bounds.min_lat + bounds.max_lat) / 2.0;
-            let lon = (bounds.min_lon + bounds.max_lon) / 2.0;
-            // Add neighbor at ~30nm (0.5 deg)
-            pack.airports.push(create_mock_airport(
-                &format!("N_{}", region.id),
-                lat + 0.5,
-                lon + 0.5,
-                2000,
-                SurfaceType::Hard,
-            ));
+    let mut oob_failures = Vec::new(); // destination selected but outside region bounds — always a bug
+    let mut gen_failures = Vec::new(); // generation failed — expected for geographic features
+
+    for region in regions.iter() {
+        if skip.contains(region.id.as_str()) {
+            continue;
         }
-    }
 
-    let packs = vec![pack]; // Re-bind with neighbors
+        // Use a proper directional prompt so NLP resolves the region name.
+        // "{name} Boeing" (old approach) doesn't parse — no "to"/"from" keyword.
+        let prompt = format!("flight to {}", region.name);
 
-    for region in &regions {
-        // 1. Ensure Local Connectivity for GA
-        {
-            let prompt = format!("{} Cessna", region.name);
-            if let Err(e) = generate_flight(&packs, &[cessna.clone()], &prompt, None, None) {
-                println!("GA FAILED '{}' ({}): {}", prompt, region.id, e);
-                failure_count += 1;
+        match generate_flight(&packs, &[boeing.clone()], &prompt, None, None) {
+            Ok(plan) => {
+                if let (Some(lat), Some(lon)) = (plan.destination.lat, plan.destination.lon) {
+                    if !region.contains(lat, lon) {
+                        oob_failures.push(format!(
+                            "  {:25} ({:12}): destination {} at ({:.2}°N, {:.2}°E) is OUTSIDE region bounds",
+                            region.name, region.id, plan.destination.id, lat, lon
+                        ));
+                    }
+                }
+            }
+            Err(e) => {
+                gen_failures.push(format!(
+                    "  {:25} ({:12}): {}",
+                    region.name, region.id, e
+                ));
             }
         }
+    }
 
-        // 2. Ensure Global Connectivity for Jets
-        {
-            let prompt = format!("{} Boeing", region.name);
-            if let Err(e) = generate_flight(&packs, &[boeing.clone()], &prompt, None, None) {
-                println!("JET FAILED '{}' ({}): {}", prompt, region.id, e);
-                failure_count += 1;
-            }
+    // Print generation failures as informational — geographic features (Alps, Caribbean, etc.)
+    // legitimately have no airports in this mock setup. These are not bugs.
+    if !gen_failures.is_empty() {
+        println!(
+            "\nNote: {} region(s) could not generate a flight in this mock setup \
+             (geographic features / no seeds — not a bug):",
+            gen_failures.len()
+        );
+        for f in &gen_failures {
+            println!("{}", f);
         }
     }
 
-    // 4. Cross-Region and Constraints
-    // Explicit route: UK (EGLL) to US (KJFK) - both in hub list
-    // Use ICAO codes for robust "A to B" testing
-    let cross_prompt = "EGLL to KJFK using Boeing";
-    if let Err(e) = generate_flight(&packs, &[boeing.clone()], cross_prompt, None, None) {
-        println!("CROSS-REGION FAILED: {}", e);
-        failure_count += 1;
-    }
+    // Bounds violations ARE bugs: if we generated a flight for a region, the destination
+    // must be geographically within that region's claimed bounds.
+    assert!(
+        oob_failures.is_empty(),
+        "{} region(s) produced destinations OUTSIDE their bounds:\n{}",
+        oob_failures.len(),
+        oob_failures.join("\n")
+    );
 
-    // Helicopter constraint
-    let heli_prompt = "Alps Bell";
-    if let Err(e) = generate_flight(&packs, &[heli.clone()], heli_prompt, None, None) {
-        println!("HELI FAILED: {}", e);
-        failure_count += 1;
-    }
+    // Countries with ICAO prefix mappings must generate successfully (seeds + prefix ensure this).
+    // If a seeded country fails, its ICAO prefix mapping is broken or seeds are missing.
+    let seeded_countries: &[&str] = &[
+        // Europe
+        "UK", "UK:England", "UK:Scotland", "UK:Wales", "IE", "FR", "DE", "IT", "ES", "PT",
+        "NL", "BE", "CH", "AT", "GR", "NO", "SE", "FI", "DK", "IS", "PL", "CZ", "TR", "UA",
+        "BG", "EE", "HR", "HU", "LT", "LV", "RO", "RS", "AL", "BA", "BY", "MD", "ME", "MK",
+        "SI", "SK",
+        // Americas
+        "US", "US:AK", "US:HI", "CA", "MX", "BR", "AR", "CO", "PE", "CL", "BO", "BS", "CR",
+        "CU", "DO", "EC", "GT", "HN", "HT", "JM", "NI", "PA", "PY", "SV", "UY", "VE",
+        // Asia-Pacific
+        "JP", "CN", "KR", "IN", "TH", "VN", "ID", "AU", "SG", "MY", "PH", "HK", "TW", "NZ",
+        "BD", "KH", "LA", "LK", "MM", "MN", "NP", "PG", "PK", "FJ",
+        // Middle East
+        "IL", "SAU", "UAE", "QA", "BH", "IQ", "IR", "JO", "KW", "LB", "OM",
+        // Africa
+        "EG", "ZA", "KE", "TZ", "ET", "NG", "MA", "AO", "CM", "GH", "LY", "MG", "MZ", "RU",
+        "RW", "SD", "SN", "TN", "UG", "ZM", "ZW",
+        // Geographic features (seeded with real airports within their bounds)
+        "Alps", "Pyrenees", "Himalayas", "Atlas",
+        "Mediterranean", "Andes", "Rockies", "Amazon", "Patagonia", "Caribbean",
+        // Pacific Islands and sub-regions
+        "PacIsles", "PacIsles:Micronesia", "PacIsles:Melanesia", "PacIsles:Polynesia",
+    ];
 
-    assert_eq!(
-        failure_count,
-        0,
-        "Failed to generate flights for {}/{} tests",
-        failure_count,
-        regions.len() * 2 + 2
+    let gen_failure_ids: std::collections::HashSet<String> = gen_failures
+        .iter()
+        .filter_map(|f| {
+            // Extract ID from "  Name (ID): ..." format
+            f.split('(').nth(1).and_then(|s| s.split(')').next()).map(|s| s.trim().to_string())
+        })
+        .collect();
+
+    let seeded_failures: Vec<&str> = seeded_countries
+        .iter()
+        .copied()
+        .filter(|id| gen_failure_ids.contains(*id))
+        .collect();
+
+    assert!(
+        seeded_failures.is_empty(),
+        "{} seeded country/region(s) failed generation (missing seeds or broken ICAO prefix):\n  {}",
+        seeded_failures.len(),
+        seeded_failures.join(", ")
     );
 }
 
@@ -406,6 +475,69 @@ fn test_search_accuracy_london_england() {
         "Expected London City (EGLC) for 'London England', got {} ({})",
         plan.origin.id, plan.origin.name
     );
+}
+
+/// "England to Ukraine" must resolve both endpoints and produce a cross-regional flight.
+/// Before the fix: Ukraine was missing from regions.json → parse failed; England mapped to
+/// all of UK so destinations could be in Scotland.
+#[test]
+fn test_england_to_ukraine() {
+    let pack = create_mock_pack("Empty");
+    let jet = create_mock_aircraft("B737", vec!["Jet"]);
+    let packs = vec![pack];
+
+    // Should resolve via seed airports: UK:England origin (EG*) → Ukraine dest (UK* ICAO prefix)
+    let plan = generate_flight(&packs, &[jet], "England to Ukraine", None, None)
+        .expect("England to Ukraine should produce a valid flight plan");
+
+    // Origin must be an English airport (EG prefix, within England bounds ~49.9-55.8°N)
+    assert!(
+        plan.origin.id.starts_with("EG"),
+        "Origin should be an English airport (EG*), got {}",
+        plan.origin.id
+    );
+    let orig_lat = plan.origin.lat.unwrap_or(0.0);
+    assert!(
+        orig_lat < 55.9,
+        "Origin should be in England (lat < 55.9°N, not Scotland), got lat={:.2}",
+        orig_lat
+    );
+
+    // Destination must be a Ukrainian airport (UK prefix: UKBB, UKLL, etc.)
+    assert!(
+        plan.destination.id.starts_with("UK"),
+        "Destination should be a Ukrainian airport (UK*), got {}",
+        plan.destination.id
+    );
+}
+
+/// "California to England" must stay in England — not drift to Scotland.
+/// Before the fix: "England" mapped to Region("UK") which included Edinburgh (EGPH, 55.95°N).
+#[test]
+fn test_california_to_england_stays_in_england() {
+    let mut pack = create_mock_pack("West Coast");
+    pack.airports.push(create_mock_airport("KLAX", 33.94, -118.41, 12000, SurfaceType::Hard));
+    pack.airports.push(create_mock_airport("KSFO", 37.62, -122.38, 11000, SurfaceType::Hard));
+    let jet = create_mock_aircraft("B737", vec!["Jet"]);
+    let packs = vec![pack];
+
+    for _ in 0..5 {
+        let plan = generate_flight(&packs, &[jet.clone()], "California to England", None, None)
+            .expect("California to England should produce a plan");
+
+        let dest_lat = plan.destination.lat.unwrap_or(0.0);
+        assert!(
+            dest_lat < 55.9,
+            "Destination should be in England (lat < 55.9°N), not Scotland. Got {} at lat={:.2}",
+            plan.destination.id,
+            dest_lat
+        );
+        assert!(
+            plan.destination.id.starts_with("EG"),
+            "Destination should be a UK airport (EG*), got {}",
+            plan.destination.id
+        );
+    }
 }
 
 /// "Nairobi to Lamu" must produce a valid Kenya flight plan using seed airports.

@@ -1100,13 +1100,13 @@ fn stress_random_prompts() {
         eprintln!("───────────────────────────────────────────────────────");
     }
 
-    // The success rate should be at least 70%.
+    // The success rate should be at least 50%.
     // Some failures are expected (e.g., "from Bali to Bali" picks the same
     // airport for origin/dest, or very obscure combos with no coverage).
     let success_rate = ok_count as f64 / iterations as f64;
     assert!(
         success_rate >= 0.50,
-        "Success rate {:.1}% is below 70% threshold. {} failures out of {}. Seed: {}",
+        "Success rate {:.1}% is below 50% threshold. {} failures out of {}. Seed: {}",
         success_rate * 100.0,
         err_count,
         iterations,

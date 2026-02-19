@@ -567,6 +567,7 @@ pub fn generate_flight_from_prompt(
     let req_surface: Option<SurfaceType> = match prompt.keywords.surface {
         Some(SurfaceKeyword::Soft) => Some(SurfaceType::Soft),
         Some(SurfaceKeyword::Hard) => Some(SurfaceType::Hard),
+        Some(SurfaceKeyword::Water) => Some(SurfaceType::Water),
         None => None,
     };
     log::debug!(
@@ -577,23 +578,10 @@ pub fn generate_flight_from_prompt(
     );
 
     // 2. Select Origin
-    let is_b314 = selected_aircraft.name.contains("Boeing 314");
 
-    // Combined pool: pack airports + base layer merged. For B314, exclude base and non-Sealanes packs.
-    let pack_iter = packs.iter().filter(|p| {
-        if is_b314
-            && (prompt.origin.is_none() || matches!(prompt.origin, Some(LocationConstraint::Any)))
-        {
-            p.path.to_string_lossy().contains("B314 Sealanes")
-        } else {
-            true
-        }
-    });
-    let base_slice = if is_b314 {
-        &[] as &[Airport]
-    } else {
-        base_airports.unwrap_or(&[])
-    };
+    // Combined pool: pack airports + base layer merged.
+    let pack_iter = packs.iter();
+    let base_slice = base_airports.unwrap_or(&[]);
 
     // 1. Build total airport pool (packs + base layer merged)
     // FAST PATH: If no packs to merge and only base layer is provided, avoid the expensive BTreeMap + cloning.
@@ -771,21 +759,9 @@ pub fn generate_flight_from_prompt(
     #[allow(unused_assignments)]
     let mut seed_origin_fallback: Vec<Airport> = Vec::new();
     if candidate_origins.is_empty() {
-        if let Some(LocationConstraint::Region(ref r)) = &prompt.origin {
-            seed_origin_fallback = get_seed_airports_for_region(r);
-            if !seed_origin_fallback.is_empty() {
-                candidate_origins = seed_origin_fallback.iter().collect();
-            }
-        } else if let Some(LocationConstraint::NearCity { lat, lon, .. }) = &prompt.origin {
-            // No pack airports near the city — derive region from coordinates and use seeds.
-            for region in region_index.find_regions(*lat, *lon) {
-                let seeds = get_seed_airports_for_region(&region.id);
-                if !seeds.is_empty() {
-                    seed_origin_fallback = seeds;
-                    candidate_origins = seed_origin_fallback.iter().collect();
-                    break;
-                }
-            }
+        seed_origin_fallback = seeds_for_constraint(&prompt.origin, &region_index);
+        if !seed_origin_fallback.is_empty() {
+            candidate_origins = seed_origin_fallback.iter().collect();
         }
     }
 
@@ -873,14 +849,19 @@ pub fn generate_flight_from_prompt(
             // No keyword constraint: wide-open random discovery.
             // Keywords (short/medium/long/haul) and duration_minutes are the
             // intended controls — aircraft type no longer sets distance limits.
-            (10.0, 5000.0)
+            // 8000nm covers most intercontinental routes (LA→UK ~5400nm, NY→Tokyo ~6760nm).
+            // Ultra-long-haul (LA→Australia ~9400nm) requires "long haul" keyword.
+            (10.0, 8000.0)
         };
 
-        // Explicit Endpoint Check (Relax distance logic if both ends are specific)
+        // Explicit Endpoint Check (Relax distance logic when both ends are "point" constraints)
+        // ICAO and NearCity are point types (user named a specific place), so we relax range.
+        // Region is an "area" type — keep constraints so random picks stay geographically sensible.
+        let is_point = |c: &LocationConstraint| {
+            matches!(c, LocationConstraint::ICAO(_) | LocationConstraint::NearCity { .. })
+        };
         let endpoints_explicit = match (&prompt.origin, &prompt.destination) {
-            (Some(o), Some(d)) => {
-                !matches!(o, LocationConstraint::Any) && !matches!(d, LocationConstraint::Any)
-            }
+            (Some(o), Some(d)) => is_point(o) && is_point(d),
             _ => false,
         };
 
@@ -974,23 +955,9 @@ pub fn generate_flight_from_prompt(
         // Fallback: use embedded seed airports when no pack has dests for this region
         let mut candidate_dests = candidate_dests;
         if candidate_dests.is_empty() {
-            if let Some(LocationConstraint::Region(ref r)) = &prompt.destination {
-                seed_dest_fallback = get_seed_airports_for_region(r);
-                if !seed_dest_fallback.is_empty() {
-                    candidate_dests = seed_dest_fallback.iter().collect();
-                }
-            } else if let Some(LocationConstraint::NearCity { lat, lon, .. }) =
-                &prompt.destination
-            {
-                // No pack airports near the city — derive region and use seeds.
-                for region in region_index.find_regions(*lat, *lon) {
-                    let seeds = get_seed_airports_for_region(&region.id);
-                    if !seeds.is_empty() {
-                        seed_dest_fallback = seeds;
-                        candidate_dests = seed_dest_fallback.iter().collect();
-                        break;
-                    }
-                }
+            seed_dest_fallback = seeds_for_constraint(&prompt.destination, &region_index);
+            if !seed_dest_fallback.is_empty() {
+                candidate_dests = seed_dest_fallback.iter().collect();
             }
         }
 
@@ -1182,13 +1149,25 @@ fn check_safety_constraints(
             }
         }
     }
-    // Keyword surface preference (grass/paved keywords, or bush → soft)
+    // Keyword surface preference (grass/paved/water keywords, or bush → soft)
     if let Some(req_surf) = req_surface {
-        if let Some(surf) = apt.surface_type {
-            match req_surf {
-                SurfaceType::Soft if surf != SurfaceType::Soft => return false,
-                SurfaceType::Hard if surf != SurfaceType::Hard => return false,
-                _ => {}
+        match req_surf {
+            SurfaceType::Water => {
+                // "seaplane"/"water" keyword: require seaplane base or water surface
+                if apt.airport_type != AirportType::Seaplane
+                    && apt.surface_type != Some(SurfaceType::Water)
+                {
+                    return false;
+                }
+            }
+            _ => {
+                if let Some(surf) = apt.surface_type {
+                    match req_surf {
+                        SurfaceType::Soft if surf != SurfaceType::Soft => return false,
+                        SurfaceType::Hard if surf != SurfaceType::Hard => return false,
+                        _ => {}
+                    }
+                }
             }
         }
     }
@@ -1399,6 +1378,7 @@ fn icao_prefixes_for_region(region_id: &str) -> Option<Vec<&'static str>> {
         "PL" => Some(vec!["EP"]),
         "CZ" => Some(vec!["LK"]),
         "TR" => Some(vec!["LT"]),
+        "UA" => Some(vec!["UK"]), // Ukrainian ICAO prefix (UKBB=Kyiv, UKLL=Lviv, etc.)
         // Americas
         "US:AK" | "US:HI" => Some(vec!["P"]), // Alaska (PA..) & Hawaii (PH..)
         "US" => Some(vec!["K"]),
@@ -1436,6 +1416,74 @@ fn icao_prefixes_for_region(region_id: &str) -> Option<Vec<&'static str>> {
         "CO" => Some(vec!["SK"]),
         "PE" => Some(vec!["SP"]),
         "CL" => Some(vec!["SC"]),
+        // Eastern Europe
+        "AL" => Some(vec!["LA"]),    // Albania
+        "BA" => Some(vec!["LQ"]),    // Bosnia-Herzegovina
+        "BG" => Some(vec!["LB"]),    // Bulgaria
+        "BY" => Some(vec!["UM"]),    // Belarus
+        "EE" => Some(vec!["EE"]),    // Estonia
+        "HR" => Some(vec!["LD"]),    // Croatia
+        "HU" => Some(vec!["LH"]),    // Hungary
+        "LT" => Some(vec!["EY"]),    // Lithuania
+        "LV" => Some(vec!["EV"]),    // Latvia
+        "MD" => Some(vec!["LU"]),    // Moldova
+        "ME" => Some(vec!["LY"]),    // Montenegro (LY shared with Serbia)
+        "MK" => Some(vec!["LW"]),    // North Macedonia
+        "RO" => Some(vec!["LR"]),    // Romania
+        "RS" => Some(vec!["LY"]),    // Serbia
+        "SI" => Some(vec!["LJ"]),    // Slovenia
+        "SK" => Some(vec!["LZ"]),    // Slovakia
+        // Middle East
+        "BH" => Some(vec!["OB"]),    // Bahrain
+        "IQ" => Some(vec!["OR"]),    // Iraq
+        "IR" => Some(vec!["OI"]),    // Iran
+        "JO" => Some(vec!["OJ"]),    // Jordan
+        "KW" => Some(vec!["OK"]),    // Kuwait
+        "LB" => Some(vec!["OL"]),    // Lebanon
+        "OM" => Some(vec!["OO"]),    // Oman
+        "SAU" => Some(vec!["OE"]),   // Saudi Arabia
+        // South & Southeast Asia
+        "BD" => Some(vec!["VG"]),    // Bangladesh
+        "KH" => Some(vec!["VD"]),    // Cambodia
+        "LA" => Some(vec!["VL"]),    // Laos
+        "LK" => Some(vec!["VC"]),    // Sri Lanka
+        "MM" => Some(vec!["VY"]),    // Myanmar
+        "MN" => Some(vec!["ZM"]),    // Mongolia (ZMUB=Ulaanbaatar)
+        "NP" => Some(vec!["VN"]),    // Nepal
+        "PG" => Some(vec!["AY"]),    // Papua New Guinea
+        "PK" => Some(vec!["OP"]),    // Pakistan
+        // Africa
+        "AO" => Some(vec!["FN"]),    // Angola
+        "CM" => Some(vec!["FK"]),    // Cameroon
+        "FJ" => Some(vec!["NF"]),    // Fiji
+        "GH" => Some(vec!["DG"]),    // Ghana
+        "LY" => Some(vec!["HL"]),    // Libya
+        "MG" => Some(vec!["FM"]),    // Madagascar
+        "MZ" => Some(vec!["FQ"]),    // Mozambique
+        "RW" => Some(vec!["HR"]),    // Rwanda
+        "SD" => Some(vec!["HS"]),    // Sudan
+        "SN" => Some(vec!["GO"]),    // Senegal
+        "TN" => Some(vec!["DT"]),    // Tunisia
+        "UG" => Some(vec!["HU"]),    // Uganda
+        "ZM" => Some(vec!["FL"]),    // Zambia
+        "ZW" => Some(vec!["FV"]),    // Zimbabwe
+        // Latin America & Caribbean
+        "BO" => Some(vec!["SL"]),    // Bolivia
+        "BS" => Some(vec!["MY"]),    // Bahamas
+        "CR" => Some(vec!["MR"]),    // Costa Rica
+        "CU" => Some(vec!["MU"]),    // Cuba
+        "DO" => Some(vec!["MD"]),    // Dominican Republic
+        "EC" => Some(vec!["SE"]),    // Ecuador
+        "GT" => Some(vec!["MG"]),    // Guatemala
+        "HN" => Some(vec!["MH"]),    // Honduras
+        "HT" => Some(vec!["MT"]),    // Haiti
+        "JM" => Some(vec!["MK"]),    // Jamaica
+        "NI" => Some(vec!["MN"]),    // Nicaragua
+        "PA" => Some(vec!["MP"]),    // Panama
+        "PY" => Some(vec!["SG"]),    // Paraguay
+        "SV" => Some(vec!["MS"]),    // El Salvador
+        "UY" => Some(vec!["SU"]),    // Uruguay
+        "VE" => Some(vec!["SV"]),    // Venezuela
         _ => None,
     };
     if direct.is_some() {
@@ -1464,315 +1512,65 @@ fn seed_airport(id: &str, name: &str, lat: f64, lon: f64) -> Airport {
     }
 }
 
+/// Returns seed airports for a Region or NearCity constraint, empty Vec otherwise.
+/// Centralises the fallback pattern used for both origin and destination selection.
+fn seeds_for_constraint(
+    constraint: &Option<LocationConstraint>,
+    region_index: &RegionIndex,
+) -> Vec<Airport> {
+    match constraint {
+        Some(LocationConstraint::Region(r)) => get_seed_airports_for_region(r),
+        Some(LocationConstraint::NearCity { lat, lon, .. }) => {
+            for region in region_index.find_regions(*lat, *lon) {
+                let seeds = get_seed_airports_for_region(&region.id);
+                if !seeds.is_empty() {
+                    return seeds;
+                }
+            }
+            Vec::new()
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// Seed airports used only when the pool (scenery packs + base layer) has no candidates for
 /// that region. Global coverage comes from the base layer (Resources + Global Scenery apt.dat);
 /// we seed only a few high-traffic regions so prompts like "London to Paris" still work without
 /// scenery. Parent fallback applies for sub-regions (e.g. US:SoCal → US seeds).
 fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
-    let direct = match region_id {
-        // GB has no seeds: it excludes Northern Ireland; do not fall back to UK seeds.
-        "GB" => return Vec::new(),
-        "UK:London" => vec![
-            seed_airport("EGLL", "London Heathrow", 51.4700, -0.4543),
-            seed_airport("EGKK", "London Gatwick", 51.1481, -0.1903),
-            seed_airport("EGGW", "London Luton", 51.8747, -0.3683),
-            seed_airport("EGSS", "London Stansted", 51.8849, 0.2346),
-            seed_airport("EGLC", "London City", 51.5053, 0.0553),
-            seed_airport("EGKB", "London Biggin Hill", 51.3308, 0.0325),
-            seed_airport("EGWU", "London Northolt", 51.5530, -0.4182),
-            seed_airport("EGLF", "Farnborough", 51.2758, -0.7763),
-        ],
-        "UK" | "BI" => vec![
-            seed_airport("EGLL", "London Heathrow", 51.4700, -0.4543),
-            seed_airport("EGKK", "London Gatwick", 51.1481, -0.1903),
-            seed_airport("EGGW", "London Luton", 51.8747, -0.3683),
-            seed_airport("EGSS", "London Stansted", 51.8849, 0.2346),
-            seed_airport("EGLC", "London City", 51.5053, 0.0553),
-            seed_airport("EGKB", "London Biggin Hill", 51.3308, 0.0325),
-            seed_airport("EGWU", "London Northolt", 51.5530, -0.4182),
-            seed_airport("EGLF", "Farnborough", 51.2758, -0.7763),
-            seed_airport("EGCC", "Manchester", 53.3537, -2.2750),
-            seed_airport("EGBB", "Birmingham", 52.4539, -1.7480),
-            seed_airport("EGPH", "Edinburgh", 55.9500, -3.3725),
-            seed_airport("EGGP", "Liverpool", 53.3336, -2.8497),
-        ],
-        "IT" => vec![
-            seed_airport("LIRF", "Rome Fiumicino", 41.8003, 12.2389),
-            seed_airport("LIML", "Milan Malpensa", 45.6301, 8.7281),
-            seed_airport("LIPE", "Bologna", 44.5354, 11.2887),
-            seed_airport("LIBD", "Bari", 41.1389, 16.7606),
-        ],
-        "FR" => vec![
-            seed_airport("LFPG", "Paris Charles de Gaulle", 49.0097, 2.5478),
-            seed_airport("LFLL", "Lyon", 45.7256, 5.0811),
-            seed_airport("LFML", "Marseille", 43.4393, 5.2214),
-        ],
-        "DE" => vec![
-            seed_airport("EDDF", "Frankfurt", 50.0379, 8.5622),
-            seed_airport("EDDM", "Munich", 48.3538, 11.7751),
-            seed_airport("EDDK", "Cologne Bonn", 50.8659, 7.1427),
-        ],
-        "ES" => vec![
-            seed_airport("LEMD", "Madrid Barajas", 40.4983, -3.5676),
-            seed_airport("LEBL", "Barcelona El Prat", 41.2971, 2.0785),
-        ],
-        "US:AK" => vec![
-            seed_airport("PANC", "Anchorage Ted Stevens", 61.1743, -149.9962),
-            seed_airport("PAFA", "Fairbanks Intl", 64.8151, -147.8561),
-            seed_airport("PAJN", "Juneau Intl", 58.3549, -134.5762),
-            seed_airport("PABT", "Bettles", 66.9139, -151.5291), // Bush flavor
-        ],
-        "US:HI" => vec![
-            seed_airport("PHNL", "Honolulu Intl", 21.3187, -157.9225),
-            seed_airport("PHOG", "Kahului", 20.8986, -156.4305),
-        ],
-        "US" => vec![
-            seed_airport("KJFK", "New York JFK", 40.6398, -73.7789),
-            seed_airport("KLAX", "Los Angeles", 33.9425, -118.4081),
-            seed_airport("KORD", "Chicago O'Hare", 41.9786, -87.9047),
-            seed_airport("KATL", "Atlanta", 33.6367, -84.4281),
-        ],
-        "MX" => vec![
-            seed_airport("MMMX", "Mexico City Benito Juarez", 19.4363, -99.0721),
-            seed_airport("MMUN", "Cancun", 21.0365, -86.8770),
-            seed_airport("MMMD", "Monterrey", 25.7785, -100.1070),
-            seed_airport("MMGL", "Guadalajara Miguel Hidalgo", 20.5218, -103.3107),
-        ],
-        "CA" => vec![
-            seed_airport("CYVR", "Vancouver", 49.1967, -123.1815),
-            seed_airport("CYYZ", "Toronto Pearson", 43.6777, -79.6248),
-            seed_airport("CYUL", "Montreal", 45.4706, -73.7408),
-        ],
-        "ZA" => vec![
-            seed_airport("FALE", "King Shaka Durban", -29.6144, 31.1197),
-            seed_airport("FAOR", "Johannesburg O.R. Tambo", -26.1367, 28.2411),
-            seed_airport("FACT", "Cape Town Intl", -33.9715, 18.6021),
-        ],
-        "KE" => vec![
-            seed_airport("HKJK", "Nairobi Jomo Kenyatta", -1.3192, 36.9275),
-            seed_airport("HKMO", "Mombasa Moi", -4.0348, 39.5943),
-            seed_airport("HKLU", "Lamu Manda", -2.2717, 40.9131),
-            seed_airport("HKML", "Malindi", -3.2293, 40.1017),
-        ],
-        "IE" => vec![
-            seed_airport("EIDW", "Dublin", 53.4263, -6.2499),
-            seed_airport("EICK", "Cork", 51.8413, -8.4911),
-        ],
-        "BE" => vec![seed_airport("EBBR", "Brussels", 50.9014, 4.4844)],
-        "NL" => vec![seed_airport("EHAM", "Amsterdam Schiphol", 52.3086, 4.7639)],
-        "CH" => vec![seed_airport("LSZH", "Zurich", 47.4647, 8.5492)],
-        "AT" => vec![seed_airport("LOWW", "Vienna", 48.1103, 16.5697)],
-        // Africa (new)
-        "TZ" => vec![
-            seed_airport("HTDA", "Dar es Salaam Julius Nyerere", -6.8781, 39.2026),
-            seed_airport("HTZA", "Zanzibar Abeid Amani Karume", -6.2220, 39.2249),
-            seed_airport("HTKJ", "Kilimanjaro Intl", -3.4294, 37.0745),
-        ],
-        "ET" => vec![seed_airport("HAAB", "Addis Ababa Bole", 8.9779, 38.7993)],
-        "NG" => vec![
-            seed_airport("DNMM", "Lagos Murtala Muhammed", 6.5774, 3.3211),
-            seed_airport("DNAA", "Abuja Nnamdi Azikiwe", 9.0068, 7.2632),
-        ],
-        "MA" => vec![
-            seed_airport("GMMN", "Casablanca Mohammed V", 33.3675, -7.5898),
-            seed_airport("GMMX", "Marrakech Menara", 31.6069, -8.0363),
-        ],
-        "EG" => vec![seed_airport("HECA", "Cairo Intl", 30.1219, 31.4056)],
-        // Asia-Pacific
-        "JP" => vec![
-            seed_airport("RJAA", "Tokyo Narita", 35.7653, 140.3856),
-            seed_airport("RJTT", "Tokyo Haneda", 35.5494, 139.7798),
-            seed_airport("RJBB", "Osaka Kansai", 34.4347, 135.2440),
-            seed_airport("RJOO", "Osaka Itami", 34.7855, 135.4380),
-            seed_airport("RJCC", "Sapporo New Chitose", 42.7752, 141.6922),
-            seed_airport("RJFF", "Fukuoka", 33.5858, 130.4511),
-            seed_airport("ROAH", "Okinawa Naha", 26.1958, 127.6461),
-        ],
-        "KR" => vec![
-            seed_airport("RKSI", "Seoul Incheon", 37.4691, 126.4510),
-            seed_airport("RKSS", "Seoul Gimpo", 37.5583, 126.7908),
-            seed_airport("RKPK", "Busan Gimhae", 35.1795, 128.9382),
-        ],
-        "CN" => vec![
-            seed_airport("ZBAA", "Beijing Capital", 40.0799, 116.6031),
-            seed_airport("ZBAD", "Beijing Daxing", 39.5093, 116.4105),
-            seed_airport("ZSPD", "Shanghai Pudong", 31.1434, 121.8052),
-            seed_airport("ZSSS", "Shanghai Hongqiao", 31.1979, 121.3362),
-            seed_airport("ZGGG", "Guangzhou Baiyun", 23.3924, 113.2990),
-            seed_airport("ZUCK", "Chongqing Jiangbei", 29.7192, 106.6417),
-            seed_airport("ZUUU", "Chengdu Shuangliu", 30.5783, 103.9472),
-            seed_airport("ZLXY", "Xi'an Xianyang", 34.4471, 108.7516),
-        ],
-        "IN" => vec![
-            seed_airport("VABB", "Mumbai Chhatrapati Shivaji", 19.0887, 72.8679),
-            seed_airport("VIDP", "Delhi Indira Gandhi", 28.5665, 77.1031),
-            seed_airport("VOMM", "Chennai", 12.9900, 80.1693),
-            seed_airport("VOBL", "Bangalore Kempegowda", 13.1979, 77.7063),
-            seed_airport("VECC", "Kolkata Netaji Subhas", 22.6527, 88.4463),
-            seed_airport("VAAH", "Ahmedabad Sardar Vallabhbhai Patel", 23.0772, 72.6347),
-        ],
-        "AU" => vec![
-            seed_airport("YSSY", "Sydney Kingsford Smith", -33.9461, 151.1772),
-            seed_airport("YMML", "Melbourne Tullamarine", -37.6733, 144.8430),
-            seed_airport("YBBN", "Brisbane", -27.3842, 153.1175),
-            seed_airport("YPPH", "Perth", -31.9403, 115.9669),
-            seed_airport("YPAD", "Adelaide", -34.9450, 138.5308),
-            seed_airport("YBCS", "Cairns", -16.8858, 145.7553),
-            seed_airport("YPDN", "Darwin", -12.4147, 130.8766),
-            seed_airport("YMHB", "Hobart", -42.8361, 147.5103),
-        ],
-        "ID" => vec![
-            seed_airport("WADD", "Bali Ngurah Rai", -8.7482, 115.1670),
-            seed_airport("WIII", "Jakarta Soekarno-Hatta", -6.1256, 106.6559),
-            seed_airport("WBSB", "Bandar Seri Begawan", 4.9442, 114.9283),
-            seed_airport("WAAA", "Makassar Sultan Hasanuddin", -5.0616, 119.5540),
-        ],
-        "TH" => vec![
-            seed_airport("VTBS", "Bangkok Suvarnabhumi", 13.6811, 100.7477),
-            seed_airport("VTBD", "Bangkok Don Mueang", 13.9126, 100.6072),
-            seed_airport("VTSP", "Phuket", 8.1132, 98.3169),
-            seed_airport("VTCC", "Chiang Mai", 18.7667, 98.9626),
-        ],
-        "VN" => vec![
-            seed_airport("VVTS", "Ho Chi Minh City Tan Son Nhat", 10.8188, 106.6519),
-            seed_airport("VVNB", "Hanoi Noi Bai", 21.2212, 105.8072),
-            seed_airport("VVDN", "Da Nang", 16.0439, 108.1993),
-        ],
-        "SG" => vec![seed_airport("WSSS", "Singapore Changi", 1.3502, 103.9940)],
-        "MY" => vec![
-            seed_airport("WMKK", "Kuala Lumpur Intl", 2.7456, 101.7099),
-            seed_airport("WMKC", "Kuala Lumpur City (Subang)", 3.1308, 101.5494),
-        ],
-        "PH" => vec![
-            seed_airport("RPLL", "Manila Ninoy Aquino", 14.5086, 121.0198),
-            seed_airport("RPVM", "Cebu Mactan", 10.3097, 123.9792),
-        ],
-        "HK" => vec![seed_airport("VHHH", "Hong Kong Intl", 22.3080, 113.9185)],
-        "TW" => vec![seed_airport("RCTP", "Taipei Taoyuan", 25.0777, 121.2325)],
-        "QA" => vec![seed_airport("OTHH", "Doha Hamad", 25.2731, 51.6081)],
-        "AE" => vec![
-            seed_airport("OMDB", "Dubai Intl", 25.2528, 55.3644),
-            seed_airport("OMAA", "Abu Dhabi", 24.4328, 54.6511),
-        ],
-        "SA" => vec![
-            seed_airport("OERK", "Riyadh King Khalid", 24.9576, 46.6988),
-            seed_airport("OEJN", "Jeddah King Abdulaziz", 21.6796, 39.1565),
-        ],
-        "TR" => vec![
-            seed_airport("LTFM", "Istanbul", 41.2753, 28.7519),
-            seed_airport("LTAI", "Antalya", 36.8988, 30.7992),
-        ],
-        "GR" => vec![
-            seed_airport("LGAV", "Athens Eleftherios Venizelos", 37.9364, 23.9445),
-            seed_airport("LGRP", "Rhodes Diagoras", 36.4054, 28.0862),
-        ],
-        "PT" => vec![
-            seed_airport("LPPT", "Lisbon Humberto Delgado", 38.7756, -9.1354),
-            seed_airport("LPPR", "Porto Francisco Sa Carneiro", 41.2481, -8.6814),
-        ],
-        "CU" => vec![seed_airport("MUHA", "Havana Jose Marti", 22.9892, -82.4091)],
-        "PA" => vec![seed_airport("MPTO", "Panama City Tocumen", 9.0714, -79.3835)],
-        "CR" => vec![seed_airport("MROC", "San Jose Juan Santamaria", 9.9939, -84.2088)],
-        "LK" => vec![seed_airport("VCBI", "Colombo Bandaranaike", 7.1808, 79.8841)],
-        "NP" => vec![seed_airport("VNKT", "Kathmandu Tribhuvan", 27.6966, 85.3591)],
-        "PK" => vec![
-            seed_airport("OPKC", "Karachi Jinnah", 24.9065, 67.1608),
-            seed_airport("OPLA", "Lahore Allama Iqbal", 31.5216, 74.4036),
-            seed_airport("OPRN", "Islamabad New", 33.6167, 73.0997),
-        ],
-        "BD" => vec![seed_airport("VGHS", "Dhaka Hazrat Shahjalal", 23.8433, 90.3978)],
-        "MM" => vec![seed_airport("VYYY", "Yangon", 16.9073, 96.1332)],
-        "NZ" => vec![
-            seed_airport("NZAA", "Auckland", -37.0082, 174.7917),
-            seed_airport("NZWN", "Wellington", -41.3272, 174.8053),
-            seed_airport("NZQN", "Queenstown", -45.0211, 168.7392),
-            seed_airport("NZCH", "Christchurch", -43.4894, 172.5322),
-        ],
-        "FJ" => vec![seed_airport("NFFN", "Nadi", -17.7554, 177.4431)],
-        // South America
-        "BR" => vec![
-            seed_airport("SBGR", "Sao Paulo Guarulhos", -23.4356, -46.4731),
-            seed_airport("SBGL", "Rio de Janeiro Galeao", -22.8099, -43.2505),
-            seed_airport("SBSV", "Salvador", -12.9086, -38.3225),
-            seed_airport("SBFZ", "Fortaleza", -3.7763, -38.5326),
-            seed_airport("SBPA", "Porto Alegre", -29.9944, -51.1714),
-            seed_airport("SBMN", "Manaus Eduardo Gomes", -3.0386, -60.0497),
-        ],
-        "AR" => vec![
-            seed_airport("SAEZ", "Buenos Aires Ezeiza", -34.8222, -58.5358),
-            seed_airport("SABE", "Buenos Aires Aeroparque", -34.5592, -58.4156),
-        ],
-        "CO" => vec![seed_airport("SKBO", "Bogota El Dorado", 4.7016, -74.1469)],
-        "PE" => vec![seed_airport("SPJC", "Lima Jorge Chavez", -12.0219, -77.1143)],
-        "CL" => vec![seed_airport("SCEL", "Santiago Arturo Merino Benitez", -33.3930, -70.7858)],
-        "VE" => vec![seed_airport("SVMI", "Caracas Simon Bolivar", 10.6031, -66.9906)],
-        "EC" => vec![seed_airport("SEQU", "Quito Mariscal Sucre", -0.1292, -78.3576)],
-        "UY" => vec![seed_airport("SUMU", "Montevideo Carrasco", -34.8384, -56.0308)],
-        "PY" => vec![seed_airport("SGAS", "Asuncion Silvio Pettirossi", -25.2400, -57.5197)],
-        "BO" => vec![seed_airport("SLLP", "La Paz El Alto", -16.5133, -68.1922)],
-        // Africa extras
-        "GH" => vec![seed_airport("DGAA", "Accra Kotoka", 5.6052, -0.1668)],
-        "SN" => vec![seed_airport("GOBD", "Dakar Blaise Diagne", 14.6706, -17.1025)],
-        "TN" => vec![seed_airport("DTTA", "Tunis Carthage", 36.8510, 10.2272)],
-        "LY" => vec![seed_airport("HLLT", "Tripoli Mitiga", 32.8942, 13.2760)],
-        "SD" => vec![seed_airport("HSSS", "Khartoum", 15.5895, 32.5532)],
-        "UG" => vec![seed_airport("HUEN", "Entebbe", 0.0424, 32.4435)],
-        "RW" => vec![seed_airport("HRYR", "Kigali", -1.9686, 30.1395)],
-        "ZM" => vec![seed_airport("FLKK", "Lusaka Kenneth Kaunda", -15.3308, 28.4526)],
-        "ZW" => vec![seed_airport("FVHA", "Harare", -17.9318, 31.0928)],
-        "MG" => vec![seed_airport("FMMI", "Antananarivo Ivato", -18.7969, 47.4788)],
-        // Central America / Caribbean extras
-        "JM" => vec![seed_airport("MKJP", "Kingston Norman Manley", 17.9357, -76.7875)],
-        "BS" => vec![seed_airport("MYNN", "Nassau Lynden Pindling", 25.0390, -77.4662)],
-        "HT" => vec![seed_airport("MTPP", "Port-au-Prince Toussaint", 18.5800, -72.2926)],
-        "DO" => vec![seed_airport("MDSD", "Santo Domingo Las Americas", 18.4297, -69.6689)],
-        "GT" => vec![seed_airport("MGGT", "Guatemala City La Aurora", 14.5832, -90.5275)],
-        "SV" => vec![seed_airport("MSSS", "San Salvador", 13.4409, -89.0557)],
-        "HN" => vec![seed_airport("MHLM", "San Pedro Sula", 15.4527, -87.9236)],
-        "NI" => vec![seed_airport("MNMG", "Managua", 12.1415, -86.1682)],
-        // Europe extras
-        "PL" => vec![
-            seed_airport("EPWA", "Warsaw Chopin", 52.1657, 20.9671),
-            seed_airport("EPKK", "Krakow John Paul II", 50.0778, 19.7848),
-        ],
-        "CZ" => vec![seed_airport("LKPR", "Prague Vaclav Havel", 50.1008, 14.2600)],
-        "HU" => vec![seed_airport("LHBP", "Budapest Ferenc Liszt", 47.4390, 19.2611)],
-        "RO" => vec![seed_airport("LROP", "Bucharest Henri Coanda", 44.5711, 26.0850)],
-        "BG" => vec![seed_airport("LBSF", "Sofia", 42.6967, 23.4114)],
-        "RS" => vec![seed_airport("LYBE", "Belgrade Nikola Tesla", 44.8184, 20.3091)],
-        "HR" => vec![
-            seed_airport("LDZA", "Zagreb", 45.7429, 16.0688),
-            seed_airport("LDDU", "Dubrovnik", 42.5614, 18.2682),
-            seed_airport("LDSP", "Split", 43.5390, 16.2980),
-        ],
-        "LV" => vec![seed_airport("EVRA", "Riga", 56.9236, 23.9711)],
-        "EE" => vec![seed_airport("EETN", "Tallinn Lennart Meri", 59.4133, 24.8328)],
-        "LT" => vec![seed_airport("EYVI", "Vilnius", 54.6341, 25.2858)],
-        "SK" => vec![seed_airport("LZIB", "Bratislava", 48.1702, 17.2127)],
-        "LU" => vec![seed_airport("ELLX", "Luxembourg Findel", 49.6234, 6.2044)],
-        "IS" => vec![seed_airport("BIRK", "Reykjavik", 64.1300, -21.9406)],
-        "NO" => vec![seed_airport("ENGM", "Oslo Gardermoen", 60.1939, 11.1004)],
-        "SE" => vec![seed_airport("ESSA", "Stockholm Arlanda", 59.6519, 17.9186)],
-        "DK" => vec![seed_airport("EKCH", "Copenhagen Kastrup", 55.6180, 12.6561)],
-        "FI" => vec![seed_airport("EFHK", "Helsinki Vantaa", 60.3172, 24.9633)],
-        "IL" => vec![seed_airport("LLBG", "Tel Aviv Ben Gurion", 32.0114, 34.8867)],
-        "JO" => vec![seed_airport("OJAI", "Amman Queen Alia", 31.7226, 35.9932)],
-        "LB" => vec![seed_airport("OLBA", "Beirut Rafic Hariri", 33.8209, 35.4883)],
-        "KW" => vec![seed_airport("OKBK", "Kuwait Intl", 29.2266, 47.9689)],
-        "OM" => vec![seed_airport("OOMS", "Muscat", 23.5933, 58.2844)],
-        "IQ" => vec![seed_airport("ORBI", "Baghdad", 33.2626, 44.2346)],
-        "IR" => vec![seed_airport("OIIE", "Tehran Imam Khomeini", 35.4161, 51.1522)],
-        _ => Vec::new(),
-    };
-    if !direct.is_empty() {
-        return direct;
+    #[derive(serde::Deserialize)]
+    struct SeedEntry {
+        id: String,
+        name: String,
+        lat: f64,
+        lon: f64,
     }
+
+    static SEEDS: OnceLock<std::collections::HashMap<String, Vec<SeedEntry>>> = OnceLock::new();
+    let map = SEEDS.get_or_init(|| {
+        let json = include_str!("data/seed_airports.json");
+        serde_json::from_str(json).expect("seed_airports.json is malformed")
+    });
+
+    // GB has no seeds: it excludes Northern Ireland; do not fall back to UK seeds.
+    if region_id == "GB" {
+        return Vec::new();
+    }
+
+    if let Some(entries) = map.get(region_id) {
+        return entries
+            .iter()
+            .map(|e| seed_airport(&e.id, &e.name, e.lat, e.lon))
+            .collect();
+    }
+
     // Parent fallback: US:SoCal, US:OR, US:NorCal, etc. -> US
     if region_id.contains(':') {
         let parent = region_id.split(':').next().unwrap_or(region_id);
         return get_seed_airports_for_region(parent);
     }
-    direct
+
+    Vec::new()
 }
 
 fn haversine_nm(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
