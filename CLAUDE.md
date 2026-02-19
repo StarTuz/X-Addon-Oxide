@@ -67,7 +67,7 @@ crates/
   - **Guardrail design**: Only two hard constraints — helipad/seaplane-base type matching (helicopter ↔ heliport, floatplane ↔ seaplane base), and keyword-driven surface preference. Keywords `grass`/`unpaved` → Soft, `tarmac`/`asphalt` → Hard, `water`/`seaplane`/`floatplane` → Water (seaplane bases only). Runway length and aircraft-type distance limits are intentionally absent — users control range via keywords (`short`/`quick`, `long haul`, `2 hour flight`) and can swap aircraft after export. Default distance when no keyword given: 10–5000nm.
   - **`endpoints_explicit`**: Distance constraints are relaxed (2nm–20000nm) only when both endpoints are _point_ types (ICAO or NearCity). Region-to-Region pairs keep normal constraints so random picks stay geographically sensible.
   - **Seed airports**: Stored in `data/seed_airports.json` (embedded JSON), loaded once via `OnceLock`. Used as fallback when no pack airports cover a region/city. `seeds_for_constraint()` helper centralises the fallback lookup for both origin and destination.
-- `data/` - Embedded binary assets: `flight_context_bundle.json` (63 airport history snippets), `flight_context_pois_overlay.json` (curated POIs for EGLL/LIRF), `icao_to_wikipedia.csv` (ICAO→Wikipedia title map for ~16k airports), `seed_airports.json` (~70 region keys, fallback airports for flight gen)
+- `data/` - Embedded binary assets: `flight_context_bundle.json` (63 airport history snippets), `flight_context_pois_overlay.json` (curated POIs for EGLL/LIRF), `icao_to_wikipedia.csv` (ICAO→Wikipedia title map for ~16k airports), `seed_airports.json` (~139 region keys including geographic features — Alps, Himalayas, PacIsles sub-regions etc. — fallback airports for flight gen)
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
   - `ini_handler.rs` - Reads/writes `scenery_packs.ini` with raw_path round-trip preservation
   - `sorter.rs` - Smart sort using stable `sort_by` to preserve manual pins
@@ -90,20 +90,20 @@ Rules-based heuristics engine (not ML despite the name) that:
 
 ### x-adox-gui
 
-Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~11116 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
+Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct holds all state; `Message` enum drives updates. **`main.rs` is ~11383 lines** — always use targeted Grep/Read with line ranges, never read the whole file at once.
 
 **Key landmarks in `main.rs`** (use these to navigate):
 
 - `enum Message` (~line 167) — all message variants, grouped by feature
-- `struct App` (~line 589) — all application state fields
-- `fn update()` (~line 1314) — message handling / business logic dispatch
-- `fn view_flight_context_window()` (~line 1074) — detached draggable flight context panel
-- `fn subscription()` (~line 4815) — event subscriptions (timers, keyboard)
-- `fn view()` (~line 4933) — top-level view routing by tab
-- `fn view_scenery()` (~line 7176) — scenery tab layout
-- `fn view_scenery_basket()` (~line 7491) — scenery basket panel (selection, bulk toggle)
-- `fn view_addon_list()` (~line 8638) — reusable list for plugins/CSLs
-- `fn view_aircraft_tree()` (~line 8903) — aircraft tree with smart view
+- `struct App` (~line 592) — all application state fields
+- `fn update()` (~line 1356) — message handling / business logic dispatch
+- `fn view_flight_context_window()` (~line 1116) — detached draggable flight context panel
+- `fn subscription()` (~line 4910) — event subscriptions (timers, keyboard)
+- `fn view()` (~line 5028) — top-level view routing by tab
+- `fn view_scenery()` (~line 7311) — scenery tab layout
+- `fn view_scenery_basket()` (~line 7735) — scenery basket panel (selection, bulk toggle)
+- `fn view_addon_list()` (~line 8882) — reusable list for plugins/CSLs
+- `fn view_aircraft_tree()` (~line 9147) — aircraft tree with smart view
 
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, FlightGenerator, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
@@ -157,14 +157,22 @@ Config directories are isolated per X-Plane installation using a hash of the ins
 
 ## Scenery INI Sync Flow
 
-When the SceneryManager loads (`scenery/mod.rs`):
+Startup uses a **two-phase load** to keep the UI responsive even on cold-start (no cache) with Windows Defender active:
 
+**Phase 1 — `SceneryManager::load_quick()`** (fires `Message::SceneryLoaded`, < 500ms):
 1. Read existing INI entries (preserves order and raw_path)
 2. Scan filesystem for folders via `discovery.rs` (filesystem order, no sorting)
 3. Reconcile: match discovered folders to INI entries by name/path
-4. Sync paths if filesystem differs from INI (handles case/whitespace variations)
-5. Classify using BitNet rules, then "heal" misclassifications by inspecting actual content (apt.dat, DSF tiles)
-6. Parallel processing via `rayon` for expensive operations (apt.dat parsing, DSF inspection)
+4. Heuristic classify all packs + load any cached airport/tile data. **Uncached packs get empty airports/tiles** — no disk I/O.
+5. Loading overlay dismisses once all subsystems complete; scenery list is immediately usable.
+
+**Phase 2 — `SceneryManager::load_with_progress(cb)`** (fires `Message::SceneryDeepScanComplete`):
+1. Full parallel disk scan for uncached packs: `discover_airports_in_pack`, `discover_tiles_in_pack`
+2. Progress reported via `cb(0.0..=1.0)` → `Message::SceneryProgress` → slim progress bar in scenery tab
+3. `SceneryDeepScanComplete` merges airports/tiles/categories into `self.packs` (preserving user status changes), re-runs `merge_custom_airports()` and validation, saves cache.
+4. On Windows: if deep scan took > 10s → shows a one-time dismissable AV exclusion tip banner (`av_tip_dismissed` persisted in `scan_config.json`).
+
+**`Refresh` uses the full scan** (`load_packs` → `load_with_progress`) since the user explicitly requested it.
 
 Special case: `*GLOBAL_AIRPORTS*` is a virtual INI tag for X-Plane's built-in global airports.
 
@@ -198,7 +206,7 @@ Custom error types using `thiserror::Error` per crate (XamError, SceneryError, A
 - Windows: `%APPDATA%\X-Addon-Oxide\`
 - macOS: `~/Library/Application Support/X-Addon-Oxide/`
 
-Files: `heuristics.json` (sorting rules, pins, aircraft overrides, **flight preferences** — schema v10), `scan_config.json`, `icon_overrides.json`
+Files: `heuristics.json` (sorting rules, pins, aircraft overrides, **flight preferences** — schema v10), `scan_config.json` (exclusions, inclusions, `av_tip_dismissed`), `icon_overrides.json`
 
 Per-installation configs live in `installs/{hash}/` subdirectories (see Root-Specific Config Isolation above).
 
