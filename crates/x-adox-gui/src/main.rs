@@ -7331,6 +7331,7 @@ impl App {
                 ]
                 .width(Length::Fixed(4.0))
             ]
+            .width(Length::Fill)
             .align_y(iced::Alignment::Start)
             .into()
         } else {
