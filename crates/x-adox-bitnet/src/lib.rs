@@ -375,7 +375,9 @@ impl BitNetModel {
 
                 // v9→v10: Flight gen preferences (origin/dest prefs, last success). New fields use #[serde(default)].
                 if config.schema_version <= 9 {
-                    log::info!("[BitNet] v9→v10: Flight preferences (origin/dest prefs, last success)");
+                    log::info!(
+                        "[BitNet] v9→v10: Flight preferences (origin/dest prefs, last success)"
+                    );
                 }
 
                 // v10→v11: Add Map Enhancement Base rule (xpme_basepackage → score 95).
@@ -915,8 +917,10 @@ impl BitNetModel {
         // --- Step 2: Detection Pass 1: Broad Category (Special Roles) ---
         let is_helicopter = matches_any(&[
             "helicopter",
+            "helo",
             "rotor",
             "bell",
+            "aw109",
             "aw139",
             "ec135",
             "bk117",
@@ -933,7 +937,27 @@ impl BitNetModel {
             "h125",
             "h135",
             "h145",
-        ]);
+            "uh-1",
+            "huey",
+            "ah-64",
+            "apache",
+            "ch-47",
+            "chinook",
+            "blackhawk",
+            "sh-60",
+            "uh-60",
+            "mi-8",
+            "mi-17",
+            "mi-24",
+            "hind",
+            "ka-50",
+            "kamov",
+            "hughes 500",
+            "md500",
+            "md 500",
+        ]) && !is_cirrus
+            && !is_piper
+            && !name_lower.contains("bellanca");
         let is_glider = matches_any(&[
             "glider",
             "sailplane",
@@ -1281,8 +1305,14 @@ impl BitNetModel {
         // --- Step 5: Assign Final Tags ---
         if is_helicopter {
             tags.push("Helicopter".to_string());
+            if is_military {
+                tags.push("Military".to_string());
+            }
         } else if is_glider {
             tags.push("Glider".to_string());
+            if is_military {
+                tags.push("Military".to_string());
+            }
         } else if is_military {
             tags.push("Military".to_string());
             if is_jet {
