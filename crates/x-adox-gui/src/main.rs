@@ -7279,16 +7279,52 @@ impl App {
             Tab::FlightGenerator => (&self.icon_flight_gen, Color::from_rgb(0.0, 0.8, 0.8)), // Cyan for Flight Gen
         };
 
-        let icon = svg(icon_handle.clone())
-            .width(Length::Fixed(48.0))
-            .height(Length::Fixed(48.0))
-            .style(move |_theme, _status| svg::Style {
-                color: Some(if is_active {
-                    active_color
-                } else {
-                    style::palette::TEXT_SECONDARY
-                }),
-            });
+        let primary_color = if is_active {
+            active_color
+        } else {
+            style::palette::TEXT_SECONDARY
+        };
+
+        let icon: Element<'_, Message, Theme, Renderer> = if !is_active && tab != Tab::Issues {
+            // Apply a "Point Glow" trick to emulate a purely radial drop shadow for inactive tabs
+            let shadow_color = Color::from_rgba(active_color.r, active_color.g, active_color.b, 0.25);
+
+            let point_glow = container(iced::widget::Space::new(Length::Fixed(1.0), Length::Fixed(1.0)))
+                .style(move |_theme| container::Style {
+                    background: None,
+                    shadow: Shadow {
+                        color: shadow_color,
+                        offset: iced::Vector::new(0.0, 0.0),
+                        blur_radius: 18.0,
+                    },
+                    ..Default::default()
+                });
+
+            stack![
+                container(point_glow).width(Length::Fill).height(Length::Fill).center_x(Length::Fill).center_y(Length::Fill),
+                container(
+                    svg(icon_handle.clone())
+                        .width(Length::Fixed(48.0))
+                        .height(Length::Fixed(48.0))
+                        .style(move |_theme, _status| svg::Style {
+                            color: Some(primary_color),
+                        })
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+            ]
+            .into()
+        } else {
+            svg(icon_handle.clone())
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0))
+                .style(move |_theme, _status| svg::Style {
+                    color: Some(primary_color),
+                })
+                .into()
+        };
 
         let has_issues = tab == Tab::Issues && !self.log_issues.is_empty();
 
