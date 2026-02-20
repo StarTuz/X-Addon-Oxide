@@ -959,6 +959,8 @@ impl BitNetModel {
             "b206",
             "bell 206",
             "jetranger",
+            "sea king",
+            "seaking",
         ]) && !is_cirrus
             && !is_piper
             && !name_lower.contains("bellanca");
@@ -1406,23 +1408,27 @@ impl BitNetModel {
             // Remove guessed propulsion tags first
             tags.retain(|t| t != "Jet" && t != "Prop" && t != "Turboprop" && t != "Electric");
 
-            match pt {
-                parser::PropType::LoBypassJet | parser::PropType::HiBypassJet => {
-                    tags.push("Jet".to_string());
+            // Helicopters and Gliders should not receive propulsion tags (like Turboprop) even if the
+            // underlying X-Plane ACF simulation uses a FreeTurbine (turboshaft) for a helicopter.
+            if !is_helicopter && !is_glider {
+                match pt {
+                    parser::PropType::LoBypassJet | parser::PropType::HiBypassJet => {
+                        tags.push("Jet".to_string());
+                    }
+                    parser::PropType::FreeTurbine | parser::PropType::FixedTurbine => {
+                        tags.push("Turboprop".to_string());
+                    }
+                    parser::PropType::RecipCarb | parser::PropType::RecipInjected => {
+                        tags.push("Prop".to_string());
+                    }
+                    parser::PropType::Electric => {
+                        tags.push("Prop".to_string()); // Treat electric as prop key for filtering for now
+                    }
+                    parser::PropType::Rocket | parser::PropType::TipRockets => {
+                        tags.push("Jet".to_string()); // Rockets are closer to jets? Or distinct? Defaults to Jet for now.
+                    }
+                    _ => {}
                 }
-                parser::PropType::FreeTurbine | parser::PropType::FixedTurbine => {
-                    tags.push("Turboprop".to_string());
-                }
-                parser::PropType::RecipCarb | parser::PropType::RecipInjected => {
-                    tags.push("Prop".to_string());
-                }
-                parser::PropType::Electric => {
-                    tags.push("Prop".to_string()); // Treat electric as prop key for filtering for now
-                }
-                parser::PropType::Rocket | parser::PropType::TipRockets => {
-                    tags.push("Jet".to_string()); // Rockets are closer to jets? Or distinct? Defaults to Jet for now.
-                }
-                _ => {}
             }
 
             // If checking for "Unknown" tags, we might want to resolve it?
