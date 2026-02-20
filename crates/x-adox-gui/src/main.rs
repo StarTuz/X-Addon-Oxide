@@ -3185,22 +3185,22 @@ impl App {
 
                 Arc::make_mut(&mut self.heuristics_model.config)
                     .aircraft_overrides
-                    .insert(name, tags);
+                    .insert(name, tags.clone());
                 self.heuristics_model.refresh_regex_set();
                 let _ = self.heuristics_model.save();
 
-                // Snapshot expanded folder paths before refresh
-                self.aircraft_expanded_paths.clear();
-                if let Some(ref tree) = self.aircraft_tree {
-                    collect_expanded_paths(tree, &mut self.aircraft_expanded_paths);
+                // Recursively retag the in-memory tree instead of disk scanning
+                if let Some(ref mut tree) = self.aircraft_tree {
+                    Self::retag_aircraft_tree(Arc::make_mut(tree), &self.heuristics_model);
                 }
+                
+                // Update selection tags instantly
+                self.selected_aircraft_tags = tags;
+                
+                self.update_smart_view_cache();
 
-                // Refresh to show changes
-                let request_id = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_nanos();
-                Task::done(Message::RequestAircraftRefresh(request_id))
+                // It's already in memory, return Task::none
+                Task::none()
             }
             Message::Refresh => {
                 self.status = "Refreshing...".to_string();
@@ -9888,6 +9888,17 @@ impl App {
             }
         }
         None
+    }
+
+    fn retag_aircraft_tree(node: &mut AircraftNode, bitnet: &x_adox_bitnet::BitNetModel) {
+        if !node.variants.is_empty()
+            || (!node.children.is_empty() && node.children.iter().any(|c| !c.variants.is_empty()))
+        {
+            node.tags = bitnet.predict_aircraft_tags(&node.name, &node.path);
+        }
+        for child in &mut node.children {
+            Self::retag_aircraft_tree(child, bitnet);
+        }
     }
 
     fn update_smart_view_cache(&mut self) {
