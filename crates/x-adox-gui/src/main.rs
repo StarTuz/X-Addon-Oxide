@@ -3550,9 +3550,24 @@ impl App {
                         if let Some(stem) = &acf_stem {
                             candidates.push(dir.join(format!("{}_icon11.png", stem)));
                             candidates.push(dir.join(format!("{}_icon.png", stem)));
+                            candidates.push(dir.join(format!("{}.png", stem)));
+                            candidates.push(dir.join(format!("{}.jpg", stem)));
                         }
+                        
+                        if let Some(dir_name) = dir.file_name() {
+                            let dname = dir_name.to_string_lossy();
+                            candidates.push(dir.join(format!("{}.png", dname)));
+                            candidates.push(dir.join(format!("{}.jpg", dname)));
+                        }
+
                         candidates.push(dir.join("icon11.png"));
                         candidates.push(dir.join("icon.png"));
+                        candidates.push(dir.join("icon12.png"));
+                        candidates.push(dir.join("preview.png"));
+                        candidates.push(dir.join("thumbnail.png"));
+                        candidates.push(dir.join("screenshot.png"));
+                        candidates.push(dir.join("screenshot.jpg"));
+                        candidates.push(dir.join("bkg.png")); // X-Plane background image
 
                         for p in candidates {
                             if p.exists() {
@@ -3567,16 +3582,39 @@ impl App {
                             break;
                         }
 
-                        // Fallback: look for ANY png that might be an icon
+                        // Fallback: look for ANY png/jpg that might be an icon, or grab a safe generic
+                        let mut fallback_image = None;
                         for e in entries_vec {
                             let name = e.file_name().to_string_lossy().to_lowercase();
-                            if name.contains("icon")
-                                || name.contains("preview")
-                                || name.contains("thumbnail")
-                            {
-                                if let Ok(bytes) = std::fs::read(e.path()) {
+                            if name.ends_with(".png") || name.ends_with(".jpg") || name.ends_with(".jpeg") {
+                                if name.contains("icon")
+                                    || name.contains("preview")
+                                    || name.contains("thumbnail")
+                                    || name.contains("screen")
+                                    || name.contains("bkg")
+                                    || name.contains("image")
+                                {
+                                    if let Ok(bytes) = std::fs::read(e.path()) {
+                                        icon_handle = Some(image::Handle::from_bytes(bytes));
+                                        break;
+                                    }
+                                } else if fallback_image.is_none()
+                                    && !name.contains("normal")
+                                    && !name.contains("lit")
+                                    && !name.contains("paint")
+                                    && !name.contains("readme")
+                                    && !name.contains("manual")
+                                {
+                                    // Save the first safe generic image as an ultimate fallback
+                                    fallback_image = Some(e.path());
+                                }
+                            }
+                        }
+
+                        if icon_handle.is_none() {
+                            if let Some(fb) = fallback_image {
+                                if let Ok(bytes) = std::fs::read(fb) {
                                     icon_handle = Some(image::Handle::from_bytes(bytes));
-                                    break;
                                 }
                             }
                         }
