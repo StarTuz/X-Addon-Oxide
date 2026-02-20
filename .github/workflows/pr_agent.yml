@@ -44,8 +44,4 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: PR Agent action
-        uses: qodo-ai/pr-agent@d36ad319f7fb0049205017405a71275c41599587
-
-        with:
-            pr_url: ${{ github.event.pull_request.html_url || github.event.issue.html_url }}
-            command: ${{ github.event.comment.body || '/review' }}
+        uses: qodo-ai/pr-agent@main
