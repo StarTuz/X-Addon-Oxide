@@ -2,6 +2,7 @@ use std::process::{Command, Stdio};
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2020 Austin Goudge
 // Copyright (c) 2026 StarTuz
+// Note: This is a test comment strictly intended to trigger Qodo Merge review
 
 use iced::widget::{
     button, checkbox, column, container, horizontal_space, image, mouse_area, pick_list,
