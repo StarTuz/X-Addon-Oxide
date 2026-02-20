@@ -903,7 +903,7 @@ impl BitNetModel {
         let is_socata = matches_any(&[
             "socata", "tbm700", "tbm850", "tbm900", "tbm910", "tbm930", "tbm940", "tbm960",
         ]);
-        let is_robin = matches_any(&["robin", "dr400"]);
+        let is_robin = matches_any(&["robin", "dr400"]) && !name_lower.contains("robinson");
         let is_vans = matches_any(&[
             "van's", "rv-4", "rv-6", "rv-7", "rv-8", "rv-9", "rv-10", "rv-12", "rv-14",
         ]);
@@ -955,6 +955,10 @@ impl BitNetModel {
             "hughes 500",
             "md500",
             "md 500",
+            "df206",
+            "b206",
+            "bell 206",
+            "jetranger",
         ]) && !is_cirrus
             && !is_piper
             && !name_lower.contains("bellanca");
