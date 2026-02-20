@@ -3525,8 +3525,14 @@ impl App {
                 // 1. Check immediate directory and parent directory (for shared icons/CSLs)
                 let mut search_dirs = Vec::new();
                 if icon_handle.is_none() {
-                    search_dirs.push(path.clone());
-                    if let Some(parent) = path.parent() {
+                    let base_dir = if path.is_file() {
+                        path.parent().unwrap_or(&path).to_path_buf()
+                    } else {
+                        path.clone()
+                    };
+                    
+                    search_dirs.push(base_dir.clone());
+                    if let Some(parent) = base_dir.parent() {
                         search_dirs.push(parent.to_path_buf());
                     }
                 }
