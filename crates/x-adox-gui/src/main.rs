@@ -7270,8 +7270,39 @@ impl App {
                 }
             });
 
-        let content = column![
-            icon_container,
+        let active_pill: Element<'_, Message, Theme, Renderer> = if is_active {
+            container(iced::widget::Space::new(Length::Fixed(4.0), Length::Fixed(32.0)))
+                .style(move |_: &Theme| container::Style {
+                    background: Some(iced::Background::Color(active_color)),
+                    border: Border {
+                        radius: 2.0.into(),
+                        ..Default::default()
+                    },
+                    shadow: Shadow {
+                        color: Color::from_rgba(active_color.r, active_color.g, active_color.b, 0.8),
+                        offset: iced::Vector::new(0.0, 0.0),
+                        blur_radius: 14.0,
+                    },
+                    ..Default::default()
+                })
+                .into()
+        } else {
+            iced::widget::Space::new(Length::Fixed(4.0), Length::Fixed(32.0)).into()
+        };
+
+        let top_row: Element<'_, Message, Theme, Renderer> = row![
+            iced::widget::Space::new(Length::Fixed(4.0), Length::Fixed(32.0)), // Left balancer
+            container(icon_container)
+                .width(Length::Fill)
+                .center_x(Length::Fill), // Perfectly centers the 48px icon between the 4px walls
+            active_pill, // Right edge alignment
+        ]
+        .width(Length::Fill)
+        .align_y(iced::Alignment::Center)
+        .into(); // Vertically syncs to the 48px icon center!
+
+        let content: Element<'_, Message, Theme, Renderer> = column![
+            top_row,
             text(label)
                 .size(14)
                 .width(Length::Fill)
@@ -7283,7 +7314,8 @@ impl App {
                 })
         ]
         .spacing(8)
-        .align_x(iced::Alignment::Center);
+        .align_x(iced::Alignment::Center)
+        .into();
 
         let style_fn = if is_active {
             style::button_sidebar_active
@@ -7291,51 +7323,12 @@ impl App {
             style::button_sidebar_inactive
         };
 
-        let btn = button(content)
+        button(content)
             .on_press(Message::SwitchTab(tab))
             .style(style_fn)
             .padding([15, 0])
-            .width(Length::Fill);
-
-        if is_active {
-            row![
-                iced::widget::Space::new(Length::Fixed(4.0), Length::Fill), // Balancing spacer
-                btn,
-                // Glow pill: vertically centered with the icon (top padding 15px + half icon 24px = 39px center).
-                // Pill height is 32px, so we need 39 - 16 = 23px top offset.
-                column![
-                    iced::widget::Space::new(Length::Fill, Length::Fixed(23.0)),
-                    container(iced::widget::Space::new(
-                        Length::Fixed(4.0),
-                        Length::Fixed(32.0)
-                    ))
-                    .style(move |_| container::Style {
-                        background: Some(iced::Background::Color(active_color)),
-                        border: iced::Border {
-                            radius: 2.0.into(),
-                            ..Default::default()
-                        },
-                        shadow: iced::Shadow {
-                            color: Color::from_rgba(
-                                active_color.r,
-                                active_color.g,
-                                active_color.b,
-                                0.8,
-                            ),
-                            offset: iced::Vector::new(0.0, 0.0),
-                            blur_radius: 14.0,
-                        },
-                        ..Default::default()
-                    })
-                ]
-                .width(Length::Fixed(4.0))
-            ]
             .width(Length::Fill)
-            .align_y(iced::Alignment::Start)
             .into()
-        } else {
-            btn.into()
-        }
     }
 
     fn view_scenery(&self) -> Element<'_, Message> {
