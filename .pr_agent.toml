@@ -14,13 +14,11 @@ require_score_review = true
 require_tests_review = true
 require_security_review = true
 
-[github_app]
+[github_action_config]
 # Commands to run automatically when a PR is opened
-pr_commands = [
-    "/describe",
-    "/review",
-    "/improve"
-]
+auto_review = true
+auto_describe = true
+auto_improve = true
 
 [config]
 # General settings
