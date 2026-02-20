@@ -5181,7 +5181,7 @@ impl App {
                 );
             }
 
-            if self.show_flight_context_window {
+            if self.show_flight_context_window && self.active_tab == Tab::FlightGenerator {
                 let context_window = self.view_flight_context_window();
 
                 final_view = final_view.push(
