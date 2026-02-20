@@ -3504,10 +3504,15 @@ impl App {
                 self.selected_aircraft_name =
                     path.file_name().map(|n| n.to_string_lossy().to_string());
 
-                // Get tags
+                // Get tags and absolute path
+                let mut absolute_path = path.clone();
                 if let Some(tree) = &self.aircraft_tree {
                     self.selected_aircraft_tags =
                         Self::find_tags_in_tree(tree, &path).unwrap_or_default();
+                    
+                    if let Some(node) = Self::find_node_in_tree(tree, &path) {
+                        absolute_path = node.path.clone();
+                    }
                 } else {
                     self.selected_aircraft_tags = Vec::new();
                 }
@@ -3525,10 +3530,10 @@ impl App {
                 // 1. Check immediate directory and parent directory (for shared icons/CSLs)
                 let mut search_dirs = Vec::new();
                 if icon_handle.is_none() {
-                    let base_dir = if path.is_file() {
-                        path.parent().unwrap_or(&path).to_path_buf()
+                    let base_dir = if absolute_path.is_file() {
+                        absolute_path.parent().unwrap_or(&absolute_path).to_path_buf()
                     } else {
-                        path.clone()
+                        absolute_path.clone()
                     };
                     
                     search_dirs.push(base_dir.clone());
@@ -9858,6 +9863,17 @@ impl App {
         result
     }
 
+    fn find_node_in_tree<'a>(node: &'a AircraftNode, target_relative: &std::path::Path) -> Option<&'a AircraftNode> {
+        if node.relative_path == target_relative {
+            return Some(node);
+        }
+        for child in &node.children {
+            if let Some(found) = Self::find_node_in_tree(child, target_relative) {
+                return Some(found);
+            }
+        }
+        None
+    }
     fn find_tags_in_tree(node: &AircraftNode, target_relative: &std::path::Path) -> Option<Vec<String>> {
         if node.relative_path == target_relative {
             return Some(node.tags.clone());
