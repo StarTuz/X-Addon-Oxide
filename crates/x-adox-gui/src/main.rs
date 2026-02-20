@@ -7301,15 +7301,11 @@ impl App {
             row![
                 iced::widget::Space::new(Length::Fixed(4.0), Length::Fill), // Balancing spacer
                 btn,
-                // Glow pill: fixed spacer offset centres the pill within the button.
-                // Button height ≈ 15 (pad) + 48 (icon) + 8 (gap) + 17 (text) + 15 (pad) = 103px
-                // Pill centre offset = (103 - 32) / 2 = 35.5 → 36px
-                column![
-                    iced::widget::Space::new(Length::Fill, Length::Fixed(36.0)),
-                    container(iced::widget::Space::new(
-                        Length::Fixed(4.0),
-                        Length::Fixed(32.0)
-                    ))
+                // Glow pill: Centered via the row alignment.
+                container(iced::widget::Space::new(
+                    Length::Fixed(4.0),
+                    Length::Fixed(32.0)
+                ))
                     .style(move |_| container::Style {
                         background: Some(iced::Background::Color(active_color)),
                         border: iced::Border {
@@ -7328,11 +7324,9 @@ impl App {
                         },
                         ..Default::default()
                     })
-                ]
-                .width(Length::Fixed(4.0))
             ]
             .width(Length::Fill)
-            .align_y(iced::Alignment::Start)
+            .align_y(iced::Alignment::Center)
             .into()
         } else {
             btn.into()
