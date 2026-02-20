@@ -507,7 +507,7 @@ impl FlightGenState {
             export_controls = export_controls.push(
                 button("FMS 11")
                     .on_press(Message::ExportFms11)
-                    .style(style::button_cyan_glow),
+                    .style(style::button_magenta_glow),
             );
             export_controls = export_controls.push(
                 button("FMS 12")
@@ -529,21 +529,21 @@ impl FlightGenState {
                 learning_controls = learning_controls.push(
                     button("Remember this flight")
                         .on_press(Message::RememberThisFlight)
-                        .style(style::button_pin_ghost),
+                        .style(style::button_ghost_amber),
                 );
             }
             if plan.origin_region_id.is_some() {
                 learning_controls = learning_controls.push(
                     button("Prefer this origin")
                         .on_press(Message::PreferThisOrigin)
-                        .style(style::button_pin_ghost),
+                        .style(style::button_ghost_teal),
                 );
             }
             if plan.dest_region_id.is_some() {
                 learning_controls = learning_controls.push(
                     button("Prefer this destination")
                         .on_press(Message::PreferThisDestination)
-                        .style(style::button_pin_ghost),
+                        .style(style::button_ghost_indigo),
                 );
             }
             learning_controls = learning_controls.push(
