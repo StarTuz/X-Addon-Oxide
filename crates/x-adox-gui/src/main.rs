@@ -2628,8 +2628,13 @@ impl App {
                     let pack_group = match self.scenery_view_mode {
                         SceneryViewMode::Region => pack.get_region(),
                         SceneryViewMode::Tags => pack.tags.first().cloned().unwrap_or_else(|| "Untagged".to_string()),
-                        SceneryViewMode::MapEnhancement | SceneryViewMode::AutoOrtho => {
-                            photo_streamer_group(&pack.name).unwrap_or("").to_string()
+                        SceneryViewMode::MapEnhancement => {
+                            let group = photo_streamer_group(&pack.name).unwrap_or("").to_string();
+                            if group == "Map Enhancement" { group } else { String::new() }
+                        }
+                        SceneryViewMode::AutoOrtho => {
+                            let group = photo_streamer_group(&pack.name).unwrap_or("").to_string();
+                            if group == "AutoOrtho" { group } else { String::new() }
                         }
                         _ => String::new(),
                     };
@@ -2657,8 +2662,13 @@ impl App {
                     let pack_group = match self.scenery_view_mode {
                         SceneryViewMode::Region => pack.get_region(),
                         SceneryViewMode::Tags => pack.tags.first().cloned().unwrap_or_else(|| "Untagged".to_string()),
-                        SceneryViewMode::MapEnhancement | SceneryViewMode::AutoOrtho => {
-                            photo_streamer_group(&pack.name).unwrap_or("").to_string()
+                        SceneryViewMode::MapEnhancement => {
+                            let group = photo_streamer_group(&pack.name).unwrap_or("").to_string();
+                            if group == "Map Enhancement" { group } else { String::new() }
+                        }
+                        SceneryViewMode::AutoOrtho => {
+                            let group = photo_streamer_group(&pack.name).unwrap_or("").to_string();
+                            if group == "AutoOrtho" { group } else { String::new() }
                         }
                         _ => String::new(),
                     };
@@ -7433,10 +7443,21 @@ impl App {
                     scenery_groups.entry(tag).or_default().push((idx, pack.clone()));
                 }
             }
-            SceneryViewMode::MapEnhancement | SceneryViewMode::AutoOrtho => {
+            SceneryViewMode::MapEnhancement => {
                 for (idx, pack) in self.packs.iter().enumerate() {
                     if let Some(group) = photo_streamer_group(&pack.name) {
-                        scenery_groups.entry(group.to_string()).or_default().push((idx, pack.clone()));
+                        if group == "Map Enhancement" {
+                            scenery_groups.entry(group.to_string()).or_default().push((idx, pack.clone()));
+                        }
+                    }
+                }
+            }
+            SceneryViewMode::AutoOrtho => {
+                for (idx, pack) in self.packs.iter().enumerate() {
+                    if let Some(group) = photo_streamer_group(&pack.name) {
+                        if group == "AutoOrtho" {
+                            scenery_groups.entry(group.to_string()).or_default().push((idx, pack.clone()));
+                        }
                     }
                 }
             }
@@ -7459,13 +7480,7 @@ impl App {
                         let is_any_enabled = group_packs.iter().any(|(_, p)| p.status == SceneryPackType::Active);
                         let is_any_in_bucket = group_packs.iter().any(|(_, p)| bucket.contains(&p.name));
                         // A group is a "conflict" group when the current mode is focused
-                        // on the *other* photo-streamer system — e.g. in Map Enhancement
-                        // mode the AutoOrtho group is the conflict group, and vice versa.
-                        let is_conflict = matches!(
-                            (scenery_view_mode, group_name.as_str()),
-                            (SceneryViewMode::MapEnhancement, "AutoOrtho")
-                                | (SceneryViewMode::AutoOrtho, "Map Enhancement")
-                        );
+                        let is_conflict = false;
 
                         items.push(Self::render_scenery_group_header(
                             group_name.to_string(),
