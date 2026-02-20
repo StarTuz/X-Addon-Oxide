@@ -3196,7 +3196,11 @@ impl App {
                 }
 
                 // Refresh to show changes
-                Task::done(Message::Refresh)
+                let request_id = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos();
+                Task::done(Message::RequestAircraftRefresh(request_id))
             }
             Message::Refresh => {
                 self.status = "Refreshing...".to_string();
