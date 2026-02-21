@@ -91,7 +91,7 @@ fn test_region_nlp_parsing() {
         }
 
         let prompt = format!("flight to {}", region.name);
-        let parsed = FlightPrompt::parse(&prompt);
+        let parsed = FlightPrompt::parse(&prompt, &x_adox_bitnet::NLPRulesConfig::default());
         let expected = LocationConstraint::Region(region.id.clone());
 
         if parsed.destination.as_ref() != Some(&expected) {
@@ -192,7 +192,7 @@ fn test_all_regions_flight_generation() {
         // "{name} Boeing" (old approach) doesn't parse — no "to"/"from" keyword.
         let prompt = format!("flight to {}", region.name);
 
-        match generate_flight(&packs, &[boeing.clone()], &prompt, None, None) {
+        match generate_flight(&packs, &[boeing.clone()], &prompt, None, None, None) {
             Ok(plan) => {
                 if let (Some(lat), Some(lon)) = (plan.destination.lat, plan.destination.lon) {
                     if !region.contains(lat, lon) {
@@ -441,6 +441,7 @@ fn test_glider_short_keyword_constrains_range() {
         "short flight from EGLL using glider",
         None,
         None,
+        None,
     )
     .expect("Should generate a short glider flight");
     assert!(
@@ -479,6 +480,7 @@ fn test_italy_accuracy() {
             &packs,
             &[cessna.clone()],
             "from random to Italy",
+            None,
             None,
             None,
         )
@@ -528,6 +530,7 @@ fn test_rome_italy_resolves_to_italy_not_usa() {
             "Flight from EGMC to Rome Italy",
             None,
             None,
+            None,
         )
         .expect("Rome Italy should produce a plan");
         assert!(
@@ -570,6 +573,7 @@ fn test_search_accuracy_london_uk() {
         "short flight from London UK to random",
         None,
         None,
+        None,
     )
     .expect("Failed to gen London UK flight");
 
@@ -605,8 +609,15 @@ fn test_search_accuracy_london_england() {
 
     // Request flight from "London England"
     // Token matching should prize "London" + "England" prefix boost over just "England" prefix boost
-    let plan = generate_flight(&packs, &[boeing], "London England to Hamburg", None, None)
-        .expect("Failed to gen London England flight");
+    let plan = generate_flight(
+        &packs,
+        &[boeing],
+        "London England to Hamburg",
+        None,
+        None,
+        None,
+    )
+    .expect("Failed to gen London England flight");
 
     assert_eq!(
         plan.origin.id, "EGLC",
@@ -625,7 +636,7 @@ fn test_england_to_ukraine() {
     let packs = vec![pack];
 
     // Should resolve via seed airports: UK:England origin (EG*) → Ukraine dest (UK* ICAO prefix)
-    let plan = generate_flight(&packs, &[jet], "England to Ukraine", None, None)
+    let plan = generate_flight(&packs, &[jet], "England to Ukraine", None, None, None)
         .expect("England to Ukraine should produce a valid flight plan");
 
     // Origin must be an English airport (EG prefix, within England bounds ~49.9-55.8°N)
@@ -672,8 +683,15 @@ fn test_california_to_england_stays_in_england() {
     let packs = vec![pack];
 
     for _ in 0..5 {
-        let plan = generate_flight(&packs, &[jet.clone()], "California to England", None, None)
-            .expect("California to England should produce a plan");
+        let plan = generate_flight(
+            &packs,
+            &[jet.clone()],
+            "California to England",
+            None,
+            None,
+            None,
+        )
+        .expect("California to England should produce a plan");
 
         let dest_lat = plan.destination.lat.unwrap_or(0.0);
         assert!(
@@ -700,7 +718,7 @@ fn test_nairobi_to_lamu() {
     let cessna = create_mock_aircraft("Cessna 208", vec!["General Aviation"]);
     let packs = vec![pack];
 
-    let plan = generate_flight(&packs, &[cessna], "Nairobi to Lamu", None, None)
+    let plan = generate_flight(&packs, &[cessna], "Nairobi to Lamu", None, None, None)
         .expect("Nairobi to Lamu should produce a valid flight plan");
 
     // Both should be Kenyan airports (HK prefix)

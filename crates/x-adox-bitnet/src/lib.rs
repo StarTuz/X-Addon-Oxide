@@ -40,6 +40,28 @@ pub struct FlightLastSuccess {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Hash)]
+pub struct NLPRule {
+    pub name: String,
+    pub keywords: Vec<String>,
+    pub mapped_value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Hash, Default)]
+pub struct NLPRulesConfig {
+    #[serde(default)]
+    pub aircraft_rules: Vec<NLPRule>,
+    #[serde(default)]
+    pub time_rules: Vec<NLPRule>,
+    #[serde(default)]
+    pub weather_rules: Vec<NLPRule>,
+    /// Schema version for migration
+    #[serde(default)]
+    pub schema_version: u32,
+}
+
+pub const CURRENT_NLP_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Serialize, Deserialize, Clone, Hash)]
 pub struct HeuristicsConfig {
     pub rules: Vec<Rule>,
     pub fallback_score: u8,
@@ -271,6 +293,96 @@ impl Default for BitNetModel {
             config_path,
             regex_set,
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct NLPRulesModel {
+    pub config: Arc<NLPRulesConfig>,
+    config_path: PathBuf,
+}
+
+impl Default for NLPRulesModel {
+    fn default() -> Self {
+        let config_path = Self::get_config_path();
+        let config = Self::load_config(&config_path).unwrap_or_default();
+        Self {
+            config: Arc::new(config),
+            config_path,
+        }
+    }
+}
+
+impl NLPRulesModel {
+    pub fn at_path(path: PathBuf) -> Self {
+        let config = Self::load_config(&path).unwrap_or_default();
+        Self {
+            config: Arc::new(config),
+            config_path: path,
+        }
+    }
+
+    pub fn update_config(&mut self, config: NLPRulesConfig) {
+        self.config = Arc::new(config);
+    }
+
+    pub fn get_config_path() -> PathBuf {
+        ProjectDirs::from("com", "startux", "x-adox")
+            .map(|proj_dirs| proj_dirs.config_dir().join("nlp_rules.json"))
+            .unwrap_or_else(|| PathBuf::from("nlp_rules.json"))
+    }
+
+    fn load_config(path: &Path) -> Result<NLPRulesConfig> {
+        let abs_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        log::debug!("[BitNet] Loading NLP rules from: {:?}", abs_path);
+        if path.exists() {
+            let content = fs::read_to_string(path)?;
+            let mut config: NLPRulesConfig = serde_json::from_str(&content).map_err(|e| {
+                log::error!("[BitNet] JSON Parse error for {:?}: {}", path, e);
+                e
+            })?;
+
+            // Migration logic goes here if needed in the future
+            if config.schema_version < CURRENT_NLP_SCHEMA_VERSION {
+                config.schema_version = CURRENT_NLP_SCHEMA_VERSION;
+                if let Some(parent) = path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::write(
+                    path,
+                    serde_json::to_string_pretty(&config).unwrap_or_default(),
+                );
+            }
+
+            log::debug!("[BitNet] Successfully loaded NLP overrides");
+            Ok(config)
+        } else {
+            log::debug!(
+                "[BitNet] No NLP rules file found at {:?}, using defaults",
+                path
+            );
+            Ok(NLPRulesConfig::default())
+        }
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let abs_path = self
+            .config_path
+            .canonicalize()
+            .unwrap_or_else(|_| self.config_path.clone());
+        log::debug!("[BitNet] Saving NLP overrides to {:?}", abs_path);
+        if let Some(parent) = self.config_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(self.config.as_ref())?;
+        fs::write(&self.config_path, content)?;
+        log::debug!("[BitNet] Save complete");
+        Ok(())
+    }
+
+    pub fn reset_defaults(&mut self) -> Result<()> {
+        self.config = Arc::new(NLPRulesConfig::default());
+        self.save()
     }
 }
 

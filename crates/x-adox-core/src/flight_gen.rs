@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 use x_adox_bitnet::flight_prompt::{
     AircraftConstraint, DurationKeyword, FlightPrompt, LocationConstraint, SurfaceKeyword,
-    TypeKeyword,
+    TimeKeyword, TypeKeyword,
 };
 use x_adox_bitnet::geo::RegionIndex;
 use x_adox_bitnet::HeuristicsConfig;
@@ -498,8 +498,17 @@ pub fn generate_flight(
     prompt_str: &str,
     base_airports: Option<&[Airport]>,
     prefs: Option<&HeuristicsConfig>,
+    nlp_rules: Option<&x_adox_bitnet::NLPRulesConfig>,
 ) -> Result<FlightPlan, String> {
-    generate_flight_with_pool(packs, aircraft_list, prompt_str, base_airports, prefs, None)
+    generate_flight_with_pool(
+        packs,
+        aircraft_list,
+        prompt_str,
+        base_airports,
+        prefs,
+        nlp_rules,
+        None,
+    )
 }
 
 /// A high-performance version of [generate_flight] that can use a pre-computed airport pool.
@@ -509,9 +518,14 @@ pub fn generate_flight_with_pool(
     prompt_str: &str,
     base_airports: Option<&[Airport]>,
     prefs: Option<&HeuristicsConfig>,
+    nlp_rules: Option<&x_adox_bitnet::NLPRulesConfig>,
     precomputed_pool: Option<&AirportPool>,
 ) -> Result<FlightPlan, String> {
-    let prompt = FlightPrompt::parse(prompt_str);
+    static DEFAULT_NLP: std::sync::OnceLock<x_adox_bitnet::NLPRulesConfig> =
+        std::sync::OnceLock::new();
+    let default_rules = DEFAULT_NLP.get_or_init(x_adox_bitnet::NLPRulesConfig::default);
+    let rules = nlp_rules.unwrap_or(default_rules);
+    let prompt = FlightPrompt::parse(prompt_str, rules);
     generate_flight_from_prompt(
         packs,
         aircraft_list,
@@ -651,6 +665,64 @@ pub fn generate_flight_from_prompt(
         icao_index_owned = all_airports.iter().map(|a| (a.id.as_str(), *a)).collect();
         &icao_index_owned
     };
+
+    // 1c. Apply Live Real-World Filters (Solar Time & METAR)
+    let weather_map = if prompt.keywords.weather.is_some() {
+        let engine = crate::weather::WeatherEngine::new();
+        if let Err(e) = engine.fetch_live_metars() {
+            log::warn!("[flight_gen] Failed to fetch live METARs: {}", e);
+        }
+        engine.get_global_weather_map().ok()
+    } else {
+        None
+    };
+
+    let filtered_airports_owned: Vec<&Airport>;
+    let all_airports: &[&Airport] =
+        if prompt.keywords.time.is_some() || prompt.keywords.weather.is_some() {
+            let utc_now = chrono::Utc::now();
+            filtered_airports_owned = all_airports
+                .iter()
+                .filter(|apt| {
+                    // Live Time Filter
+                    if let Some(req_time) = &prompt.keywords.time {
+                        if let Some(lon) = apt.lon {
+                            let solar_time = calculate_solar_time(lon, utc_now);
+                            if solar_time != *req_time {
+                                return false;
+                            }
+                        } else {
+                            return false;
+                        }
+                    }
+                    // Live Weather Filter
+                    if let Some(req_wx) = &prompt.keywords.weather {
+                        if let Some(map) = &weather_map {
+                            if let Some(apt_wx) = map.get(apt.id.as_str()) {
+                                if apt_wx != req_wx {
+                                    return false;
+                                }
+                            } else {
+                                return false;
+                            }
+                        } else {
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .copied()
+                .collect();
+
+            log::debug!(
+                "[flight_gen] Real-World Filters reduced airport pool from {} to {} ICAOs",
+                all_airports.len(),
+                filtered_airports_owned.len()
+            );
+            &filtered_airports_owned
+        } else {
+            all_airports
+        };
 
     // Refined Origin Selection
     let mut candidate_origins: Vec<&Airport> = match prompt.origin {
@@ -1895,6 +1967,26 @@ pub fn export_simbrief(plan: &FlightPlan) -> String {
         plan.origin.id, plan.destination.id, ac_type
     )
 }
+/// Dynamically calculates the current local solar phase based on an airport's longitude.
+pub fn calculate_solar_time(lon: f64, utc_now: chrono::DateTime<chrono::Utc>) -> TimeKeyword {
+    use chrono::{Duration, Timelike};
+
+    // Earth rotates ~15 degrees per hour.
+    let offset_hours = lon / 15.0;
+
+    // Process integer minutes directly to bypass float resolution drops
+    let offset_dur = Duration::minutes((offset_hours * 60.0) as i64);
+    let local_time = utc_now + offset_dur;
+    let hour = local_time.hour();
+
+    match hour {
+        5..=7 => TimeKeyword::Dawn,
+        8..=17 => TimeKeyword::Day,
+        18..=19 => TimeKeyword::Dusk,
+        _ => TimeKeyword::Night,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1946,6 +2038,7 @@ mod tests {
         };
         let c2 = airport_coords_for_poi_fetch(&apt_no_coords);
         assert_eq!(c2, Some((51.5703, 0.6933)));
+
         // Unknown ICAO, no coords: None
         let apt_unknown = Airport {
             id: "XXXX".to_string(),
@@ -2035,7 +2128,7 @@ mod tests {
 
         // This test simulates the logic inside generate_flight's origin selection
         // We can call generate_flight directly
-        let result = generate_flight(&[pack], &[aircraft], prompt, None, None);
+        let result = generate_flight(&[pack], &[aircraft], prompt, None, None, None);
 
         // Assertions
         if let Ok(plan) = result {

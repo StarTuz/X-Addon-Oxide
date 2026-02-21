@@ -120,6 +120,7 @@ impl FlightGenState {
         aircraft_list: &Arc<Vec<DiscoveredAddon>>,
         _xplane_root: Option<&Path>,
         prefs: Option<&HeuristicsConfig>,
+        nlp_rules: Option<&x_adox_bitnet::NLPRulesConfig>,
     ) -> Task<Message> {
         match message {
             Message::InputChanged(val) => {
@@ -144,6 +145,7 @@ impl FlightGenState {
                 let aircraft_list = aircraft_list.clone();
                 let base = self.base_airports.clone();
                 let prefs = prefs.cloned();
+                let nlp = nlp_rules.cloned();
 
                 Task::perform(
                     async move {
@@ -155,6 +157,7 @@ impl FlightGenState {
                                 &prompt,
                                 base_slice,
                                 prefs.as_ref(),
+                                nlp.as_ref(),
                             )
                         })
                         .await
@@ -176,6 +179,7 @@ impl FlightGenState {
                     let aircraft_list = aircraft_list.clone();
                     let base = self.base_airports.clone();
                     let prefs = prefs.cloned();
+                    let nlp = nlp_rules.cloned();
 
                     Task::perform(
                         async move {
@@ -187,6 +191,7 @@ impl FlightGenState {
                                     &prompt,
                                     base_slice,
                                     prefs.as_ref(),
+                                    nlp.as_ref(),
                                 )
                             })
                             .await

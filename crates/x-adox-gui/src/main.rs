@@ -105,6 +105,7 @@ pub enum Tab {
     CSLs,
     FlightGenerator,
     Heuristics,
+    NLPEditor,
     Issues,
     Utilities,
     Settings,
@@ -255,6 +256,16 @@ enum Message {
     HeuristicsAction(text_editor::Action),
     SaveHeuristics,
     ImportHeuristics,
+    
+    // NLP Rules Editor
+    OpenNLPEditor,
+    CloseNLPEditor,
+    NLPAction(text_editor::Action),
+    SaveNLP,
+    ResetNLP,
+    ImportNLP,
+    ExportNLP,
+    NLPImported(String),
 
     // Flight Generator
     FlightGen(flight_gen_gui::Message),
@@ -650,6 +661,11 @@ struct App {
     heuristics_json: text_editor::Content,
     heuristics_error: Option<String>,
 
+    // NLP Dictionary
+    nlp_model: x_adox_bitnet::NLPRulesModel,
+    nlp_json: text_editor::Content,
+    nlp_error: Option<String>,
+
     // Issues
     log_issues: Arc<Vec<x_adox_core::LogIssue>>,
     icon_warning: svg::Handle,
@@ -871,6 +887,11 @@ impl App {
                 .unwrap_or_else(|| BitNetModel::new().unwrap_or_default()),
             heuristics_json: text_editor::Content::new(),
             heuristics_error: None,
+            nlp_model: x_adox_bitnet::NLPRulesModel::at_path(
+                x_adox_bitnet::NLPRulesModel::get_config_path()
+            ),
+            nlp_json: text_editor::Content::new(),
+            nlp_error: None,
             log_issues: Arc::new(Vec::new()),
             icon_warning: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/warning.svg").to_vec(),
@@ -1393,6 +1414,7 @@ impl App {
                     Tab::Plugins => format!("{} plugins", self.plugins.len()),
                     Tab::CSLs => format!("{} CSL packages", self.csls.len()),
                     Tab::Heuristics => "Sorting Heuristics Editor".to_string(),
+                    Tab::NLPEditor => "NLP Dictionary Editor".to_string(),
                     Tab::Issues => "Known Issues & Log Analysis".to_string(),
                     Tab::Utilities => "Utilities & Logbook Viewer".to_string(),
                     Tab::Settings => "Settings & Configuration".to_string(),
@@ -3847,7 +3869,7 @@ impl App {
                         Tab::Aircraft => self.selected_aircraft.clone(),
                         Tab::Plugins => self.selected_plugin.clone(),
                         Tab::CSLs => self.selected_csl.clone(),
-                        Tab::Utilities | Tab::Settings | Tab::Issues | Tab::Heuristics | Tab::FlightGenerator => None,
+                        Tab::Utilities | Tab::Settings | Tab::Issues | Tab::Heuristics | Tab::NLPEditor | Tab::FlightGenerator => None,
                     };
 
                     if let Some(p) = path {
@@ -3926,6 +3948,102 @@ impl App {
                 self.resort_scenery();
                 self.sync_active_profile_scenery();
                 return self.trigger_scenery_save();
+            }
+            Message::OpenNLPEditor => {
+                let json = serde_json::to_string_pretty(self.nlp_model.config.as_ref())
+                    .unwrap_or_default();
+                self.nlp_json = text_editor::Content::with_text(&json);
+                self.nlp_error = None;
+                self.active_tab = Tab::NLPEditor;
+                self.status = "NLP Dictionary Editor".to_string();
+                Task::none()
+            }
+            Message::CloseNLPEditor => {
+                self.active_tab = Tab::FlightGenerator;
+                self.status = "Flight Generator".to_string();
+                Task::none()
+            }
+            Message::NLPAction(action) => {
+                self.nlp_json.perform(action);
+                Task::none()
+            }
+            Message::SaveNLP => {
+                let text = self.nlp_json.text();
+                match serde_json::from_str::<x_adox_bitnet::NLPRulesConfig>(&text) {
+                    Ok(config) => {
+                        self.nlp_model.update_config(config);
+                        if let Err(e) = self.nlp_model.save() {
+                            self.nlp_error = Some(format!("Save failed: {}", e));
+                            return Task::none();
+                        }
+                        self.nlp_error = None;
+                        self.status = "NLP Dictionary saved and applied!".to_string();
+                    }
+                    Err(e) => {
+                        self.nlp_error = Some(format!("JSON Error: {}", e));
+                    }
+                }
+                Task::none()
+            }
+            Message::ResetNLP => {
+                if let Err(e) = self.nlp_model.reset_defaults() {
+                    self.nlp_error = Some(format!("Reset failed: {}", e));
+                    return Task::none();
+                }
+                let json = serde_json::to_string_pretty(self.nlp_model.config.as_ref())
+                    .unwrap_or_default();
+                self.nlp_json = text_editor::Content::with_text(&json);
+                self.nlp_error = None;
+                self.status = "NLP Dictionary reset to defaults.".to_string();
+                Task::none()
+            }
+            Message::ImportNLP => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .set_title("Import NLP Dictionary JSON")
+                        .add_filter("JSON", &["json"])
+                        .pick_file()
+                        .await
+                        .map(|f| f.path().to_path_buf())
+                },
+                |path_opt| {
+                    if let Some(path) = path_opt {
+                        if let Ok(text) = std::fs::read_to_string(path) {
+                            return Message::NLPImported(text);
+                        }
+                    }
+                    Message::Refresh // No-op refresh
+                },
+            ),
+            Message::NLPImported(text) => {
+                self.nlp_json = text_editor::Content::with_text(&text);
+                self.nlp_error = None;
+                self.status = "NLP Dictionary imported. Click Save to apply.".to_string();
+                Task::none()
+            }
+            Message::ExportNLP => {
+                let text = self.nlp_json.text();
+                // Validate JSON before exporting to prevent writing broken files
+                if serde_json::from_str::<x_adox_bitnet::NLPRulesConfig>(&text).is_err() {
+                    self.nlp_error = Some("Fix JSON errors before exporting.".to_string());
+                    return Task::none();
+                }
+                Task::perform(
+                    async move {
+                        rfd::AsyncFileDialog::new()
+                            .set_title("Export NLP Dictionary JSON")
+                            .add_filter("JSON", &["json"])
+                            .save_file()
+                            .await
+                            .map(|f| f.path().to_path_buf())
+                    },
+                    move |path_opt| {
+                        if let Some(path) = path_opt {
+                            let _ = std::fs::write(path, &text);
+                        }
+                        Message::Refresh
+                    },
+                )
             }
             Message::ImportHeuristics => Task::perform(
                 async {
@@ -4126,12 +4244,14 @@ impl App {
                         let aircraft_list = &self.aircraft;
                         let xplane_root = self.xplane_root.as_deref();
                         let prefs = self.heuristics_model.config.as_ref();
+                        let nlp_rules = self.nlp_model.config.as_ref();
                         let cmd = self.flight_gen.update(
                             msg.clone(),
                             packs,
                             aircraft_list,
                             xplane_root,
                             Some(prefs),
+                            Some(nlp_rules),
                         );
                         
                         let mut tasks = vec![cmd.map(Message::FlightGen)];
@@ -4206,6 +4326,7 @@ impl App {
                     &self.aircraft,
                     self.xplane_root.as_deref(),
                     Some(self.heuristics_model.config.as_ref()),
+                    Some(self.nlp_model.config.as_ref()),
                 ).map(Message::FlightGen)
             }
             Message::ExportHeuristics => {
@@ -6272,6 +6393,7 @@ impl App {
                 .into()
             }
             Tab::Heuristics => self.view_heuristics_editor(),
+            Tab::NLPEditor => self.view_nlp_editor(),
             Tab::Issues => self.view_issues(),
             Tab::FlightGenerator => self.flight_gen.view().map(Message::FlightGen),
             Tab::Utilities => self.view_utilities(),
@@ -6307,6 +6429,7 @@ impl App {
                 self.selected_csl.is_some(),
             ),
             Tab::Heuristics => (Message::SaveHeuristics, Message::ResetHeuristics, true),
+            Tab::NLPEditor => (Message::SaveNLP, Message::ResetNLP, true),
             Tab::Issues => (Message::CheckLogIssues, Message::Refresh, false),
             Tab::Utilities => (Message::Refresh, Message::Refresh, false),
             Tab::Settings => (Message::Refresh, Message::Refresh, false),
@@ -6399,6 +6522,14 @@ impl App {
                 .style(style::button_premium_glow)
                 .padding([6, 12]);
             actions = actions.push(edit_sort_btn);
+        }
+
+        if self.active_tab == Tab::FlightGenerator {
+            let edit_nlp_btn = button(text("Edit Dictionary").size(12))
+                .on_press(Message::OpenNLPEditor)
+                .style(style::button_premium_glow)
+                .padding([6, 12]);
+            actions = actions.push(edit_nlp_btn);
         }
 
         let main_content = container(
@@ -7273,6 +7404,7 @@ impl App {
             Tab::CSLs => (&self.icon_csls, Color::from_rgb(1.0, 0.6, 0.2)),       // Orange
             Tab::Utilities => (&self.icon_utilities, Color::from_rgb(0.8, 0.5, 1.0)), // Purple
             Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
+            Tab::NLPEditor => (&self.icon_settings, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
             Tab::Issues => (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)), // Always red for Issues
             Tab::Settings => (&self.icon_settings, style::palette::ACCENT_PURPLE), // Violet for settings
 
@@ -8137,6 +8269,64 @@ impl App {
                 ]
                 .spacing(20)
                 .align_y(iced::Alignment::Center),
+                error_banner,
+                container(editor)
+                    .height(Length::Fill)
+                    .width(Length::Fill)
+                    .style(style::container_card)
+                    .padding(5),
+                toolbar,
+            ]
+            .spacing(15)
+            .padding(20),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(style::container_main_content)
+        .into()
+    }
+
+    fn view_nlp_editor(&self) -> Element<'_, Message> {
+        let editor = text_editor(&self.nlp_json)
+            .on_action(Message::NLPAction)
+            .font(iced::Font::MONOSPACE);
+
+        let error_banner = if let Some(err) = &self.nlp_error {
+            container(text(err).color(Color::from_rgb(1.0, 0.3, 0.3)))
+                .padding(10)
+                .style(style::container_card)
+        } else {
+            container(column![])
+        };
+
+        let toolbar = row![
+            button(text("Import...").size(14))
+                .on_press(Message::ImportNLP)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+            button(text("Export...").size(14))
+                .on_press(Message::ExportNLP)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+            button(text("Save Dictionary").size(14))
+                .on_press(Message::SaveNLP)
+                .style(style::button_primary)
+                .padding([10, 20]),
+            button(text("Reset to Defaults").size(14))
+                .on_press(Message::ResetNLP)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+        ]
+        .spacing(15);
+
+        container(
+            column![
+                text("NLP Dictionary (JSON Editor)")
+                    .size(20)
+                    .width(Length::Fill),
+                text("Customize the aircraft names, time, and weather mappings used by the NLP parsing engine.")
+                    .size(14)
+                    .color(Color::from_rgb(0.6, 0.6, 0.6)),
                 error_banner,
                 container(editor)
                     .height(Length::Fill)

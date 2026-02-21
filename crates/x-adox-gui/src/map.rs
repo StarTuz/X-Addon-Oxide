@@ -690,22 +690,51 @@ where
                         let dy = sy2 - sy1;
                         let distance = (dx * dx + dy * dy).sqrt();
                         let steps = (distance / 4.0).ceil().max(1.0) as usize; // Ensure at least 1 step
-                        for i in 0..=steps {
-                            let t = i as f32 / steps as f32;
-                            let px = sx1 + dx * t;
-                            let py = sy1 + dy * t;
-                            renderer.fill_quad(
-                                renderer::Quad {
-                                    bounds: Rectangle {
-                                        x: px - 1.0,
-                                        y: py - 1.0,
-                                        width: 2.0,
-                                        height: 2.0,
+
+                        let mut t_min: f32 = 0.0;
+                        let mut t_max: f32 = 1.0;
+
+                        if dx.abs() > 0.001 {
+                            let t1 = (bounds.x - sx1) / dx;
+                            let t2 = (bounds.x + bounds.width - sx1) / dx;
+                            t_min = t_min.max(t1.min(t2));
+                            t_max = t_max.min(t1.max(t2));
+                        } else if sx1 < bounds.x || sx1 > bounds.x + bounds.width {
+                            t_max = -1.0; // Off screen
+                        }
+
+                        if dy.abs() > 0.001 {
+                            let t1 = (bounds.y - sy1) / dy;
+                            let t2 = (bounds.y + bounds.height - sy1) / dy;
+                            t_min = t_min.max(t1.min(t2));
+                            t_max = t_max.min(t1.max(t2));
+                        } else if sy1 < bounds.y || sy1 > bounds.y + bounds.height {
+                            t_max = -1.0;
+                        }
+
+                        if t_max >= t_min {
+                            let start_i = (t_min * steps as f32).max(0.0) as usize;
+                            let end_i = (t_max * steps as f32).ceil().max(0.0) as usize;
+                            let start_i = start_i.min(steps);
+                            let end_i = end_i.min(steps);
+
+                            for i in start_i..=end_i {
+                                let t = i as f32 / steps as f32;
+                                let px = sx1 + dx * t;
+                                let py = sy1 + dy * t;
+                                renderer.fill_quad(
+                                    renderer::Quad {
+                                        bounds: Rectangle {
+                                            x: px - 1.0,
+                                            y: py - 1.0,
+                                            width: 2.0,
+                                            height: 2.0,
+                                        },
+                                        ..Default::default()
                                     },
-                                    ..Default::default()
-                                },
-                                Color::from_rgb(1.0, 0.0, 1.0), // Magenta
-                            );
+                                    Color::from_rgb(1.0, 0.0, 1.0), // Magenta
+                                );
+                            }
                         }
 
                         // Special case: If distance is 0 (same airport), draw a larger indicator
@@ -778,15 +807,13 @@ where
                 let wx2 = lon_to_x(lon2, 0.0);
                 let wy2 = lat_to_y(lat2, 0.0);
 
-                let sx1 = bounds.x
-                    + (bounds.width / 2.0)
-                    + ((wx1 - camera_center_x) * zoom_scale) as f32;
+                let sx1 =
+                    bounds.x + (bounds.width / 2.0) + ((wx1 - camera_center_x) * zoom_scale) as f32;
                 let sy1 = bounds.y
                     + (bounds.height / 2.0)
                     + ((wy1 - camera_center_y) * zoom_scale) as f32;
-                let sx2 = bounds.x
-                    + (bounds.width / 2.0)
-                    + ((wx2 - camera_center_x) * zoom_scale) as f32;
+                let sx2 =
+                    bounds.x + (bounds.width / 2.0) + ((wx2 - camera_center_x) * zoom_scale) as f32;
                 let sy2 = bounds.y
                     + (bounds.height / 2.0)
                     + ((wy2 - camera_center_y) * zoom_scale) as f32;
@@ -795,22 +822,51 @@ where
                 let dy = sy2 - sy1;
                 let distance = (dx * dx + dy * dy).sqrt();
                 let steps = (distance / 4.0).ceil().max(1.0) as usize;
-                for i in 0..=steps {
-                    let t = i as f32 / steps as f32;
-                    let px = sx1 + dx * t;
-                    let py = sy1 + dy * t;
-                    renderer.fill_quad(
-                        renderer::Quad {
-                            bounds: Rectangle {
-                                x: px - 1.0,
-                                y: py - 1.0,
-                                width: 2.0,
-                                height: 2.0,
+
+                let mut t_min: f32 = 0.0;
+                let mut t_max: f32 = 1.0;
+
+                if dx.abs() > 0.001 {
+                    let t1 = (bounds.x - sx1) / dx;
+                    let t2 = (bounds.x + bounds.width - sx1) / dx;
+                    t_min = t_min.max(t1.min(t2));
+                    t_max = t_max.min(t1.max(t2));
+                } else if sx1 < bounds.x || sx1 > bounds.x + bounds.width {
+                    t_max = -1.0;
+                }
+
+                if dy.abs() > 0.001 {
+                    let t1 = (bounds.y - sy1) / dy;
+                    let t2 = (bounds.y + bounds.height - sy1) / dy;
+                    t_min = t_min.max(t1.min(t2));
+                    t_max = t_max.min(t1.max(t2));
+                } else if sy1 < bounds.y || sy1 > bounds.y + bounds.height {
+                    t_max = -1.0;
+                }
+
+                if t_max >= t_min {
+                    let start_i = (t_min * steps as f32).max(0.0) as usize;
+                    let end_i = (t_max * steps as f32).ceil().max(0.0) as usize;
+                    let start_i = start_i.min(steps);
+                    let end_i = end_i.min(steps);
+
+                    for i in start_i..=end_i {
+                        let t = i as f32 / steps as f32;
+                        let px = sx1 + dx * t;
+                        let py = sy1 + dy * t;
+                        renderer.fill_quad(
+                            renderer::Quad {
+                                bounds: Rectangle {
+                                    x: px - 1.0,
+                                    y: py - 1.0,
+                                    width: 2.0,
+                                    height: 2.0,
+                                },
+                                ..Default::default()
                             },
-                            ..Default::default()
-                        },
-                        Color::from_rgb(1.0, 0.0, 1.0), // Magenta (same as logbook)
-                    );
+                            Color::from_rgb(1.0, 0.0, 1.0), // Magenta (same as logbook)
+                        );
+                    }
                 }
 
                 let dot_size = 8.0;

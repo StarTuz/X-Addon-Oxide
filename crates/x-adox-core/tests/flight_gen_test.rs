@@ -123,10 +123,7 @@ mod tests {
         let plan = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from EGLL to KJFK using Boeing 747",
-            None,
-            None,
-        )
+            "Flight from EGLL to KJFK using Boeing 747", None, None, None)
         .unwrap();
         assert_eq!(plan.origin.id, "EGLL");
         assert_eq!(plan.destination.id, "KJFK");
@@ -136,10 +133,7 @@ mod tests {
         let plan_short = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from EGLL to LFPG using Cessna",
-            None,
-            None,
-        )
+            "Flight from EGLL to LFPG using Cessna", None, None, None)
         .unwrap();
         assert_eq!(plan_short.destination.id, "LFPG");
 
@@ -148,10 +142,7 @@ mod tests {
         let plan_small = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from EGLL to EGKB using Boeing 747",
-            None,
-            None,
-        )
+            "Flight from EGLL to EGKB using Boeing 747", None, None, None)
         .unwrap();
         assert_eq!(plan_small.destination.id, "EGKB");
 
@@ -159,10 +150,7 @@ mod tests {
         let plan_wild = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from EGLL to EGKB using Boeing 747 ignore guardrails",
-            None,
-            None,
-        )
+            "Flight from EGLL to EGKB using Boeing 747 ignore guardrails", None, None, None)
         .unwrap();
         assert_eq!(plan_wild.destination.id, "EGKB");
 
@@ -171,10 +159,7 @@ mod tests {
         let plan_eu = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from UK to LFPG using Cessna",
-            None,
-            None,
-        )
+            "Flight from UK to LFPG using Cessna", None, None, None)
         .unwrap();
         assert!(
             plan_eu.origin.id == "EGLL"
@@ -220,7 +205,7 @@ mod tests {
         // 1. Explicitly ask for any airport with Caravelle
         // Should NOT pick HOSP
         for _ in 0..10 {
-            let plan = generate_flight(&packs, &aircraft, "Flight using Caravelle", None, None);
+            let plan = generate_flight(&packs, &aircraft, "Flight using Caravelle", None, None, None);
             assert!(
                 plan.is_err(),
                 "Caravelle (tagless) should NOT find HOSP heliport (Fixed)"
@@ -307,10 +292,7 @@ mod tests {
         let plan = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from Los Angeles to San Francisco using Boeing 747",
-            None,
-            None,
-        )
+            "Flight from Los Angeles to San Francisco using Boeing 747", None, None, None)
         .unwrap();
 
         assert_eq!(plan.origin.id, "KLAX");
@@ -370,10 +352,7 @@ mod tests {
             let plan = generate_flight(
                 &manager.packs,
                 &aircraft,
-                "Flight from London to KGON using Boeing 747",
-                None,
-                None,
-            )
+                "Flight from London to KGON using Boeing 747", None, None, None)
             .unwrap();
             assert_eq!(
                 plan.origin.id, "EGLL",
@@ -387,10 +366,7 @@ mod tests {
         let plan_complex = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from London United Kingdom to KGON using Boeing 747",
-            None,
-            None,
-        )
+            "Flight from London United Kingdom to KGON using Boeing 747", None, None, None)
         .unwrap();
         assert_eq!(plan_complex.origin.id, "EGLL");
 
@@ -399,10 +375,7 @@ mod tests {
         let plan_abbr = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from London UK to KGON using Boeing 747",
-            None,
-            None,
-        );
+            "Flight from London UK to KGON using Boeing 747", None, None, None);
         assert!(plan_abbr.is_ok(), "Should match 'UK' to 'United Kingdom'");
     }
 
@@ -457,10 +430,7 @@ mod tests {
         let plan_uk = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from UK to KJFK using Boeing 747",
-            None,
-            None,
-        );
+            "Flight from UK to KJFK using Boeing 747", None, None, None);
         assert!(plan_uk.is_ok(), "UK should include Northern Ireland");
         assert_eq!(plan_uk.unwrap().origin.id, "EGAA");
 
@@ -468,10 +438,7 @@ mod tests {
         let plan_gb = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from GB to KJFK using Boeing 747",
-            None,
-            None,
-        );
+            "Flight from GB to KJFK using Boeing 747", None, None, None);
         assert!(plan_gb.is_err(), "GB should exclude Northern Ireland");
     }
 
@@ -571,10 +538,7 @@ mod tests {
             let plan = generate_flight(
                 &manager.packs,
                 &aircraft,
-                "Flight from British Isles to France using Boeing 747 ignore guardrails",
-                None,
-                None,
-            );
+                "Flight from British Isles to France using Boeing 747 ignore guardrails", None, None, None);
             assert!(plan.is_ok(), "British Isles should match Ireland or UK");
             let origin_id = plan.unwrap().origin.id;
             assert!(
@@ -633,10 +597,7 @@ mod tests {
             let plan = generate_flight(
                 &manager.packs,
                 &aircraft,
-                "Flight from France to Germany using Cessna 172",
-                None,
-                None,
-            );
+                "Flight from France to Germany using Cessna 172", None, None, None);
             assert!(
                 plan.is_ok(),
                 "France → Germany should find airports: {:?}",
@@ -690,10 +651,7 @@ mod tests {
             let plan = generate_flight(
                 &manager.packs,
                 &aircraft,
-                "Flight from Socal to Norcal",
-                None,
-                None,
-            );
+                "Flight from Socal to Norcal", None, None, None);
             assert!(plan.is_ok(), "SoCal → NorCal should work: {:?}", plan.err());
             let p = plan.unwrap();
             assert_eq!(p.origin.id, "KLAX");
@@ -744,10 +702,7 @@ mod tests {
         let plan = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from Los Angeles to Seattle",
-            None,
-            None,
-        );
+            "Flight from Los Angeles to Seattle", None, None, None);
         assert!(
             plan.is_ok(),
             "Explicit name-to-name should bypass distance filter: {:?}",
@@ -761,10 +716,7 @@ mod tests {
         let plan2 = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from KLAX to KSEA",
-            None,
-            None,
-        );
+            "Flight from KLAX to KSEA", None, None, None);
         assert!(
             plan2.is_ok(),
             "Explicit ICAO-to-ICAO should bypass distance filter: {:?}",
@@ -835,7 +787,7 @@ mod tests {
         let aircraft = vec![make_test_aircraft("Boeing 314", vec!["seaplane", "Prop"])];
 
         // Random flight should use Sea Base
-        let plan = generate_flight(&packs, &aircraft, "random flight", None, None);
+        let plan = generate_flight(&packs, &aircraft, "random flight", None, None, None);
         assert!(
             plan.is_ok(),
             "Should generate flight for B314: {:?}",
@@ -868,10 +820,7 @@ mod tests {
         let plan = generate_flight(
             &packs,
             &aircraft,
-            "Flight from Oregon to anywhere",
-            None,
-            None,
-        );
+            "Flight from Oregon to anywhere", None, None, None);
         assert!(
             plan.is_ok(),
             "Oregon region should be recognized: {:?}",
@@ -925,7 +874,7 @@ mod tests {
         ];
         let aircraft = vec![make_test_aircraft("Boeing 747", vec!["jet", "heavy"])];
 
-        let plan = generate_flight(&packs, &aircraft, "Flight KLAX to EGLL", None, None);
+        let plan = generate_flight(&packs, &aircraft, "Flight KLAX to EGLL", None, None, None);
         assert!(
             plan.is_ok(),
             "Should handle 'Flight' prefix without 'from': {:?}",
@@ -972,7 +921,7 @@ mod tests {
             let mut found_unkn = false;
             for _ in 0..20 {
                 let plan =
-                    generate_flight(&packs, &aircraft, "Flight from UNKN to any", None, None);
+                    generate_flight(&packs, &aircraft, "Flight from UNKN to any", None, None, None);
                 if let Ok(p) = plan {
                     if p.origin.id == "UNKN" {
                         found_unkn = true;
@@ -1036,7 +985,7 @@ mod tests {
 
         // "F70 to Alaska" -> "Alaska" matches Region US:AK via RegionIndex (or alias)
         // This test proves that if parsing works, flight gen works.
-        let plan = generate_flight(&manager.packs, &aircraft, "F70 to Alaska", None, None);
+        let plan = generate_flight(&manager.packs, &aircraft, "F70 to Alaska", None, None, None);
         assert!(
             plan.is_ok(),
             "Should find PANC in Alaska from F70: {:?}",
@@ -1091,7 +1040,7 @@ mod tests {
         // Cessna 172 (GA, Prop) -> Default range 30-500nm, but should RELAX because endpoints are explicit
         let aircraft = vec![make_test_aircraft("Cessna 172", vec!["GA", "Prop"])];
 
-        let plan = generate_flight(&manager.packs, &aircraft, "F70 to Alaska", None, None);
+        let plan = generate_flight(&manager.packs, &aircraft, "F70 to Alaska", None, None, None);
         assert!(
             plan.is_ok(),
             "Should find PANC (Anchorage) from F70 even with Cessna, because destination is explicit: {:?}",
@@ -1154,7 +1103,7 @@ mod tests {
 
         // "to London" uses the TO_RE path → destination = NearCity("London"), origin = wildcard.
         for _ in 0..20 {
-            let plan = generate_flight(&[pack.clone()], &aircraft, "to London", None, None);
+            let plan = generate_flight(&[pack.clone()], &aircraft, "to London", None, None, None);
             assert!(plan.is_ok(), "Should find EGLL, not fail: {:?}", plan.err());
             let p = plan.unwrap();
             assert_ne!(
