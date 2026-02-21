@@ -17,6 +17,26 @@ pub struct FlightKeywords {
     pub duration: Option<DurationKeyword>,
     pub surface: Option<SurfaceKeyword>,
     pub flight_type: Option<TypeKeyword>,
+    pub time: Option<TimeKeyword>,
+    pub weather: Option<WeatherKeyword>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum TimeKeyword {
+    Dawn,
+    Day,
+    Dusk,
+    Night,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum WeatherKeyword {
+    Clear,
+    Cloudy,
+    Storm,
+    Rain,
+    Snow,
+    Fog,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -131,6 +151,66 @@ impl FlightPrompt {
             }
         } else if clean_input.contains("regional") {
             prompt.keywords.flight_type = Some(TypeKeyword::Regional);
+        }
+
+        // Time
+        if clean_input.contains("dawn")
+            || clean_input.contains("sunrise")
+            || clean_input.contains("morning")
+        {
+            prompt.keywords.time = Some(TimeKeyword::Dawn);
+        } else if clean_input.contains("day")
+            || clean_input.contains("daytime")
+            || clean_input.contains("afternoon")
+            || clean_input.contains("noon")
+        {
+            prompt.keywords.time = Some(TimeKeyword::Day);
+        } else if clean_input.contains("dusk")
+            || clean_input.contains("sunset")
+            || clean_input.contains("evening")
+        {
+            prompt.keywords.time = Some(TimeKeyword::Dusk);
+        } else if clean_input.contains("night")
+            || clean_input.contains("midnight")
+            || clean_input.contains("dark")
+        {
+            prompt.keywords.time = Some(TimeKeyword::Night);
+        }
+
+        // Weather
+        if clean_input.contains("clear")
+            || clean_input.contains("sunny")
+            || clean_input.contains("fair")
+        {
+            prompt.keywords.weather = Some(WeatherKeyword::Clear);
+        } else if clean_input.contains("cloudy")
+            || clean_input.contains("overcast")
+            || clean_input.contains("clouds")
+        {
+            prompt.keywords.weather = Some(WeatherKeyword::Cloudy);
+        } else if clean_input.contains("storm")
+            || clean_input.contains("thunder")
+            || clean_input.contains("lightning")
+            || clean_input.contains("severe")
+        {
+            prompt.keywords.weather = Some(WeatherKeyword::Storm);
+        } else if clean_input.contains("snow")
+            || clean_input.contains("blizzard")
+            || clean_input.contains("ice")
+        {
+            prompt.keywords.weather = Some(WeatherKeyword::Snow);
+        } else if clean_input.contains("rain")
+            || clean_input.contains("showers")
+            || clean_input.contains("drizzle")
+            || clean_input.contains("wet")
+        {
+            prompt.keywords.weather = Some(WeatherKeyword::Rain);
+        } else if clean_input.contains("fog")
+            || clean_input.contains("mist")
+            || clean_input.contains("haze")
+            || clean_input.contains("low vis")
+        {
+            prompt.keywords.weather = Some(WeatherKeyword::Fog);
         }
 
         // 3. Parse Origin and Destination
@@ -958,5 +1038,20 @@ mod tests {
                 p.aircraft
             ),
         }
+    }
+
+    #[test]
+    fn test_parse_time_and_weather() {
+        let p = FlightPrompt::parse("Night flight from London to Paris in a storm");
+        assert_eq!(p.keywords.time, Some(TimeKeyword::Night));
+        assert_eq!(p.keywords.weather, Some(WeatherKeyword::Storm));
+
+        let p2 = FlightPrompt::parse("Morning departure to KJFK in clear skies");
+        assert_eq!(p2.keywords.time, Some(TimeKeyword::Dawn));
+        assert_eq!(p2.keywords.weather, Some(WeatherKeyword::Clear));
+
+        let p3 = FlightPrompt::parse("fly in heavy snow at dusk");
+        assert_eq!(p3.keywords.time, Some(TimeKeyword::Dusk));
+        assert_eq!(p3.keywords.weather, Some(WeatherKeyword::Snow));
     }
 }

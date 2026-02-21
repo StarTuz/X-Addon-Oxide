@@ -460,6 +460,10 @@ pub struct FlightPlan {
     pub dest_region_id: Option<String>,
     /// Optional history & flavor for origin/destination (3.2); None until Phase 2 loads data.
     pub context: Option<FlightContext>,
+    /// Optional requested time of day (e.g., Night, Dusk).
+    pub time: Option<x_adox_bitnet::flight_prompt::TimeKeyword>,
+    /// Optional requested weather (e.g., Storm, Clear).
+    pub weather: Option<x_adox_bitnet::flight_prompt::WeatherKeyword>,
 }
 
 use crate::scenery::SceneryPack;
@@ -1124,6 +1128,8 @@ pub fn generate_flight_from_prompt(
                 origin_region_id,
                 dest_region_id,
                 context: None,
+                time: prompt.keywords.time.clone(),
+                weather: prompt.keywords.weather.clone(),
             });
         }
     }
@@ -2065,6 +2071,8 @@ mod tests {
             origin_region_id: Some("UK:London".to_string()),
             dest_region_id: Some("IT".to_string()),
             context: None,
+            time: None,
+            weather: None,
         };
         let url = export_simbrief(&plan);
         assert!(

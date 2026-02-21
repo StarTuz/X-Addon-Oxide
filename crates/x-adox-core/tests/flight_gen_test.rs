@@ -254,6 +254,8 @@ mod tests {
             duration_minutes: 45,
             route_description: "generated".to_string(),
             context: None,
+            time: None,
+            weather: None,
         };
 
         let xml = export_lnmpln(&plan);
