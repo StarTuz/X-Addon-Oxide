@@ -186,8 +186,14 @@ fn test_icao_companion_packs_classified_as_specific_mesh() {
     let cases = [
         ("EGLL_3Dgrass", SceneryCategory::SpecificMesh),
         ("EGLL_MESH", SceneryCategory::SpecificMesh),
-        ("PAKT_Terrain_Northern_Sky_Studio", SceneryCategory::SpecificMesh),
-        ("SFD_KLAX_Los_Angeles_HD_2_Mesh", SceneryCategory::SpecificMesh),
+        (
+            "PAKT_Terrain_Northern_Sky_Studio",
+            SceneryCategory::SpecificMesh,
+        ),
+        (
+            "SFD_KLAX_Los_Angeles_HD_2_Mesh",
+            SceneryCategory::SpecificMesh,
+        ),
     ];
 
     for (name, expected) in &cases {

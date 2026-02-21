@@ -1234,7 +1234,10 @@ fn stress_industrial_massive() {
     eprintln!("Building industrial pool (ICAO index)...");
     let pool = AirportPool::new(&all_airports);
 
-    eprintln!("\nStarting Industrial Massive Stress Test (44,000 airports, {} flights)...", iterations);
+    eprintln!(
+        "\nStarting Industrial Massive Stress Test (44,000 airports, {} flights)...",
+        iterations
+    );
     let start = std::time::Instant::now();
     let mut last_checkpoint = start;
 

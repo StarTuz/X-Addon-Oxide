@@ -972,7 +972,8 @@ impl SceneryManager {
             if indices.len() > 1 {
                 log::info!(
                     "[SceneryManager] Found duplicates for '{}': {:?}",
-                    name, indices
+                    name,
+                    indices
                 );
 
                 let mut best_idx = indices[0];
@@ -1129,7 +1130,11 @@ fn extract_version(name: &str) -> Option<String> {
 fn is_global_airports_pack(pack: &SceneryPack) -> bool {
     pack.name == "*GLOBAL_AIRPORTS*"
         || pack.name == "Global Airports"
-        || pack.path.to_string_lossy().to_lowercase().contains("global airports")
+        || pack
+            .path
+            .to_string_lossy()
+            .to_lowercase()
+            .contains("global airports")
 }
 
 /// Recursively find all directories within a pack that look like actual scenery roots

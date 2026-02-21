@@ -978,7 +978,10 @@ mod tests {
                     }
                 }
             }
-            assert!(found_unkn, "Aircraft should be able to depart from UNKN regardless of runway data");
+            assert!(
+                found_unkn,
+                "Aircraft should be able to depart from UNKN regardless of runway data"
+            );
         }
     }
     #[test]
@@ -1121,7 +1124,14 @@ mod tests {
             3900,
             SurfaceType::Hard,
         );
-        let origin = make_test_airport("EHAM", "Amsterdam Schiphol", 52.31, 4.76, 3800, SurfaceType::Hard);
+        let origin = make_test_airport(
+            "EHAM",
+            "Amsterdam Schiphol",
+            52.31,
+            4.76,
+            3800,
+            SurfaceType::Hard,
+        );
 
         let pack = SceneryPack {
             path: PathBuf::from("Custom Scenery/Test"),
@@ -1149,7 +1159,10 @@ mod tests {
                 p.destination.id, "HOSP",
                 "Helipad must NOT be picked as destination for a Jet (NearCity bug)"
             );
-            assert_eq!(p.destination.id, "EGLL", "Should pick EGLL, not the helipad");
+            assert_eq!(
+                p.destination.id, "EGLL",
+                "Should pick EGLL, not the helipad"
+            );
         }
     }
 }

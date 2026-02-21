@@ -23,7 +23,10 @@ fn test_icao_standard_airport_codes() {
     // Standard ICAO codes in typical pack naming conventions
     assert_eq!(classify("KLAX_Los_Angeles"), SceneryCategory::CustomAirport);
     assert_eq!(classify("EGLL_Heathrow"), SceneryCategory::CustomAirport);
-    assert_eq!(classify("RJTT_Tokyo_Haneda"), SceneryCategory::CustomAirport);
+    assert_eq!(
+        classify("RJTT_Tokyo_Haneda"),
+        SceneryCategory::CustomAirport
+    );
     assert_eq!(classify("LFPG_Paris_CDG"), SceneryCategory::CustomAirport);
 }
 
@@ -31,13 +34,19 @@ fn test_icao_standard_airport_codes() {
 fn test_icao_with_delimiters() {
     // ICAO codes surrounded by underscores, hyphens
     assert_eq!(classify("Pack_KSEA_v2"), SceneryCategory::CustomAirport);
-    assert_eq!(classify("DarkBlue-RJTT-Haneda"), SceneryCategory::CustomAirport);
+    assert_eq!(
+        classify("DarkBlue-RJTT-Haneda"),
+        SceneryCategory::CustomAirport
+    );
 }
 
 #[test]
 fn test_icao_at_start_of_name() {
     // ICAO code at the very start (anchored by ^)
-    assert_eq!(classify("KORD_Chicago_OHare"), SceneryCategory::CustomAirport);
+    assert_eq!(
+        classify("KORD_Chicago_OHare"),
+        SceneryCategory::CustomAirport
+    );
     assert_eq!(classify("EDDF_Frankfurt"), SceneryCategory::CustomAirport);
 }
 
@@ -116,10 +125,7 @@ fn test_icao_overridden_by_mesh() {
 #[test]
 fn test_icao_overridden_by_library() {
     // "library" rule (priority 2) fires before ICAO
-    assert_eq!(
-        classify("KLAX_library_pack"),
-        SceneryCategory::Library
-    );
+    assert_eq!(classify("KLAX_library_pack"), SceneryCategory::Library);
 }
 
 #[test]

@@ -87,7 +87,10 @@ impl FlightPrompt {
 
         // 2. Parse Keywords (Global search)
         // Duration
-        if clean_input.contains("short") || clean_input.contains("hop") || clean_input.contains("quick") {
+        if clean_input.contains("short")
+            || clean_input.contains("hop")
+            || clean_input.contains("quick")
+        {
             prompt.keywords.duration = Some(DurationKeyword::Short);
         } else if clean_input.contains("medium") {
             prompt.keywords.duration = Some(DurationKeyword::Medium);
@@ -221,14 +224,59 @@ impl FlightPrompt {
 
         static ACF_RE: OnceLock<Regex> = OnceLock::new();
         let acf_re = ACF_RE.get_or_init(|| {
-            Regex::new(r"\b(?:using|in|with)\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bfor\b|\s+\bfrom\b|$)")
+            Regex::new(r"\b(?:using|in|with)\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bfor\b|\s+\bfrom\b|\s+\blanding\b|\s+\barriving\b|\s+\bdeparting\b|$)")
                 .unwrap()
         });
 
         if let Some(caps) = acf_re.captures(&acf_input) {
-            let acf_str = caps[1].trim();
+            let mut acf_str = caps[1].trim().to_string();
+
+            // Normalize common conversational variants into standardized tags
+            // matching the BitNet classifier's taxonomy.
+            let acf_lower = acf_str.to_lowercase();
+            if acf_lower.contains("airliner")
+                || acf_lower.contains("commercial")
+                || acf_lower.contains("passenger")
+            {
+                acf_str = "Airliner".to_string();
+            } else if acf_lower.contains("biz jet")
+                || acf_lower.contains("bizjet")
+                || acf_lower.contains("business")
+                || acf_lower.contains("corporate")
+                || acf_lower.contains("private jet")
+            {
+                acf_str = "Business Jet".to_string();
+            } else if acf_lower == "ga"
+                || acf_lower.contains("general aviation")
+                || acf_lower.contains("small plane")
+                || acf_lower.contains("light aircraft")
+                || acf_lower.contains("propeller")
+                || acf_lower.contains("piston")
+                || acf_lower.contains("civilian")
+            {
+                acf_str = "General Aviation".to_string();
+            } else if acf_lower.contains("cargo")
+                || acf_lower.contains("freight")
+                || acf_lower.contains("transport")
+            {
+                acf_str = "Cargo".to_string();
+            } else if acf_lower.contains("heli")
+                || acf_lower.contains("chopper")
+                || acf_lower.contains("rotor")
+            {
+                acf_str = "Helicopter".to_string();
+            } else if acf_lower.contains("military")
+                || acf_lower.contains("fighter")
+                || acf_lower.contains("combat")
+                || acf_lower.contains("bomber")
+            {
+                acf_str = "Military".to_string();
+            } else if acf_lower.contains("glider") || acf_lower.contains("sailplane") {
+                acf_str = "Glider".to_string();
+            }
+
             if !acf_str.is_empty() {
-                prompt.aircraft = Some(AircraftConstraint::Tag(acf_str.to_string()));
+                prompt.aircraft = Some(AircraftConstraint::Tag(acf_str));
             }
         }
 
@@ -335,9 +383,13 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "rockies" | "rocky mountains" => Some(LocationConstraint::Region("Rockies".to_string())),
         "caribbean" => Some(LocationConstraint::Region("Caribbean".to_string())),
         // Pacific Islands sub-regions
-        "micronesia" => Some(LocationConstraint::Region("PacIsles:Micronesia".to_string())),
+        "micronesia" => Some(LocationConstraint::Region(
+            "PacIsles:Micronesia".to_string(),
+        )),
         "melanesia" => Some(LocationConstraint::Region("PacIsles:Melanesia".to_string())),
-        "polynesia" | "french polynesia" | "south pacific" => Some(LocationConstraint::Region("PacIsles:Polynesia".to_string())),
+        "polynesia" | "french polynesia" | "south pacific" => {
+            Some(LocationConstraint::Region("PacIsles:Polynesia".to_string()))
+        }
         // Africa — countries
         "south africa" => Some(LocationConstraint::Region("ZA".to_string())),
         "kenya" => Some(LocationConstraint::Region("KE".to_string())),
@@ -356,7 +408,9 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "burma" => Some(LocationConstraint::Region("MM".to_string())),
         "persia" => Some(LocationConstraint::Region("IR".to_string())),
         // Short forms / alternate spellings
-        "czechia" | "czech republic" | "czech" => Some(LocationConstraint::Region("CZ".to_string())),
+        "czechia" | "czech republic" | "czech" => {
+            Some(LocationConstraint::Region("CZ".to_string()))
+        }
         "lao" | "lao pdr" => Some(LocationConstraint::Region("LA".to_string())),
 
         // ===================== CITIES → NearCity =====================
@@ -880,5 +934,29 @@ mod tests {
             "dc should still be NearCity(Washington DC), got {:?}",
             p2.destination
         );
+    }
+
+    #[test]
+    fn test_parse_civilian_airliner_with_landing() {
+        let p = FlightPrompt::parse(
+            "Flight from Scotland to Italy using civilian airliner landing at civilian airport",
+        );
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::Region("UK:Scotland".to_string()))
+        );
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("IT".to_string()))
+        );
+        match p.aircraft {
+            Some(AircraftConstraint::Tag(t)) => {
+                assert_eq!(t, "Airliner", "Should normalize to Airliner")
+            }
+            _ => panic!(
+                "Aircraft should be mapped to Airliner, got {:?}",
+                p.aircraft
+            ),
+        }
     }
 }

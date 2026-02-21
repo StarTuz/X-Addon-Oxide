@@ -75,7 +75,7 @@ fn test_region_nlp_parsing() {
     // Regions whose names intentionally resolve to NearCity because a same-named city
     // takes priority in the explicit alias table (by design — city is more precise).
     let near_city_overrides: std::collections::HashSet<&str> = [
-        "US:NY",    // "New York" → NearCity (city preferred over state for routing)
+        "US:NY",     // "New York" → NearCity (city preferred over state for routing)
         "UK:London", // "London" → NearCity (city more precise than UK:London sub-region)
     ]
     .iter()
@@ -204,10 +204,7 @@ fn test_all_regions_flight_generation() {
                 }
             }
             Err(e) => {
-                gen_failures.push(format!(
-                    "  {:25} ({:12}): {}",
-                    region.name, region.id, e
-                ));
+                gen_failures.push(format!("  {:25} ({:12}): {}", region.name, region.id, e));
             }
         }
     }
@@ -238,33 +235,158 @@ fn test_all_regions_flight_generation() {
     // If a seeded country fails, its ICAO prefix mapping is broken or seeds are missing.
     let seeded_countries: &[&str] = &[
         // Europe
-        "UK", "UK:England", "UK:Scotland", "UK:Wales", "IE", "FR", "DE", "IT", "ES", "PT",
-        "NL", "BE", "CH", "AT", "GR", "NO", "SE", "FI", "DK", "IS", "PL", "CZ", "TR", "UA",
-        "BG", "EE", "HR", "HU", "LT", "LV", "RO", "RS", "AL", "BA", "BY", "MD", "ME", "MK",
-        "SI", "SK",
+        "UK",
+        "UK:England",
+        "UK:Scotland",
+        "UK:Wales",
+        "IE",
+        "FR",
+        "DE",
+        "IT",
+        "ES",
+        "PT",
+        "NL",
+        "BE",
+        "CH",
+        "AT",
+        "GR",
+        "NO",
+        "SE",
+        "FI",
+        "DK",
+        "IS",
+        "PL",
+        "CZ",
+        "TR",
+        "UA",
+        "BG",
+        "EE",
+        "HR",
+        "HU",
+        "LT",
+        "LV",
+        "RO",
+        "RS",
+        "AL",
+        "BA",
+        "BY",
+        "MD",
+        "ME",
+        "MK",
+        "SI",
+        "SK",
         // Americas
-        "US", "US:AK", "US:HI", "CA", "MX", "BR", "AR", "CO", "PE", "CL", "BO", "BS", "CR",
-        "CU", "DO", "EC", "GT", "HN", "HT", "JM", "NI", "PA", "PY", "SV", "UY", "VE",
+        "US",
+        "US:AK",
+        "US:HI",
+        "CA",
+        "MX",
+        "BR",
+        "AR",
+        "CO",
+        "PE",
+        "CL",
+        "BO",
+        "BS",
+        "CR",
+        "CU",
+        "DO",
+        "EC",
+        "GT",
+        "HN",
+        "HT",
+        "JM",
+        "NI",
+        "PA",
+        "PY",
+        "SV",
+        "UY",
+        "VE",
         // Asia-Pacific
-        "JP", "CN", "KR", "IN", "TH", "VN", "ID", "AU", "SG", "MY", "PH", "HK", "TW", "NZ",
-        "BD", "KH", "LA", "LK", "MM", "MN", "NP", "PG", "PK", "FJ",
+        "JP",
+        "CN",
+        "KR",
+        "IN",
+        "TH",
+        "VN",
+        "ID",
+        "AU",
+        "SG",
+        "MY",
+        "PH",
+        "HK",
+        "TW",
+        "NZ",
+        "BD",
+        "KH",
+        "LA",
+        "LK",
+        "MM",
+        "MN",
+        "NP",
+        "PG",
+        "PK",
+        "FJ",
         // Middle East
-        "IL", "SAU", "UAE", "QA", "BH", "IQ", "IR", "JO", "KW", "LB", "OM",
+        "IL",
+        "SAU",
+        "UAE",
+        "QA",
+        "BH",
+        "IQ",
+        "IR",
+        "JO",
+        "KW",
+        "LB",
+        "OM",
         // Africa
-        "EG", "ZA", "KE", "TZ", "ET", "NG", "MA", "AO", "CM", "GH", "LY", "MG", "MZ", "RU",
-        "RW", "SD", "SN", "TN", "UG", "ZM", "ZW",
+        "EG",
+        "ZA",
+        "KE",
+        "TZ",
+        "ET",
+        "NG",
+        "MA",
+        "AO",
+        "CM",
+        "GH",
+        "LY",
+        "MG",
+        "MZ",
+        "RU",
+        "RW",
+        "SD",
+        "SN",
+        "TN",
+        "UG",
+        "ZM",
+        "ZW",
         // Geographic features (seeded with real airports within their bounds)
-        "Alps", "Pyrenees", "Himalayas", "Atlas",
-        "Mediterranean", "Andes", "Rockies", "Amazon", "Patagonia", "Caribbean",
+        "Alps",
+        "Pyrenees",
+        "Himalayas",
+        "Atlas",
+        "Mediterranean",
+        "Andes",
+        "Rockies",
+        "Amazon",
+        "Patagonia",
+        "Caribbean",
         // Pacific Islands and sub-regions
-        "PacIsles", "PacIsles:Micronesia", "PacIsles:Melanesia", "PacIsles:Polynesia",
+        "PacIsles",
+        "PacIsles:Micronesia",
+        "PacIsles:Melanesia",
+        "PacIsles:Polynesia",
     ];
 
     let gen_failure_ids: std::collections::HashSet<String> = gen_failures
         .iter()
         .filter_map(|f| {
             // Extract ID from "  Name (ID): ..." format
-            f.split('(').nth(1).and_then(|s| s.split(')').next()).map(|s| s.trim().to_string())
+            f.split('(')
+                .nth(1)
+                .and_then(|s| s.split(')').next())
+                .map(|s| s.trim().to_string())
         })
         .collect();
 
@@ -287,11 +409,27 @@ fn test_glider_short_keyword_constrains_range() {
     // Aircraft type no longer sets distance limits — keywords do.
     // A glider with no keyword gets wide-open distance; with "short" it stays ≤200nm.
     let mut pack = create_mock_pack("Glider Area");
-    pack.airports.push(create_mock_airport("EGLL", 51.47, -0.45, 4000, SurfaceType::Hard));
-    pack.airports
-        .push(create_mock_airport("DEST_FAR", 53.5, -0.45, 2000, SurfaceType::Hard));
-    pack.airports
-        .push(create_mock_airport("DEST_CLOSE", 51.67, -0.45, 1000, SurfaceType::Hard));
+    pack.airports.push(create_mock_airport(
+        "EGLL",
+        51.47,
+        -0.45,
+        4000,
+        SurfaceType::Hard,
+    ));
+    pack.airports.push(create_mock_airport(
+        "DEST_FAR",
+        53.5,
+        -0.45,
+        2000,
+        SurfaceType::Hard,
+    ));
+    pack.airports.push(create_mock_airport(
+        "DEST_CLOSE",
+        51.67,
+        -0.45,
+        1000,
+        SurfaceType::Hard,
+    ));
 
     let ask21 = create_mock_aircraft("Schleicher ASK 21", vec!["Glider"]);
     let packs = vec![pack];
@@ -516,8 +654,20 @@ fn test_england_to_ukraine() {
 #[test]
 fn test_california_to_england_stays_in_england() {
     let mut pack = create_mock_pack("West Coast");
-    pack.airports.push(create_mock_airport("KLAX", 33.94, -118.41, 12000, SurfaceType::Hard));
-    pack.airports.push(create_mock_airport("KSFO", 37.62, -122.38, 11000, SurfaceType::Hard));
+    pack.airports.push(create_mock_airport(
+        "KLAX",
+        33.94,
+        -118.41,
+        12000,
+        SurfaceType::Hard,
+    ));
+    pack.airports.push(create_mock_airport(
+        "KSFO",
+        37.62,
+        -122.38,
+        11000,
+        SurfaceType::Hard,
+    ));
     let jet = create_mock_aircraft("B737", vec!["Jet"]);
     let packs = vec![pack];
 

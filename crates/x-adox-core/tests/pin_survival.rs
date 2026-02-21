@@ -80,7 +80,9 @@ fn test_pins_survive_empty_profile_startup() {
         "Pins should have been migrated to the profile"
     );
     assert_eq!(
-        loaded_collection.profiles[0].scenery_overrides.get("Pack A"),
+        loaded_collection.profiles[0]
+            .scenery_overrides
+            .get("Pack A"),
         Some(&100),
         "Pack A should have priority 100"
     );
@@ -243,7 +245,9 @@ fn test_pins_survive_profile_with_scenery_states() {
         "Pins should have been migrated despite profile having scenery_states"
     );
     assert_eq!(
-        loaded_collection.profiles[0].scenery_overrides.get("Pack A"),
+        loaded_collection.profiles[0]
+            .scenery_overrides
+            .get("Pack A"),
         Some(&100),
         "Pack A should have priority 100"
     );
