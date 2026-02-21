@@ -1734,7 +1734,131 @@ fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> Strin
     if name_upper.contains("MD-88") || name_upper.contains("MD88") {
         return "MD88".to_string();
     }
-    // Cessna / GA
+    // Airbus Other
+    if name_upper.contains("A300") || name_lower.contains("a300") {
+        return "A306".to_string();
+    }
+    if name_upper.contains("A310") || name_lower.contains("a310") {
+        return "A310".to_string();
+    }
+    // Boeing Other
+    if name_upper.contains("717") || name_lower.contains("717") {
+        return "B712".to_string();
+    }
+    if name_upper.contains("727") || name_lower.contains("727") {
+        return "B722".to_string();
+    }
+    // Regional Jets (CRJ / ERJ / E-Jets)
+    if name_upper.contains("CRJ-200")
+        || name_upper.contains("CRJ 200")
+        || name_upper.contains("CRJ200")
+    {
+        return "CRJ2".to_string();
+    }
+    if name_upper.contains("CRJ-700")
+        || name_upper.contains("CRJ 700")
+        || name_upper.contains("CRJ700")
+    {
+        return "CRJ7".to_string();
+    }
+    if name_upper.contains("CRJ-900")
+        || name_upper.contains("CRJ 900")
+        || name_upper.contains("CRJ900")
+    {
+        return "CRJ9".to_string();
+    }
+    if name_upper.contains("E170")
+        || name_upper.contains("E-170")
+        || name_upper.contains("EMBRAER 170")
+    {
+        return "E170".to_string();
+    }
+    if name_upper.contains("E175")
+        || name_upper.contains("E-175")
+        || name_upper.contains("EMBRAER 175")
+    {
+        return "E175".to_string();
+    }
+    if name_upper.contains("E190")
+        || name_upper.contains("E-190")
+        || name_upper.contains("EMBRAER 190")
+    {
+        return "E190".to_string();
+    }
+    if name_upper.contains("E195")
+        || name_upper.contains("E-195")
+        || name_upper.contains("EMBRAER 195")
+    {
+        return "E195".to_string();
+    }
+    if name_upper.contains("ERJ-135")
+        || name_upper.contains("ERJ 135")
+        || name_upper.contains("ERJ135")
+    {
+        return "E135".to_string();
+    }
+    if name_upper.contains("ERJ-140")
+        || name_upper.contains("ERJ 140")
+        || name_upper.contains("ERJ140")
+    {
+        return "E140".to_string();
+    }
+    if name_upper.contains("ERJ-145")
+        || name_upper.contains("ERJ 145")
+        || name_upper.contains("ERJ145")
+    {
+        return "E145".to_string();
+    }
+    // Regional Turboprops
+    if name_upper.contains("Q400") || name_upper.contains("DASH 8") || name_upper.contains("DH8D") {
+        return "DH8D".to_string();
+    }
+    if name_upper.contains("ATR 72")
+        || name_upper.contains("ATR-72")
+        || name_upper.contains("ATR72")
+    {
+        return "AT72".to_string();
+    }
+    if name_upper.contains("ATR 42")
+        || name_upper.contains("ATR-42")
+        || name_upper.contains("ATR42")
+    {
+        return "AT42".to_string();
+    }
+    // Business Jets / High End
+    if name_upper.contains("CHALLENGER 650")
+        || name_upper.contains("CL650")
+        || name_upper.contains("CL-650")
+    {
+        return "CL60".to_string();
+    }
+    if name_upper.contains("CHALLENGER") || name_upper.contains("CL6") {
+        return "CL60".to_string();
+    }
+    if name_upper.contains("CITATION X") || name_upper.contains("C750") {
+        return "C750".to_string();
+    }
+    if name_upper.contains("CITATION MUSTANG") || name_upper.contains("C510") {
+        return "C510".to_string();
+    }
+    if name_upper.contains("TBM") || name_upper.contains("TBM900") || name_upper.contains("TBM-9") {
+        return "TBM9".to_string();
+    }
+    if name_upper.contains("CONCORDE") || name_upper.contains("CONC") {
+        return "CONC".to_string();
+    }
+    // GA Twins / High Performance
+    if name_upper.contains("KING AIR") || name_upper.contains("B350") || name_upper.contains("350I")
+    {
+        return "B350".to_string();
+    }
+    if name_upper.contains("BARON") || name_upper.contains("BE58") {
+        return "BE58".to_string();
+    }
+    if name_upper.contains("SR22") || name_upper.contains("CIRRUS") {
+        return "SR22".to_string();
+    }
+    // Cessna / GA Basic
     if name_lower.contains("cessna 172")
         || name_lower.contains("c172")
         || name_upper.contains("C172")
@@ -1743,6 +1867,15 @@ fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> Strin
     }
     if name_lower.contains("cessna 208") || name_lower.contains("caravan") {
         return "C208".to_string();
+    }
+    if name_upper.contains("C152") || name_lower.contains("cessna 152") {
+        return "C152".to_string();
+    }
+    if name_upper.contains("PA-28")
+        || name_upper.contains("PIPER ARCHER")
+        || name_upper.contains("PIPER CHEROKEE")
+    {
+        return "P28A".to_string();
     }
     // Default when nothing matches
     "C172".to_string()
