@@ -487,7 +487,6 @@ fn estimate_speed(a: &DiscoveredAddon, prompt: &FlightPrompt) -> u32 {
     }
 }
 
-
 /// Orchestrates flight generation based on scenery packs, available aircraft, and a natural language prompt.
 pub fn generate_flight(
     packs: &[SceneryPack],
@@ -858,7 +857,10 @@ pub fn generate_flight_from_prompt(
         // ICAO and NearCity are point types (user named a specific place), so we relax range.
         // Region is an "area" type — keep constraints so random picks stay geographically sensible.
         let is_point = |c: &LocationConstraint| {
-            matches!(c, LocationConstraint::ICAO(_) | LocationConstraint::NearCity { .. })
+            matches!(
+                c,
+                LocationConstraint::ICAO(_) | LocationConstraint::NearCity { .. }
+            )
         };
         let endpoints_explicit = match (&prompt.origin, &prompt.destination) {
             (Some(o), Some(d)) => is_point(o) && is_point(d),
@@ -982,7 +984,11 @@ pub fn generate_flight_from_prompt(
         let spatial_bounds = if let (Some(lat1), Some(lon1)) = (origin.lat, origin.lon) {
             let lat_rad = lat1.to_radians();
             let cos_lat = lat_rad.cos().abs().max(0.1);
-            let bbox_max = if endpoints_explicit { 20000.0 } else { max_dist };
+            let bbox_max = if endpoints_explicit {
+                20000.0
+            } else {
+                max_dist
+            };
             let dlat = (bbox_max / 60.0) + 0.1;
             let dlon = (bbox_max / (60.0 * cos_lat)) + 0.1;
             Some((lat1, lon1, dlat, dlon))
@@ -1349,7 +1355,6 @@ fn is_seaplane(a: &DiscoveredAddon) -> bool {
     })
 }
 
-
 /// ICAO location prefix(es) per region. Used to restrict origin/destination to the correct
 /// country (e.g. "Mexico" → MM only, so US airports in the same bounding box are excluded).
 /// Parent fallback applies for sub-regions (US:SoCal → US → K). Continent ids (EU, NA, AS, …)
@@ -1417,73 +1422,73 @@ fn icao_prefixes_for_region(region_id: &str) -> Option<Vec<&'static str>> {
         "PE" => Some(vec!["SP"]),
         "CL" => Some(vec!["SC"]),
         // Eastern Europe
-        "AL" => Some(vec!["LA"]),    // Albania
-        "BA" => Some(vec!["LQ"]),    // Bosnia-Herzegovina
-        "BG" => Some(vec!["LB"]),    // Bulgaria
-        "BY" => Some(vec!["UM"]),    // Belarus
-        "EE" => Some(vec!["EE"]),    // Estonia
-        "HR" => Some(vec!["LD"]),    // Croatia
-        "HU" => Some(vec!["LH"]),    // Hungary
-        "LT" => Some(vec!["EY"]),    // Lithuania
-        "LV" => Some(vec!["EV"]),    // Latvia
-        "MD" => Some(vec!["LU"]),    // Moldova
-        "ME" => Some(vec!["LY"]),    // Montenegro (LY shared with Serbia)
-        "MK" => Some(vec!["LW"]),    // North Macedonia
-        "RO" => Some(vec!["LR"]),    // Romania
-        "RS" => Some(vec!["LY"]),    // Serbia
-        "SI" => Some(vec!["LJ"]),    // Slovenia
-        "SK" => Some(vec!["LZ"]),    // Slovakia
+        "AL" => Some(vec!["LA"]), // Albania
+        "BA" => Some(vec!["LQ"]), // Bosnia-Herzegovina
+        "BG" => Some(vec!["LB"]), // Bulgaria
+        "BY" => Some(vec!["UM"]), // Belarus
+        "EE" => Some(vec!["EE"]), // Estonia
+        "HR" => Some(vec!["LD"]), // Croatia
+        "HU" => Some(vec!["LH"]), // Hungary
+        "LT" => Some(vec!["EY"]), // Lithuania
+        "LV" => Some(vec!["EV"]), // Latvia
+        "MD" => Some(vec!["LU"]), // Moldova
+        "ME" => Some(vec!["LY"]), // Montenegro (LY shared with Serbia)
+        "MK" => Some(vec!["LW"]), // North Macedonia
+        "RO" => Some(vec!["LR"]), // Romania
+        "RS" => Some(vec!["LY"]), // Serbia
+        "SI" => Some(vec!["LJ"]), // Slovenia
+        "SK" => Some(vec!["LZ"]), // Slovakia
         // Middle East
-        "BH" => Some(vec!["OB"]),    // Bahrain
-        "IQ" => Some(vec!["OR"]),    // Iraq
-        "IR" => Some(vec!["OI"]),    // Iran
-        "JO" => Some(vec!["OJ"]),    // Jordan
-        "KW" => Some(vec!["OK"]),    // Kuwait
-        "LB" => Some(vec!["OL"]),    // Lebanon
-        "OM" => Some(vec!["OO"]),    // Oman
-        "SAU" => Some(vec!["OE"]),   // Saudi Arabia
+        "BH" => Some(vec!["OB"]),  // Bahrain
+        "IQ" => Some(vec!["OR"]),  // Iraq
+        "IR" => Some(vec!["OI"]),  // Iran
+        "JO" => Some(vec!["OJ"]),  // Jordan
+        "KW" => Some(vec!["OK"]),  // Kuwait
+        "LB" => Some(vec!["OL"]),  // Lebanon
+        "OM" => Some(vec!["OO"]),  // Oman
+        "SAU" => Some(vec!["OE"]), // Saudi Arabia
         // South & Southeast Asia
-        "BD" => Some(vec!["VG"]),    // Bangladesh
-        "KH" => Some(vec!["VD"]),    // Cambodia
-        "LA" => Some(vec!["VL"]),    // Laos
-        "LK" => Some(vec!["VC"]),    // Sri Lanka
-        "MM" => Some(vec!["VY"]),    // Myanmar
-        "MN" => Some(vec!["ZM"]),    // Mongolia (ZMUB=Ulaanbaatar)
-        "NP" => Some(vec!["VN"]),    // Nepal
-        "PG" => Some(vec!["AY"]),    // Papua New Guinea
-        "PK" => Some(vec!["OP"]),    // Pakistan
+        "BD" => Some(vec!["VG"]), // Bangladesh
+        "KH" => Some(vec!["VD"]), // Cambodia
+        "LA" => Some(vec!["VL"]), // Laos
+        "LK" => Some(vec!["VC"]), // Sri Lanka
+        "MM" => Some(vec!["VY"]), // Myanmar
+        "MN" => Some(vec!["ZM"]), // Mongolia (ZMUB=Ulaanbaatar)
+        "NP" => Some(vec!["VN"]), // Nepal
+        "PG" => Some(vec!["AY"]), // Papua New Guinea
+        "PK" => Some(vec!["OP"]), // Pakistan
         // Africa
-        "AO" => Some(vec!["FN"]),    // Angola
-        "CM" => Some(vec!["FK"]),    // Cameroon
-        "FJ" => Some(vec!["NF"]),    // Fiji
-        "GH" => Some(vec!["DG"]),    // Ghana
-        "LY" => Some(vec!["HL"]),    // Libya
-        "MG" => Some(vec!["FM"]),    // Madagascar
-        "MZ" => Some(vec!["FQ"]),    // Mozambique
-        "RW" => Some(vec!["HR"]),    // Rwanda
-        "SD" => Some(vec!["HS"]),    // Sudan
-        "SN" => Some(vec!["GO"]),    // Senegal
-        "TN" => Some(vec!["DT"]),    // Tunisia
-        "UG" => Some(vec!["HU"]),    // Uganda
-        "ZM" => Some(vec!["FL"]),    // Zambia
-        "ZW" => Some(vec!["FV"]),    // Zimbabwe
+        "AO" => Some(vec!["FN"]), // Angola
+        "CM" => Some(vec!["FK"]), // Cameroon
+        "FJ" => Some(vec!["NF"]), // Fiji
+        "GH" => Some(vec!["DG"]), // Ghana
+        "LY" => Some(vec!["HL"]), // Libya
+        "MG" => Some(vec!["FM"]), // Madagascar
+        "MZ" => Some(vec!["FQ"]), // Mozambique
+        "RW" => Some(vec!["HR"]), // Rwanda
+        "SD" => Some(vec!["HS"]), // Sudan
+        "SN" => Some(vec!["GO"]), // Senegal
+        "TN" => Some(vec!["DT"]), // Tunisia
+        "UG" => Some(vec!["HU"]), // Uganda
+        "ZM" => Some(vec!["FL"]), // Zambia
+        "ZW" => Some(vec!["FV"]), // Zimbabwe
         // Latin America & Caribbean
-        "BO" => Some(vec!["SL"]),    // Bolivia
-        "BS" => Some(vec!["MY"]),    // Bahamas
-        "CR" => Some(vec!["MR"]),    // Costa Rica
-        "CU" => Some(vec!["MU"]),    // Cuba
-        "DO" => Some(vec!["MD"]),    // Dominican Republic
-        "EC" => Some(vec!["SE"]),    // Ecuador
-        "GT" => Some(vec!["MG"]),    // Guatemala
-        "HN" => Some(vec!["MH"]),    // Honduras
-        "HT" => Some(vec!["MT"]),    // Haiti
-        "JM" => Some(vec!["MK"]),    // Jamaica
-        "NI" => Some(vec!["MN"]),    // Nicaragua
-        "PA" => Some(vec!["MP"]),    // Panama
-        "PY" => Some(vec!["SG"]),    // Paraguay
-        "SV" => Some(vec!["MS"]),    // El Salvador
-        "UY" => Some(vec!["SU"]),    // Uruguay
-        "VE" => Some(vec!["SV"]),    // Venezuela
+        "BO" => Some(vec!["SL"]), // Bolivia
+        "BS" => Some(vec!["MY"]), // Bahamas
+        "CR" => Some(vec!["MR"]), // Costa Rica
+        "CU" => Some(vec!["MU"]), // Cuba
+        "DO" => Some(vec!["MD"]), // Dominican Republic
+        "EC" => Some(vec!["SE"]), // Ecuador
+        "GT" => Some(vec!["MG"]), // Guatemala
+        "HN" => Some(vec!["MH"]), // Honduras
+        "HT" => Some(vec!["MT"]), // Haiti
+        "JM" => Some(vec!["MK"]), // Jamaica
+        "NI" => Some(vec!["MN"]), // Nicaragua
+        "PA" => Some(vec!["MP"]), // Panama
+        "PY" => Some(vec!["SG"]), // Paraguay
+        "SV" => Some(vec!["MS"]), // El Salvador
+        "UY" => Some(vec!["SU"]), // Uruguay
+        "VE" => Some(vec!["SV"]), // Venezuela
         _ => None,
     };
     if direct.is_some() {
@@ -1712,6 +1717,22 @@ fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> Strin
     }
     if name_upper.contains("787") || name_lower.contains("787") {
         return "B788".to_string();
+    }
+    // McDonnell Douglas
+    if name_upper.contains("MD-11F") || name_upper.contains("MD11F") {
+        return "MD1F".to_string();
+    }
+    if name_upper.contains("MD-11") || name_upper.contains("MD11") {
+        return "MD11".to_string();
+    }
+    if name_upper.contains("MD-82") || name_upper.contains("MD82") {
+        return "MD82".to_string();
+    }
+    if name_upper.contains("MD-80") || name_upper.contains("MD80") {
+        return "MD82".to_string(); // MD82 is generally a safe default for MD80 series in simbrief
+    }
+    if name_upper.contains("MD-88") || name_upper.contains("MD88") {
+        return "MD88".to_string();
     }
     // Cessna / GA
     if name_lower.contains("cessna 172")
