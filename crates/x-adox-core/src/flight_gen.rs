@@ -2,7 +2,7 @@ use crate::apt_dat::{Airport, AirportType, AptDatParser, SurfaceType};
 use crate::discovery::{AddonType, DiscoveredAddon};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -80,16 +80,16 @@ pub fn load_base_airports(xplane_root: &Path) -> Vec<Airport> {
 /// Pre-computed airport pool for high-performance lookups.
 pub struct AirportPool<'a> {
     pub airports: Vec<&'a Airport>,
-    pub icao_map: std::collections::HashMap<&'a str, &'a Airport>,
-    pub name_map: std::collections::HashMap<String, Vec<usize>>, // Lowercase name -> indices in airports
+    pub icao_map: HashMap<&'a str, &'a Airport>,
+    pub name_map: HashMap<String, Vec<usize>>, // Lowercase name -> indices in airports
     pub search_names: Vec<String>, // Parallel to airports, pre-lowercased
 }
 
 impl<'a> AirportPool<'a> {
     pub fn new(source: &'a [Airport]) -> Self {
         let airports: Vec<&Airport> = source.iter().collect();
-        let mut icao_map = std::collections::HashMap::with_capacity(airports.len());
-        let mut name_map = std::collections::HashMap::with_capacity(airports.len());
+        let mut icao_map = HashMap::with_capacity(airports.len());
+        let mut name_map = HashMap::with_capacity(airports.len());
         let mut search_names = Vec::with_capacity(airports.len());
         for (i, apt) in airports.iter().enumerate() {
             icao_map.insert(apt.id.as_str(), *apt);
@@ -617,7 +617,9 @@ pub fn generate_flight_from_prompt(
         all_airports_ref_owned = base_slice.iter().collect();
         &all_airports_ref_owned
     } else {
-        let mut pool: BTreeMap<String, Airport> = BTreeMap::new();
+        let total_hint = base_slice.len()
+            + packs.iter().map(|p| p.airports.len()).sum::<usize>();
+        let mut pool: HashMap<String, Airport> = HashMap::with_capacity(total_hint);
 
         // Add base layer first (baseline data)
         for apt in base_slice {
@@ -665,7 +667,7 @@ pub fn generate_flight_from_prompt(
     );
 
     // 1b. Build ICAO index for O(1) lookups
-    let icao_index_owned: std::collections::HashMap<&str, &Airport>;
+    let icao_index_owned: HashMap<&str, &Airport>;
     let icao_index = if let Some(p) = precomputed_pool {
         &p.icao_map
     } else {
@@ -1312,7 +1314,7 @@ fn check_safety_constraints(
 fn score_airports_by_name<'a>(
     airports: &[&'a Airport],
     search_names: Option<&[String]>,
-    name_map: Option<&std::collections::HashMap<String, Vec<usize>>>,
+    name_map: Option<&HashMap<String, Vec<usize>>>,
     search_str: &str,
     ignore_guardrails: bool,
     selected_aircraft: &DiscoveredAddon,
@@ -1680,7 +1682,7 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
         lon: f64,
     }
 
-    static SEEDS: OnceLock<std::collections::HashMap<String, Vec<SeedEntry>>> = OnceLock::new();
+    static SEEDS: OnceLock<HashMap<String, Vec<SeedEntry>>> = OnceLock::new();
     let map = SEEDS.get_or_init(|| {
         let json = include_str!("data/seed_airports.json");
         serde_json::from_str(json).expect("seed_airports.json is malformed")
