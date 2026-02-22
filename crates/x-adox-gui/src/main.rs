@@ -717,6 +717,7 @@ struct App {
     fallback_ga: image::Handle,
     fallback_military: image::Handle,
     fallback_helicopter: image::Handle,
+    logo_handle: image::Handle,
 
     // Smart View State
     smart_view_expanded: std::collections::BTreeSet<String>,
@@ -943,6 +944,9 @@ impl App {
             animation_time: 0.0,
             fallback_helicopter: image::Handle::from_bytes(
                 include_bytes!("../assets/fallback_helicopter.png").to_vec(),
+            ),
+            logo_handle: image::Handle::from_bytes(
+                include_bytes!("../assets/logo.png").to_vec(),
             ),
             smart_view_expanded: std::collections::BTreeSet::new(),
             scenery_view_mode: SceneryViewMode::Flat,
@@ -5628,19 +5632,14 @@ impl App {
 
         container(
             column![
-                // Large pulsing logo with glow
+                // Brand logo — pulses gently while loading
                 container(
-                    svg(self.icon_aircraft.clone())
-                        .width(80)
-                        .height(80)
-                        .style(move |_, _| svg::Style {
-                            color: Some(Color {
-                                a: (self.animation_time * 2.0).sin() * 0.2 + 0.6,
-                                ..style::palette::ACCENT_BLUE
-                            }),
-                        })
+                    image(self.logo_handle.clone())
+                        .width(320)
+                        .height(175)
+                        .opacity((self.animation_time * 2.0).sin() * 0.1 + 0.9)
                 )
-                .padding(30),
+                .padding(Padding { top: 20.0, bottom: 10.0, ..Default::default() }),
                 column![
                     container(title).padding(Padding { top: float_offset, bottom: -float_offset, ..Default::default() }),
                     subtitle
@@ -6456,8 +6455,17 @@ impl App {
     }
 
     fn view_navigator(&self) -> Element<'_, Message> {
+        // Small brand logo at the top of the sidebar
+        let sidebar_logo = container(
+            image(self.logo_handle.clone())
+                .width(115)
+                .height(63),
+        )
+        .padding(Padding { top: 14.0, bottom: 4.0, left: 10.0, right: 10.0 });
+
         container(
             Column::<Message, Theme, Renderer>::new()
+                .push(sidebar_logo)
                 .push(self.sidebar_button("Aircraft", Tab::Aircraft))
                 .push(self.sidebar_button("Scenery", Tab::Scenery))
                 .push(self.sidebar_button("Plugins", Tab::Plugins))
@@ -6467,7 +6475,7 @@ impl App {
                 .push(self.sidebar_button("Issues", Tab::Issues))
                 .push(self.sidebar_button("Settings", Tab::Settings))
                 .spacing(25)
-                .padding([20, 0]),
+                .padding([8, 0]),
         )
         .width(Length::Fixed(145.0))
         .height(Length::Fill)
@@ -8770,7 +8778,37 @@ impl App {
                 container(filter_content)
                     .padding(20)
                     .style(style::container_card)
-                    .width(Length::Fill)
+                    .width(Length::Fill),
+
+                iced::widget::horizontal_rule(1.0),
+
+                // About section
+                container(
+                    column![
+                        container(
+                            image(self.logo_handle.clone())
+                                .width(280)
+                                .height(153),
+                        )
+                        .width(Length::Fill)
+                        .align_x(iced::Alignment::Center),
+                        text("X-Addon-Oxide")
+                            .size(20)
+                            .color(style::palette::TEXT_PRIMARY),
+                        text("Version 2.4.0")
+                            .size(13)
+                            .color(style::palette::TEXT_SECONDARY),
+                        text("The Modern Addon Manager for X-Plane 11 & 12")
+                            .size(12)
+                            .color(style::palette::TEXT_SECONDARY),
+                    ]
+                    .spacing(6)
+                    .align_x(iced::Alignment::Center)
+                    .width(Length::Fill),
+                )
+                .padding(30)
+                .style(style::container_card)
+                .width(Length::Fill)
             ]
             .spacing(20)
             .padding(20),

@@ -9,9 +9,9 @@ date: "February 2026"
   h1, h2, h3, h4 { color: #2c3e50; }
   h1 { border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-top: 40px; }
   h2 { border-bottom: 1px solid #ecf0f1; padding-bottom: 5px; margin-top: 30px; }
-  .cover-page { text-align: center; padding-top: 100px; page-break-after: always; }
+  .cover-page { text-align: center; padding-top: 60px; page-break-after: always; }
   .cover-title { font-size: 48px; font-weight: bold; margin-bottom: 10px; color: #2c3e50; }
-  .cover-subtitle { font-size: 24px; color: #7f8c8d; margin-bottom: 50px; }
+  .cover-subtitle { font-size: 22px; color: #7f8c8d; margin-top: 24px; margin-bottom: 40px; }
   .cover-version { font-size: 18px; color: #95a5a6; margin-top: 20px; }
   .page-break { page-break-after: always; }
   img { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin: 16px 0; }
@@ -29,8 +29,7 @@ date: "February 2026"
 </style>
 
 <div class="cover-page">
-  <img src="assets/packaging/icon_512.png" width="180" height="180" alt="App Icon" style="border:none; box-shadow:none;">
-  <div class="cover-title">X-Addon-Oxide</div>
+  <img src="pictures/logo.png" width="540" height="295" alt="X-Addon-Oxide Logo" style="border:none; box-shadow:none; max-width:100%;">
   <div class="cover-subtitle">The Modern Addon Manager for X-Plane 11 & 12</div>
   <div class="cover-version">Version 2.4.0 · User Manual</div>
   <div class="cover-version" style="margin-top:8px; font-size:14px;">February 2026</div>
