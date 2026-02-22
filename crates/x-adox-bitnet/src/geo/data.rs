@@ -1,16 +1,23 @@
 use super::Region;
 use serde_json;
 
+use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 pub struct CachedRegions {
     inner: OnceLock<Arc<Vec<Region>>>,
+    /// lowercase id → index into the regions Vec
+    id_index: OnceLock<HashMap<String, usize>>,
+    /// lowercase name → index into the regions Vec
+    name_index: OnceLock<HashMap<String, usize>>,
 }
 
 impl CachedRegions {
     pub const fn new() -> Self {
         Self {
             inner: OnceLock::new(),
+            id_index: OnceLock::new(),
+            name_index: OnceLock::new(),
         }
     }
 
@@ -25,6 +32,28 @@ impl CachedRegions {
 
     pub fn get(&self) -> &Vec<Region> {
         self.get_arc().as_ref()
+    }
+
+    /// Returns a HashMap of lowercase region ID → index (built once on first call).
+    pub fn get_id_index(&self) -> &HashMap<String, usize> {
+        self.id_index.get_or_init(|| {
+            self.get()
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (r.id.to_lowercase(), i))
+                .collect()
+        })
+    }
+
+    /// Returns a HashMap of lowercase region name → index (built once on first call).
+    pub fn get_name_index(&self) -> &HashMap<String, usize> {
+        self.name_index.get_or_init(|| {
+            self.get()
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (r.name.to_lowercase(), i))
+                .collect()
+        })
     }
 }
 
