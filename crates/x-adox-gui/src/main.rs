@@ -89,6 +89,9 @@ fn main() -> iced::Result {
     iced::application("X-Addon-Oxide", App::update, App::view)
         .theme(|_| Theme::Dark)
         .subscription(App::subscription)
+        // Fallback font for CJK (Chinese/Japanese/Korean) character rendering in
+        // scenery pack names, aircraft folder names, and airport names.
+        .font(include_bytes!("../assets/fonts/NotoSansSC-subset.ttf").as_slice())
         .window(iced::window::Settings {
             size: [1280.0, 960.0].into(),
             icon: window_icon,

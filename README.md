@@ -188,6 +188,13 @@ chmod +x scripts/build_appimage.sh
 
 This will create `X-Addon-Oxide-x86_64.AppImage` in the root directory.
 
+## Roadmap
+
+Planned for future releases:
+
+- **Full Internationalization (i18n)**: Complete UI translation system with community-contributed locale files. Chinese (Simplified), Japanese, and other language packs planned. Contributions welcome.
+- **X-Plane 12.2 compatibility**: Track new sim-level API changes as they land.
+
 ## Contributing
 
 See [GitHub](https://github.com/StarTuz/X-Addon-Oxide) for the latest source and issues.
