@@ -81,12 +81,37 @@ jobs:
         Copy-Item target/release/*-setup.exe dist/windows/ -ErrorAction SilentlyContinue
         Get-ChildItem dist/windows/
 
-    - name: Package Linux Binary
+    - name: Build Linux AppImage
       if: matrix.platform.name == 'Linux'
+      env:
+        APPIMAGE_EXTRACT_AND_RUN: 1
+        VERSION: ${{ github.ref_name }}
       run: |
+        # Download linuxdeploy + AppImage plugin (self-contained binaries)
+        wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
+          -O /usr/local/bin/linuxdeploy
+        wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage \
+          -O /usr/local/bin/linuxdeploy-plugin-appimage
+        chmod +x /usr/local/bin/linuxdeploy /usr/local/bin/linuxdeploy-plugin-appimage
+
+        # Prepare AppDir
+        mkdir -p AppDir/usr/bin
+        mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
+        cp target/release/x-adox-gui AppDir/usr/bin/x-adox-gui
+        cp assets/packaging/icon_512.png AppDir/usr/share/icons/hicolor/512x512/apps/x-adox-gui.png
+
+        # Build AppImage (outputs X_Addon_Oxide-<version>-x86_64.AppImage)
+        linuxdeploy --appdir AppDir \
+          --desktop-file crates/x-adox-gui/assets/xam-addon-oxide.desktop \
+          --icon-file assets/packaging/icon_512.png \
+          --output appimage
+
+        # Collect artifacts
         mkdir -p dist/linux
-        cp target/release/${{ matrix.platform.bin }} dist/linux/
-        cd dist/linux && tar -czvf X-Addon-Oxide-linux-x86_64.tar.gz ${{ matrix.platform.bin }}
+        mv *.AppImage dist/linux/X-Addon-Oxide-${{ github.ref_name }}-x86_64.AppImage
+        # Also ship a plain tarball as fallback
+        cp target/release/x-adox-gui dist/linux/
+        cd dist/linux && tar -czvf X-Addon-Oxide-${{ github.ref_name }}-linux-x86_64.tar.gz x-adox-gui
 
     - name: Code Sign & Notarize (macOS)
       if: matrix.platform.name == 'macOS'
@@ -144,7 +169,7 @@ jobs:
         echo "=== Recursive listing ==="
         find . -type f
         echo "=== Looking for installers ==="
-        find . -name "*.exe" -o -name "*.dmg" -o -name "*.tar.gz" 2>/dev/null || true
+        find . -name "*.exe" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.tar.gz" 2>/dev/null || true
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
@@ -152,6 +177,7 @@ jobs:
         files: |
           windows/*-setup.exe
           macos/*.dmg
+          linux/*.AppImage
           linux/*.tar.gz
         draft: false
         prerelease: false
