@@ -47,7 +47,11 @@ impl WeatherEngine {
         }
 
         if download_needed {
-            info!("METAR cache expired or missing. Downloading live global data from NOAA...");
+            info!(
+                "METAR cache expired or missing; fetching live data — cache_path={} url={}",
+                self.cache_path.display(),
+                METAR_URL
+            );
             let client = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()?;
@@ -55,7 +59,7 @@ impl WeatherEngine {
             let response = client.get(METAR_URL).send()?.error_for_status()?;
             let bytes = response.bytes()?;
 
-            debug!("Downloaded {} bytes of gzipped METARs", bytes.len());
+            debug!("Downloaded gzipped METAR data — compressed_bytes={}", bytes.len());
 
             // Unzip the GZ stream
             let mut decoder = GzDecoder::new(&bytes[..]);
@@ -63,10 +67,14 @@ impl WeatherEngine {
             decoder.read_to_string(&mut csv_data)?;
 
             // Save to disk cache
-            fs::write(&self.cache_path, csv_data)?;
-            info!("METAR cache updated successfully.");
+            fs::write(&self.cache_path, &csv_data)?;
+            info!(
+                "METAR cache updated — cache_path={} uncompressed_bytes={}",
+                self.cache_path.display(),
+                csv_data.len()
+            );
         } else {
-            debug!("Using valid cached METAR data.");
+            debug!("Using valid cached METAR data — cache_path={}", self.cache_path.display());
         }
 
         Ok(())
@@ -75,7 +83,10 @@ impl WeatherEngine {
     /// Parses the local METAR cache and maps station IDs to their currently active `WeatherKeyword`.
     pub fn get_global_weather_map(&self) -> Result<HashMap<String, WeatherKeyword>> {
         if !self.cache_path.exists() {
-            // Fallback: Just return empty if the cache isn't there and we couldn't download.
+            log::warn!(
+                "METAR cache file not found; weather filtering will be skipped — cache_path={}",
+                self.cache_path.display()
+            );
             return Ok(HashMap::new());
         }
 
@@ -160,7 +171,11 @@ impl WeatherEngine {
             }
         }
 
-        debug!("Loaded global weather map with {} stations.", map.len());
+        debug!(
+            "Loaded global weather map — station_count={} cache_path={}",
+            map.len(),
+            self.cache_path.display()
+        );
         Ok(map)
     }
 }

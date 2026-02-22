@@ -676,13 +676,14 @@ pub fn generate_flight_from_prompt(
     };
 
     // 1c. Apply Live Real-World Filters (Solar Time & METAR)
-    // weather_map: Some(map) if fetch succeeded (map may be empty on net failure),
-    // None if no weather keyword — used to soft-filter below.
+    // weather_map: Some(map) if on-disk cache exists and parsed successfully,
+    // None if no weather keyword or cache is absent/stale.
+    // NOTE: We intentionally do NOT call fetch_live_metars() here — blocking a
+    // 30-second network download inside synchronous generation would stall callers
+    // and break offline/CI environments. Callers that want fresh data should pre-fetch
+    // (e.g. the GUI does this before opening the flight generator tab).
     let weather_map = if prompt.keywords.weather.is_some() {
         let engine = crate::weather::WeatherEngine::new();
-        if let Err(e) = engine.fetch_live_metars() {
-            log::warn!("[flight_gen] Failed to fetch live METARs: {}", e);
-        }
         engine.get_global_weather_map().ok()
     } else {
         None

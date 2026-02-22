@@ -3,16 +3,17 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 fn contains_phrase(text: &str, phrase: &str) -> bool {
-    let mut start = 0;
-    while let Some(idx) = text[start..].find(phrase) {
-        let actual_idx = start + idx;
+    // Use match_indices so we never manually advance a byte offset into a multi-byte
+    // codepoint. The boundary check uses as_bytes() only for the bytes immediately
+    // outside the match, both of which are guaranteed to be on char boundaries because
+    // str::find / match_indices always return valid char-boundary offsets.
+    for (actual_idx, matched) in text.match_indices(phrase) {
+        let end_idx = actual_idx + matched.len();
         let prev_ok = actual_idx == 0 || !text.as_bytes()[actual_idx - 1].is_ascii_alphabetic();
-        let end_idx = actual_idx + phrase.len();
         let next_ok = end_idx == text.len() || !text.as_bytes()[end_idx].is_ascii_alphabetic();
         if prev_ok && next_ok {
             return true;
         }
-        start = actual_idx + 1;
     }
     false
 }
