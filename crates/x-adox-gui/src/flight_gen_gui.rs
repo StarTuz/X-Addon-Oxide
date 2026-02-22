@@ -213,8 +213,39 @@ impl FlightGenState {
                         ) {
                             plan.context = Some(ctx);
                         }
+                        let time_label = plan.time.as_ref().map(|t| {
+                            use x_adox_bitnet::flight_prompt::TimeKeyword;
+                            match t {
+                                TimeKeyword::Dawn => " · Dawn",
+                                TimeKeyword::Day => " · Daytime",
+                                TimeKeyword::Dusk => " · Dusk",
+                                TimeKeyword::Night => " · Night",
+                            }
+                        });
+                        // Only label confirmed weather (verified via live METAR).
+                        // Unconfirmed requests (METAR unavailable) are not shown as fact.
+                        let weather_label = plan.weather.as_ref()
+                            .filter(|_| plan.weather_confirmed)
+                            .map(|w| {
+                            use x_adox_bitnet::flight_prompt::WeatherKeyword;
+                            match w {
+                                WeatherKeyword::Clear => " · Clear",
+                                WeatherKeyword::Cloudy => " · Cloudy",
+                                WeatherKeyword::Storm => " · Storm",
+                                WeatherKeyword::Rain => " · Rain",
+                                WeatherKeyword::Snow => " · Snow",
+                                WeatherKeyword::Fog => " · Fog",
+                                WeatherKeyword::Gusty => " · Gusty",
+                                WeatherKeyword::Calm => " · Calm",
+                            }
+                        });
+                        let conditions_suffix = format!(
+                            "{}{}",
+                            time_label.unwrap_or(""),
+                            weather_label.unwrap_or("")
+                        );
                         let response = format!(
-                            "Generated Flight:\nOrigin: {} ({})\nDestination: {} ({})\nAircraft: {}\nDistance: {} nm\nDuration: {} mins",
+                            "Generated Flight{conditions_suffix}:\nOrigin: {} ({})\nDestination: {} ({})\nAircraft: {}\nDistance: {} nm\nDuration: {} mins",
                             plan.origin.id, plan.origin.name,
                             plan.destination.id, plan.destination.name,
                             plan.aircraft.name,
@@ -254,7 +285,7 @@ impl FlightGenState {
             }
             Message::ExportFms11 => {
                 if let Some(plan) = &self.current_plan {
-                    let _text = flight_gen::export_fms_11(plan);
+                    let _text = flight_gen::export_fms_11(plan, None);
                     // TODO: Save to file logic should happen here or via file picker
                     // For now just simulation
                     self.status_message = Some("Exported FMS 11 (simulated)".to_string());
@@ -263,14 +294,14 @@ impl FlightGenState {
             }
             Message::ExportFms12 => {
                 if let Some(plan) = &self.current_plan {
-                    let _ = flight_gen::export_fms_12(plan);
+                    let _ = flight_gen::export_fms_12(plan, None);
                     self.status_message = Some("Exported FMS 12 (simulated)".to_string());
                 }
                 Task::none()
             }
             Message::ExportLnm => {
                 if let Some(plan) = &self.current_plan {
-                    let _ = flight_gen::export_lnmpln(plan);
+                    let _ = flight_gen::export_lnmpln(plan, None);
                     self.status_message = Some("Exported Little Navmap (simulated)".to_string());
                 }
                 Task::none()

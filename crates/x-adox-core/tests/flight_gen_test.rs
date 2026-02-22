@@ -241,9 +241,10 @@ mod tests {
             context: None,
             time: None,
             weather: None,
+            weather_confirmed: false,
         };
 
-        let xml = export_lnmpln(&plan);
+        let xml = export_lnmpln(&plan, None);
         assert!(xml.contains("<Ident>EGLL</Ident>"));
         assert!(xml.contains("<Ident>LFPG</Ident>"));
     }

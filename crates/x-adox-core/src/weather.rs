@@ -1,7 +1,6 @@
 use anyhow::Result;
 use flate2::read::GzDecoder;
 use log::{debug, error, info};
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
@@ -13,7 +12,6 @@ const METAR_URL: &str = "https://aviationweather.gov/data/cache/metars.cache.csv
 const CACHE_TTL_SECS: u64 = 900; // 15 minutes
 
 struct MetarRecord {
-    station_id: String,
     wx_string: Option<String>,
     sky_cover: Option<String>,
     flight_category: Option<String>,
@@ -150,7 +148,6 @@ impl WeatherEngine {
                     .and_then(|s| s.parse::<f32>().ok());
 
                 let m = MetarRecord {
-                    station_id: station_id.clone(),
                     wx_string,
                     sky_cover,
                     flight_category,
@@ -238,7 +235,6 @@ mod tests {
     fn test_determine_weather_keyword() {
         // Rain
         let rain = MetarRecord {
-            station_id: "KSEA".into(),
             wx_string: Some("-RA BR".into()),
             sky_cover: Some("OVC".into()),
             flight_category: Some("MVFR".into()),
@@ -249,7 +245,6 @@ mod tests {
 
         // Storm
         let storm = MetarRecord {
-            station_id: "KMIA".into(),
             wx_string: Some("+TSRA".into()),
             sky_cover: Some("BKN".into()),
             flight_category: Some("IFR".into()),
@@ -260,7 +255,6 @@ mod tests {
 
         // Snow (with freezing)
         let snow = MetarRecord {
-            station_id: "KORD".into(),
             wx_string: Some("FZRA".into()),
             sky_cover: Some("OVC".into()),
             flight_category: Some("LIFR".into()),
@@ -271,7 +265,6 @@ mod tests {
 
         // Fog
         let fog = MetarRecord {
-            station_id: "KSFO".into(),
             wx_string: Some("FG".into()),
             sky_cover: Some("VV".into()),
             flight_category: Some("LIFR".into()),
@@ -282,7 +275,6 @@ mod tests {
 
         // Gusty (High wind, clear sky)
         let gusty = MetarRecord {
-            station_id: "KDEN".into(),
             wx_string: None,
             sky_cover: Some("CLR".into()),
             flight_category: Some("VFR".into()),
@@ -293,7 +285,6 @@ mod tests {
 
         // Calm (No wind, clear sky)
         let calm = MetarRecord {
-            station_id: "KPHX".into(),
             wx_string: None,
             sky_cover: Some("CLR".into()),
             flight_category: Some("VFR".into()),
@@ -304,7 +295,6 @@ mod tests {
 
         // Cloudy (No WX, but overcast)
         let cloudy = MetarRecord {
-            station_id: "EGLL".into(),
             wx_string: None,
             sky_cover: Some("OVC".into()),
             flight_category: Some("VFR".into()),
@@ -315,7 +305,6 @@ mod tests {
 
         // Clear
         let clear = MetarRecord {
-            station_id: "KLAX".into(),
             wx_string: None,
             sky_cover: Some("CLR".into()),
             flight_category: Some("VFR".into()),

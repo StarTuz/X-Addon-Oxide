@@ -44,6 +44,22 @@ pub struct NLPRule {
     pub name: String,
     pub keywords: Vec<String>,
     pub mapped_value: String,
+    /// Optional soft minimum distance (nm) when this rule matches (aircraft_rules only).
+    /// Overridden by explicit duration keywords (short/long/haul) and "X hour flight" phrasing.
+    #[serde(default)]
+    pub min_distance_nm: Option<u32>,
+    /// Optional soft maximum distance (nm) when this rule matches (aircraft_rules only).
+    /// Overridden by explicit duration keywords (short/long/haul) and "X hour flight" phrasing.
+    #[serde(default)]
+    pub max_distance_nm: Option<u32>,
+    /// Override cruise speed in knots for this aircraft category (aircraft_rules only).
+    /// Used for distance↔duration estimation. Defaults to category heuristic when absent.
+    #[serde(default)]
+    pub speed_kts: Option<u32>,
+    /// Match priority within this category (higher = checked first). Default 0.
+    /// Use to ensure a more-specific rule beats a broader one (e.g. "long haul" before "long").
+    #[serde(default)]
+    pub priority: u8,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Hash, Default)]
@@ -54,12 +70,47 @@ pub struct NLPRulesConfig {
     pub time_rules: Vec<NLPRule>,
     #[serde(default)]
     pub weather_rules: Vec<NLPRule>,
+    /// Map surface type keywords to Soft/Hard/Water constraints.
+    #[serde(default)]
+    pub surface_rules: Vec<NLPRule>,
+    /// Map flight-type keywords to Bush/Regional constraints.
+    #[serde(default)]
+    pub flight_type_rules: Vec<NLPRule>,
+    /// Map duration keywords to Short/Medium/Long/Haul range envelopes.
+    #[serde(default)]
+    pub duration_rules: Vec<NLPRule>,
     /// Schema version for migration
     #[serde(default)]
     pub schema_version: u32,
 }
 
-pub const CURRENT_NLP_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_NLP_SCHEMA_VERSION: u32 = 2;
+
+/// Returns the built-in default rules for the new v2 categories so that
+/// users who upgrade from v1 see pre-populated surface/type/duration rules.
+pub fn default_duration_rules() -> Vec<NLPRule> {
+    vec![
+        NLPRule { name: "Long Haul".into(), keywords: vec!["long haul".into(), "ultra long".into(), "transatlantic".into(), "transpacific".into(), "transcontinental".into()], mapped_value: "Haul".into(), priority: 1, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+        NLPRule { name: "Short Flight".into(), keywords: vec!["short".into(), "hop".into(), "quick".into()], mapped_value: "Short".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+        NLPRule { name: "Medium Flight".into(), keywords: vec!["medium".into()], mapped_value: "Medium".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+        NLPRule { name: "Long Flight".into(), keywords: vec!["long".into()], mapped_value: "Long".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+    ]
+}
+
+pub fn default_surface_rules() -> Vec<NLPRule> {
+    vec![
+        NLPRule { name: "Soft Surface".into(), keywords: vec!["grass".into(), "dirt".into(), "gravel".into(), "strip".into(), "unpaved".into()], mapped_value: "Soft".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+        NLPRule { name: "Hard Surface".into(), keywords: vec!["paved".into(), "tarmac".into(), "concrete".into(), "asphalt".into()], mapped_value: "Hard".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+        NLPRule { name: "Water".into(), keywords: vec!["water".into(), "seaplane".into(), "floatplane".into(), "amphibian".into()], mapped_value: "Water".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+    ]
+}
+
+pub fn default_flight_type_rules() -> Vec<NLPRule> {
+    vec![
+        NLPRule { name: "Bush Flying".into(), keywords: vec!["bush".into(), "backcountry".into()], mapped_value: "Bush".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+        NLPRule { name: "Regional".into(), keywords: vec!["regional".into()], mapped_value: "Regional".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+    ]
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Hash)]
 pub struct HeuristicsConfig {
@@ -342,7 +393,19 @@ impl NLPRulesModel {
                 e
             })?;
 
-            // Migration logic goes here if needed in the future
+            // v1 → v2: populate the three new rule categories from hardcoded defaults
+            // so existing users immediately have editable rules for surface/type/duration.
+            if config.schema_version < 2 {
+                if config.duration_rules.is_empty() {
+                    config.duration_rules = default_duration_rules();
+                }
+                if config.surface_rules.is_empty() {
+                    config.surface_rules = default_surface_rules();
+                }
+                if config.flight_type_rules.is_empty() {
+                    config.flight_type_rules = default_flight_type_rules();
+                }
+            }
             if config.schema_version < CURRENT_NLP_SCHEMA_VERSION {
                 config.schema_version = CURRENT_NLP_SCHEMA_VERSION;
                 if let Some(parent) = path.parent() {

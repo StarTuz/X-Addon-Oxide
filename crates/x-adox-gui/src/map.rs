@@ -76,13 +76,24 @@ impl TileManager {
     }
 
     pub fn request_tile(&self, coords: TileCoords) {
+        // Check pending and tiles in separate lock scopes — never hold both simultaneously
+        // to prevent lock-ordering deadlock with spawned tile threads.
         {
-            let mut pending = self.pending.lock().unwrap();
+            let pending = self.pending.lock().unwrap();
             if pending.contains(&coords) {
                 return;
             }
+        }
+        {
             let tiles = self.tiles.lock().unwrap();
             if tiles.contains(&coords) {
+                return;
+            }
+        }
+        {
+            let mut pending = self.pending.lock().unwrap();
+            // Re-check after re-acquiring — another thread may have inserted between the two checks.
+            if pending.contains(&coords) {
                 return;
             }
             pending.insert(coords);
@@ -112,10 +123,9 @@ impl TileManager {
             if cache_path.exists() {
                 if let Ok(bytes) = std::fs::read(&cache_path) {
                     let handle = image::Handle::from_bytes(bytes);
-                    let mut tiles = tiles_arc.lock().unwrap();
-                    tiles.put(coords, handle);
-                    let mut pending = pending_arc.lock().unwrap();
-                    pending.remove(&coords);
+                    // Release tiles lock before acquiring pending — consistent ordering.
+                    { tiles_arc.lock().unwrap().put(coords, handle); }
+                    { pending_arc.lock().unwrap().remove(&coords); }
                     return;
                 }
             }
@@ -133,10 +143,10 @@ impl TileManager {
                         std::io::Read::read_to_end(&mut response.into_reader(), &mut bytes)
                     {
                         let handle = image::Handle::from_bytes(bytes.clone());
-                        let mut tiles = tiles_arc.lock().unwrap();
-                        tiles.put(coords, handle);
+                        // Release tiles lock before disk I/O — avoids blocking renders.
+                        { tiles_arc.lock().unwrap().put(coords, handle); }
 
-                        // 3. Save to disk cache
+                        // 3. Save to disk cache (outside of tiles lock)
                         if let Some(parent) = cache_path.parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
@@ -147,8 +157,7 @@ impl TileManager {
                     eprintln!("Failed to fetch tile {:?}: {}", coords, e);
                 }
             }
-            let mut pending = pending_arc.lock().unwrap();
-            pending.remove(&coords);
+            { pending_arc.lock().unwrap().remove(&coords); }
         });
     }
 }

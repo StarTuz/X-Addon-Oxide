@@ -259,7 +259,7 @@ enum Message {
     
     // NLP Rules Editor
     OpenNLPEditor,
-    CloseNLPEditor,
+    ToggleNLPHelp,
     NLPAction(text_editor::Action),
     SaveNLP,
     ResetNLP,
@@ -665,6 +665,7 @@ struct App {
     nlp_model: x_adox_bitnet::NLPRulesModel,
     nlp_json: text_editor::Content,
     nlp_error: Option<String>,
+    nlp_help_expanded: bool,
 
     // Issues
     log_issues: Arc<Vec<x_adox_core::LogIssue>>,
@@ -892,6 +893,7 @@ impl App {
             ),
             nlp_json: text_editor::Content::new(),
             nlp_error: None,
+            nlp_help_expanded: false,
             log_issues: Arc::new(Vec::new()),
             icon_warning: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/warning.svg").to_vec(),
@@ -1349,7 +1351,7 @@ impl App {
 
     fn scroll_to_scenery_index(&self, index: usize) -> Task<Message> {
         // Height: 75px card + 2px spacing (from view_scenery column spacing)
-        let card_height = 75.0; 
+        let card_height = 75.0;
         let spacing = 2.0;
         let offset = index as f32 * (card_height + spacing);
 
@@ -1357,6 +1359,112 @@ impl App {
             self.scenery_scroll_id.clone(),
             scrollable::AbsoluteOffset { x: 0.0, y: offset },
         )
+    }
+
+    /// Selects an aircraft by relative path, expands ancestors / smart group,
+    /// and scrolls the aircraft list so it is visible.
+    fn navigate_to_aircraft(&mut self, target: PathBuf) -> Task<Message> {
+        self.selected_aircraft = Some(target.clone());
+        self.selected_aircraft_name = target.file_name().map(|n| n.to_string_lossy().to_string());
+        if self.use_smart_view {
+            self.navigate_to_aircraft_smart(target.as_path())
+        } else {
+            self.navigate_to_aircraft_folder(target.as_path())
+        }
+    }
+
+    fn navigate_to_aircraft_folder(&mut self, target: &std::path::Path) -> Task<Message> {
+        let mut row_count: usize = 0;
+        if let Some(ref mut tree_arc) = self.aircraft_tree {
+            let tree = Arc::make_mut(tree_arc);
+            expand_ancestors_for_path(tree, target);
+            count_aircraft_rows_before(tree, target, true, &mut row_count);
+        } else {
+            return Task::none();
+        }
+        const ROW_HEIGHT: f32 = 32.0;
+        const SPACING: f32 = 2.0;
+        scrollable::scroll_to(
+            self.aircraft_scroll_id.clone(),
+            scrollable::AbsoluteOffset { x: 0.0, y: (row_count as f32) * (ROW_HEIGHT + SPACING) },
+        )
+    }
+
+    fn navigate_to_aircraft_smart(&mut self, target: &std::path::Path) -> Task<Message> {
+        // Find which tag (and optional model group) contains this aircraft
+        let mut found_tag_id: Option<String> = None;
+        let mut found_model_id: Option<String> = None;
+
+        'outer: for (tag, aircraft) in &self.smart_groups {
+            for ac in aircraft {
+                if ac.relative_path == target {
+                    found_tag_id = Some(format!("tag:{}", tag));
+                    if let Some(model_groups) = self.smart_model_groups.get(tag) {
+                        for (model, acs) in model_groups {
+                            if acs.iter().any(|a| a.relative_path == target) {
+                                found_model_id = Some(format!("model:{}:{}", tag, model));
+                                break;
+                            }
+                        }
+                    }
+                    break 'outer;
+                }
+            }
+        }
+
+        let Some(tag_id) = found_tag_id else {
+            return Task::none();
+        };
+
+        self.smart_view_expanded.insert(tag_id.clone());
+        if let Some(model_id) = found_model_id {
+            self.smart_view_expanded.insert(model_id);
+        }
+
+        let row_count = self.count_smart_rows_before(target);
+        const ROW_HEIGHT: f32 = 32.0;
+        const SPACING: f32 = 2.0;
+        scrollable::scroll_to(
+            self.aircraft_scroll_id.clone(),
+            scrollable::AbsoluteOffset { x: 0.0, y: (row_count as f32) * (ROW_HEIGHT + SPACING) },
+        )
+    }
+
+    fn count_smart_rows_before(&self, target: &std::path::Path) -> usize {
+        let mut count = 0;
+        for (tag, aircraft) in &self.smart_groups {
+            let tag_id = format!("tag:{}", tag);
+            count += 1; // Tag header row
+            if !self.smart_view_expanded.contains(&tag_id) {
+                continue;
+            }
+            let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
+            if is_manufacturer {
+                if let Some(model_groups) = self.smart_model_groups.get(tag) {
+                    for (model, acs) in model_groups {
+                        let model_id = format!("model:{}:{}", tag, model);
+                        count += 1; // Model header row
+                        if !self.smart_view_expanded.contains(&model_id) {
+                            continue;
+                        }
+                        for ac in acs {
+                            if ac.relative_path == target {
+                                return count;
+                            }
+                            count += 1;
+                        }
+                    }
+                }
+            } else {
+                for ac in aircraft {
+                    if ac.relative_path == target {
+                        return count;
+                    }
+                    count += 1;
+                }
+            }
+        }
+        count
     }
 
     /// Merges airports discovered in scenery packs into the global airports map.
@@ -2490,6 +2598,8 @@ impl App {
                     }
                     find_and_update_variant(Arc::make_mut(tree), &path, &variant, enable);
                 }
+                // Keep smart_groups in sync with optimistic tree update
+                self.update_smart_view_cache();
 
                 self.status = format!(
                     "{} Aircraft Variant {}...",
@@ -2524,6 +2634,8 @@ impl App {
                     }
                     find_and_update(Arc::make_mut(tree), &path, enable);
                 }
+                // Keep smart_groups in sync with optimistic tree update
+                self.update_smart_view_cache();
 
                 self.status = format!(
                     "{} Aircraft {}...",
@@ -3958,19 +4070,27 @@ impl App {
                 self.status = "NLP Dictionary Editor".to_string();
                 Task::none()
             }
-            Message::CloseNLPEditor => {
-                self.active_tab = Tab::FlightGenerator;
-                self.status = "Flight Generator".to_string();
-                Task::none()
-            }
             Message::NLPAction(action) => {
                 self.nlp_json.perform(action);
+                Task::none()
+            }
+            Message::ToggleNLPHelp => {
+                self.nlp_help_expanded = !self.nlp_help_expanded;
                 Task::none()
             }
             Message::SaveNLP => {
                 let text = self.nlp_json.text();
                 match serde_json::from_str::<x_adox_bitnet::NLPRulesConfig>(&text) {
                     Ok(config) => {
+                        // Semantic validation — check mapped_value correctness.
+                        let errors = x_adox_bitnet::flight_prompt::validate_nlp_config(&config);
+                        if !errors.is_empty() {
+                            self.nlp_error = Some(format!(
+                                "Validation errors (fix before saving):\n{}",
+                                errors.join("\n")
+                            ));
+                            return Task::none();
+                        }
                         self.nlp_model.update_config(config);
                         if let Err(e) = self.nlp_model.save() {
                             self.nlp_error = Some(format!("Save failed: {}", e));
@@ -4121,8 +4241,8 @@ impl App {
                     }
                     flight_gen_gui::Message::ExportFms11 => {
                         if let Some(plan) = &self.flight_gen.current_plan {
-                            let content = x_adox_core::flight_gen::export_fms_11(plan);
-                            let default_name = format!("{}_to_{}.fms", plan.origin.id, plan.destination.id);
+                            let content = x_adox_core::flight_gen::export_fms_11(plan, self.xplane_root.as_deref());
+                            let default_name = format!("{}-{}.fms", plan.origin.id, plan.destination.id);
                             self.flight_gen.status_message = Some("Saving FMS 11 flight plan…".to_string());
                             return Task::perform(
                                 async move {
@@ -4147,8 +4267,8 @@ impl App {
                     }
                     flight_gen_gui::Message::ExportFms12 => {
                         if let Some(plan) = &self.flight_gen.current_plan {
-                            let content = x_adox_core::flight_gen::export_fms_12(plan);
-                            let default_name = format!("{}_to_{}.fms", plan.origin.id, plan.destination.id);
+                            let content = x_adox_core::flight_gen::export_fms_12(plan, self.xplane_root.as_deref());
+                            let default_name = format!("{}-{}.fms", plan.origin.id, plan.destination.id);
                             self.flight_gen.status_message = Some("Saving FMS 12 flight plan…".to_string());
                             return Task::perform(
                                 async move {
@@ -4173,8 +4293,8 @@ impl App {
                     }
                     flight_gen_gui::Message::ExportLnm => {
                         if let Some(plan) = &self.flight_gen.current_plan {
-                            let content = x_adox_core::flight_gen::export_lnmpln(plan);
-                            let default_name = format!("{}_to_{}.lnmpln", plan.origin.id, plan.destination.id);
+                            let content = x_adox_core::flight_gen::export_lnmpln(plan, self.xplane_root.as_deref());
+                            let default_name = format!("{}-{}.lnmpln", plan.origin.id, plan.destination.id);
                             self.flight_gen.status_message = Some("Saving Little Navmap flight plan…".to_string());
                             return Task::perform(
                                 async move {
@@ -4493,32 +4613,35 @@ impl App {
                 if self.aircraft_search_query.is_empty() {
                     self.aircraft_search_matches.clear();
                     self.aircraft_search_index = None;
-                } else {
-                    let q = self.aircraft_search_query.to_lowercase();
-                    self.aircraft_search_matches = self
-                        .aircraft
-                        .iter()
-                        .filter(|a| a.name.to_lowercase().contains(&q))
-                        .map(|a| a.path.clone())
-                        .collect();
-
-                    if self.aircraft_search_matches.is_empty() {
-                        self.aircraft_search_index = None;
-                    } else {
-                        self.aircraft_search_index = Some(0);
-                        let target_path = self.aircraft_search_matches[0].clone();
-                        self.selected_aircraft = Some(target_path);
-                    }
+                    return Task::none();
                 }
-                Task::none()
+                let q = self.aircraft_search_query.to_lowercase();
+                // Use the tree's relative_path so selection highlights work correctly
+                self.aircraft_search_matches = if let Some(tree) = &self.aircraft_tree {
+                    Self::flatten_aircraft_tree(tree)
+                        .into_iter()
+                        .filter(|n| n.name.to_lowercase().contains(&q))
+                        .map(|n| n.relative_path.clone())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                if self.aircraft_search_matches.is_empty() {
+                    self.aircraft_search_index = None;
+                    Task::none()
+                } else {
+                    self.aircraft_search_index = Some(0);
+                    let target = self.aircraft_search_matches[0].clone();
+                    self.navigate_to_aircraft(target)
+                }
             }
             Message::AircraftSearchNext => {
                 if let Some(current) = self.aircraft_search_index {
                     if !self.aircraft_search_matches.is_empty() {
                         let next = (current + 1) % self.aircraft_search_matches.len();
                         self.aircraft_search_index = Some(next);
-                        let target_path = self.aircraft_search_matches[next].clone();
-                        self.selected_aircraft = Some(target_path);
+                        let target = self.aircraft_search_matches[next].clone();
+                        return self.navigate_to_aircraft(target);
                     }
                 }
                 Task::none()
@@ -4532,8 +4655,8 @@ impl App {
                             current - 1
                         };
                         self.aircraft_search_index = Some(prev);
-                        let target_path = self.aircraft_search_matches[prev].clone();
-                        self.selected_aircraft = Some(target_path);
+                        let target = self.aircraft_search_matches[prev].clone();
+                        return self.navigate_to_aircraft(target);
                     }
                 }
                 Task::none()
@@ -8292,11 +8415,55 @@ impl App {
             .font(iced::Font::MONOSPACE);
 
         let error_banner = if let Some(err) = &self.nlp_error {
-            container(text(err).color(Color::from_rgb(1.0, 0.3, 0.3)))
-                .padding(10)
-                .style(style::container_card)
+            container(
+                text(err)
+                    .color(Color::from_rgb(1.0, 0.3, 0.3))
+                    .size(13),
+            )
+            .padding(10)
+            .style(style::container_card)
         } else {
             container(column![])
+        };
+
+        // --- Collapsible reference panel ---
+        let help_toggle_label = if self.nlp_help_expanded {
+            "▼ Valid Values Reference"
+        } else {
+            "▶ Valid Values Reference"
+        };
+        let help_toggle = button(text(help_toggle_label).size(13))
+            .on_press(Message::ToggleNLPHelp)
+            .style(style::button_secondary)
+            .padding([6, 12]);
+
+        let help_panel: Element<'_, Message> = if self.nlp_help_expanded {
+            fn ref_row<'a>(label: &'a str, values: &'a str) -> Element<'a, Message> {
+                column![
+                    text(label).size(12).color(Color::from_rgb(0.4, 0.8, 1.0)),
+                    text(values).size(11).color(Color::from_rgb(0.7, 0.7, 0.7)),
+                ]
+                .spacing(2)
+                .into()
+            }
+            container(
+                column![
+                    ref_row("aircraft_rules › mapped_value", "Free-form tag matched against your aircraft library (e.g. \"General Aviation\", \"Jet\"). Optional: speed_kts (cruise knots), min_distance_nm, max_distance_nm, priority."),
+                    ref_row("time_rules › mapped_value", "dawn · sunrise · morning · golden hour · golden | day · daytime · daylight · afternoon · noon | dusk · sunset · evening · twilight · civil twilight | night · midnight · dark · night flight · moonlight · late night"),
+                    ref_row("weather_rules › mapped_value", "clear · sunny · fair · vfr · cavok · blue sky | cloudy · overcast · mvfr · scattered · broken | storm · thunder · lifr · low ifr | gusty · windy · turbulent | calm · still · smooth · glassy | snow · blizzard · ice · wintry | rain · showers · wet | fog · mist · haze · ifr · instrument"),
+                    ref_row("surface_rules › mapped_value", "soft · grass · dirt · gravel · strip · unpaved | hard · paved · tarmac · concrete · asphalt | water · seaplane · float"),
+                    ref_row("flight_type_rules › mapped_value", "bush · backcountry · remote · stol | regional · commuter"),
+                    ref_row("duration_rules › mapped_value", "short · hop · quick · sprint | medium · mid | long · long range | haul · long haul · ultra long · intercontinental · transatlantic · transpacific · transcontinental"),
+                    ref_row("priority field", "Higher number = checked first within the same category. Use to ensure specific rules beat general ones (e.g. \"long haul\" priority 1 beats \"long\" priority 0)."),
+                ]
+                .spacing(10)
+                .padding(12),
+            )
+            .style(style::container_card)
+            .width(Length::Fill)
+            .into()
+        } else {
+            column![].into()
         };
 
         let toolbar = row![
@@ -8324,9 +8491,11 @@ impl App {
                 text("NLP Dictionary (JSON Editor)")
                     .size(20)
                     .width(Length::Fill),
-                text("Customize the aircraft names, time, and weather mappings used by the NLP parsing engine.")
+                text("Customize aircraft names, time, weather, surface, flight type, and duration mappings. Click \"Valid Values Reference\" for field documentation.")
                     .size(14)
                     .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                help_toggle,
+                help_panel,
                 error_banner,
                 container(editor)
                     .height(Length::Fill)
@@ -8335,7 +8504,7 @@ impl App {
                     .padding(5),
                 toolbar,
             ]
-            .spacing(15)
+            .spacing(10)
             .padding(20),
         )
         .width(Length::Fill)
@@ -10849,6 +11018,50 @@ fn restore_expanded_paths(node: &mut AircraftNode, paths: &std::collections::Has
     for child in &mut node.children {
         restore_expanded_paths(child, paths);
     }
+}
+
+/// Expands all ancestor folder nodes in the tree that lead to `target`.
+/// Returns true if `target` was found in this node's subtree.
+fn expand_ancestors_for_path(node: &mut AircraftNode, target: &std::path::Path) -> bool {
+    if !node.is_folder {
+        return node.relative_path == target;
+    }
+    if node.relative_path == target {
+        return true;
+    }
+    for child in &mut node.children {
+        if expand_ancestors_for_path(child, target) {
+            node.is_expanded = true;
+            return true;
+        }
+    }
+    false
+}
+
+/// Counts visible rendered rows before `target` using the same traversal order as
+/// `collect_tree_nodes`. Mirrors the `is_root` logic: root node is not rendered.
+/// Returns true if target was found (count holds its row index).
+fn count_aircraft_rows_before(
+    node: &AircraftNode,
+    target: &std::path::Path,
+    is_root: bool,
+    count: &mut usize,
+) -> bool {
+    if !is_root {
+        if node.relative_path == target {
+            return true;
+        }
+        // Each node renders itself + its variants
+        *count += 1 + node.variants.len();
+    }
+    if is_root || node.is_expanded {
+        for child in &node.children {
+            if count_aircraft_rows_before(child, target, false, count) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 async fn install_addon(

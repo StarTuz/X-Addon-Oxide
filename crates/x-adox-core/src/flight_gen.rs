@@ -464,12 +464,19 @@ pub struct FlightPlan {
     pub time: Option<x_adox_bitnet::flight_prompt::TimeKeyword>,
     /// Optional requested weather (e.g., Storm, Clear).
     pub weather: Option<x_adox_bitnet::flight_prompt::WeatherKeyword>,
+    /// True only when `weather` was confirmed via live METAR data.
+    /// False means weather is an unverified user preference — don't display as fact.
+    pub weather_confirmed: bool,
 }
 
 use crate::scenery::SceneryPack;
 
 // Helpers with Prompt Context
 fn estimate_speed(a: &DiscoveredAddon, prompt: &FlightPrompt) -> u32 {
+    // JSON aircraft rule speed override takes highest priority.
+    if let Some(kts) = prompt.aircraft_speed_kts {
+        return kts;
+    }
     // Keyword override: Bush planes are slow
     if let Some(TypeKeyword::Bush) = prompt.keywords.flight_type {
         return 100;
@@ -667,6 +674,8 @@ pub fn generate_flight_from_prompt(
     };
 
     // 1c. Apply Live Real-World Filters (Solar Time & METAR)
+    // weather_map: Some(map) if fetch succeeded (map may be empty on net failure),
+    // None if no weather keyword — used to soft-filter below.
     let weather_map = if prompt.keywords.weather.is_some() {
         let engine = crate::weather::WeatherEngine::new();
         if let Err(e) = engine.fetch_live_metars() {
@@ -676,50 +685,73 @@ pub fn generate_flight_from_prompt(
     } else {
         None
     };
+    // True only when we actually have METAR data to filter against (non-empty map).
+    let metar_available = weather_map
+        .as_ref()
+        .map(|m| !m.is_empty())
+        .unwrap_or(false);
 
     let filtered_airports_owned: Vec<&Airport>;
     let all_airports: &[&Airport] =
         if prompt.keywords.time.is_some() || prompt.keywords.weather.is_some() {
             let utc_now = chrono::Utc::now();
+            let before = all_airports.len();
             filtered_airports_owned = all_airports
                 .iter()
                 .filter(|apt| {
-                    // Live Time Filter
+                    // Solar Time Filter — soft: airports without lon are kept.
                     if let Some(req_time) = &prompt.keywords.time {
                         if let Some(lon) = apt.lon {
                             let solar_time = calculate_solar_time(lon, utc_now);
                             if solar_time != *req_time {
                                 return false;
                             }
-                        } else {
-                            return false;
                         }
+                        // No lon → can't determine time → keep airport.
                     }
-                    // Live Weather Filter
+                    // Weather Filter — soft: only exclude when the airport IS in the
+                    // METAR map and its actual weather explicitly doesn't match.
+                    // Airports not in the map (no METAR station) are kept.
+                    // If the map is empty (fetch failed), skip the filter entirely.
                     if let Some(req_wx) = &prompt.keywords.weather {
-                        if let Some(map) = &weather_map {
-                            if let Some(apt_wx) = map.get(apt.id.as_str()) {
-                                if apt_wx != req_wx {
-                                    return false;
+                        if metar_available {
+                            if let Some(map) = &weather_map {
+                                if let Some(apt_wx) = map.get(apt.id.as_str()) {
+                                    if apt_wx != req_wx {
+                                        return false;
+                                    }
                                 }
-                            } else {
-                                return false;
+                                // Airport not in METAR map → keep (no data ≠ wrong weather).
                             }
-                        } else {
-                            return false;
                         }
+                        // metar_available=false → fetch failed → skip weather filter.
+                        let _ = req_wx; // suppress unused warning
                     }
                     true
                 })
                 .copied()
                 .collect();
 
+            let after = filtered_airports_owned.len();
             log::debug!(
-                "[flight_gen] Real-World Filters reduced airport pool from {} to {} ICAOs",
-                all_airports.len(),
-                filtered_airports_owned.len()
+                "[flight_gen] Real-World Filters: {} → {} airports (time={}, weather={}, metar_data={})",
+                before,
+                after,
+                prompt.keywords.time.is_some(),
+                prompt.keywords.weather.is_some(),
+                metar_available,
             );
-            &filtered_airports_owned
+
+            // Fallback: if filters eliminated every airport, discard them and use
+            // the full pool so generation doesn't fail for a transient/time reason.
+            if filtered_airports_owned.is_empty() && before > 0 {
+                log::warn!(
+                    "[flight_gen] Real-World Filters produced 0 airports; ignoring time/weather constraints and using full pool."
+                );
+                all_airports
+            } else {
+                &filtered_airports_owned
+            }
         } else {
             all_airports
         };
@@ -920,6 +952,13 @@ pub fn generate_flight_from_prompt(
             }
         } else if prompt.ignore_guardrails {
             (0.0, 20000.0)
+        } else if prompt.aircraft_min_dist.is_some() || prompt.aircraft_max_dist.is_some() {
+            // Aircraft rule supplied a soft distance envelope.
+            // Keyword duration (short/long/haul) takes priority (handled above);
+            // this only applies when no duration keyword was given.
+            let lo = prompt.aircraft_min_dist.unwrap_or(10.0);
+            let hi = prompt.aircraft_max_dist.unwrap_or(8000.0);
+            (lo, hi)
         } else {
             // No keyword constraint: wide-open random discovery.
             // Keywords (short/medium/long/haul) and duration_minutes are the
@@ -1202,6 +1241,18 @@ pub fn generate_flight_from_prompt(
                 context: None,
                 time: prompt.keywords.time.clone(),
                 weather: prompt.keywords.weather.clone(),
+                // Only mark confirmed if this specific origin airport has a METAR entry
+                // that matches the requested condition. A non-empty global dataset is not
+                // sufficient — small/remote airports are often absent from METAR feeds.
+                weather_confirmed: weather_map
+                    .as_ref()
+                    .and_then(|map| map.get(origin.id.as_str()))
+                    .map(|actual_wx| {
+                        prompt.keywords.weather.as_ref()
+                            .map(|req| actual_wx == req)
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false),
             });
         }
     }
@@ -1667,20 +1718,98 @@ fn haversine_nm(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 }
 
 // Exporters
-pub fn export_fms_11(plan: &FlightPlan) -> String {
+
+/// Reads the first two lines of an X-Plane navdata `.dat` file and extracts
+/// the AIRAC cycle string (e.g. "2512") from a header like:
+/// `1100 Version - data cycle 2512, build 20241114, ...`
+fn read_cycle_from_dat(path: &std::path::Path) -> Option<String> {
+    use std::io::{BufRead, BufReader};
+    let file = std::fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    // Line 1 is the encoding indicator ("I" or "A") — skip it.
+    reader.read_line(&mut line).ok()?;
+    line.clear();
+    // Line 2 contains the version/cycle info.
+    reader.read_line(&mut line).ok()?;
+    let tag = "data cycle ";
+    let idx = line.find(tag)?;
+    let rest = &line[idx + tag.len()..];
+    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let cycle = &rest[..end];
+    if cycle.len() == 4 {
+        Some(cycle.to_string())
+    } else {
+        None
+    }
+}
+
+/// Attempts to read the AIRAC cycle from X-Plane's installed navdata.
+/// Checks (in priority order):
+///   1. Custom Data/earth_nav.dat  — Navigraph or other custom navdata
+///   2. Resources/default data/earth_nav.dat — stock X-Plane navdata
+///   3. Global Scenery/Global Airports/Earth nav data/apt.dat — apt.dat header
+/// Returns `None` if none of the files contain a parseable cycle.
+pub fn detect_xplane_airac_cycle(xplane_root: &std::path::Path) -> Option<String> {
+    let candidates = [
+        xplane_root.join("Custom Data").join("earth_nav.dat"),
+        xplane_root.join("Resources").join("default data").join("earth_nav.dat"),
+        xplane_root
+            .join("Global Scenery")
+            .join("Global Airports")
+            .join("Earth nav data")
+            .join("apt.dat"),
+    ];
+    for path in &candidates {
+        if let Some(cycle) = read_cycle_from_dat(path) {
+            return Some(cycle);
+        }
+    }
+    None
+}
+
+/// Resolves the AIRAC cycle to embed in exports.
+/// Prefers the cycle found in X-Plane's installed navdata; falls back to the
+/// current real-world cycle computed from the system clock.
+fn resolve_airac_cycle(xplane_root: Option<&std::path::Path>) -> String {
+    if let Some(root) = xplane_root {
+        if let Some(cycle) = detect_xplane_airac_cycle(root) {
+            return cycle;
+        }
+    }
+    // Fallback: compute from system clock.
+    // AIRAC 2501 started 2025-01-23 00:00:00 UTC.
+    use std::time::{SystemTime, UNIX_EPOCH};
+    const REF_UNIX: u64 = 1737590400;
+    const CYCLE_SECS: u64 = 28 * 24 * 3600;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(REF_UNIX);
+    if now < REF_UNIX {
+        return "2501".to_string();
+    }
+    let n = (now - REF_UNIX) / CYCLE_SECS;
+    let year = 25u64 + n / 13;
+    let cycle = (n % 13) + 1;
+    format!("{:02}{:02}", year, cycle)
+}
+
+pub fn export_fms_11(plan: &FlightPlan, xplane_root: Option<&std::path::Path>) -> String {
     format!(
-        "I\n1100 Version\nCYCLE 1709\nADEP {}\nADES {}\nNUMENR 0\n",
-        plan.origin.id, plan.destination.id
+        "I\n1100 Version\nCYCLE {}\nADEP {}\nADES {}\nNUMENR 0\n",
+        resolve_airac_cycle(xplane_root),
+        plan.origin.id,
+        plan.destination.id
     )
 }
 
-pub fn export_fms_12(plan: &FlightPlan) -> String {
-    // XP12 FMS usually just uses same 1100 version or 3? FMS 3 is old. 1100 is standard.
-    // Let's stick to 1100 unless we find otherwise.
-    export_fms_11(plan)
+pub fn export_fms_12(plan: &FlightPlan, xplane_root: Option<&std::path::Path>) -> String {
+    // XP12 uses the same 1100-format file as XP11.
+    export_fms_11(plan, xplane_root)
 }
 
-pub fn export_lnmpln(plan: &FlightPlan) -> String {
+pub fn export_lnmpln(plan: &FlightPlan, xplane_root: Option<&std::path::Path>) -> String {
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <LittleNavmap xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.littlenavmap.org/schema/lnmpln.xsd">
@@ -1695,7 +1824,7 @@ pub fn export_lnmpln(plan: &FlightPlan) -> String {
       <Documentation>{}</Documentation>
     </Header>
     <SimData>XPlane12</SimData>
-    <NavData Cycle="1801">NAVIGRAPH</NavData>
+    <NavData Cycle="{}">NAVIGRAPH</NavData>
     <Waypoints>
       <Waypoint>
         <Name>{}</Name>
@@ -1714,6 +1843,7 @@ pub fn export_lnmpln(plan: &FlightPlan) -> String {
 </LittleNavmap>"#,
         chrono::Local::now().to_rfc3339(),
         plan.route_description,
+        resolve_airac_cycle(xplane_root),
         plan.origin.name,
         plan.origin.id,
         plan.origin.lon.unwrap_or_default(),
@@ -2166,6 +2296,7 @@ mod tests {
             context: None,
             time: None,
             weather: None,
+            weather_confirmed: false,
         };
         let url = export_simbrief(&plan);
         assert!(

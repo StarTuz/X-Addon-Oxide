@@ -25,6 +25,15 @@ pub struct FlightPrompt {
     pub duration_minutes: Option<u32>,
     pub ignore_guardrails: bool,
     pub keywords: FlightKeywords,
+    /// Soft distance floor from a matched aircraft rule (nm). Overridden by duration keywords.
+    #[serde(default)]
+    pub aircraft_min_dist: Option<f64>,
+    /// Soft distance cap from a matched aircraft rule (nm). Overridden by duration keywords.
+    #[serde(default)]
+    pub aircraft_max_dist: Option<f64>,
+    /// Cruise speed override from a matched aircraft rule (kts). Overrides heuristic estimate.
+    #[serde(default)]
+    pub aircraft_speed_kts: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -106,6 +115,9 @@ impl Default for FlightPrompt {
             duration_minutes: None,
             ignore_guardrails: false,
             keywords: FlightKeywords::default(),
+            aircraft_min_dist: None,
+            aircraft_max_dist: None,
+            aircraft_speed_kts: None,
         }
     }
 }
@@ -122,59 +134,129 @@ impl FlightPrompt {
             clean_input = clean_input.replace("ignore guardrails", "");
         }
 
+        // Helper: sort rule slice by priority descending, return sorted references.
+        fn sorted_rules<'a>(rules: &'a [crate::NLPRule]) -> Vec<&'a crate::NLPRule> {
+            let mut v: Vec<&crate::NLPRule> = rules.iter().collect();
+            v.sort_by(|a, b| b.priority.cmp(&a.priority));
+            v
+        }
+
         // 2. Parse Keywords (Global search)
-        // Duration
-        if clean_input.contains("short")
-            || clean_input.contains("hop")
-            || clean_input.contains("quick")
-        {
-            prompt.keywords.duration = Some(DurationKeyword::Short);
-        } else if clean_input.contains("medium") {
-            prompt.keywords.duration = Some(DurationKeyword::Medium);
-        } else if clean_input.contains("long haul") {
-            prompt.keywords.duration = Some(DurationKeyword::Haul);
-        } else if clean_input.contains("long") {
-            prompt.keywords.duration = Some(DurationKeyword::Long);
-        }
-
-        // Surface
-        if clean_input.contains("grass")
-            || clean_input.contains("dirt")
-            || clean_input.contains("gravel")
-            || clean_input.contains("strip")
-            || clean_input.contains("unpaved")
-        {
-            prompt.keywords.surface = Some(SurfaceKeyword::Soft);
-        } else if clean_input.contains("paved")
-            || clean_input.contains("tarmac")
-            || clean_input.contains("concrete")
-            || clean_input.contains("asphalt")
-        {
-            prompt.keywords.surface = Some(SurfaceKeyword::Hard);
-        } else if clean_input.contains("water")
-            || clean_input.contains("seaplane")
-            || clean_input.contains("floatplane")
-            || clean_input.contains("amphibian")
-        {
-            prompt.keywords.surface = Some(SurfaceKeyword::Water);
-        }
-
-        // Type
-        if clean_input.contains("bush") || clean_input.contains("backcountry") {
-            prompt.keywords.flight_type = Some(TypeKeyword::Bush);
-            // Bush implies soft if not specified
-            if prompt.keywords.surface.is_none() {
-                prompt.keywords.surface = Some(SurfaceKeyword::Soft);
+        // Duration — JSON rules checked first (priority-sorted), then hardcoded fallback.
+        let mut duration_matched = false;
+        for rule in sorted_rules(&rules.duration_rules) {
+            if rule
+                .keywords
+                .iter()
+                .any(|k| clean_input.contains(k.to_lowercase().as_str()))
+            {
+                let mapped = match rule.mapped_value.to_lowercase().as_str() {
+                    "short" | "hop" | "quick" | "sprint" => DurationKeyword::Short,
+                    "medium" | "mid" => DurationKeyword::Medium,
+                    "haul" | "long haul" | "ultra long" | "intercontinental" => DurationKeyword::Haul,
+                    _ => DurationKeyword::Long, // "long" and anything else
+                };
+                prompt.keywords.duration = Some(mapped);
+                duration_matched = true;
+                break;
             }
-        } else if clean_input.contains("regional") {
-            prompt.keywords.flight_type = Some(TypeKeyword::Regional);
-        } else if clean_input.contains("regional") {
-            prompt.keywords.flight_type = Some(TypeKeyword::Regional);
+        }
+        if !duration_matched {
+            if clean_input.contains("short")
+                || clean_input.contains("hop")
+                || clean_input.contains("quick")
+            {
+                prompt.keywords.duration = Some(DurationKeyword::Short);
+            } else if clean_input.contains("medium") {
+                prompt.keywords.duration = Some(DurationKeyword::Medium);
+            } else if clean_input.contains("long haul")
+                || clean_input.contains("ultra long")
+                || clean_input.contains("transatlantic")
+                || clean_input.contains("transpacific")
+                || clean_input.contains("transcontinental")
+            {
+                prompt.keywords.duration = Some(DurationKeyword::Haul);
+            } else if clean_input.contains("long") {
+                prompt.keywords.duration = Some(DurationKeyword::Long);
+            }
         }
 
-        // Time
+        // Surface — JSON rules checked first, then hardcoded fallback.
+        let mut surface_matched = false;
+        for rule in sorted_rules(&rules.surface_rules) {
+            if rule
+                .keywords
+                .iter()
+                .any(|k| clean_input.contains(k.to_lowercase().as_str()))
+            {
+                let mapped = match rule.mapped_value.to_lowercase().as_str() {
+                    "hard" | "paved" | "tarmac" | "asphalt" => SurfaceKeyword::Hard,
+                    "water" | "seaplane" | "float" => SurfaceKeyword::Water,
+                    _ => SurfaceKeyword::Soft, // "soft" and anything else
+                };
+                prompt.keywords.surface = Some(mapped);
+                surface_matched = true;
+                break;
+            }
+        }
+        if !surface_matched {
+            if clean_input.contains("grass")
+                || clean_input.contains("dirt")
+                || clean_input.contains("gravel")
+                || clean_input.contains("strip")
+                || clean_input.contains("unpaved")
+            {
+                prompt.keywords.surface = Some(SurfaceKeyword::Soft);
+            } else if clean_input.contains("paved")
+                || clean_input.contains("tarmac")
+                || clean_input.contains("concrete")
+                || clean_input.contains("asphalt")
+            {
+                prompt.keywords.surface = Some(SurfaceKeyword::Hard);
+            } else if clean_input.contains("water")
+                || clean_input.contains("seaplane")
+                || clean_input.contains("floatplane")
+                || clean_input.contains("amphibian")
+            {
+                prompt.keywords.surface = Some(SurfaceKeyword::Water);
+            }
+        }
+
+        // Type — JSON rules checked first, then hardcoded fallback.
+        let mut type_matched = false;
+        for rule in sorted_rules(&rules.flight_type_rules) {
+            if rule
+                .keywords
+                .iter()
+                .any(|k| clean_input.contains(k.to_lowercase().as_str()))
+            {
+                let mapped = match rule.mapped_value.to_lowercase().as_str() {
+                    "bush" | "backcountry" | "remote" | "stol" => TypeKeyword::Bush,
+                    _ => TypeKeyword::Regional, // "regional" and anything else
+                };
+                prompt.keywords.flight_type = Some(mapped.clone());
+                // Bush implies soft surface if not already set
+                if mapped == TypeKeyword::Bush && prompt.keywords.surface.is_none() {
+                    prompt.keywords.surface = Some(SurfaceKeyword::Soft);
+                }
+                type_matched = true;
+                break;
+            }
+        }
+        if !type_matched {
+            if clean_input.contains("bush") || clean_input.contains("backcountry") {
+                prompt.keywords.flight_type = Some(TypeKeyword::Bush);
+                if prompt.keywords.surface.is_none() {
+                    prompt.keywords.surface = Some(SurfaceKeyword::Soft);
+                }
+            } else if clean_input.contains("regional") {
+                prompt.keywords.flight_type = Some(TypeKeyword::Regional);
+            }
+        }
+
+        // Time — JSON rules checked first (priority-sorted), then hardcoded fallback.
         let mut time_matched = false;
-        for rule in &rules.time_rules {
+        for rule in sorted_rules(&rules.time_rules) {
             if rule
                 .keywords
                 .iter()
@@ -188,7 +270,7 @@ impl FlightPrompt {
                     "night" | "midnight" | "dark" | "night flight" | "moonlight" | "late night" => {
                         TimeKeyword::Night
                     }
-                    _ => TimeKeyword::Day, // Default fallback
+                    _ => TimeKeyword::Day,
                 };
                 prompt.keywords.time = Some(mapped);
                 time_matched = true;
@@ -200,10 +282,13 @@ impl FlightPrompt {
             if contains_phrase(&clean_input, "dawn")
                 || contains_phrase(&clean_input, "sunrise")
                 || contains_phrase(&clean_input, "morning")
+                || contains_phrase(&clean_input, "golden hour")
+                || contains_phrase(&clean_input, "golden")
             {
                 prompt.keywords.time = Some(TimeKeyword::Dawn);
             } else if contains_phrase(&clean_input, "day")
                 || contains_phrase(&clean_input, "daytime")
+                || contains_phrase(&clean_input, "daylight")
                 || contains_phrase(&clean_input, "afternoon")
                 || contains_phrase(&clean_input, "noon")
             {
@@ -211,6 +296,7 @@ impl FlightPrompt {
             } else if contains_phrase(&clean_input, "dusk")
                 || contains_phrase(&clean_input, "sunset")
                 || contains_phrase(&clean_input, "evening")
+                || contains_phrase(&clean_input, "twilight")
             {
                 prompt.keywords.time = Some(TimeKeyword::Dusk);
             } else if contains_phrase(&clean_input, "night")
@@ -221,9 +307,9 @@ impl FlightPrompt {
             }
         }
 
-        // Weather
+        // Weather — JSON rules checked first (priority-sorted), then hardcoded fallback.
         let mut weather_matched = false;
-        for rule in &rules.weather_rules {
+        for rule in sorted_rules(&rules.weather_rules) {
             if rule
                 .keywords
                 .iter()
@@ -237,8 +323,10 @@ impl FlightPrompt {
                     "cloudy" | "overcast" | "clouds" | "mvfr" | "marginal" | "scattered"
                     | "few clouds" | "broken" => WeatherKeyword::Cloudy,
                     "storm" | "thunder" | "thunderstorm" | "severe" | "lifr" | "low ifr"
-                    | "breezy" | "gusty" | "windy" | "challenge" | "hard mode" => {
-                        WeatherKeyword::Storm
+                    | "challenge" | "hard mode" => WeatherKeyword::Storm,
+                    "gusty" | "windy" | "breezy" | "turbulent" | "gusts" => WeatherKeyword::Gusty,
+                    "calm" | "still" | "smooth" | "no wind" | "light winds" | "glassy" => {
+                        WeatherKeyword::Calm
                     }
                     "snow" | "blizzard" | "ice" | "wintry" | "winter" | "frozen" | "snowy"
                     | "icy" => WeatherKeyword::Snow,
@@ -271,6 +359,20 @@ impl FlightPrompt {
                 || contains_phrase(&clean_input, "severe")
             {
                 prompt.keywords.weather = Some(WeatherKeyword::Storm);
+            } else if contains_phrase(&clean_input, "gusty")
+                || contains_phrase(&clean_input, "windy")
+                || contains_phrase(&clean_input, "breezy")
+                || contains_phrase(&clean_input, "turbulent")
+                || contains_phrase(&clean_input, "gusts")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Gusty);
+            } else if contains_phrase(&clean_input, "calm")
+                || contains_phrase(&clean_input, "still")
+                || contains_phrase(&clean_input, "smooth")
+                || contains_phrase(&clean_input, "light winds")
+                || contains_phrase(&clean_input, "glassy")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Calm);
             } else if contains_phrase(&clean_input, "snow")
                 || contains_phrase(&clean_input, "blizzard")
                 || contains_phrase(&clean_input, "ice")
@@ -294,10 +396,11 @@ impl FlightPrompt {
 
         // 3. Parse Origin and Destination
         // Patterns: "from X to Y", "flight from X to Y", "X to Y"
+        // Suffix terminators include "via" so "Paris via Brussels" → dest="paris".
         static LOC_RE: OnceLock<Regex> = OnceLock::new();
         let loc_re = LOC_RE.get_or_init(|| {
             Regex::new(
-                r"(?:flight\s+from\s+|\bfrom\s+|^flight\s+)?(.+?)\s+\bto\b\s+(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|$)",
+                r"(?:flight\s+from\s+|\bfrom\s+|^flight\s+)?(.+?)\s+\bto\b\s+(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|\s+\bvia\b|$)",
             )
             .unwrap()
         });
@@ -314,8 +417,22 @@ impl FlightPrompt {
                 || origin_str.ends_with(" flight")
                 || origin_str == "hop"
                 || origin_str.ends_with(" hop")
+                || origin_str == "trip"
+                || origin_str.ends_with(" trip")
+                || origin_str == "run"
+                || origin_str.ends_with(" run")
+                || origin_str == "journey"
+                || origin_str.ends_with(" journey")
                 || origin_str == "a"
-                || origin_str == "the";
+                || origin_str == "the"
+                // "fly", "flying", "heading", "going", "headed", "bound" appear when
+                // someone writes "fly to X" and LOC_RE picks up "fly" as origin.
+                || origin_str == "fly"
+                || origin_str == "flying"
+                || origin_str == "heading"
+                || origin_str == "going"
+                || origin_str == "headed"
+                || origin_str == "bound";
 
             if is_noise_origin {
                 // Treat as destination-only (same as "flight to X" / "to X" path)
@@ -325,10 +442,12 @@ impl FlightPrompt {
                 prompt.destination = Some(parse_location(dest_str));
             }
         } else {
-            // Fallback: Check for destination-only prompt "to X" or "flight to X"
+            // Fallback: Check for destination-only prompt.
+            // Handles: "to X", "flight to X", "fly to X", "heading to X",
+            // "going to X", "headed to X", "bound for X".
             static TO_RE: OnceLock<Regex> = OnceLock::new();
             let to_re = TO_RE.get_or_init(|| {
-                Regex::new(r"(?:^flight\s+to\s+|^to\s+)(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|$)")
+                Regex::new(r"(?:^(?:flight|fly|flying|heading|going|headed)\s+to\s+|^to\s+|^bound\s+for\s+)(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|\s+\bvia\b|$)")
                     .unwrap()
             });
             if let Some(caps) = to_re.captures(&clean_input) {
@@ -378,19 +497,25 @@ impl FlightPrompt {
             .replace("long flight", "")
             .replace("medium flight", "")
             .replace("bush flight", "")
+            .replace("bush trip", "")
             .replace("backcountry flight", "")
+            .replace("backcountry trip", "")
+            .replace("quick trip", "")
             .replace("ignore guardrails", "");
 
         let mut acf_matched = false;
 
-        // 1. Check Custom Dictionary First (Global Search)
-        for rule in &rules.aircraft_rules {
+        // 1. Check Custom Dictionary First (Global Search, priority-sorted)
+        for rule in sorted_rules(&rules.aircraft_rules) {
             if rule
                 .keywords
                 .iter()
                 .any(|k| contains_phrase(&clean_input, &k.to_lowercase()))
             {
                 prompt.aircraft = Some(AircraftConstraint::Tag(rule.mapped_value.clone()));
+                prompt.aircraft_min_dist = rule.min_distance_nm.map(|v| v as f64);
+                prompt.aircraft_max_dist = rule.max_distance_nm.map(|v| v as f64);
+                prompt.aircraft_speed_kts = rule.speed_kts;
                 acf_matched = true;
                 break;
             }
@@ -430,6 +555,22 @@ impl FlightPrompt {
                         | "clear skies"
                         | "bad weather"
                         | "good weather"
+                        | "gusty"
+                        | "gusty conditions"
+                        | "gusty winds"
+                        | "windy"
+                        | "windy conditions"
+                        | "breezy"
+                        | "calm"
+                        | "calm conditions"
+                        | "turbulent"
+                        | "turbulence"
+                        | "stormy"
+                        | "stormy conditions"
+                        | "clear weather"
+                        | "sunny"
+                        | "overcast"
+                        | "cloudy"
                 );
 
                 if !is_weather_false_positive {
@@ -489,6 +630,14 @@ impl FlightPrompt {
                         acf_str = "Helicopter".to_string();
                     } else if acf_lower.contains("glider") || acf_lower.contains("sailplane") {
                         acf_str = "Glider".to_string();
+                    } else if acf_lower.contains("turboprop")
+                        || acf_lower.contains("turbo prop")
+                        || acf_lower.contains("twin engine")
+                        || acf_lower.contains("twin-engine")
+                        || acf_lower.contains("single engine")
+                        || acf_lower.contains("single-engine")
+                    {
+                        acf_str = "General Aviation".to_string();
                     }
 
                     if !acf_str.is_empty() {
@@ -861,6 +1010,87 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
             None
         }
     }
+}
+
+/// Validates an `NLPRulesConfig` for semantic correctness beyond JSON syntax.
+/// Returns a list of human-readable error strings; empty means the config is valid.
+/// Aircraft rules are not validated (mapped_value is a free-form discovery tag).
+pub fn validate_nlp_config(config: &crate::NLPRulesConfig) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    let valid_time: &[&str] = &[
+        "dawn", "sunrise", "morning", "golden hour", "golden",
+        "day", "daytime", "daylight", "afternoon", "noon",
+        "dusk", "sunset", "evening", "twilight", "civil twilight",
+        "night", "midnight", "dark", "night flight", "moonlight", "late night",
+    ];
+    let valid_weather: &[&str] = &[
+        "clear", "sunny", "fair", "vfr", "visual", "clear vfr", "cavok", "cavu",
+        "clear skies", "blue sky", "easy", "relax", "scenic",
+        "cloudy", "overcast", "clouds", "mvfr", "marginal", "scattered", "few clouds", "broken",
+        "storm", "thunder", "thunderstorm", "severe", "lifr", "low ifr", "challenge", "hard mode",
+        "gusty", "windy", "breezy", "turbulent", "gusts",
+        "calm", "still", "smooth", "no wind", "light winds", "glassy",
+        "snow", "blizzard", "ice", "wintry", "winter", "frozen", "snowy", "icy",
+        "rain", "showers", "wet",
+        "fog", "mist", "haze", "ifr", "instrument", "smoky",
+    ];
+    let valid_surface: &[&str] = &[
+        "soft", "grass", "dirt", "gravel", "strip", "unpaved",
+        "hard", "paved", "tarmac", "concrete", "asphalt",
+        "water", "seaplane", "float",
+    ];
+    let valid_type: &[&str] = &[
+        "bush", "backcountry", "remote", "stol",
+        "regional", "commuter",
+    ];
+    let valid_duration: &[&str] = &[
+        "short", "hop", "quick", "sprint",
+        "medium", "mid",
+        "long", "long range",
+        "haul", "long haul", "ultra long", "intercontinental",
+        "transatlantic", "transpacific", "transcontinental",
+    ];
+
+    fn check_category(
+        rules: &[crate::NLPRule],
+        category: &str,
+        valid: &[&str],
+        errors: &mut Vec<String>,
+    ) {
+        for (i, rule) in rules.iter().enumerate() {
+            if rule.mapped_value.trim().is_empty() {
+                errors.push(format!(
+                    "{}[{}] \"{}\": mapped_value cannot be empty.",
+                    category, i, rule.name
+                ));
+            } else if !valid.contains(&rule.mapped_value.to_lowercase().trim()) {
+                errors.push(format!(
+                    "{}[{}] \"{}\": \"{}\" is not a recognized value. Valid options: {}",
+                    category, i, rule.name, rule.mapped_value,
+                    valid.join(", ")
+                ));
+            }
+        }
+    }
+
+    check_category(&config.time_rules, "time_rules", valid_time, &mut errors);
+    check_category(&config.weather_rules, "weather_rules", valid_weather, &mut errors);
+    check_category(&config.surface_rules, "surface_rules", valid_surface, &mut errors);
+    check_category(&config.flight_type_rules, "flight_type_rules", valid_type, &mut errors);
+    check_category(&config.duration_rules, "duration_rules", valid_duration, &mut errors);
+
+    // Aircraft rules: only check non-empty mapped_value
+    for (i, rule) in config.aircraft_rules.iter().enumerate() {
+        if rule.mapped_value.trim().is_empty() {
+            errors.push(format!(
+                "aircraft_rules[{}] \"{}\": mapped_value cannot be empty.",
+                i, rule.name
+            ));
+        }
+    }
+
+    errors
 }
 
 #[cfg(test)]
