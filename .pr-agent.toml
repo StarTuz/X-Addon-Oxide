@@ -1,0 +1,38 @@
+[config]
+# Exclude large/binary files from Qodo's diff analysis so the AI
+# can focus on reviewable code changes and doesn't hit token limits.
+ignore_pr_source_files = [
+    # Compiled output & packages
+    "*.pdf",
+    "*.exe",
+    "*.msi",
+    "*.dmg",
+    "*.AppImage",
+    "*.tar.gz",
+    # Image assets
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.svg",
+    "*.ico",
+    "*.webp",
+    # Handbook source (reviewed separately)
+    "HANDBOOK.md",
+    # Lock files (noise, no review value)
+    "Cargo.lock",
+]
+
+[pr_reviewer]
+# Keep suggestions focused on logic, correctness, and Rust idioms.
+extra_instructions = """
+This is a Rust workspace (x-adox-core, x-adox-gui, x-adox-bitnet, x-adox-cli).
+Focus review on:
+- Correctness of unsafe or concurrent code (rayon, Mutex, OnceLock)
+- Ownership and lifetime issues
+- Performance regressions in hot paths (scenery scan, flight generation, airport pool)
+- Test coverage for new behaviour
+"""
+
+[pr_description]
+# Auto-generate PR descriptions using conventional commit style.
+extra_instructions = "Follow conventional commits: feat:, fix:, perf:, test:, docs:, UI:"
