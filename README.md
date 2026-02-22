@@ -16,13 +16,23 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 | **Scenery Health Diagnostics** | ✅ | ❌ |
 | **Interactive World Map** | ✅ | ❌ |
 | **Shadow Mesh Detection** | ✅ | ❌ |
-| **Premium Animated Splash** | ✅ | ❌ |
-| **Modern Dark GUI** | ✅ | ❌ |
+| **Natural Language Flight Planning** | ✅ | ❌ |
+| **FlyWithLua Script Management** | ✅ | ❌ |
 | **Companion App Launcher** | ✅ | ❌ |
 | **Automatic Logbook Sync** | ✅ | ❌ |
+| **Premium Animated Splash** | ✅ | ❌ |
+| **Modern Dark GUI** | ✅ | ❌ |
 
 ## Feature Highlights
 
+- **New for 2.4.0**:
+  - **Flight Generator — Weather & Time NLP**: Describe your flight in plain English including weather and time of day. "Stormy morning flight from EGLL to LFPG in a 737" will filter airports by live METAR conditions and pick a realistic departure time automatically. Supports storm, rain, snow, fog, clear, gusty, and calm weather; dawn, morning, noon, afternoon, evening, and night time slots.
+  - **Seaplane & Water Routing**: Dedicated water surface keyword detection — "floatplane", "seaplane", or "amphibian" routes exclusively to seaplane bases, no hardcoded pack filters.
+  - **FlyWithLua Script Management**: Enable and disable individual Lua scripts within FlyWithLua without touching the plugin itself. Scripts toggle between `Scripts/` and `Scripts (disabled)/` with a single click; a live enabled/total badge shows state at a glance.
+  - **Performance Optimizations**: Airport pool now uses `HashMap` with pre-sized capacity (faster flight generation). Scenery cache writes compact JSON instead of pretty-printed (smaller disk footprint). Region index lookups are O(1) via a pre-built `HashMap` index (was O(n) linear scan).
+  - **Brand Identity**: New X-Addon-Oxide wordmark logo integrated into the header toolbar, splash screen, and Settings About section.
+  - **Professional User Manual**: Full PDF handbook ([X-Addon-Oxide-User-Manual.pdf](X-Addon-Oxide-User-Manual.pdf)) shipping alongside the app for offline reference.
+  - **AppImage in CI**: Linux releases now ship a portable `.AppImage` as the primary download in addition to a plain binary tarball — no installation required on any Linux distribution.
 - **New for 2.3.1**:
   - **Refined Log Analysis Export**: Export missing resource reports as CSV or TXT with selective checkboxes and a 'Select All / Deselect All' toggle.
   - **Strict Scenery Adherence**: The app now strictly follows your `scenery_packs.ini` and stops auto-adding unmanaged folders found on disk, giving you total control over your library.
@@ -44,15 +54,16 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 - **Shadow Mesh Detection**: Automatically identifies redundant mesh scenery that destroys load times, helping you optimize performance.
 - **Profiles**: Create and switch between different hangar configurations (e.g., "IFR Online", "VFR Scenery Heavy") instantly.
 - **Companion App Launcher**: Manage and launch external tools like SimBrief, Navigraph, or VATSIM clients directly from the Plugins tab.
-- **Flight Generator**: Natural-language flight plans (e.g. “London to Paris in a 737”) with **Regenerate** for a new outcome and BitNet learning (“Remember this flight”, “Prefer this origin/destination”).
-- **Logbook & Utilities**: Automatically synced pilot logbook and live aircraft tracking in the Utilities tab
+- **Flight Generator**: Natural-language flight plans (e.g. "Stormy evening from London to Paris in a 737") with live METAR weather filtering, time-of-day preferences, seaplane/water routing, **Regenerate** for a new outcome, and BitNet learning ("Remember this flight", "Prefer this origin/destination").
+- **FlyWithLua Scripts**: Per-script enable/disable for FlyWithLua without disabling the whole plugin — ideal for managing large script libraries.
+- **Logbook & Utilities**: Automatically synced pilot logbook and live aircraft tracking in the Utilities tab.
 
 ### 🧠 AI & Visuals
 
 - **AI Smart View**: Powered by our **offline** local **BitNet** heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging. **0% Network Usage, 100% Privacy.** Now with cached grouping for instant switching.
 - **World Map**: Visualize your entire scenery library on an interactive global map. See exactly where your coverage is.
 - **Buttery Smooth UI**: Decoupled rendering and optimized parsers ensure the interface remains responsive even with thousands of scenery packs and aircraft.
-- **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, and smooth animations. Now featuring an **Animated Splash Screen** with shimmering progress indicators.
+- **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, smooth animations, and the X-Addon-Oxide wordmark logo in the header. Features an **Animated Splash Screen** with shimmering progress indicators.
 - **Diagnostic Intelligence**: Built-in health checks that alert you to missing metadata or improper scenery classifications. See [HEALTH_SCORE.md](HEALTH_SCORE.md) for details.
 
 ### 📦 Deployment
@@ -64,9 +75,16 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ### v2.4.0
 
-- **New Aircraft Manuals Feature**: Launch PDF manuals directly from the aircraft tab.
-- **Improved Map Rendering**: Map tiles now render immediately on startup.
-- **UI Refinements**: Replaced unicode symbols with reliable ASCII indicators.
+- **Flight Generator — Weather NLP**: Live METAR filtering via aviationweather.gov cache. Keywords: `stormy`, `rainy`, `snowy`, `foggy`, `gusty`, `calm`, `clear`.
+- **Flight Generator — Time NLP**: Departure time preferences from natural language. Keywords: `dawn`, `morning`, `noon`, `afternoon`, `evening`, `night`, `midnight`.
+- **Flight Generator — Seaplane Routing**: `water`/`seaplane`/`floatplane`/`amphibian` keywords route exclusively to seaplane bases.
+- **Flight Generator — NLP Vocabulary Expanded**: 170+ city aliases, 154 geographic regions, 66 ICAO prefix mappings, aircraft modifier phrase stripping.
+- **FlyWithLua Script Management**: Enable/disable individual Lua scripts without touching the plugin.
+- **Performance**: `HashMap` airport pool with pre-sized capacity; compact JSON scenery cache; O(1) region index lookups.
+- **Brand Identity**: New wordmark logo in header toolbar, splash screen, and Settings About page.
+- **Professional PDF Manual**: Full [user handbook](X-Addon-Oxide-User-Manual.pdf) available for offline reference.
+- **AppImage CI**: Linux releases now include a portable `.AppImage` as the primary download.
+- **Code Quality**: UTF-8 safe string scanning in NLP parser; structured key=value logging throughout; non-blocking weather cache (no live network fetch during flight generation).
 
 ### v2.3.3
 
@@ -90,7 +108,7 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 3. **Smart Sorting**: Use "AI Smart View" in the Aircraft tab to see your fleet organized by role.
 4. **Manual Control**: Right-click or use the dropdown in the Aircraft preview to set a manual category override.
 
-For more detailed instructions, see the [Full User Guide](USER_GUIDE.md).
+For detailed instructions, see the [User Manual (PDF)](X-Addon-Oxide-User-Manual.pdf).
 
 ## Configuration
 
@@ -108,7 +126,7 @@ Grab the latest professional installers from the [Releases](https://github.com/S
 
 - **Windows**: `.exe` (NSIS Installer)
 - **macOS**: `.dmg` (Disk Image)
-- **Linux**: `.tar.gz` (Binary tarball)
+- **Linux**: `.AppImage` (Portable — no install required) or `.tar.gz` (Binary tarball)
 
 ### Building from Source
 
@@ -161,7 +179,7 @@ sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel libxk
 
 #### Building AppImage (Linux)
 
-For a portable Linux distribution, you can build an AppImage using Docker to ensure compatibility across distributions (like Arch or Ubuntu):
+For a portable Linux distribution, you can build an AppImage using Docker to ensure compatibility across distributions:
 
 ```bash
 chmod +x scripts/build_appimage.sh
@@ -187,5 +205,5 @@ For more details on our project's history and original authorship, please see [A
 
 This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for the full text.
 
-Copyright (c) 2020 Austin Goudge  
+Copyright (c) 2020 Austin Goudge
 Copyright (c) 2026 StarTuz
