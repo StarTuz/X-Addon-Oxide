@@ -44,15 +44,19 @@ impl Region {
 
 use std::sync::Arc;
 
+// Module-level static so that the index HashMaps (built once) are shared
+// across all RegionIndex instances and across both lookup sites
+// (generate_flight_inner and flight_prompt parser).
+static REGION_CACHE: crate::geo::data::CachedRegions = crate::geo::data::CachedRegions::new();
+
 pub struct RegionIndex {
     regions: Arc<Vec<Region>>,
 }
 
 impl RegionIndex {
     pub fn new() -> Self {
-        static CACHE: crate::geo::data::CachedRegions = crate::geo::data::CachedRegions::new();
         Self {
-            regions: Arc::clone(CACHE.get_arc()),
+            regions: Arc::clone(REGION_CACHE.get_arc()),
         }
     }
 
@@ -63,30 +67,37 @@ impl RegionIndex {
             .collect()
     }
 
+    /// O(1) lookup by region ID (case-insensitive).
     pub fn get_by_id(&self, id: &str) -> Option<&Region> {
-        self.regions.iter().find(|r| r.id == id)
+        let id_lower = id.to_lowercase();
+        REGION_CACHE
+            .get_id_index()
+            .get(&id_lower)
+            .map(|&i| &self.regions[i])
     }
 
+    /// O(1) lookup by region name (case-insensitive exact match).
     pub fn get_by_name(&self, name: &str) -> Option<&Region> {
         let name_lower = name.to_lowercase();
-        self.regions
-            .iter()
-            .find(|r| r.name.to_lowercase() == name_lower)
+        REGION_CACHE
+            .get_name_index()
+            .get(&name_lower)
+            .map(|&i| &self.regions[i])
     }
 
-    /// Fuzzy search for a region by name/alias
+    /// Fuzzy search for a region by name/alias.
+    /// Steps 1 and 2 are O(1) via the pre-built index; step 3 falls back to O(n).
     pub fn search(&self, query: &str) -> Option<&Region> {
         let q = query.to_lowercase();
-        // 1. Exact ID match
-        if let Some(r) = self.regions.iter().find(|r| r.id.to_lowercase() == q) {
-            return Some(r);
+        // 1. Exact ID match — O(1)
+        if let Some(&i) = REGION_CACHE.get_id_index().get(&q) {
+            return Some(&self.regions[i]);
         }
-        // 2. Exact Name match
-        if let Some(r) = self.regions.iter().find(|r| r.name.to_lowercase() == q) {
-            return Some(r);
+        // 2. Exact Name match — O(1)
+        if let Some(&i) = REGION_CACHE.get_name_index().get(&q) {
+            return Some(&self.regions[i]);
         }
-        // 3. Substring match (preference to shorter names / root regions?)
-        // For now just return first containing match
+        // 3. Substring match — O(n), only reached for non-exact queries
         self.regions
             .iter()
             .find(|r| r.name.to_lowercase().contains(&q))

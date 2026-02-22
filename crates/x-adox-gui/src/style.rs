@@ -751,6 +751,102 @@ pub fn button_pin_ghost(_theme: &Theme, status: button::Status) -> button::Style
     }
 }
 
+pub fn button_ghost_amber(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.03))),
+        text_color: Color::from_rgba(0.98, 0.65, 0.15, 0.8),
+        border: Border {
+            radius: 8.0.into(),
+            color: Color::from_rgba(0.98, 0.65, 0.15, 0.4),
+            width: 1.0,
+        },
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Hovered | button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgba(0.98, 0.65, 0.15, 0.15))),
+            text_color: Color::from_rgb(0.98, 0.65, 0.15),
+            border: Border {
+                color: Color::from_rgb(0.98, 0.65, 0.15),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.98, 0.65, 0.15, 0.3),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 10.0,
+            },
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_ghost_teal(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.03))),
+        text_color: Color::from_rgba(0.15, 0.85, 0.70, 0.8),
+        border: Border {
+            radius: 8.0.into(),
+            color: Color::from_rgba(0.15, 0.85, 0.70, 0.4),
+            width: 1.0,
+        },
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Hovered | button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgba(0.15, 0.85, 0.70, 0.15))),
+            text_color: Color::from_rgb(0.15, 0.85, 0.70),
+            border: Border {
+                color: Color::from_rgb(0.15, 0.85, 0.70),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.15, 0.85, 0.70, 0.3),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 10.0,
+            },
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_ghost_indigo(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.03))),
+        text_color: Color::from_rgba(0.40, 0.35, 0.90, 0.8),
+        border: Border {
+            radius: 8.0.into(),
+            color: Color::from_rgba(0.40, 0.35, 0.90, 0.4),
+            width: 1.0,
+        },
+        shadow: Shadow::default(),
+    };
+
+    match status {
+        button::Status::Hovered | button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgba(0.40, 0.35, 0.90, 0.15))),
+            text_color: Color::from_rgb(0.40, 0.35, 0.90),
+            border: Border {
+                color: Color::from_rgb(0.40, 0.35, 0.90),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.40, 0.35, 0.90, 0.3),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 10.0,
+            },
+            ..base
+        },
+        _ => base,
+    }
+}
+
 pub fn button_neumorphic(_theme: &Theme, status: button::Status) -> button::Style {
     let base = button::Style {
         background: Some(Background::Color(palette::SURFACE)),
@@ -1031,6 +1127,40 @@ pub fn button_purple_glow(_theme: &Theme, status: button::Status) -> button::Sty
         },
         button::Status::Active => button::Style {
             background: Some(Background::Color(Color::from_rgb(0.6, 0.3, 0.9))),
+            ..base
+        },
+        _ => base,
+    }
+}
+
+pub fn button_magenta_glow(_theme: &Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(palette::ACCENT_MAGENTA)),
+        text_color: Color::WHITE,
+        border: Border {
+            radius: 8.0.into(),
+            width: 1.0,
+            color: Color::from_rgba(0.8, 0.2, 0.8, 0.5),
+        },
+        shadow: Shadow {
+            color: Color::from_rgba(0.8, 0.2, 0.8, 0.6),
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 12.0,
+        },
+    };
+
+    match status {
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.9, 0.3, 0.9))),
+            shadow: Shadow {
+                color: Color::from_rgba(0.8, 0.2, 0.8, 1.0),
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 20.0,
+            },
+            ..base
+        },
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.6, 0.1, 0.6))),
             ..base
         },
         _ => base,

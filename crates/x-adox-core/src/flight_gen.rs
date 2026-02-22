@@ -2,13 +2,13 @@ use crate::apt_dat::{Airport, AirportType, AptDatParser, SurfaceType};
 use crate::discovery::{AddonType, DiscoveredAddon};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::OnceLock;
 use x_adox_bitnet::flight_prompt::{
     AircraftConstraint, DurationKeyword, FlightPrompt, LocationConstraint, SurfaceKeyword,
-    TypeKeyword,
+    TimeKeyword, TypeKeyword,
 };
 use x_adox_bitnet::geo::RegionIndex;
 use x_adox_bitnet::HeuristicsConfig;
@@ -80,16 +80,16 @@ pub fn load_base_airports(xplane_root: &Path) -> Vec<Airport> {
 /// Pre-computed airport pool for high-performance lookups.
 pub struct AirportPool<'a> {
     pub airports: Vec<&'a Airport>,
-    pub icao_map: std::collections::HashMap<&'a str, &'a Airport>,
-    pub name_map: std::collections::HashMap<String, Vec<usize>>, // Lowercase name -> indices in airports
+    pub icao_map: HashMap<&'a str, &'a Airport>,
+    pub name_map: HashMap<String, Vec<usize>>, // Lowercase name -> indices in airports
     pub search_names: Vec<String>, // Parallel to airports, pre-lowercased
 }
 
 impl<'a> AirportPool<'a> {
     pub fn new(source: &'a [Airport]) -> Self {
         let airports: Vec<&Airport> = source.iter().collect();
-        let mut icao_map = std::collections::HashMap::with_capacity(airports.len());
-        let mut name_map = std::collections::HashMap::with_capacity(airports.len());
+        let mut icao_map = HashMap::with_capacity(airports.len());
+        let mut name_map = HashMap::with_capacity(airports.len());
         let mut search_names = Vec::with_capacity(airports.len());
         for (i, apt) in airports.iter().enumerate() {
             icao_map.insert(apt.id.as_str(), *apt);
@@ -460,12 +460,23 @@ pub struct FlightPlan {
     pub dest_region_id: Option<String>,
     /// Optional history & flavor for origin/destination (3.2); None until Phase 2 loads data.
     pub context: Option<FlightContext>,
+    /// Optional requested time of day (e.g., Night, Dusk).
+    pub time: Option<x_adox_bitnet::flight_prompt::TimeKeyword>,
+    /// Optional requested weather (e.g., Storm, Clear).
+    pub weather: Option<x_adox_bitnet::flight_prompt::WeatherKeyword>,
+    /// True only when `weather` was confirmed via live METAR data.
+    /// False means weather is an unverified user preference — don't display as fact.
+    pub weather_confirmed: bool,
 }
 
 use crate::scenery::SceneryPack;
 
 // Helpers with Prompt Context
 fn estimate_speed(a: &DiscoveredAddon, prompt: &FlightPrompt) -> u32 {
+    // JSON aircraft rule speed override takes highest priority.
+    if let Some(kts) = prompt.aircraft_speed_kts {
+        return kts;
+    }
     // Keyword override: Bush planes are slow
     if let Some(TypeKeyword::Bush) = prompt.keywords.flight_type {
         return 100;
@@ -487,7 +498,6 @@ fn estimate_speed(a: &DiscoveredAddon, prompt: &FlightPrompt) -> u32 {
     }
 }
 
-
 /// Orchestrates flight generation based on scenery packs, available aircraft, and a natural language prompt.
 pub fn generate_flight(
     packs: &[SceneryPack],
@@ -495,8 +505,17 @@ pub fn generate_flight(
     prompt_str: &str,
     base_airports: Option<&[Airport]>,
     prefs: Option<&HeuristicsConfig>,
+    nlp_rules: Option<&x_adox_bitnet::NLPRulesConfig>,
 ) -> Result<FlightPlan, String> {
-    generate_flight_with_pool(packs, aircraft_list, prompt_str, base_airports, prefs, None)
+    generate_flight_with_pool(
+        packs,
+        aircraft_list,
+        prompt_str,
+        base_airports,
+        prefs,
+        nlp_rules,
+        None,
+    )
 }
 
 /// A high-performance version of [generate_flight] that can use a pre-computed airport pool.
@@ -506,9 +525,14 @@ pub fn generate_flight_with_pool(
     prompt_str: &str,
     base_airports: Option<&[Airport]>,
     prefs: Option<&HeuristicsConfig>,
+    nlp_rules: Option<&x_adox_bitnet::NLPRulesConfig>,
     precomputed_pool: Option<&AirportPool>,
 ) -> Result<FlightPlan, String> {
-    let prompt = FlightPrompt::parse(prompt_str);
+    static DEFAULT_NLP: std::sync::OnceLock<x_adox_bitnet::NLPRulesConfig> =
+        std::sync::OnceLock::new();
+    let default_rules = DEFAULT_NLP.get_or_init(x_adox_bitnet::NLPRulesConfig::default);
+    let rules = nlp_rules.unwrap_or(default_rules);
+    let prompt = FlightPrompt::parse(prompt_str, rules);
     generate_flight_from_prompt(
         packs,
         aircraft_list,
@@ -593,7 +617,9 @@ pub fn generate_flight_from_prompt(
         all_airports_ref_owned = base_slice.iter().collect();
         &all_airports_ref_owned
     } else {
-        let mut pool: BTreeMap<String, Airport> = BTreeMap::new();
+        let total_hint = base_slice.len()
+            + packs.iter().map(|p| p.airports.len()).sum::<usize>();
+        let mut pool: HashMap<String, Airport> = HashMap::with_capacity(total_hint);
 
         // Add base layer first (baseline data)
         for apt in base_slice {
@@ -641,13 +667,96 @@ pub fn generate_flight_from_prompt(
     );
 
     // 1b. Build ICAO index for O(1) lookups
-    let icao_index_owned: std::collections::HashMap<&str, &Airport>;
+    let icao_index_owned: HashMap<&str, &Airport>;
     let icao_index = if let Some(p) = precomputed_pool {
         &p.icao_map
     } else {
         icao_index_owned = all_airports.iter().map(|a| (a.id.as_str(), *a)).collect();
         &icao_index_owned
     };
+
+    // 1c. Apply Live Real-World Filters (Solar Time & METAR)
+    // weather_map: Some(map) if fetch succeeded (map may be empty on net failure),
+    // None if no weather keyword — used to soft-filter below.
+    let weather_map = if prompt.keywords.weather.is_some() {
+        let engine = crate::weather::WeatherEngine::new();
+        if let Err(e) = engine.fetch_live_metars() {
+            log::warn!("[flight_gen] Failed to fetch live METARs: {}", e);
+        }
+        engine.get_global_weather_map().ok()
+    } else {
+        None
+    };
+    // True only when we actually have METAR data to filter against (non-empty map).
+    let metar_available = weather_map
+        .as_ref()
+        .map(|m| !m.is_empty())
+        .unwrap_or(false);
+
+    let filtered_airports_owned: Vec<&Airport>;
+    let all_airports: &[&Airport] =
+        if prompt.keywords.time.is_some() || prompt.keywords.weather.is_some() {
+            let utc_now = chrono::Utc::now();
+            let before = all_airports.len();
+            filtered_airports_owned = all_airports
+                .iter()
+                .filter(|apt| {
+                    // Solar Time Filter — soft: airports without lon are kept.
+                    if let Some(req_time) = &prompt.keywords.time {
+                        if let Some(lon) = apt.lon {
+                            let solar_time = calculate_solar_time(lon, utc_now);
+                            if solar_time != *req_time {
+                                return false;
+                            }
+                        }
+                        // No lon → can't determine time → keep airport.
+                    }
+                    // Weather Filter — soft: only exclude when the airport IS in the
+                    // METAR map and its actual weather explicitly doesn't match.
+                    // Airports not in the map (no METAR station) are kept.
+                    // If the map is empty (fetch failed), skip the filter entirely.
+                    if let Some(req_wx) = &prompt.keywords.weather {
+                        if metar_available {
+                            if let Some(map) = &weather_map {
+                                if let Some(apt_wx) = map.get(apt.id.as_str()) {
+                                    if apt_wx != req_wx {
+                                        return false;
+                                    }
+                                }
+                                // Airport not in METAR map → keep (no data ≠ wrong weather).
+                            }
+                        }
+                        // metar_available=false → fetch failed → skip weather filter.
+                        let _ = req_wx; // suppress unused warning
+                    }
+                    true
+                })
+                .copied()
+                .collect();
+
+            let after = filtered_airports_owned.len();
+            log::debug!(
+                "[flight_gen] Real-World Filters: {} → {} airports (time={}, weather={}, metar_data={})",
+                before,
+                after,
+                prompt.keywords.time.is_some(),
+                prompt.keywords.weather.is_some(),
+                metar_available,
+            );
+
+            // Fallback: if filters eliminated every airport, discard them and use
+            // the full pool so generation doesn't fail for a transient/time reason.
+            if filtered_airports_owned.is_empty() && before > 0 {
+                log::warn!(
+                    "[flight_gen] Real-World Filters produced 0 airports; ignoring time/weather constraints and using full pool."
+                );
+                all_airports
+            } else {
+                &filtered_airports_owned
+            }
+        } else {
+            all_airports
+        };
 
     // Refined Origin Selection
     let mut candidate_origins: Vec<&Airport> = match prompt.origin {
@@ -845,6 +954,13 @@ pub fn generate_flight_from_prompt(
             }
         } else if prompt.ignore_guardrails {
             (0.0, 20000.0)
+        } else if prompt.aircraft_min_dist.is_some() || prompt.aircraft_max_dist.is_some() {
+            // Aircraft rule supplied a soft distance envelope.
+            // Keyword duration (short/long/haul) takes priority (handled above);
+            // this only applies when no duration keyword was given.
+            let lo = prompt.aircraft_min_dist.unwrap_or(10.0);
+            let hi = prompt.aircraft_max_dist.unwrap_or(8000.0);
+            (lo, hi)
         } else {
             // No keyword constraint: wide-open random discovery.
             // Keywords (short/medium/long/haul) and duration_minutes are the
@@ -858,7 +974,10 @@ pub fn generate_flight_from_prompt(
         // ICAO and NearCity are point types (user named a specific place), so we relax range.
         // Region is an "area" type — keep constraints so random picks stay geographically sensible.
         let is_point = |c: &LocationConstraint| {
-            matches!(c, LocationConstraint::ICAO(_) | LocationConstraint::NearCity { .. })
+            matches!(
+                c,
+                LocationConstraint::ICAO(_) | LocationConstraint::NearCity { .. }
+            )
         };
         let endpoints_explicit = match (&prompt.origin, &prompt.destination) {
             (Some(o), Some(d)) => is_point(o) && is_point(d),
@@ -982,7 +1101,11 @@ pub fn generate_flight_from_prompt(
         let spatial_bounds = if let (Some(lat1), Some(lon1)) = (origin.lat, origin.lon) {
             let lat_rad = lat1.to_radians();
             let cos_lat = lat_rad.cos().abs().max(0.1);
-            let bbox_max = if endpoints_explicit { 20000.0 } else { max_dist };
+            let bbox_max = if endpoints_explicit {
+                20000.0
+            } else {
+                max_dist
+            };
             let dlat = (bbox_max / 60.0) + 0.1;
             let dlon = (bbox_max / (60.0 * cos_lat)) + 0.1;
             Some((lat1, lon1, dlat, dlon))
@@ -1118,6 +1241,20 @@ pub fn generate_flight_from_prompt(
                 origin_region_id,
                 dest_region_id,
                 context: None,
+                time: prompt.keywords.time.clone(),
+                weather: prompt.keywords.weather.clone(),
+                // Only mark confirmed if this specific origin airport has a METAR entry
+                // that matches the requested condition. A non-empty global dataset is not
+                // sufficient — small/remote airports are often absent from METAR feeds.
+                weather_confirmed: weather_map
+                    .as_ref()
+                    .and_then(|map| map.get(origin.id.as_str()))
+                    .map(|actual_wx| {
+                        prompt.keywords.weather.as_ref()
+                            .map(|req| actual_wx == req)
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false),
             });
         }
     }
@@ -1177,7 +1314,7 @@ fn check_safety_constraints(
 fn score_airports_by_name<'a>(
     airports: &[&'a Airport],
     search_names: Option<&[String]>,
-    name_map: Option<&std::collections::HashMap<String, Vec<usize>>>,
+    name_map: Option<&HashMap<String, Vec<usize>>>,
     search_str: &str,
     ignore_guardrails: bool,
     selected_aircraft: &DiscoveredAddon,
@@ -1349,7 +1486,6 @@ fn is_seaplane(a: &DiscoveredAddon) -> bool {
     })
 }
 
-
 /// ICAO location prefix(es) per region. Used to restrict origin/destination to the correct
 /// country (e.g. "Mexico" → MM only, so US airports in the same bounding box are excluded).
 /// Parent fallback applies for sub-regions (US:SoCal → US → K). Continent ids (EU, NA, AS, …)
@@ -1417,73 +1553,73 @@ fn icao_prefixes_for_region(region_id: &str) -> Option<Vec<&'static str>> {
         "PE" => Some(vec!["SP"]),
         "CL" => Some(vec!["SC"]),
         // Eastern Europe
-        "AL" => Some(vec!["LA"]),    // Albania
-        "BA" => Some(vec!["LQ"]),    // Bosnia-Herzegovina
-        "BG" => Some(vec!["LB"]),    // Bulgaria
-        "BY" => Some(vec!["UM"]),    // Belarus
-        "EE" => Some(vec!["EE"]),    // Estonia
-        "HR" => Some(vec!["LD"]),    // Croatia
-        "HU" => Some(vec!["LH"]),    // Hungary
-        "LT" => Some(vec!["EY"]),    // Lithuania
-        "LV" => Some(vec!["EV"]),    // Latvia
-        "MD" => Some(vec!["LU"]),    // Moldova
-        "ME" => Some(vec!["LY"]),    // Montenegro (LY shared with Serbia)
-        "MK" => Some(vec!["LW"]),    // North Macedonia
-        "RO" => Some(vec!["LR"]),    // Romania
-        "RS" => Some(vec!["LY"]),    // Serbia
-        "SI" => Some(vec!["LJ"]),    // Slovenia
-        "SK" => Some(vec!["LZ"]),    // Slovakia
+        "AL" => Some(vec!["LA"]), // Albania
+        "BA" => Some(vec!["LQ"]), // Bosnia-Herzegovina
+        "BG" => Some(vec!["LB"]), // Bulgaria
+        "BY" => Some(vec!["UM"]), // Belarus
+        "EE" => Some(vec!["EE"]), // Estonia
+        "HR" => Some(vec!["LD"]), // Croatia
+        "HU" => Some(vec!["LH"]), // Hungary
+        "LT" => Some(vec!["EY"]), // Lithuania
+        "LV" => Some(vec!["EV"]), // Latvia
+        "MD" => Some(vec!["LU"]), // Moldova
+        "ME" => Some(vec!["LY"]), // Montenegro (LY shared with Serbia)
+        "MK" => Some(vec!["LW"]), // North Macedonia
+        "RO" => Some(vec!["LR"]), // Romania
+        "RS" => Some(vec!["LY"]), // Serbia
+        "SI" => Some(vec!["LJ"]), // Slovenia
+        "SK" => Some(vec!["LZ"]), // Slovakia
         // Middle East
-        "BH" => Some(vec!["OB"]),    // Bahrain
-        "IQ" => Some(vec!["OR"]),    // Iraq
-        "IR" => Some(vec!["OI"]),    // Iran
-        "JO" => Some(vec!["OJ"]),    // Jordan
-        "KW" => Some(vec!["OK"]),    // Kuwait
-        "LB" => Some(vec!["OL"]),    // Lebanon
-        "OM" => Some(vec!["OO"]),    // Oman
-        "SAU" => Some(vec!["OE"]),   // Saudi Arabia
+        "BH" => Some(vec!["OB"]),  // Bahrain
+        "IQ" => Some(vec!["OR"]),  // Iraq
+        "IR" => Some(vec!["OI"]),  // Iran
+        "JO" => Some(vec!["OJ"]),  // Jordan
+        "KW" => Some(vec!["OK"]),  // Kuwait
+        "LB" => Some(vec!["OL"]),  // Lebanon
+        "OM" => Some(vec!["OO"]),  // Oman
+        "SAU" => Some(vec!["OE"]), // Saudi Arabia
         // South & Southeast Asia
-        "BD" => Some(vec!["VG"]),    // Bangladesh
-        "KH" => Some(vec!["VD"]),    // Cambodia
-        "LA" => Some(vec!["VL"]),    // Laos
-        "LK" => Some(vec!["VC"]),    // Sri Lanka
-        "MM" => Some(vec!["VY"]),    // Myanmar
-        "MN" => Some(vec!["ZM"]),    // Mongolia (ZMUB=Ulaanbaatar)
-        "NP" => Some(vec!["VN"]),    // Nepal
-        "PG" => Some(vec!["AY"]),    // Papua New Guinea
-        "PK" => Some(vec!["OP"]),    // Pakistan
+        "BD" => Some(vec!["VG"]), // Bangladesh
+        "KH" => Some(vec!["VD"]), // Cambodia
+        "LA" => Some(vec!["VL"]), // Laos
+        "LK" => Some(vec!["VC"]), // Sri Lanka
+        "MM" => Some(vec!["VY"]), // Myanmar
+        "MN" => Some(vec!["ZM"]), // Mongolia (ZMUB=Ulaanbaatar)
+        "NP" => Some(vec!["VN"]), // Nepal
+        "PG" => Some(vec!["AY"]), // Papua New Guinea
+        "PK" => Some(vec!["OP"]), // Pakistan
         // Africa
-        "AO" => Some(vec!["FN"]),    // Angola
-        "CM" => Some(vec!["FK"]),    // Cameroon
-        "FJ" => Some(vec!["NF"]),    // Fiji
-        "GH" => Some(vec!["DG"]),    // Ghana
-        "LY" => Some(vec!["HL"]),    // Libya
-        "MG" => Some(vec!["FM"]),    // Madagascar
-        "MZ" => Some(vec!["FQ"]),    // Mozambique
-        "RW" => Some(vec!["HR"]),    // Rwanda
-        "SD" => Some(vec!["HS"]),    // Sudan
-        "SN" => Some(vec!["GO"]),    // Senegal
-        "TN" => Some(vec!["DT"]),    // Tunisia
-        "UG" => Some(vec!["HU"]),    // Uganda
-        "ZM" => Some(vec!["FL"]),    // Zambia
-        "ZW" => Some(vec!["FV"]),    // Zimbabwe
+        "AO" => Some(vec!["FN"]), // Angola
+        "CM" => Some(vec!["FK"]), // Cameroon
+        "FJ" => Some(vec!["NF"]), // Fiji
+        "GH" => Some(vec!["DG"]), // Ghana
+        "LY" => Some(vec!["HL"]), // Libya
+        "MG" => Some(vec!["FM"]), // Madagascar
+        "MZ" => Some(vec!["FQ"]), // Mozambique
+        "RW" => Some(vec!["HR"]), // Rwanda
+        "SD" => Some(vec!["HS"]), // Sudan
+        "SN" => Some(vec!["GO"]), // Senegal
+        "TN" => Some(vec!["DT"]), // Tunisia
+        "UG" => Some(vec!["HU"]), // Uganda
+        "ZM" => Some(vec!["FL"]), // Zambia
+        "ZW" => Some(vec!["FV"]), // Zimbabwe
         // Latin America & Caribbean
-        "BO" => Some(vec!["SL"]),    // Bolivia
-        "BS" => Some(vec!["MY"]),    // Bahamas
-        "CR" => Some(vec!["MR"]),    // Costa Rica
-        "CU" => Some(vec!["MU"]),    // Cuba
-        "DO" => Some(vec!["MD"]),    // Dominican Republic
-        "EC" => Some(vec!["SE"]),    // Ecuador
-        "GT" => Some(vec!["MG"]),    // Guatemala
-        "HN" => Some(vec!["MH"]),    // Honduras
-        "HT" => Some(vec!["MT"]),    // Haiti
-        "JM" => Some(vec!["MK"]),    // Jamaica
-        "NI" => Some(vec!["MN"]),    // Nicaragua
-        "PA" => Some(vec!["MP"]),    // Panama
-        "PY" => Some(vec!["SG"]),    // Paraguay
-        "SV" => Some(vec!["MS"]),    // El Salvador
-        "UY" => Some(vec!["SU"]),    // Uruguay
-        "VE" => Some(vec!["SV"]),    // Venezuela
+        "BO" => Some(vec!["SL"]), // Bolivia
+        "BS" => Some(vec!["MY"]), // Bahamas
+        "CR" => Some(vec!["MR"]), // Costa Rica
+        "CU" => Some(vec!["MU"]), // Cuba
+        "DO" => Some(vec!["MD"]), // Dominican Republic
+        "EC" => Some(vec!["SE"]), // Ecuador
+        "GT" => Some(vec!["MG"]), // Guatemala
+        "HN" => Some(vec!["MH"]), // Honduras
+        "HT" => Some(vec!["MT"]), // Haiti
+        "JM" => Some(vec!["MK"]), // Jamaica
+        "NI" => Some(vec!["MN"]), // Nicaragua
+        "PA" => Some(vec!["MP"]), // Panama
+        "PY" => Some(vec!["SG"]), // Paraguay
+        "SV" => Some(vec!["MS"]), // El Salvador
+        "UY" => Some(vec!["SU"]), // Uruguay
+        "VE" => Some(vec!["SV"]), // Venezuela
         _ => None,
     };
     if direct.is_some() {
@@ -1546,7 +1682,7 @@ fn get_seed_airports_for_region(region_id: &str) -> Vec<Airport> {
         lon: f64,
     }
 
-    static SEEDS: OnceLock<std::collections::HashMap<String, Vec<SeedEntry>>> = OnceLock::new();
+    static SEEDS: OnceLock<HashMap<String, Vec<SeedEntry>>> = OnceLock::new();
     let map = SEEDS.get_or_init(|| {
         let json = include_str!("data/seed_airports.json");
         serde_json::from_str(json).expect("seed_airports.json is malformed")
@@ -1584,20 +1720,98 @@ fn haversine_nm(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 }
 
 // Exporters
-pub fn export_fms_11(plan: &FlightPlan) -> String {
+
+/// Reads the first two lines of an X-Plane navdata `.dat` file and extracts
+/// the AIRAC cycle string (e.g. "2512") from a header like:
+/// `1100 Version - data cycle 2512, build 20241114, ...`
+fn read_cycle_from_dat(path: &std::path::Path) -> Option<String> {
+    use std::io::{BufRead, BufReader};
+    let file = std::fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    // Line 1 is the encoding indicator ("I" or "A") — skip it.
+    reader.read_line(&mut line).ok()?;
+    line.clear();
+    // Line 2 contains the version/cycle info.
+    reader.read_line(&mut line).ok()?;
+    let tag = "data cycle ";
+    let idx = line.find(tag)?;
+    let rest = &line[idx + tag.len()..];
+    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let cycle = &rest[..end];
+    if cycle.len() == 4 {
+        Some(cycle.to_string())
+    } else {
+        None
+    }
+}
+
+/// Attempts to read the AIRAC cycle from X-Plane's installed navdata.
+/// Checks (in priority order):
+///   1. Custom Data/earth_nav.dat  — Navigraph or other custom navdata
+///   2. Resources/default data/earth_nav.dat — stock X-Plane navdata
+///   3. Global Scenery/Global Airports/Earth nav data/apt.dat — apt.dat header
+/// Returns `None` if none of the files contain a parseable cycle.
+pub fn detect_xplane_airac_cycle(xplane_root: &std::path::Path) -> Option<String> {
+    let candidates = [
+        xplane_root.join("Custom Data").join("earth_nav.dat"),
+        xplane_root.join("Resources").join("default data").join("earth_nav.dat"),
+        xplane_root
+            .join("Global Scenery")
+            .join("Global Airports")
+            .join("Earth nav data")
+            .join("apt.dat"),
+    ];
+    for path in &candidates {
+        if let Some(cycle) = read_cycle_from_dat(path) {
+            return Some(cycle);
+        }
+    }
+    None
+}
+
+/// Resolves the AIRAC cycle to embed in exports.
+/// Prefers the cycle found in X-Plane's installed navdata; falls back to the
+/// current real-world cycle computed from the system clock.
+fn resolve_airac_cycle(xplane_root: Option<&std::path::Path>) -> String {
+    if let Some(root) = xplane_root {
+        if let Some(cycle) = detect_xplane_airac_cycle(root) {
+            return cycle;
+        }
+    }
+    // Fallback: compute from system clock.
+    // AIRAC 2501 started 2025-01-23 00:00:00 UTC.
+    use std::time::{SystemTime, UNIX_EPOCH};
+    const REF_UNIX: u64 = 1737590400;
+    const CYCLE_SECS: u64 = 28 * 24 * 3600;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(REF_UNIX);
+    if now < REF_UNIX {
+        return "2501".to_string();
+    }
+    let n = (now - REF_UNIX) / CYCLE_SECS;
+    let year = 25u64 + n / 13;
+    let cycle = (n % 13) + 1;
+    format!("{:02}{:02}", year, cycle)
+}
+
+pub fn export_fms_11(plan: &FlightPlan, xplane_root: Option<&std::path::Path>) -> String {
     format!(
-        "I\n1100 Version\nCYCLE 1709\nADEP {}\nADES {}\nNUMENR 0\n",
-        plan.origin.id, plan.destination.id
+        "I\n1100 Version\nCYCLE {}\nADEP {}\nADES {}\nNUMENR 0\n",
+        resolve_airac_cycle(xplane_root),
+        plan.origin.id,
+        plan.destination.id
     )
 }
 
-pub fn export_fms_12(plan: &FlightPlan) -> String {
-    // XP12 FMS usually just uses same 1100 version or 3? FMS 3 is old. 1100 is standard.
-    // Let's stick to 1100 unless we find otherwise.
-    export_fms_11(plan)
+pub fn export_fms_12(plan: &FlightPlan, xplane_root: Option<&std::path::Path>) -> String {
+    // XP12 uses the same 1100-format file as XP11.
+    export_fms_11(plan, xplane_root)
 }
 
-pub fn export_lnmpln(plan: &FlightPlan) -> String {
+pub fn export_lnmpln(plan: &FlightPlan, xplane_root: Option<&std::path::Path>) -> String {
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <LittleNavmap xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.littlenavmap.org/schema/lnmpln.xsd">
@@ -1612,7 +1826,7 @@ pub fn export_lnmpln(plan: &FlightPlan) -> String {
       <Documentation>{}</Documentation>
     </Header>
     <SimData>XPlane12</SimData>
-    <NavData Cycle="1801">NAVIGRAPH</NavData>
+    <NavData Cycle="{}">NAVIGRAPH</NavData>
     <Waypoints>
       <Waypoint>
         <Name>{}</Name>
@@ -1631,6 +1845,7 @@ pub fn export_lnmpln(plan: &FlightPlan) -> String {
 </LittleNavmap>"#,
         chrono::Local::now().to_rfc3339(),
         plan.route_description,
+        resolve_airac_cycle(xplane_root),
         plan.origin.name,
         plan.origin.id,
         plan.origin.lon.unwrap_or_default(),
@@ -1713,7 +1928,147 @@ fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> Strin
     if name_upper.contains("787") || name_lower.contains("787") {
         return "B788".to_string();
     }
-    // Cessna / GA
+    // McDonnell Douglas
+    if name_upper.contains("MD-11F") || name_upper.contains("MD11F") {
+        return "MD1F".to_string();
+    }
+    if name_upper.contains("MD-11") || name_upper.contains("MD11") {
+        return "MD11".to_string();
+    }
+    if name_upper.contains("MD-82") || name_upper.contains("MD82") {
+        return "MD82".to_string();
+    }
+    if name_upper.contains("MD-80") || name_upper.contains("MD80") {
+        return "MD82".to_string(); // MD82 is generally a safe default for MD80 series in simbrief
+    }
+    if name_upper.contains("MD-88") || name_upper.contains("MD88") {
+        return "MD88".to_string();
+    }
+    // Airbus Other
+    if name_upper.contains("A300") || name_lower.contains("a300") {
+        return "A306".to_string();
+    }
+    if name_upper.contains("A310") || name_lower.contains("a310") {
+        return "A310".to_string();
+    }
+    // Boeing Other
+    if name_upper.contains("717") || name_lower.contains("717") {
+        return "B712".to_string();
+    }
+    if name_upper.contains("727") || name_lower.contains("727") {
+        return "B722".to_string();
+    }
+    // Regional Jets (CRJ / ERJ / E-Jets)
+    if name_upper.contains("CRJ-200")
+        || name_upper.contains("CRJ 200")
+        || name_upper.contains("CRJ200")
+    {
+        return "CRJ2".to_string();
+    }
+    if name_upper.contains("CRJ-700")
+        || name_upper.contains("CRJ 700")
+        || name_upper.contains("CRJ700")
+    {
+        return "CRJ7".to_string();
+    }
+    if name_upper.contains("CRJ-900")
+        || name_upper.contains("CRJ 900")
+        || name_upper.contains("CRJ900")
+    {
+        return "CRJ9".to_string();
+    }
+    if name_upper.contains("E170")
+        || name_upper.contains("E-170")
+        || name_upper.contains("EMBRAER 170")
+    {
+        return "E170".to_string();
+    }
+    if name_upper.contains("E175")
+        || name_upper.contains("E-175")
+        || name_upper.contains("EMBRAER 175")
+    {
+        return "E175".to_string();
+    }
+    if name_upper.contains("E190")
+        || name_upper.contains("E-190")
+        || name_upper.contains("EMBRAER 190")
+    {
+        return "E190".to_string();
+    }
+    if name_upper.contains("E195")
+        || name_upper.contains("E-195")
+        || name_upper.contains("EMBRAER 195")
+    {
+        return "E195".to_string();
+    }
+    if name_upper.contains("ERJ-135")
+        || name_upper.contains("ERJ 135")
+        || name_upper.contains("ERJ135")
+    {
+        return "E135".to_string();
+    }
+    if name_upper.contains("ERJ-140")
+        || name_upper.contains("ERJ 140")
+        || name_upper.contains("ERJ140")
+    {
+        return "E140".to_string();
+    }
+    if name_upper.contains("ERJ-145")
+        || name_upper.contains("ERJ 145")
+        || name_upper.contains("ERJ145")
+    {
+        return "E145".to_string();
+    }
+    // Regional Turboprops
+    if name_upper.contains("Q400") || name_upper.contains("DASH 8") || name_upper.contains("DH8D") {
+        return "DH8D".to_string();
+    }
+    if name_upper.contains("ATR 72")
+        || name_upper.contains("ATR-72")
+        || name_upper.contains("ATR72")
+    {
+        return "AT72".to_string();
+    }
+    if name_upper.contains("ATR 42")
+        || name_upper.contains("ATR-42")
+        || name_upper.contains("ATR42")
+    {
+        return "AT42".to_string();
+    }
+    // Business Jets / High End
+    if name_upper.contains("CHALLENGER 650")
+        || name_upper.contains("CL650")
+        || name_upper.contains("CL-650")
+    {
+        return "CL60".to_string();
+    }
+    if name_upper.contains("CHALLENGER") || name_upper.contains("CL6") {
+        return "CL60".to_string();
+    }
+    if name_upper.contains("CITATION X") || name_upper.contains("C750") {
+        return "C750".to_string();
+    }
+    if name_upper.contains("CITATION MUSTANG") || name_upper.contains("C510") {
+        return "C510".to_string();
+    }
+    if name_upper.contains("TBM") || name_upper.contains("TBM900") || name_upper.contains("TBM-9") {
+        return "TBM9".to_string();
+    }
+    if name_upper.contains("CONCORDE") || name_upper.contains("CONC") {
+        return "CONC".to_string();
+    }
+    // GA Twins / High Performance
+    if name_upper.contains("KING AIR") || name_upper.contains("B350") || name_upper.contains("350I")
+    {
+        return "B350".to_string();
+    }
+    if name_upper.contains("BARON") || name_upper.contains("BE58") {
+        return "BE58".to_string();
+    }
+    if name_upper.contains("SR22") || name_upper.contains("CIRRUS") {
+        return "SR22".to_string();
+    }
+    // Cessna / GA Basic
     if name_lower.contains("cessna 172")
         || name_lower.contains("c172")
         || name_upper.contains("C172")
@@ -1722,6 +2077,15 @@ fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> Strin
     }
     if name_lower.contains("cessna 208") || name_lower.contains("caravan") {
         return "C208".to_string();
+    }
+    if name_upper.contains("C152") || name_lower.contains("cessna 152") {
+        return "C152".to_string();
+    }
+    if name_upper.contains("PA-28")
+        || name_upper.contains("PIPER ARCHER")
+        || name_upper.contains("PIPER CHEROKEE")
+    {
+        return "P28A".to_string();
     }
     // Default when nothing matches
     "C172".to_string()
@@ -1735,6 +2099,26 @@ pub fn export_simbrief(plan: &FlightPlan) -> String {
         plan.origin.id, plan.destination.id, ac_type
     )
 }
+/// Dynamically calculates the current local solar phase based on an airport's longitude.
+pub fn calculate_solar_time(lon: f64, utc_now: chrono::DateTime<chrono::Utc>) -> TimeKeyword {
+    use chrono::{Duration, Timelike};
+
+    // Earth rotates ~15 degrees per hour.
+    let offset_hours = lon / 15.0;
+
+    // Process integer minutes directly to bypass float resolution drops
+    let offset_dur = Duration::minutes((offset_hours * 60.0) as i64);
+    let local_time = utc_now + offset_dur;
+    let hour = local_time.hour();
+
+    match hour {
+        5..=7 => TimeKeyword::Dawn,
+        8..=17 => TimeKeyword::Day,
+        18..=19 => TimeKeyword::Dusk,
+        _ => TimeKeyword::Night,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1786,6 +2170,7 @@ mod tests {
         };
         let c2 = airport_coords_for_poi_fetch(&apt_no_coords);
         assert_eq!(c2, Some((51.5703, 0.6933)));
+
         // Unknown ICAO, no coords: None
         let apt_unknown = Airport {
             id: "XXXX".to_string(),
@@ -1875,7 +2260,7 @@ mod tests {
 
         // This test simulates the logic inside generate_flight's origin selection
         // We can call generate_flight directly
-        let result = generate_flight(&[pack], &[aircraft], prompt, None, None);
+        let result = generate_flight(&[pack], &[aircraft], prompt, None, None, None);
 
         // Assertions
         if let Ok(plan) = result {
@@ -1911,6 +2296,9 @@ mod tests {
             origin_region_id: Some("UK:London".to_string()),
             dest_region_id: Some("IT".to_string()),
             context: None,
+            time: None,
+            weather: None,
+            weather_confirmed: false,
         };
         let url = export_simbrief(&plan);
         assert!(

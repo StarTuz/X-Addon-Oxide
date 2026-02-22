@@ -67,6 +67,8 @@ crates/
   - **Guardrail design**: Only two hard constraints — helipad/seaplane-base type matching (helicopter ↔ heliport, floatplane ↔ seaplane base), and keyword-driven surface preference. Keywords `grass`/`unpaved` → Soft, `tarmac`/`asphalt` → Hard, `water`/`seaplane`/`floatplane` → Water (seaplane bases only). Runway length and aircraft-type distance limits are intentionally absent — users control range via keywords (`short`/`quick`, `long haul`, `2 hour flight`) and can swap aircraft after export. Default distance when no keyword given: 10–5000nm.
   - **`endpoints_explicit`**: Distance constraints are relaxed (2nm–20000nm) only when both endpoints are _point_ types (ICAO or NearCity). Region-to-Region pairs keep normal constraints so random picks stay geographically sensible.
   - **Seed airports**: Stored in `data/seed_airports.json` (embedded JSON), loaded once via `OnceLock`. Used as fallback when no pack airports cover a region/city. `seeds_for_constraint()` helper centralises the fallback lookup for both origin and destination.
+  - **`FlightPlan`** has `time: Option<TimeKeyword>` and `weather: Option<WeatherKeyword>` fields (parsed from NLP input). These are display/export hints — they do not filter airports. `calculate_solar_time()` derives `TimeKeyword` from longitude + UTC.
+- `weather.rs` - `WeatherEngine` fetches real-time METAR data and maps observed conditions to `WeatherKeyword` (Storm, Rain, Cloudy, Clear, etc.). Called by `generate_flight_from_prompt()` when the prompt contains a weather or time keyword. Results used for flight context display in the GUI.
 - `data/` - Embedded binary assets: `flight_context_bundle.json` (63 airport history snippets), `flight_context_pois_overlay.json` (curated POIs for EGLL/LIRF), `icao_to_wikipedia.csv` (ICAO→Wikipedia title map for ~16k airports), `seed_airports.json` (~139 region keys including geographic features — Alps, Himalayas, PacIsles sub-regions etc. — fallback airports for flight gen)
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
   - `ini_handler.rs` - Reads/writes `scenery_packs.ini` with raw_path round-trip preservation
@@ -83,7 +85,7 @@ Rules-based heuristics engine (not ML despite the name) that:
 - Classifies aircraft by engine type and category using regex pattern matching
 - Parses natural language flight prompts via `flight_prompt.rs` / `parser.rs` (e.g., "London to Paris in a 737")
 - Supports manual priority overrides (sticky sort / pins)
-- **Flight preferences** (schema v10): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; used by flight gen to prefer airports/remember last flight for region-based prompts
+- **Flight preferences** (schema v11): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; used by flight gen to prefer airports/remember last flight for region-based prompts
 - Lower score = higher priority (inverted from category scores)
 
 **`geo/` module** — `RegionIndex` backed by bundled `regions.json`. Provides `Region` (with one or more `BoundingBox` spans) and fuzzy `search(query)` for resolving natural-language region names (e.g., "British Isles", "Alaska") to bounding boxes used by flight gen for filtering airports.
@@ -108,7 +110,7 @@ Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct h
 - Tab navigation: Scenery, Aircraft, Plugins, CSLs, FlightGenerator, Heuristics, Issues, Utilities, Settings
 - `map.rs` - Interactive world map with tile management and diagnostic health scores (respects `show_health_scores` filter)
 - `style.rs` - Dark theme with neon glow effects and animated splash screen (driven by `animation_time` state)
-- `flight_gen_gui.rs` - Chat-based flight plan generator UI (natural language input, Regenerate, format selection, export; "Remember this flight", "Prefer this origin/destination" persist to BitNet). Also contains Wikipedia/Wikidata POI fetch functions — see `docs/FLIGHT_CONTEXT.md` for the full architecture of the Flight Context system (bundled data + per-ICAO cache + live API fetch).
+- `flight_gen_gui.rs` - Chat-based flight plan generator UI (natural language input, Regenerate, format selection, export; "Remember this flight", "Prefer this origin/destination" persist to BitNet). Also contains Wikipedia/Wikidata POI fetch functions — see `docs/FLIGHT_CONTEXT.md` for the full architecture of the Flight Context system (bundled data + per-ICAO cache + live API fetch). Uses a **sub-state pattern**: `FlightGenState` struct + its own `Message` enum live here; the main `App` holds `flight_gen: FlightGenState` and delegates `Message::FlightGen(msg)` to it in `update()`. See also `docs/` for other design docs (`FLIGHT_GEN_AIRPORT_SOURCES.md`, `FLIGHT_GEN_RESEARCH_AND_PLAN.md`).
 - **Drag-and-Drop**:
   - Parity-first design: Drops trigger physical move + pin + save to `scenery_packs.ini`
   - The `save_scenery_packs` helper does a "dumb write" of exact GUI state, bypassing the SceneryManager load/merge cycle for responsiveness
@@ -206,7 +208,7 @@ Custom error types using `thiserror::Error` per crate (XamError, SceneryError, A
 - Windows: `%APPDATA%\X-Addon-Oxide\`
 - macOS: `~/Library/Application Support/X-Addon-Oxide/`
 
-Files: `heuristics.json` (sorting rules, pins, aircraft overrides, **flight preferences** — schema v10), `scan_config.json` (exclusions, inclusions, `av_tip_dismissed`), `icon_overrides.json`
+Files: `heuristics.json` (sorting rules, pins, aircraft overrides, **flight preferences** — schema v11), `scan_config.json` (exclusions, inclusions, `av_tip_dismissed`), `icon_overrides.json`
 
 Per-installation configs live in `installs/{hash}/` subdirectories (see Root-Specific Config Isolation above).
 

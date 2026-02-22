@@ -11,6 +11,7 @@ pub mod logbook;
 pub mod management;
 pub mod profiles;
 pub mod scenery;
+pub mod weather;
 
 use directories::ProjectDirs;
 use regex::Regex;

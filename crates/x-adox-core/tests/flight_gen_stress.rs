@@ -1030,7 +1030,7 @@ fn stress_random_prompts() {
 
     for i in 0..iterations {
         let prompt = build_random_prompt(&mut rng);
-        match generate_flight(&packs, &fleet, &prompt, None, None) {
+        match generate_flight(&packs, &fleet, &prompt, None, None, None) {
             Ok(plan) => {
                 ok_count += 1;
                 // Sanity: origin != dest
@@ -1144,7 +1144,7 @@ fn stress_regenerate_same_prompt() {
     for prompt in prompts {
         let mut fails = 0;
         for _ in 0..regenerate_count {
-            if generate_flight(&packs, &fleet, prompt, None, None).is_err() {
+            if generate_flight(&packs, &fleet, prompt, None, None, None).is_err() {
                 fails += 1;
             }
         }
@@ -1203,7 +1203,7 @@ fn stress_missing_runway_data_explicit_dest() {
 
     for prompt in explicit_prompts {
         for attempt in 0..20 {
-            let result = generate_flight(&packs, &fleet, prompt, None, None);
+            let result = generate_flight(&packs, &fleet, prompt, None, None, None);
             assert!(
                 result.is_ok(),
                 "Explicit dest prompt '{}' failed on attempt {}: {:?}",
@@ -1234,7 +1234,10 @@ fn stress_industrial_massive() {
     eprintln!("Building industrial pool (ICAO index)...");
     let pool = AirportPool::new(&all_airports);
 
-    eprintln!("\nStarting Industrial Massive Stress Test (44,000 airports, {} flights)...", iterations);
+    eprintln!(
+        "\nStarting Industrial Massive Stress Test (44,000 airports, {} flights)...",
+        iterations
+    );
     let start = std::time::Instant::now();
     let mut last_checkpoint = start;
 

@@ -75,7 +75,7 @@ fn test_region_nlp_parsing() {
     // Regions whose names intentionally resolve to NearCity because a same-named city
     // takes priority in the explicit alias table (by design — city is more precise).
     let near_city_overrides: std::collections::HashSet<&str> = [
-        "US:NY",    // "New York" → NearCity (city preferred over state for routing)
+        "US:NY",     // "New York" → NearCity (city preferred over state for routing)
         "UK:London", // "London" → NearCity (city more precise than UK:London sub-region)
     ]
     .iter()
@@ -91,7 +91,7 @@ fn test_region_nlp_parsing() {
         }
 
         let prompt = format!("flight to {}", region.name);
-        let parsed = FlightPrompt::parse(&prompt);
+        let parsed = FlightPrompt::parse(&prompt, &x_adox_bitnet::NLPRulesConfig::default());
         let expected = LocationConstraint::Region(region.id.clone());
 
         if parsed.destination.as_ref() != Some(&expected) {
@@ -192,7 +192,7 @@ fn test_all_regions_flight_generation() {
         // "{name} Boeing" (old approach) doesn't parse — no "to"/"from" keyword.
         let prompt = format!("flight to {}", region.name);
 
-        match generate_flight(&packs, &[boeing.clone()], &prompt, None, None) {
+        match generate_flight(&packs, &[boeing.clone()], &prompt, None, None, None) {
             Ok(plan) => {
                 if let (Some(lat), Some(lon)) = (plan.destination.lat, plan.destination.lon) {
                     if !region.contains(lat, lon) {
@@ -204,10 +204,7 @@ fn test_all_regions_flight_generation() {
                 }
             }
             Err(e) => {
-                gen_failures.push(format!(
-                    "  {:25} ({:12}): {}",
-                    region.name, region.id, e
-                ));
+                gen_failures.push(format!("  {:25} ({:12}): {}", region.name, region.id, e));
             }
         }
     }
@@ -238,33 +235,158 @@ fn test_all_regions_flight_generation() {
     // If a seeded country fails, its ICAO prefix mapping is broken or seeds are missing.
     let seeded_countries: &[&str] = &[
         // Europe
-        "UK", "UK:England", "UK:Scotland", "UK:Wales", "IE", "FR", "DE", "IT", "ES", "PT",
-        "NL", "BE", "CH", "AT", "GR", "NO", "SE", "FI", "DK", "IS", "PL", "CZ", "TR", "UA",
-        "BG", "EE", "HR", "HU", "LT", "LV", "RO", "RS", "AL", "BA", "BY", "MD", "ME", "MK",
-        "SI", "SK",
+        "UK",
+        "UK:England",
+        "UK:Scotland",
+        "UK:Wales",
+        "IE",
+        "FR",
+        "DE",
+        "IT",
+        "ES",
+        "PT",
+        "NL",
+        "BE",
+        "CH",
+        "AT",
+        "GR",
+        "NO",
+        "SE",
+        "FI",
+        "DK",
+        "IS",
+        "PL",
+        "CZ",
+        "TR",
+        "UA",
+        "BG",
+        "EE",
+        "HR",
+        "HU",
+        "LT",
+        "LV",
+        "RO",
+        "RS",
+        "AL",
+        "BA",
+        "BY",
+        "MD",
+        "ME",
+        "MK",
+        "SI",
+        "SK",
         // Americas
-        "US", "US:AK", "US:HI", "CA", "MX", "BR", "AR", "CO", "PE", "CL", "BO", "BS", "CR",
-        "CU", "DO", "EC", "GT", "HN", "HT", "JM", "NI", "PA", "PY", "SV", "UY", "VE",
+        "US",
+        "US:AK",
+        "US:HI",
+        "CA",
+        "MX",
+        "BR",
+        "AR",
+        "CO",
+        "PE",
+        "CL",
+        "BO",
+        "BS",
+        "CR",
+        "CU",
+        "DO",
+        "EC",
+        "GT",
+        "HN",
+        "HT",
+        "JM",
+        "NI",
+        "PA",
+        "PY",
+        "SV",
+        "UY",
+        "VE",
         // Asia-Pacific
-        "JP", "CN", "KR", "IN", "TH", "VN", "ID", "AU", "SG", "MY", "PH", "HK", "TW", "NZ",
-        "BD", "KH", "LA", "LK", "MM", "MN", "NP", "PG", "PK", "FJ",
+        "JP",
+        "CN",
+        "KR",
+        "IN",
+        "TH",
+        "VN",
+        "ID",
+        "AU",
+        "SG",
+        "MY",
+        "PH",
+        "HK",
+        "TW",
+        "NZ",
+        "BD",
+        "KH",
+        "LA",
+        "LK",
+        "MM",
+        "MN",
+        "NP",
+        "PG",
+        "PK",
+        "FJ",
         // Middle East
-        "IL", "SAU", "UAE", "QA", "BH", "IQ", "IR", "JO", "KW", "LB", "OM",
+        "IL",
+        "SAU",
+        "UAE",
+        "QA",
+        "BH",
+        "IQ",
+        "IR",
+        "JO",
+        "KW",
+        "LB",
+        "OM",
         // Africa
-        "EG", "ZA", "KE", "TZ", "ET", "NG", "MA", "AO", "CM", "GH", "LY", "MG", "MZ", "RU",
-        "RW", "SD", "SN", "TN", "UG", "ZM", "ZW",
+        "EG",
+        "ZA",
+        "KE",
+        "TZ",
+        "ET",
+        "NG",
+        "MA",
+        "AO",
+        "CM",
+        "GH",
+        "LY",
+        "MG",
+        "MZ",
+        "RU",
+        "RW",
+        "SD",
+        "SN",
+        "TN",
+        "UG",
+        "ZM",
+        "ZW",
         // Geographic features (seeded with real airports within their bounds)
-        "Alps", "Pyrenees", "Himalayas", "Atlas",
-        "Mediterranean", "Andes", "Rockies", "Amazon", "Patagonia", "Caribbean",
+        "Alps",
+        "Pyrenees",
+        "Himalayas",
+        "Atlas",
+        "Mediterranean",
+        "Andes",
+        "Rockies",
+        "Amazon",
+        "Patagonia",
+        "Caribbean",
         // Pacific Islands and sub-regions
-        "PacIsles", "PacIsles:Micronesia", "PacIsles:Melanesia", "PacIsles:Polynesia",
+        "PacIsles",
+        "PacIsles:Micronesia",
+        "PacIsles:Melanesia",
+        "PacIsles:Polynesia",
     ];
 
     let gen_failure_ids: std::collections::HashSet<String> = gen_failures
         .iter()
         .filter_map(|f| {
             // Extract ID from "  Name (ID): ..." format
-            f.split('(').nth(1).and_then(|s| s.split(')').next()).map(|s| s.trim().to_string())
+            f.split('(')
+                .nth(1)
+                .and_then(|s| s.split(')').next())
+                .map(|s| s.trim().to_string())
         })
         .collect();
 
@@ -287,11 +409,27 @@ fn test_glider_short_keyword_constrains_range() {
     // Aircraft type no longer sets distance limits — keywords do.
     // A glider with no keyword gets wide-open distance; with "short" it stays ≤200nm.
     let mut pack = create_mock_pack("Glider Area");
-    pack.airports.push(create_mock_airport("EGLL", 51.47, -0.45, 4000, SurfaceType::Hard));
-    pack.airports
-        .push(create_mock_airport("DEST_FAR", 53.5, -0.45, 2000, SurfaceType::Hard));
-    pack.airports
-        .push(create_mock_airport("DEST_CLOSE", 51.67, -0.45, 1000, SurfaceType::Hard));
+    pack.airports.push(create_mock_airport(
+        "EGLL",
+        51.47,
+        -0.45,
+        4000,
+        SurfaceType::Hard,
+    ));
+    pack.airports.push(create_mock_airport(
+        "DEST_FAR",
+        53.5,
+        -0.45,
+        2000,
+        SurfaceType::Hard,
+    ));
+    pack.airports.push(create_mock_airport(
+        "DEST_CLOSE",
+        51.67,
+        -0.45,
+        1000,
+        SurfaceType::Hard,
+    ));
 
     let ask21 = create_mock_aircraft("Schleicher ASK 21", vec!["Glider"]);
     let packs = vec![pack];
@@ -301,6 +439,7 @@ fn test_glider_short_keyword_constrains_range() {
         &packs,
         &[ask21],
         "short flight from EGLL using glider",
+        None,
         None,
         None,
     )
@@ -341,6 +480,7 @@ fn test_italy_accuracy() {
             &packs,
             &[cessna.clone()],
             "from random to Italy",
+            None,
             None,
             None,
         )
@@ -390,6 +530,7 @@ fn test_rome_italy_resolves_to_italy_not_usa() {
             "Flight from EGMC to Rome Italy",
             None,
             None,
+            None,
         )
         .expect("Rome Italy should produce a plan");
         assert!(
@@ -432,6 +573,7 @@ fn test_search_accuracy_london_uk() {
         "short flight from London UK to random",
         None,
         None,
+        None,
     )
     .expect("Failed to gen London UK flight");
 
@@ -467,8 +609,15 @@ fn test_search_accuracy_london_england() {
 
     // Request flight from "London England"
     // Token matching should prize "London" + "England" prefix boost over just "England" prefix boost
-    let plan = generate_flight(&packs, &[boeing], "London England to Hamburg", None, None)
-        .expect("Failed to gen London England flight");
+    let plan = generate_flight(
+        &packs,
+        &[boeing],
+        "London England to Hamburg",
+        None,
+        None,
+        None,
+    )
+    .expect("Failed to gen London England flight");
 
     assert_eq!(
         plan.origin.id, "EGLC",
@@ -487,7 +636,7 @@ fn test_england_to_ukraine() {
     let packs = vec![pack];
 
     // Should resolve via seed airports: UK:England origin (EG*) → Ukraine dest (UK* ICAO prefix)
-    let plan = generate_flight(&packs, &[jet], "England to Ukraine", None, None)
+    let plan = generate_flight(&packs, &[jet], "England to Ukraine", None, None, None)
         .expect("England to Ukraine should produce a valid flight plan");
 
     // Origin must be an English airport (EG prefix, within England bounds ~49.9-55.8°N)
@@ -516,14 +665,33 @@ fn test_england_to_ukraine() {
 #[test]
 fn test_california_to_england_stays_in_england() {
     let mut pack = create_mock_pack("West Coast");
-    pack.airports.push(create_mock_airport("KLAX", 33.94, -118.41, 12000, SurfaceType::Hard));
-    pack.airports.push(create_mock_airport("KSFO", 37.62, -122.38, 11000, SurfaceType::Hard));
+    pack.airports.push(create_mock_airport(
+        "KLAX",
+        33.94,
+        -118.41,
+        12000,
+        SurfaceType::Hard,
+    ));
+    pack.airports.push(create_mock_airport(
+        "KSFO",
+        37.62,
+        -122.38,
+        11000,
+        SurfaceType::Hard,
+    ));
     let jet = create_mock_aircraft("B737", vec!["Jet"]);
     let packs = vec![pack];
 
     for _ in 0..5 {
-        let plan = generate_flight(&packs, &[jet.clone()], "California to England", None, None)
-            .expect("California to England should produce a plan");
+        let plan = generate_flight(
+            &packs,
+            &[jet.clone()],
+            "California to England",
+            None,
+            None,
+            None,
+        )
+        .expect("California to England should produce a plan");
 
         let dest_lat = plan.destination.lat.unwrap_or(0.0);
         assert!(
@@ -550,7 +718,7 @@ fn test_nairobi_to_lamu() {
     let cessna = create_mock_aircraft("Cessna 208", vec!["General Aviation"]);
     let packs = vec![pack];
 
-    let plan = generate_flight(&packs, &[cessna], "Nairobi to Lamu", None, None)
+    let plan = generate_flight(&packs, &[cessna], "Nairobi to Lamu", None, None, None)
         .expect("Nairobi to Lamu should produce a valid flight plan");
 
     // Both should be Kenyan airports (HK prefix)

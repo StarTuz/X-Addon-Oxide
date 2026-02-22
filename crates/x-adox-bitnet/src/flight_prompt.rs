@@ -2,6 +2,21 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
+fn contains_phrase(text: &str, phrase: &str) -> bool {
+    let mut start = 0;
+    while let Some(idx) = text[start..].find(phrase) {
+        let actual_idx = start + idx;
+        let prev_ok = actual_idx == 0 || !text.as_bytes()[actual_idx - 1].is_ascii_alphabetic();
+        let end_idx = actual_idx + phrase.len();
+        let next_ok = end_idx == text.len() || !text.as_bytes()[end_idx].is_ascii_alphabetic();
+        if prev_ok && next_ok {
+            return true;
+        }
+        start = actual_idx + 1;
+    }
+    false
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FlightPrompt {
     pub origin: Option<LocationConstraint>,
@@ -10,6 +25,15 @@ pub struct FlightPrompt {
     pub duration_minutes: Option<u32>,
     pub ignore_guardrails: bool,
     pub keywords: FlightKeywords,
+    /// Soft distance floor from a matched aircraft rule (nm). Overridden by duration keywords.
+    #[serde(default)]
+    pub aircraft_min_dist: Option<f64>,
+    /// Soft distance cap from a matched aircraft rule (nm). Overridden by duration keywords.
+    #[serde(default)]
+    pub aircraft_max_dist: Option<f64>,
+    /// Cruise speed override from a matched aircraft rule (kts). Overrides heuristic estimate.
+    #[serde(default)]
+    pub aircraft_speed_kts: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -17,6 +41,28 @@ pub struct FlightKeywords {
     pub duration: Option<DurationKeyword>,
     pub surface: Option<SurfaceKeyword>,
     pub flight_type: Option<TypeKeyword>,
+    pub time: Option<TimeKeyword>,
+    pub weather: Option<WeatherKeyword>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum TimeKeyword {
+    Dawn,
+    Day,
+    Dusk,
+    Night,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum WeatherKeyword {
+    Clear,
+    Cloudy,
+    Storm,
+    Rain,
+    Snow,
+    Fog,
+    Gusty,
+    Calm,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -69,12 +115,15 @@ impl Default for FlightPrompt {
             duration_minutes: None,
             ignore_guardrails: false,
             keywords: FlightKeywords::default(),
+            aircraft_min_dist: None,
+            aircraft_max_dist: None,
+            aircraft_speed_kts: None,
         }
     }
 }
 
 impl FlightPrompt {
-    pub fn parse(input: &str) -> Self {
+    pub fn parse(input: &str, rules: &crate::NLPRulesConfig) -> Self {
         let mut prompt = FlightPrompt::default();
         let input_lower = input.to_lowercase();
 
@@ -85,57 +134,273 @@ impl FlightPrompt {
             clean_input = clean_input.replace("ignore guardrails", "");
         }
 
+        // Helper: sort rule slice by priority descending, return sorted references.
+        fn sorted_rules<'a>(rules: &'a [crate::NLPRule]) -> Vec<&'a crate::NLPRule> {
+            let mut v: Vec<&crate::NLPRule> = rules.iter().collect();
+            v.sort_by(|a, b| b.priority.cmp(&a.priority));
+            v
+        }
+
         // 2. Parse Keywords (Global search)
-        // Duration
-        if clean_input.contains("short") || clean_input.contains("hop") || clean_input.contains("quick") {
-            prompt.keywords.duration = Some(DurationKeyword::Short);
-        } else if clean_input.contains("medium") {
-            prompt.keywords.duration = Some(DurationKeyword::Medium);
-        } else if clean_input.contains("long haul") {
-            prompt.keywords.duration = Some(DurationKeyword::Haul);
-        } else if clean_input.contains("long") {
-            prompt.keywords.duration = Some(DurationKeyword::Long);
-        }
-
-        // Surface
-        if clean_input.contains("grass")
-            || clean_input.contains("dirt")
-            || clean_input.contains("gravel")
-            || clean_input.contains("strip")
-            || clean_input.contains("unpaved")
-        {
-            prompt.keywords.surface = Some(SurfaceKeyword::Soft);
-        } else if clean_input.contains("paved")
-            || clean_input.contains("tarmac")
-            || clean_input.contains("concrete")
-            || clean_input.contains("asphalt")
-        {
-            prompt.keywords.surface = Some(SurfaceKeyword::Hard);
-        } else if clean_input.contains("water")
-            || clean_input.contains("seaplane")
-            || clean_input.contains("floatplane")
-            || clean_input.contains("amphibian")
-        {
-            prompt.keywords.surface = Some(SurfaceKeyword::Water);
-        }
-
-        // Type
-        if clean_input.contains("bush") || clean_input.contains("backcountry") {
-            prompt.keywords.flight_type = Some(TypeKeyword::Bush);
-            // Bush implies soft if not specified
-            if prompt.keywords.surface.is_none() {
-                prompt.keywords.surface = Some(SurfaceKeyword::Soft);
+        // Duration — JSON rules checked first (priority-sorted), then hardcoded fallback.
+        let mut duration_matched = false;
+        for rule in sorted_rules(&rules.duration_rules) {
+            if rule
+                .keywords
+                .iter()
+                .any(|k| clean_input.contains(k.to_lowercase().as_str()))
+            {
+                let mapped = match rule.mapped_value.to_lowercase().as_str() {
+                    "short" | "hop" | "quick" | "sprint" => DurationKeyword::Short,
+                    "medium" | "mid" => DurationKeyword::Medium,
+                    "haul" | "long haul" | "ultra long" | "intercontinental" => DurationKeyword::Haul,
+                    _ => DurationKeyword::Long, // "long" and anything else
+                };
+                prompt.keywords.duration = Some(mapped);
+                duration_matched = true;
+                break;
             }
-        } else if clean_input.contains("regional") {
-            prompt.keywords.flight_type = Some(TypeKeyword::Regional);
+        }
+        if !duration_matched {
+            if clean_input.contains("short")
+                || clean_input.contains("hop")
+                || clean_input.contains("quick")
+            {
+                prompt.keywords.duration = Some(DurationKeyword::Short);
+            } else if clean_input.contains("medium") {
+                prompt.keywords.duration = Some(DurationKeyword::Medium);
+            } else if clean_input.contains("long haul")
+                || clean_input.contains("ultra long")
+                || clean_input.contains("transatlantic")
+                || clean_input.contains("transpacific")
+                || clean_input.contains("transcontinental")
+            {
+                prompt.keywords.duration = Some(DurationKeyword::Haul);
+            } else if clean_input.contains("long") {
+                prompt.keywords.duration = Some(DurationKeyword::Long);
+            }
+        }
+
+        // Surface — JSON rules checked first, then hardcoded fallback.
+        let mut surface_matched = false;
+        for rule in sorted_rules(&rules.surface_rules) {
+            if rule
+                .keywords
+                .iter()
+                .any(|k| clean_input.contains(k.to_lowercase().as_str()))
+            {
+                let mapped = match rule.mapped_value.to_lowercase().as_str() {
+                    "hard" | "paved" | "tarmac" | "asphalt" => SurfaceKeyword::Hard,
+                    "water" | "seaplane" | "float" => SurfaceKeyword::Water,
+                    _ => SurfaceKeyword::Soft, // "soft" and anything else
+                };
+                prompt.keywords.surface = Some(mapped);
+                surface_matched = true;
+                break;
+            }
+        }
+        if !surface_matched {
+            if clean_input.contains("grass")
+                || clean_input.contains("dirt")
+                || clean_input.contains("gravel")
+                || clean_input.contains("strip")
+                || clean_input.contains("unpaved")
+            {
+                prompt.keywords.surface = Some(SurfaceKeyword::Soft);
+            } else if clean_input.contains("paved")
+                || clean_input.contains("tarmac")
+                || clean_input.contains("concrete")
+                || clean_input.contains("asphalt")
+            {
+                prompt.keywords.surface = Some(SurfaceKeyword::Hard);
+            } else if clean_input.contains("water")
+                || clean_input.contains("seaplane")
+                || clean_input.contains("floatplane")
+                || clean_input.contains("amphibian")
+            {
+                prompt.keywords.surface = Some(SurfaceKeyword::Water);
+            }
+        }
+
+        // Type — JSON rules checked first, then hardcoded fallback.
+        let mut type_matched = false;
+        for rule in sorted_rules(&rules.flight_type_rules) {
+            if rule
+                .keywords
+                .iter()
+                .any(|k| clean_input.contains(k.to_lowercase().as_str()))
+            {
+                let mapped = match rule.mapped_value.to_lowercase().as_str() {
+                    "bush" | "backcountry" | "remote" | "stol" => TypeKeyword::Bush,
+                    _ => TypeKeyword::Regional, // "regional" and anything else
+                };
+                prompt.keywords.flight_type = Some(mapped.clone());
+                // Bush implies soft surface if not already set
+                if mapped == TypeKeyword::Bush && prompt.keywords.surface.is_none() {
+                    prompt.keywords.surface = Some(SurfaceKeyword::Soft);
+                }
+                type_matched = true;
+                break;
+            }
+        }
+        if !type_matched {
+            if clean_input.contains("bush") || clean_input.contains("backcountry") {
+                prompt.keywords.flight_type = Some(TypeKeyword::Bush);
+                if prompt.keywords.surface.is_none() {
+                    prompt.keywords.surface = Some(SurfaceKeyword::Soft);
+                }
+            } else if clean_input.contains("regional") {
+                prompt.keywords.flight_type = Some(TypeKeyword::Regional);
+            }
+        }
+
+        // Time — JSON rules checked first (priority-sorted), then hardcoded fallback.
+        let mut time_matched = false;
+        for rule in sorted_rules(&rules.time_rules) {
+            if rule
+                .keywords
+                .iter()
+                .any(|k| contains_phrase(&clean_input, &k.to_lowercase()))
+            {
+                let mapped = match rule.mapped_value.to_lowercase().as_str() {
+                    "dawn" | "sunrise" | "morning" | "golden hour" | "golden" => TimeKeyword::Dawn,
+                    "dusk" | "sunset" | "evening" | "twilight" | "civil twilight" => {
+                        TimeKeyword::Dusk
+                    }
+                    "night" | "midnight" | "dark" | "night flight" | "moonlight" | "late night" => {
+                        TimeKeyword::Night
+                    }
+                    _ => TimeKeyword::Day,
+                };
+                prompt.keywords.time = Some(mapped);
+                time_matched = true;
+                break;
+            }
+        }
+
+        if !time_matched {
+            if contains_phrase(&clean_input, "dawn")
+                || contains_phrase(&clean_input, "sunrise")
+                || contains_phrase(&clean_input, "morning")
+                || contains_phrase(&clean_input, "golden hour")
+                || contains_phrase(&clean_input, "golden")
+            {
+                prompt.keywords.time = Some(TimeKeyword::Dawn);
+            } else if contains_phrase(&clean_input, "day")
+                || contains_phrase(&clean_input, "daytime")
+                || contains_phrase(&clean_input, "daylight")
+                || contains_phrase(&clean_input, "afternoon")
+                || contains_phrase(&clean_input, "noon")
+            {
+                prompt.keywords.time = Some(TimeKeyword::Day);
+            } else if contains_phrase(&clean_input, "dusk")
+                || contains_phrase(&clean_input, "sunset")
+                || contains_phrase(&clean_input, "evening")
+                || contains_phrase(&clean_input, "twilight")
+            {
+                prompt.keywords.time = Some(TimeKeyword::Dusk);
+            } else if contains_phrase(&clean_input, "night")
+                || contains_phrase(&clean_input, "midnight")
+                || contains_phrase(&clean_input, "dark")
+            {
+                prompt.keywords.time = Some(TimeKeyword::Night);
+            }
+        }
+
+        // Weather — JSON rules checked first (priority-sorted), then hardcoded fallback.
+        let mut weather_matched = false;
+        for rule in sorted_rules(&rules.weather_rules) {
+            if rule
+                .keywords
+                .iter()
+                .any(|k| contains_phrase(&clean_input, &k.to_lowercase()))
+            {
+                let mapped = match rule.mapped_value.to_lowercase().as_str() {
+                    "clear" | "sunny" | "fair" | "vfr" | "visual" | "clear vfr" | "cavok"
+                    | "cavu" | "clear skies" | "blue sky" | "easy" | "relax" | "scenic" => {
+                        WeatherKeyword::Clear
+                    }
+                    "cloudy" | "overcast" | "clouds" | "mvfr" | "marginal" | "scattered"
+                    | "few clouds" | "broken" => WeatherKeyword::Cloudy,
+                    "storm" | "thunder" | "thunderstorm" | "severe" | "lifr" | "low ifr"
+                    | "challenge" | "hard mode" => WeatherKeyword::Storm,
+                    "gusty" | "windy" | "breezy" | "turbulent" | "gusts" => WeatherKeyword::Gusty,
+                    "calm" | "still" | "smooth" | "no wind" | "light winds" | "glassy" => {
+                        WeatherKeyword::Calm
+                    }
+                    "snow" | "blizzard" | "ice" | "wintry" | "winter" | "frozen" | "snowy"
+                    | "icy" => WeatherKeyword::Snow,
+                    "rain" | "showers" | "wet" => WeatherKeyword::Rain,
+                    "fog" | "mist" | "haze" | "ifr" | "instrument" | "smoky" => WeatherKeyword::Fog,
+                    _ => WeatherKeyword::Clear,
+                };
+                prompt.keywords.weather = Some(mapped);
+                weather_matched = true;
+                break;
+            }
+        }
+
+        if !weather_matched {
+            if contains_phrase(&clean_input, "clear")
+                || contains_phrase(&clean_input, "sunny")
+                || contains_phrase(&clean_input, "fair")
+                || contains_phrase(&clean_input, "vfr")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Clear);
+            } else if contains_phrase(&clean_input, "cloudy")
+                || contains_phrase(&clean_input, "overcast")
+                || contains_phrase(&clean_input, "clouds")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Cloudy);
+            } else if contains_phrase(&clean_input, "storm")
+                || contains_phrase(&clean_input, "thunder")
+                || contains_phrase(&clean_input, "thunderstorm")
+                || contains_phrase(&clean_input, "lightning")
+                || contains_phrase(&clean_input, "severe")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Storm);
+            } else if contains_phrase(&clean_input, "gusty")
+                || contains_phrase(&clean_input, "windy")
+                || contains_phrase(&clean_input, "breezy")
+                || contains_phrase(&clean_input, "turbulent")
+                || contains_phrase(&clean_input, "gusts")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Gusty);
+            } else if contains_phrase(&clean_input, "calm")
+                || contains_phrase(&clean_input, "still")
+                || contains_phrase(&clean_input, "smooth")
+                || contains_phrase(&clean_input, "light winds")
+                || contains_phrase(&clean_input, "glassy")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Calm);
+            } else if contains_phrase(&clean_input, "snow")
+                || contains_phrase(&clean_input, "blizzard")
+                || contains_phrase(&clean_input, "ice")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Snow);
+            } else if contains_phrase(&clean_input, "rain")
+                || contains_phrase(&clean_input, "showers")
+                || contains_phrase(&clean_input, "drizzle")
+                || contains_phrase(&clean_input, "wet")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Rain);
+            } else if contains_phrase(&clean_input, "fog")
+                || contains_phrase(&clean_input, "mist")
+                || contains_phrase(&clean_input, "haze")
+                || contains_phrase(&clean_input, "ifr")
+                || contains_phrase(&clean_input, "low vis")
+            {
+                prompt.keywords.weather = Some(WeatherKeyword::Fog);
+            }
         }
 
         // 3. Parse Origin and Destination
         // Patterns: "from X to Y", "flight from X to Y", "X to Y"
+        // Suffix terminators include "via" so "Paris via Brussels" → dest="paris".
         static LOC_RE: OnceLock<Regex> = OnceLock::new();
         let loc_re = LOC_RE.get_or_init(|| {
             Regex::new(
-                r"(?:flight\s+from\s+|\bfrom\s+|^flight\s+)?(.+?)\s+\bto\b\s+(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|$)",
+                r"(?:flight\s+from\s+|\bfrom\s+|^flight\s+)?(.+?)\s+\bto\b\s+(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|\s+\bvia\b|$)",
             )
             .unwrap()
         });
@@ -152,8 +417,22 @@ impl FlightPrompt {
                 || origin_str.ends_with(" flight")
                 || origin_str == "hop"
                 || origin_str.ends_with(" hop")
+                || origin_str == "trip"
+                || origin_str.ends_with(" trip")
+                || origin_str == "run"
+                || origin_str.ends_with(" run")
+                || origin_str == "journey"
+                || origin_str.ends_with(" journey")
                 || origin_str == "a"
-                || origin_str == "the";
+                || origin_str == "the"
+                // "fly", "flying", "heading", "going", "headed", "bound" appear when
+                // someone writes "fly to X" and LOC_RE picks up "fly" as origin.
+                || origin_str == "fly"
+                || origin_str == "flying"
+                || origin_str == "heading"
+                || origin_str == "going"
+                || origin_str == "headed"
+                || origin_str == "bound";
 
             if is_noise_origin {
                 // Treat as destination-only (same as "flight to X" / "to X" path)
@@ -163,10 +442,12 @@ impl FlightPrompt {
                 prompt.destination = Some(parse_location(dest_str));
             }
         } else {
-            // Fallback: Check for destination-only prompt "to X" or "flight to X"
+            // Fallback: Check for destination-only prompt.
+            // Handles: "to X", "flight to X", "fly to X", "heading to X",
+            // "going to X", "headed to X", "bound for X".
             static TO_RE: OnceLock<Regex> = OnceLock::new();
             let to_re = TO_RE.get_or_init(|| {
-                Regex::new(r"(?:^flight\s+to\s+|^to\s+)(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|$)")
+                Regex::new(r"(?:^(?:flight|fly|flying|heading|going|headed)\s+to\s+|^to\s+|^bound\s+for\s+)(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|\s+\bvia\b|$)")
                     .unwrap()
             });
             if let Some(caps) = to_re.captures(&clean_input) {
@@ -216,29 +497,180 @@ impl FlightPrompt {
             .replace("long flight", "")
             .replace("medium flight", "")
             .replace("bush flight", "")
+            .replace("bush trip", "")
             .replace("backcountry flight", "")
+            .replace("backcountry trip", "")
+            .replace("quick trip", "")
             .replace("ignore guardrails", "");
 
-        static ACF_RE: OnceLock<Regex> = OnceLock::new();
-        let acf_re = ACF_RE.get_or_init(|| {
-            Regex::new(r"\b(?:using|in|with)\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bfor\b|\s+\bfrom\b|$)")
-                .unwrap()
-        });
+        let mut acf_matched = false;
 
-        if let Some(caps) = acf_re.captures(&acf_input) {
-            let acf_str = caps[1].trim();
-            if !acf_str.is_empty() {
-                prompt.aircraft = Some(AircraftConstraint::Tag(acf_str.to_string()));
+        // 1. Check Custom Dictionary First (Global Search, priority-sorted)
+        for rule in sorted_rules(&rules.aircraft_rules) {
+            if rule
+                .keywords
+                .iter()
+                .any(|k| contains_phrase(&clean_input, &k.to_lowercase()))
+            {
+                prompt.aircraft = Some(AircraftConstraint::Tag(rule.mapped_value.clone()));
+                prompt.aircraft_min_dist = rule.min_distance_nm.map(|v| v as f64);
+                prompt.aircraft_max_dist = rule.max_distance_nm.map(|v| v as f64);
+                prompt.aircraft_speed_kts = rule.speed_kts;
+                acf_matched = true;
+                break;
+            }
+        }
+
+        // 2. If no custom rule matched, use Regex for generic/explicit aircraft
+        if !acf_matched {
+            static ACF_RE: OnceLock<Regex> = OnceLock::new();
+            let acf_re = ACF_RE.get_or_init(|| {
+                Regex::new(r"\b(?:using|in|with)\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bfor\b|\s+\bfrom\b|\s+\blanding\b|\s+\barriving\b|\s+\bdeparting\b|$)")
+                    .unwrap()
+            });
+
+            if let Some(caps) = acf_re.captures(&acf_input) {
+                let mut acf_str = caps[1].trim().to_string();
+                let acf_lower = acf_str.to_lowercase();
+
+                let is_weather_false_positive = matches!(
+                    acf_lower.as_str(),
+                    "vfr"
+                        | "vfr conditions"
+                        | "ifr"
+                        | "ifr conditions"
+                        | "a storm"
+                        | "storm"
+                        | "the rain"
+                        | "rain"
+                        | "the dark"
+                        | "dark"
+                        | "night"
+                        | "the night"
+                        | "snow"
+                        | "heavy snow"
+                        | "fog"
+                        | "instrument"
+                        | "visual"
+                        | "clear skies"
+                        | "bad weather"
+                        | "good weather"
+                        | "gusty"
+                        | "gusty conditions"
+                        | "gusty winds"
+                        | "windy"
+                        | "windy conditions"
+                        | "breezy"
+                        | "calm"
+                        | "calm conditions"
+                        | "turbulent"
+                        | "turbulence"
+                        | "stormy"
+                        | "stormy conditions"
+                        | "clear weather"
+                        | "sunny"
+                        | "overcast"
+                        | "cloudy"
+                );
+
+                if !is_weather_false_positive {
+                    // Normalize common conversational variants into standardized tags
+                    // matching the BitNet classifier's taxonomy.
+                    if acf_lower.contains("airliner")
+                        || acf_lower.contains("commercial")
+                        || acf_lower.contains("passenger")
+                        || acf_lower.contains("heavy")
+                        || (acf_lower.contains("jet") && !acf_lower.contains("biz"))
+                    {
+                        acf_str = "Airliner".to_string();
+                    } else if acf_lower.contains("biz jet")
+                        || acf_lower.contains("bizjet")
+                        || acf_lower.contains("business")
+                        || acf_lower.contains("corporate")
+                        || acf_lower.contains("private jet")
+                    {
+                        acf_str = "Business Jet".to_string();
+                    } else if acf_lower == "ga"
+                        || acf_lower.contains("general aviation")
+                        || acf_lower.contains("small plane")
+                        || acf_lower.contains("light aircraft")
+                        || acf_lower.contains("propeller")
+                        || acf_lower.contains("piston")
+                        || acf_lower.contains("civilian")
+                        || acf_lower.contains("puddle")
+                        || acf_lower.contains("tail")
+                        || acf_lower.contains("float")
+                        || acf_lower.contains("sea")
+                    {
+                        acf_str = "General Aviation".to_string();
+                    } else if acf_lower.contains("glass")
+                        || acf_lower.contains("g1000")
+                        || acf_lower.contains("modern panel")
+                    {
+                        acf_str = "G1000".to_string();
+                    } else if acf_lower.contains("steam") || acf_lower.contains("analog") {
+                        acf_str = "Analog".to_string();
+                    } else if acf_lower.contains("warbird")
+                        || acf_lower.contains("wwii")
+                        || acf_lower.contains("fighter")
+                        || acf_lower.contains("military")
+                        || acf_lower.contains("combat")
+                        || acf_lower.contains("bomber")
+                    {
+                        acf_str = "Military".to_string();
+                    } else if acf_lower.contains("cargo")
+                        || acf_lower.contains("freight")
+                        || acf_lower.contains("transport")
+                    {
+                        acf_str = "Cargo".to_string();
+                    } else if acf_lower.contains("heli")
+                        || acf_lower.contains("chopper")
+                        || acf_lower.contains("rotor")
+                    {
+                        acf_str = "Helicopter".to_string();
+                    } else if acf_lower.contains("glider") || acf_lower.contains("sailplane") {
+                        acf_str = "Glider".to_string();
+                    } else if acf_lower.contains("turboprop")
+                        || acf_lower.contains("turbo prop")
+                        || acf_lower.contains("twin engine")
+                        || acf_lower.contains("twin-engine")
+                        || acf_lower.contains("single engine")
+                        || acf_lower.contains("single-engine")
+                    {
+                        acf_str = "General Aviation".to_string();
+                    }
+
+                    if !acf_str.is_empty() {
+                        prompt.aircraft = Some(AircraftConstraint::Tag(acf_str));
+                    }
+                }
             }
         }
 
         // 5. Parse Explicit Duration (Overrides keyword if present)
         static TIME_RE: OnceLock<Regex> = OnceLock::new();
         let time_re = TIME_RE
-            .get_or_init(|| Regex::new(r"(?:for\s+)?(\d+)\s*(hour|hr|minute|min|m)s?").unwrap());
+            .get_or_init(|| Regex::new(r"(?:for\s+)?\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)\s+(hour|hr|minute|min|m)s?\b").unwrap());
 
         if let Some(caps) = time_re.captures(&clean_input) {
-            if let (Ok(val), Some(unit)) = (caps[1].parse::<u32>(), caps.get(2)) {
+            let val_str = &caps[1];
+            let val = match val_str {
+                "one" | "a" | "an" => 1,
+                "two" => 2,
+                "three" => 3,
+                "four" => 4,
+                "five" => 5,
+                "six" => 6,
+                "seven" => 7,
+                "eight" => 8,
+                "nine" => 9,
+                "ten" => 10,
+                "eleven" => 11,
+                "twelve" => 12,
+                _ => val_str.parse::<u32>().unwrap_or(1),
+            };
+
+            if let Some(unit) = caps.get(2) {
                 let minutes = match unit.as_str() {
                     "hour" | "hr" => val * 60,
                     _ => val,
@@ -335,9 +767,13 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "rockies" | "rocky mountains" => Some(LocationConstraint::Region("Rockies".to_string())),
         "caribbean" => Some(LocationConstraint::Region("Caribbean".to_string())),
         // Pacific Islands sub-regions
-        "micronesia" => Some(LocationConstraint::Region("PacIsles:Micronesia".to_string())),
+        "micronesia" => Some(LocationConstraint::Region(
+            "PacIsles:Micronesia".to_string(),
+        )),
         "melanesia" => Some(LocationConstraint::Region("PacIsles:Melanesia".to_string())),
-        "polynesia" | "french polynesia" | "south pacific" => Some(LocationConstraint::Region("PacIsles:Polynesia".to_string())),
+        "polynesia" | "french polynesia" | "south pacific" => {
+            Some(LocationConstraint::Region("PacIsles:Polynesia".to_string()))
+        }
         // Africa — countries
         "south africa" => Some(LocationConstraint::Region("ZA".to_string())),
         "kenya" => Some(LocationConstraint::Region("KE".to_string())),
@@ -356,7 +792,9 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "burma" => Some(LocationConstraint::Region("MM".to_string())),
         "persia" => Some(LocationConstraint::Region("IR".to_string())),
         // Short forms / alternate spellings
-        "czechia" | "czech republic" | "czech" => Some(LocationConstraint::Region("CZ".to_string())),
+        "czechia" | "czech republic" | "czech" => {
+            Some(LocationConstraint::Region("CZ".to_string()))
+        }
         "lao" | "lao pdr" => Some(LocationConstraint::Region("LA".to_string())),
 
         // ===================== CITIES → NearCity =====================
@@ -574,13 +1012,94 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
     }
 }
 
+/// Validates an `NLPRulesConfig` for semantic correctness beyond JSON syntax.
+/// Returns a list of human-readable error strings; empty means the config is valid.
+/// Aircraft rules are not validated (mapped_value is a free-form discovery tag).
+pub fn validate_nlp_config(config: &crate::NLPRulesConfig) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    let valid_time: &[&str] = &[
+        "dawn", "sunrise", "morning", "golden hour", "golden",
+        "day", "daytime", "daylight", "afternoon", "noon",
+        "dusk", "sunset", "evening", "twilight", "civil twilight",
+        "night", "midnight", "dark", "night flight", "moonlight", "late night",
+    ];
+    let valid_weather: &[&str] = &[
+        "clear", "sunny", "fair", "vfr", "visual", "clear vfr", "cavok", "cavu",
+        "clear skies", "blue sky", "easy", "relax", "scenic",
+        "cloudy", "overcast", "clouds", "mvfr", "marginal", "scattered", "few clouds", "broken",
+        "storm", "thunder", "thunderstorm", "severe", "lifr", "low ifr", "challenge", "hard mode",
+        "gusty", "windy", "breezy", "turbulent", "gusts",
+        "calm", "still", "smooth", "no wind", "light winds", "glassy",
+        "snow", "blizzard", "ice", "wintry", "winter", "frozen", "snowy", "icy",
+        "rain", "showers", "wet",
+        "fog", "mist", "haze", "ifr", "instrument", "smoky",
+    ];
+    let valid_surface: &[&str] = &[
+        "soft", "grass", "dirt", "gravel", "strip", "unpaved",
+        "hard", "paved", "tarmac", "concrete", "asphalt",
+        "water", "seaplane", "float",
+    ];
+    let valid_type: &[&str] = &[
+        "bush", "backcountry", "remote", "stol",
+        "regional", "commuter",
+    ];
+    let valid_duration: &[&str] = &[
+        "short", "hop", "quick", "sprint",
+        "medium", "mid",
+        "long", "long range",
+        "haul", "long haul", "ultra long", "intercontinental",
+        "transatlantic", "transpacific", "transcontinental",
+    ];
+
+    fn check_category(
+        rules: &[crate::NLPRule],
+        category: &str,
+        valid: &[&str],
+        errors: &mut Vec<String>,
+    ) {
+        for (i, rule) in rules.iter().enumerate() {
+            if rule.mapped_value.trim().is_empty() {
+                errors.push(format!(
+                    "{}[{}] \"{}\": mapped_value cannot be empty.",
+                    category, i, rule.name
+                ));
+            } else if !valid.contains(&rule.mapped_value.to_lowercase().trim()) {
+                errors.push(format!(
+                    "{}[{}] \"{}\": \"{}\" is not a recognized value. Valid options: {}",
+                    category, i, rule.name, rule.mapped_value,
+                    valid.join(", ")
+                ));
+            }
+        }
+    }
+
+    check_category(&config.time_rules, "time_rules", valid_time, &mut errors);
+    check_category(&config.weather_rules, "weather_rules", valid_weather, &mut errors);
+    check_category(&config.surface_rules, "surface_rules", valid_surface, &mut errors);
+    check_category(&config.flight_type_rules, "flight_type_rules", valid_type, &mut errors);
+    check_category(&config.duration_rules, "duration_rules", valid_duration, &mut errors);
+
+    // Aircraft rules: only check non-empty mapped_value
+    for (i, rule) in config.aircraft_rules.iter().enumerate() {
+        if rule.mapped_value.trim().is_empty() {
+            errors.push(format!(
+                "aircraft_rules[{}] \"{}\": mapped_value cannot be empty.",
+                i, rule.name
+            ));
+        }
+    }
+
+    errors
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_parse_no_from() {
-        let p = FlightPrompt::parse("London to Paris");
+        let p = FlightPrompt::parse("London to Paris", &crate::NLPRulesConfig::default());
         // London maps to NearCity; Paris also maps to NearCity
         match &p.origin {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "London"),
@@ -594,7 +1113,10 @@ mod tests {
 
     #[test]
     fn test_parse_simple() {
-        let p = FlightPrompt::parse("Flight from London to Paris");
+        let p = FlightPrompt::parse(
+            "Flight from London to Paris",
+            &crate::NLPRulesConfig::default(),
+        );
         match &p.origin {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "London"),
             other => panic!("London should be NearCity, got {:?}", other),
@@ -609,6 +1131,7 @@ mod tests {
     fn test_parse_full() {
         let p = FlightPrompt::parse(
             "Flight from EGLL to KJFK using a Boeing 747 for 7 hours ignore guardrails",
+            &crate::NLPRulesConfig::default(),
         );
 
         match p.origin {
@@ -629,13 +1152,16 @@ mod tests {
 
     #[test]
     fn test_parse_duration() {
-        let p = FlightPrompt::parse("Just fly for 45 mins");
+        let p = FlightPrompt::parse("Just fly for 45 mins", &crate::NLPRulesConfig::default());
         assert_eq!(p.duration_minutes, Some(45));
     }
 
     #[test]
     fn test_parse_country_as_region() {
-        let p = FlightPrompt::parse("Flight from France to Germany");
+        let p = FlightPrompt::parse(
+            "Flight from France to Germany",
+            &crate::NLPRulesConfig::default(),
+        );
         assert_eq!(p.origin, Some(LocationConstraint::Region("FR".to_string())));
         assert_eq!(
             p.destination,
@@ -645,7 +1171,10 @@ mod tests {
 
     #[test]
     fn test_parse_us_nickname_as_region() {
-        let p = FlightPrompt::parse("Flight from Socal to Norcal");
+        let p = FlightPrompt::parse(
+            "Flight from Socal to Norcal",
+            &crate::NLPRulesConfig::default(),
+        );
         assert_eq!(
             p.origin,
             Some(LocationConstraint::Region("US:SoCal".to_string()))
@@ -658,7 +1187,7 @@ mod tests {
 
     #[test]
     fn test_parse_abbreviation_as_region() {
-        let p = FlightPrompt::parse("Flight from UK to USA");
+        let p = FlightPrompt::parse("Flight from UK to USA", &crate::NLPRulesConfig::default());
         assert_eq!(p.origin, Some(LocationConstraint::Region("UK".to_string())));
         // "usa" is 3 chars, not 4, so not ICAO
         assert_eq!(
@@ -670,10 +1199,10 @@ mod tests {
     #[test]
     fn test_parse_from_uk_only() {
         // "from X" without "to Y" must constrain origin so flight is from UK, not e.g. Algeria/France
-        let p = FlightPrompt::parse("2 hour flight from UK");
+        let p = FlightPrompt::parse("2 hour flight from UK", &crate::NLPRulesConfig::default());
         assert_eq!(p.origin, Some(LocationConstraint::Region("UK".to_string())));
         assert_eq!(p.destination, None);
-        let p2 = FlightPrompt::parse("flight from UK");
+        let p2 = FlightPrompt::parse("flight from UK", &crate::NLPRulesConfig::default());
         assert_eq!(
             p2.origin,
             Some(LocationConstraint::Region("UK".to_string()))
@@ -683,7 +1212,10 @@ mod tests {
 
     #[test]
     fn test_parse_article_stripped() {
-        let p = FlightPrompt::parse("Flight from the British Isles to the Caribbean");
+        let p = FlightPrompt::parse(
+            "Flight from the British Isles to the Caribbean",
+            &crate::NLPRulesConfig::default(),
+        );
         assert_eq!(p.origin, Some(LocationConstraint::Region("BI".to_string())));
         assert_eq!(
             p.destination,
@@ -694,7 +1226,10 @@ mod tests {
     #[test]
     fn test_parse_city_maps_to_nearcity() {
         // London and Paris both map to NearCity now
-        let p = FlightPrompt::parse("Flight from London to Paris");
+        let p = FlightPrompt::parse(
+            "Flight from London to Paris",
+            &crate::NLPRulesConfig::default(),
+        );
         match &p.origin {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "London"),
             other => panic!("London should be NearCity, got {:?}", other),
@@ -707,7 +1242,10 @@ mod tests {
 
     #[test]
     fn test_parse_london_uk_to_region() {
-        let p = FlightPrompt::parse("Flight from London UK to Germany");
+        let p = FlightPrompt::parse(
+            "Flight from London UK to Germany",
+            &crate::NLPRulesConfig::default(),
+        );
         match &p.origin {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "London"),
             other => panic!("London UK should be NearCity, got {:?}", other),
@@ -720,7 +1258,10 @@ mod tests {
 
     #[test]
     fn test_parse_london_to_italy() {
-        let p = FlightPrompt::parse("Flight from London to Italy");
+        let p = FlightPrompt::parse(
+            "Flight from London to Italy",
+            &crate::NLPRulesConfig::default(),
+        );
         match &p.origin {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "London"),
             other => panic!("London should be NearCity, got {:?}", other),
@@ -734,7 +1275,10 @@ mod tests {
     #[test]
     fn test_parse_rome_italy_as_nearcity() {
         // "Rome Italy" now maps to NearCity(Rome) — coordinates (41.9°N, 12.5°E) disambiguate from Rome GA
-        let p = FlightPrompt::parse("Flight from EGMC to Rome Italy");
+        let p = FlightPrompt::parse(
+            "Flight from EGMC to Rome Italy",
+            &crate::NLPRulesConfig::default(),
+        );
         assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGMC".to_string())));
         match &p.destination {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Rome"),
@@ -744,7 +1288,10 @@ mod tests {
 
     #[test]
     fn test_parse_rome_comma_italy_as_nearcity() {
-        let p = FlightPrompt::parse("Flight from London to Rome, Italy");
+        let p = FlightPrompt::parse(
+            "Flight from London to Rome, Italy",
+            &crate::NLPRulesConfig::default(),
+        );
         match &p.destination {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Rome"),
             other => panic!("Rome, Italy should be NearCity, got {:?}", other),
@@ -753,7 +1300,10 @@ mod tests {
 
     #[test]
     fn test_parse_paris_france_as_nearcity() {
-        let p = FlightPrompt::parse("Flight from EGLL to Paris France");
+        let p = FlightPrompt::parse(
+            "Flight from EGLL to Paris France",
+            &crate::NLPRulesConfig::default(),
+        );
         match &p.destination {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Paris"),
             other => panic!("Paris France should be NearCity, got {:?}", other),
@@ -762,7 +1312,10 @@ mod tests {
 
     #[test]
     fn test_parse_icao_still_icao() {
-        let p = FlightPrompt::parse("Flight from EGLL to LFPG");
+        let p = FlightPrompt::parse(
+            "Flight from EGLL to LFPG",
+            &crate::NLPRulesConfig::default(),
+        );
         assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
         assert_eq!(
             p.destination,
@@ -771,7 +1324,7 @@ mod tests {
     }
     #[test]
     fn test_parse_f70_to_alaska() {
-        let p = FlightPrompt::parse("F70 to Alaska");
+        let p = FlightPrompt::parse("F70 to Alaska", &crate::NLPRulesConfig::default());
         // F70 is 3 chars, so parsed as Name, not ICAO (valid behavior as flight_gen handles ID match in name search)
         match p.origin {
             Some(LocationConstraint::AirportName(ref s)) if s == "f70" => {}
@@ -785,7 +1338,7 @@ mod tests {
 
     #[test]
     fn test_parse_nairobi_to_lamu() {
-        let p = FlightPrompt::parse("Nairobi to Lamu");
+        let p = FlightPrompt::parse("Nairobi to Lamu", &crate::NLPRulesConfig::default());
         match &p.origin {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Nairobi"),
             other => panic!("Nairobi should be NearCity, got {:?}", other),
@@ -798,7 +1351,7 @@ mod tests {
 
     #[test]
     fn test_parse_nairobi_to_mombasa() {
-        let p = FlightPrompt::parse("Nairobi to Mombasa");
+        let p = FlightPrompt::parse("Nairobi to Mombasa", &crate::NLPRulesConfig::default());
         match &p.origin {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Nairobi"),
             other => panic!("Nairobi should be NearCity, got {:?}", other),
@@ -811,7 +1364,7 @@ mod tests {
 
     #[test]
     fn test_parse_tokyo_to_bangkok() {
-        let p = FlightPrompt::parse("Tokyo to Bangkok");
+        let p = FlightPrompt::parse("Tokyo to Bangkok", &crate::NLPRulesConfig::default());
         match &p.origin {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Tokyo"),
             other => panic!("Tokyo should be NearCity, got {:?}", other),
@@ -825,7 +1378,10 @@ mod tests {
     #[test]
     fn test_parse_icao_still_works_after_reorder() {
         // Ensure the parse_location reorder didn't break real ICAO codes
-        let p = FlightPrompt::parse("Flight from EGLL to KJFK");
+        let p = FlightPrompt::parse(
+            "Flight from EGLL to KJFK",
+            &crate::NLPRulesConfig::default(),
+        );
         assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
         assert_eq!(
             p.destination,
@@ -838,7 +1394,7 @@ mod tests {
     /// flight-gen target. Use "washington dc" or "dc" to get the capital.
     #[test]
     fn test_parse_washington_resolves_to_wa_state() {
-        let p = FlightPrompt::parse("F70 to Washington");
+        let p = FlightPrompt::parse("F70 to Washington", &crate::NLPRulesConfig::default());
         // F70 is 3 chars → AirportName
         assert!(
             matches!(&p.origin, Some(LocationConstraint::AirportName(s)) if s == "f70"),
@@ -857,7 +1413,7 @@ mod tests {
     /// "washington state" must resolve to Region(US:WA).
     #[test]
     fn test_parse_washington_state_explicit() {
-        let p = FlightPrompt::parse("Washington State");
+        let p = FlightPrompt::parse("Washington State", &crate::NLPRulesConfig::default());
         assert_eq!(
             p.destination.or(p.origin.clone()),
             Some(LocationConstraint::Region("US:WA".to_string())),
@@ -868,17 +1424,84 @@ mod tests {
     /// "washington dc" and "dc" must still resolve to the capital NearCity.
     #[test]
     fn test_parse_washington_dc_still_works() {
-        let p = FlightPrompt::parse("fly to washington dc");
+        let p = FlightPrompt::parse("fly to washington dc", &crate::NLPRulesConfig::default());
         assert!(
             matches!(&p.destination, Some(LocationConstraint::NearCity { name, .. }) if name == "Washington DC"),
             "washington dc should still be NearCity(Washington DC), got {:?}",
             p.destination
         );
-        let p2 = FlightPrompt::parse("fly to dc");
+        let p2 = FlightPrompt::parse("fly to dc", &crate::NLPRulesConfig::default());
         assert!(
             matches!(&p2.destination, Some(LocationConstraint::NearCity { name, .. }) if name == "Washington DC"),
             "dc should still be NearCity(Washington DC), got {:?}",
             p2.destination
         );
+    }
+
+    #[test]
+    fn test_parse_civilian_airliner_with_landing() {
+        let p = FlightPrompt::parse(
+            "Flight from Scotland to Italy using civilian airliner landing at civilian airport",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::Region("UK:Scotland".to_string()))
+        );
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::Region("IT".to_string()))
+        );
+        match p.aircraft {
+            Some(AircraftConstraint::Tag(t)) => {
+                assert_eq!(t, "Airliner", "Should normalize to Airliner")
+            }
+            _ => panic!(
+                "Aircraft should be mapped to Airliner, got {:?}",
+                p.aircraft
+            ),
+        }
+    }
+
+    #[test]
+    fn test_parse_time_and_weather() {
+        let p = FlightPrompt::parse(
+            "Night flight from London to Paris in a storm",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(p.keywords.time, Some(TimeKeyword::Night));
+        assert_eq!(p.keywords.weather, Some(WeatherKeyword::Storm));
+
+        let p2 = FlightPrompt::parse(
+            "Morning departure to KJFK in clear skies",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(p2.keywords.time, Some(TimeKeyword::Dawn));
+        assert_eq!(p2.keywords.weather, Some(WeatherKeyword::Clear));
+
+        let p3 = FlightPrompt::parse(
+            "fly in heavy snow at dusk",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(p3.keywords.time, Some(TimeKeyword::Dusk));
+        assert_eq!(p3.keywords.weather, Some(WeatherKeyword::Snow));
+    }
+
+    #[test]
+    fn test_parse_thunderstorm() {
+        let p = FlightPrompt::parse(
+            "Flight to KSFO in a thunderstorm",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(p.keywords.weather, Some(WeatherKeyword::Storm));
+    }
+
+    #[test]
+    fn test_parse_vfr_ifr() {
+        let p1 = FlightPrompt::parse("VFR flight to KLAX", &crate::NLPRulesConfig::default());
+        let p2 = FlightPrompt::parse("IFR flight to KJFK", &crate::NLPRulesConfig::default());
+
+        assert_eq!(p1.keywords.weather, Some(WeatherKeyword::Clear));
+        assert_eq!(p2.keywords.weather, Some(WeatherKeyword::Fog));
     }
 }

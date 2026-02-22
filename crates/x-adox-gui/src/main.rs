@@ -105,6 +105,7 @@ pub enum Tab {
     CSLs,
     FlightGenerator,
     Heuristics,
+    NLPEditor,
     Issues,
     Utilities,
     Settings,
@@ -255,6 +256,16 @@ enum Message {
     HeuristicsAction(text_editor::Action),
     SaveHeuristics,
     ImportHeuristics,
+    
+    // NLP Rules Editor
+    OpenNLPEditor,
+    ToggleNLPHelp,
+    NLPAction(text_editor::Action),
+    SaveNLP,
+    ResetNLP,
+    ImportNLP,
+    ExportNLP,
+    NLPImported(String),
 
     // Flight Generator
     FlightGen(flight_gen_gui::Message),
@@ -650,6 +661,12 @@ struct App {
     heuristics_json: text_editor::Content,
     heuristics_error: Option<String>,
 
+    // NLP Dictionary
+    nlp_model: x_adox_bitnet::NLPRulesModel,
+    nlp_json: text_editor::Content,
+    nlp_error: Option<String>,
+    nlp_help_expanded: bool,
+
     // Issues
     log_issues: Arc<Vec<x_adox_core::LogIssue>>,
     icon_warning: svg::Handle,
@@ -700,6 +717,7 @@ struct App {
     fallback_ga: image::Handle,
     fallback_military: image::Handle,
     fallback_helicopter: image::Handle,
+    logo_handle: image::Handle,
 
     // Smart View State
     smart_view_expanded: std::collections::BTreeSet<String>,
@@ -871,6 +889,12 @@ impl App {
                 .unwrap_or_else(|| BitNetModel::new().unwrap_or_default()),
             heuristics_json: text_editor::Content::new(),
             heuristics_error: None,
+            nlp_model: x_adox_bitnet::NLPRulesModel::at_path(
+                x_adox_bitnet::NLPRulesModel::get_config_path()
+            ),
+            nlp_json: text_editor::Content::new(),
+            nlp_error: None,
+            nlp_help_expanded: false,
             log_issues: Arc::new(Vec::new()),
             icon_warning: svg::Handle::from_memory(
                 include_bytes!("../assets/icons/warning.svg").to_vec(),
@@ -920,6 +944,9 @@ impl App {
             animation_time: 0.0,
             fallback_helicopter: image::Handle::from_bytes(
                 include_bytes!("../assets/fallback_helicopter.png").to_vec(),
+            ),
+            logo_handle: image::Handle::from_bytes(
+                include_bytes!("../assets/logo.png").to_vec(),
             ),
             smart_view_expanded: std::collections::BTreeSet::new(),
             scenery_view_mode: SceneryViewMode::Flat,
@@ -1328,7 +1355,7 @@ impl App {
 
     fn scroll_to_scenery_index(&self, index: usize) -> Task<Message> {
         // Height: 75px card + 2px spacing (from view_scenery column spacing)
-        let card_height = 75.0; 
+        let card_height = 75.0;
         let spacing = 2.0;
         let offset = index as f32 * (card_height + spacing);
 
@@ -1336,6 +1363,112 @@ impl App {
             self.scenery_scroll_id.clone(),
             scrollable::AbsoluteOffset { x: 0.0, y: offset },
         )
+    }
+
+    /// Selects an aircraft by relative path, expands ancestors / smart group,
+    /// and scrolls the aircraft list so it is visible.
+    fn navigate_to_aircraft(&mut self, target: PathBuf) -> Task<Message> {
+        self.selected_aircraft = Some(target.clone());
+        self.selected_aircraft_name = target.file_name().map(|n| n.to_string_lossy().to_string());
+        if self.use_smart_view {
+            self.navigate_to_aircraft_smart(target.as_path())
+        } else {
+            self.navigate_to_aircraft_folder(target.as_path())
+        }
+    }
+
+    fn navigate_to_aircraft_folder(&mut self, target: &std::path::Path) -> Task<Message> {
+        let mut row_count: usize = 0;
+        if let Some(ref mut tree_arc) = self.aircraft_tree {
+            let tree = Arc::make_mut(tree_arc);
+            expand_ancestors_for_path(tree, target);
+            count_aircraft_rows_before(tree, target, true, &mut row_count);
+        } else {
+            return Task::none();
+        }
+        const ROW_HEIGHT: f32 = 32.0;
+        const SPACING: f32 = 2.0;
+        scrollable::scroll_to(
+            self.aircraft_scroll_id.clone(),
+            scrollable::AbsoluteOffset { x: 0.0, y: (row_count as f32) * (ROW_HEIGHT + SPACING) },
+        )
+    }
+
+    fn navigate_to_aircraft_smart(&mut self, target: &std::path::Path) -> Task<Message> {
+        // Find which tag (and optional model group) contains this aircraft
+        let mut found_tag_id: Option<String> = None;
+        let mut found_model_id: Option<String> = None;
+
+        'outer: for (tag, aircraft) in &self.smart_groups {
+            for ac in aircraft {
+                if ac.relative_path == target {
+                    found_tag_id = Some(format!("tag:{}", tag));
+                    if let Some(model_groups) = self.smart_model_groups.get(tag) {
+                        for (model, acs) in model_groups {
+                            if acs.iter().any(|a| a.relative_path == target) {
+                                found_model_id = Some(format!("model:{}:{}", tag, model));
+                                break;
+                            }
+                        }
+                    }
+                    break 'outer;
+                }
+            }
+        }
+
+        let Some(tag_id) = found_tag_id else {
+            return Task::none();
+        };
+
+        self.smart_view_expanded.insert(tag_id.clone());
+        if let Some(model_id) = found_model_id {
+            self.smart_view_expanded.insert(model_id);
+        }
+
+        let row_count = self.count_smart_rows_before(target);
+        const ROW_HEIGHT: f32 = 32.0;
+        const SPACING: f32 = 2.0;
+        scrollable::scroll_to(
+            self.aircraft_scroll_id.clone(),
+            scrollable::AbsoluteOffset { x: 0.0, y: (row_count as f32) * (ROW_HEIGHT + SPACING) },
+        )
+    }
+
+    fn count_smart_rows_before(&self, target: &std::path::Path) -> usize {
+        let mut count = 0;
+        for (tag, aircraft) in &self.smart_groups {
+            let tag_id = format!("tag:{}", tag);
+            count += 1; // Tag header row
+            if !self.smart_view_expanded.contains(&tag_id) {
+                continue;
+            }
+            let is_manufacturer = MANUFACTURERS.contains(&tag.as_str());
+            if is_manufacturer {
+                if let Some(model_groups) = self.smart_model_groups.get(tag) {
+                    for (model, acs) in model_groups {
+                        let model_id = format!("model:{}:{}", tag, model);
+                        count += 1; // Model header row
+                        if !self.smart_view_expanded.contains(&model_id) {
+                            continue;
+                        }
+                        for ac in acs {
+                            if ac.relative_path == target {
+                                return count;
+                            }
+                            count += 1;
+                        }
+                    }
+                }
+            } else {
+                for ac in aircraft {
+                    if ac.relative_path == target {
+                        return count;
+                    }
+                    count += 1;
+                }
+            }
+        }
+        count
     }
 
     /// Merges airports discovered in scenery packs into the global airports map.
@@ -1393,6 +1526,7 @@ impl App {
                     Tab::Plugins => format!("{} plugins", self.plugins.len()),
                     Tab::CSLs => format!("{} CSL packages", self.csls.len()),
                     Tab::Heuristics => "Sorting Heuristics Editor".to_string(),
+                    Tab::NLPEditor => "NLP Dictionary Editor".to_string(),
                     Tab::Issues => "Known Issues & Log Analysis".to_string(),
                     Tab::Utilities => "Utilities & Logbook Viewer".to_string(),
                     Tab::Settings => "Settings & Configuration".to_string(),
@@ -2468,6 +2602,8 @@ impl App {
                     }
                     find_and_update_variant(Arc::make_mut(tree), &path, &variant, enable);
                 }
+                // Keep smart_groups in sync with optimistic tree update
+                self.update_smart_view_cache();
 
                 self.status = format!(
                     "{} Aircraft Variant {}...",
@@ -2502,6 +2638,8 @@ impl App {
                     }
                     find_and_update(Arc::make_mut(tree), &path, enable);
                 }
+                // Keep smart_groups in sync with optimistic tree update
+                self.update_smart_view_cache();
 
                 self.status = format!(
                     "{} Aircraft {}...",
@@ -2628,8 +2766,13 @@ impl App {
                     let pack_group = match self.scenery_view_mode {
                         SceneryViewMode::Region => pack.get_region(),
                         SceneryViewMode::Tags => pack.tags.first().cloned().unwrap_or_else(|| "Untagged".to_string()),
-                        SceneryViewMode::MapEnhancement | SceneryViewMode::AutoOrtho => {
-                            photo_streamer_group(&pack.name).unwrap_or("").to_string()
+                        SceneryViewMode::MapEnhancement => {
+                            let group = photo_streamer_group(&pack.name).unwrap_or("").to_string();
+                            if group == "Map Enhancement" { group } else { String::new() }
+                        }
+                        SceneryViewMode::AutoOrtho => {
+                            let group = photo_streamer_group(&pack.name).unwrap_or("").to_string();
+                            if group == "AutoOrtho" { group } else { String::new() }
                         }
                         _ => String::new(),
                     };
@@ -2657,8 +2800,13 @@ impl App {
                     let pack_group = match self.scenery_view_mode {
                         SceneryViewMode::Region => pack.get_region(),
                         SceneryViewMode::Tags => pack.tags.first().cloned().unwrap_or_else(|| "Untagged".to_string()),
-                        SceneryViewMode::MapEnhancement | SceneryViewMode::AutoOrtho => {
-                            photo_streamer_group(&pack.name).unwrap_or("").to_string()
+                        SceneryViewMode::MapEnhancement => {
+                            let group = photo_streamer_group(&pack.name).unwrap_or("").to_string();
+                            if group == "Map Enhancement" { group } else { String::new() }
+                        }
+                        SceneryViewMode::AutoOrtho => {
+                            let group = photo_streamer_group(&pack.name).unwrap_or("").to_string();
+                            if group == "AutoOrtho" { group } else { String::new() }
                         }
                         _ => String::new(),
                     };
@@ -3837,7 +3985,7 @@ impl App {
                         Tab::Aircraft => self.selected_aircraft.clone(),
                         Tab::Plugins => self.selected_plugin.clone(),
                         Tab::CSLs => self.selected_csl.clone(),
-                        Tab::Utilities | Tab::Settings | Tab::Issues | Tab::Heuristics | Tab::FlightGenerator => None,
+                        Tab::Utilities | Tab::Settings | Tab::Issues | Tab::Heuristics | Tab::NLPEditor | Tab::FlightGenerator => None,
                     };
 
                     if let Some(p) = path {
@@ -3917,6 +4065,110 @@ impl App {
                 self.sync_active_profile_scenery();
                 return self.trigger_scenery_save();
             }
+            Message::OpenNLPEditor => {
+                let json = serde_json::to_string_pretty(self.nlp_model.config.as_ref())
+                    .unwrap_or_default();
+                self.nlp_json = text_editor::Content::with_text(&json);
+                self.nlp_error = None;
+                self.active_tab = Tab::NLPEditor;
+                self.status = "NLP Dictionary Editor".to_string();
+                Task::none()
+            }
+            Message::NLPAction(action) => {
+                self.nlp_json.perform(action);
+                Task::none()
+            }
+            Message::ToggleNLPHelp => {
+                self.nlp_help_expanded = !self.nlp_help_expanded;
+                Task::none()
+            }
+            Message::SaveNLP => {
+                let text = self.nlp_json.text();
+                match serde_json::from_str::<x_adox_bitnet::NLPRulesConfig>(&text) {
+                    Ok(config) => {
+                        // Semantic validation — check mapped_value correctness.
+                        let errors = x_adox_bitnet::flight_prompt::validate_nlp_config(&config);
+                        if !errors.is_empty() {
+                            self.nlp_error = Some(format!(
+                                "Validation errors (fix before saving):\n{}",
+                                errors.join("\n")
+                            ));
+                            return Task::none();
+                        }
+                        self.nlp_model.update_config(config);
+                        if let Err(e) = self.nlp_model.save() {
+                            self.nlp_error = Some(format!("Save failed: {}", e));
+                            return Task::none();
+                        }
+                        self.nlp_error = None;
+                        self.status = "NLP Dictionary saved and applied!".to_string();
+                    }
+                    Err(e) => {
+                        self.nlp_error = Some(format!("JSON Error: {}", e));
+                    }
+                }
+                Task::none()
+            }
+            Message::ResetNLP => {
+                if let Err(e) = self.nlp_model.reset_defaults() {
+                    self.nlp_error = Some(format!("Reset failed: {}", e));
+                    return Task::none();
+                }
+                let json = serde_json::to_string_pretty(self.nlp_model.config.as_ref())
+                    .unwrap_or_default();
+                self.nlp_json = text_editor::Content::with_text(&json);
+                self.nlp_error = None;
+                self.status = "NLP Dictionary reset to defaults.".to_string();
+                Task::none()
+            }
+            Message::ImportNLP => Task::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .set_title("Import NLP Dictionary JSON")
+                        .add_filter("JSON", &["json"])
+                        .pick_file()
+                        .await
+                        .map(|f| f.path().to_path_buf())
+                },
+                |path_opt| {
+                    if let Some(path) = path_opt {
+                        if let Ok(text) = std::fs::read_to_string(path) {
+                            return Message::NLPImported(text);
+                        }
+                    }
+                    Message::Refresh // No-op refresh
+                },
+            ),
+            Message::NLPImported(text) => {
+                self.nlp_json = text_editor::Content::with_text(&text);
+                self.nlp_error = None;
+                self.status = "NLP Dictionary imported. Click Save to apply.".to_string();
+                Task::none()
+            }
+            Message::ExportNLP => {
+                let text = self.nlp_json.text();
+                // Validate JSON before exporting to prevent writing broken files
+                if serde_json::from_str::<x_adox_bitnet::NLPRulesConfig>(&text).is_err() {
+                    self.nlp_error = Some("Fix JSON errors before exporting.".to_string());
+                    return Task::none();
+                }
+                Task::perform(
+                    async move {
+                        rfd::AsyncFileDialog::new()
+                            .set_title("Export NLP Dictionary JSON")
+                            .add_filter("JSON", &["json"])
+                            .save_file()
+                            .await
+                            .map(|f| f.path().to_path_buf())
+                    },
+                    move |path_opt| {
+                        if let Some(path) = path_opt {
+                            let _ = std::fs::write(path, &text);
+                        }
+                        Message::Refresh
+                    },
+                )
+            }
             Message::ImportHeuristics => Task::perform(
                 async {
                     rfd::AsyncFileDialog::new()
@@ -3993,8 +4245,8 @@ impl App {
                     }
                     flight_gen_gui::Message::ExportFms11 => {
                         if let Some(plan) = &self.flight_gen.current_plan {
-                            let content = x_adox_core::flight_gen::export_fms_11(plan);
-                            let default_name = format!("{}_to_{}.fms", plan.origin.id, plan.destination.id);
+                            let content = x_adox_core::flight_gen::export_fms_11(plan, self.xplane_root.as_deref());
+                            let default_name = format!("{}-{}.fms", plan.origin.id, plan.destination.id);
                             self.flight_gen.status_message = Some("Saving FMS 11 flight plan…".to_string());
                             return Task::perform(
                                 async move {
@@ -4019,8 +4271,8 @@ impl App {
                     }
                     flight_gen_gui::Message::ExportFms12 => {
                         if let Some(plan) = &self.flight_gen.current_plan {
-                            let content = x_adox_core::flight_gen::export_fms_12(plan);
-                            let default_name = format!("{}_to_{}.fms", plan.origin.id, plan.destination.id);
+                            let content = x_adox_core::flight_gen::export_fms_12(plan, self.xplane_root.as_deref());
+                            let default_name = format!("{}-{}.fms", plan.origin.id, plan.destination.id);
                             self.flight_gen.status_message = Some("Saving FMS 12 flight plan…".to_string());
                             return Task::perform(
                                 async move {
@@ -4045,8 +4297,8 @@ impl App {
                     }
                     flight_gen_gui::Message::ExportLnm => {
                         if let Some(plan) = &self.flight_gen.current_plan {
-                            let content = x_adox_core::flight_gen::export_lnmpln(plan);
-                            let default_name = format!("{}_to_{}.lnmpln", plan.origin.id, plan.destination.id);
+                            let content = x_adox_core::flight_gen::export_lnmpln(plan, self.xplane_root.as_deref());
+                            let default_name = format!("{}-{}.lnmpln", plan.origin.id, plan.destination.id);
                             self.flight_gen.status_message = Some("Saving Little Navmap flight plan…".to_string());
                             return Task::perform(
                                 async move {
@@ -4116,12 +4368,14 @@ impl App {
                         let aircraft_list = &self.aircraft;
                         let xplane_root = self.xplane_root.as_deref();
                         let prefs = self.heuristics_model.config.as_ref();
+                        let nlp_rules = self.nlp_model.config.as_ref();
                         let cmd = self.flight_gen.update(
                             msg.clone(),
                             packs,
                             aircraft_list,
                             xplane_root,
                             Some(prefs),
+                            Some(nlp_rules),
                         );
                         
                         let mut tasks = vec![cmd.map(Message::FlightGen)];
@@ -4196,6 +4450,7 @@ impl App {
                     &self.aircraft,
                     self.xplane_root.as_deref(),
                     Some(self.heuristics_model.config.as_ref()),
+                    Some(self.nlp_model.config.as_ref()),
                 ).map(Message::FlightGen)
             }
             Message::ExportHeuristics => {
@@ -4362,32 +4617,35 @@ impl App {
                 if self.aircraft_search_query.is_empty() {
                     self.aircraft_search_matches.clear();
                     self.aircraft_search_index = None;
-                } else {
-                    let q = self.aircraft_search_query.to_lowercase();
-                    self.aircraft_search_matches = self
-                        .aircraft
-                        .iter()
-                        .filter(|a| a.name.to_lowercase().contains(&q))
-                        .map(|a| a.path.clone())
-                        .collect();
-
-                    if self.aircraft_search_matches.is_empty() {
-                        self.aircraft_search_index = None;
-                    } else {
-                        self.aircraft_search_index = Some(0);
-                        let target_path = self.aircraft_search_matches[0].clone();
-                        self.selected_aircraft = Some(target_path);
-                    }
+                    return Task::none();
                 }
-                Task::none()
+                let q = self.aircraft_search_query.to_lowercase();
+                // Use the tree's relative_path so selection highlights work correctly
+                self.aircraft_search_matches = if let Some(tree) = &self.aircraft_tree {
+                    Self::flatten_aircraft_tree(tree)
+                        .into_iter()
+                        .filter(|n| n.name.to_lowercase().contains(&q))
+                        .map(|n| n.relative_path.clone())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                if self.aircraft_search_matches.is_empty() {
+                    self.aircraft_search_index = None;
+                    Task::none()
+                } else {
+                    self.aircraft_search_index = Some(0);
+                    let target = self.aircraft_search_matches[0].clone();
+                    self.navigate_to_aircraft(target)
+                }
             }
             Message::AircraftSearchNext => {
                 if let Some(current) = self.aircraft_search_index {
                     if !self.aircraft_search_matches.is_empty() {
                         let next = (current + 1) % self.aircraft_search_matches.len();
                         self.aircraft_search_index = Some(next);
-                        let target_path = self.aircraft_search_matches[next].clone();
-                        self.selected_aircraft = Some(target_path);
+                        let target = self.aircraft_search_matches[next].clone();
+                        return self.navigate_to_aircraft(target);
                     }
                 }
                 Task::none()
@@ -4401,8 +4659,8 @@ impl App {
                             current - 1
                         };
                         self.aircraft_search_index = Some(prev);
-                        let target_path = self.aircraft_search_matches[prev].clone();
-                        self.selected_aircraft = Some(target_path);
+                        let target = self.aircraft_search_matches[prev].clone();
+                        return self.navigate_to_aircraft(target);
                     }
                 }
                 Task::none()
@@ -5171,7 +5429,7 @@ impl App {
                 );
             }
 
-            if self.show_flight_context_window {
+            if self.show_flight_context_window && self.active_tab == Tab::FlightGenerator {
                 let context_window = self.view_flight_context_window();
 
                 final_view = final_view.push(
@@ -5374,19 +5632,14 @@ impl App {
 
         container(
             column![
-                // Large pulsing logo with glow
+                // Brand logo — pulses gently while loading
                 container(
-                    svg(self.icon_aircraft.clone())
-                        .width(80)
-                        .height(80)
-                        .style(move |_, _| svg::Style {
-                            color: Some(Color {
-                                a: (self.animation_time * 2.0).sin() * 0.2 + 0.6,
-                                ..style::palette::ACCENT_BLUE
-                            }),
-                        })
+                    image(self.logo_handle.clone())
+                        .width(320)
+                        .height(175)
+                        .opacity((self.animation_time * 2.0).sin() * 0.1 + 0.9)
                 )
-                .padding(30),
+                .padding(Padding { top: 20.0, bottom: 10.0, ..Default::default() }),
                 column![
                     container(title).padding(Padding { top: float_offset, bottom: -float_offset, ..Default::default() }),
                     subtitle
@@ -6262,6 +6515,7 @@ impl App {
                 .into()
             }
             Tab::Heuristics => self.view_heuristics_editor(),
+            Tab::NLPEditor => self.view_nlp_editor(),
             Tab::Issues => self.view_issues(),
             Tab::FlightGenerator => self.flight_gen.view().map(Message::FlightGen),
             Tab::Utilities => self.view_utilities(),
@@ -6297,6 +6551,7 @@ impl App {
                 self.selected_csl.is_some(),
             ),
             Tab::Heuristics => (Message::SaveHeuristics, Message::ResetHeuristics, true),
+            Tab::NLPEditor => (Message::SaveNLP, Message::ResetNLP, true),
             Tab::Issues => (Message::CheckLogIssues, Message::Refresh, false),
             Tab::Utilities => (Message::Refresh, Message::Refresh, false),
             Tab::Settings => (Message::Refresh, Message::Refresh, false),
@@ -6391,6 +6646,14 @@ impl App {
             actions = actions.push(edit_sort_btn);
         }
 
+        if self.active_tab == Tab::FlightGenerator {
+            let edit_nlp_btn = button(text("Edit Dictionary").size(12))
+                .on_press(Message::OpenNLPEditor)
+                .style(style::button_premium_glow)
+                .padding([6, 12]);
+            actions = actions.push(edit_nlp_btn);
+        }
+
         let main_content = container(
             column![
                 // Top Bar
@@ -6458,6 +6721,10 @@ impl App {
                         row![]
                     },
                     iced::widget::horizontal_space(),
+                    // Brand logo — compact horizontal placement in the toolbar
+                    image(self.logo_handle.clone())
+                        .width(88)
+                        .height(48),
                     text(format!("v{}", env!("CARGO_PKG_VERSION")))
                         .size(12)
                         .color(style::palette::TEXT_SECONDARY),
@@ -7263,22 +7530,59 @@ impl App {
             Tab::CSLs => (&self.icon_csls, Color::from_rgb(1.0, 0.6, 0.2)),       // Orange
             Tab::Utilities => (&self.icon_utilities, Color::from_rgb(0.8, 0.5, 1.0)), // Purple
             Tab::Heuristics => (&self.refresh_icon, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
+            Tab::NLPEditor => (&self.icon_settings, Color::from_rgb(0.8, 0.8, 0.8)), // Gray
             Tab::Issues => (&self.icon_warning, Color::from_rgb(1.0, 0.2, 0.2)), // Always red for Issues
             Tab::Settings => (&self.icon_settings, style::palette::ACCENT_PURPLE), // Violet for settings
 
             Tab::FlightGenerator => (&self.icon_flight_gen, Color::from_rgb(0.0, 0.8, 0.8)), // Cyan for Flight Gen
         };
 
-        let icon = svg(icon_handle.clone())
-            .width(Length::Fixed(48.0))
-            .height(Length::Fixed(48.0))
-            .style(move |_theme, _status| svg::Style {
-                color: Some(if is_active {
-                    active_color
-                } else {
-                    style::palette::TEXT_SECONDARY
-                }),
-            });
+        let primary_color = if is_active {
+            active_color
+        } else {
+            style::palette::TEXT_SECONDARY
+        };
+
+        let icon: Element<'_, Message, Theme, Renderer> = if !is_active && tab != Tab::Issues {
+            // Apply a "Point Glow" trick to emulate a purely radial drop shadow for inactive tabs
+            let shadow_color = Color::from_rgba(active_color.r, active_color.g, active_color.b, 0.25);
+
+            let point_glow = container(iced::widget::Space::new(Length::Fixed(1.0), Length::Fixed(1.0)))
+                .style(move |_theme| container::Style {
+                    background: None,
+                    shadow: Shadow {
+                        color: shadow_color,
+                        offset: iced::Vector::new(0.0, 0.0),
+                        blur_radius: 18.0,
+                    },
+                    ..Default::default()
+                });
+
+            stack![
+                container(point_glow).width(Length::Fill).height(Length::Fill).center_x(Length::Fill).center_y(Length::Fill),
+                container(
+                    svg(icon_handle.clone())
+                        .width(Length::Fixed(48.0))
+                        .height(Length::Fixed(48.0))
+                        .style(move |_theme, _status| svg::Style {
+                            color: Some(primary_color),
+                        })
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+            ]
+            .into()
+        } else {
+            svg(icon_handle.clone())
+                .width(Length::Fixed(48.0))
+                .height(Length::Fixed(48.0))
+                .style(move |_theme, _status| svg::Style {
+                    color: Some(primary_color),
+                })
+                .into()
+        };
 
         let has_issues = tab == Tab::Issues && !self.log_issues.is_empty();
 
@@ -7433,10 +7737,21 @@ impl App {
                     scenery_groups.entry(tag).or_default().push((idx, pack.clone()));
                 }
             }
-            SceneryViewMode::MapEnhancement | SceneryViewMode::AutoOrtho => {
+            SceneryViewMode::MapEnhancement => {
                 for (idx, pack) in self.packs.iter().enumerate() {
                     if let Some(group) = photo_streamer_group(&pack.name) {
-                        scenery_groups.entry(group.to_string()).or_default().push((idx, pack.clone()));
+                        if group == "Map Enhancement" {
+                            scenery_groups.entry(group.to_string()).or_default().push((idx, pack.clone()));
+                        }
+                    }
+                }
+            }
+            SceneryViewMode::AutoOrtho => {
+                for (idx, pack) in self.packs.iter().enumerate() {
+                    if let Some(group) = photo_streamer_group(&pack.name) {
+                        if group == "AutoOrtho" {
+                            scenery_groups.entry(group.to_string()).or_default().push((idx, pack.clone()));
+                        }
                     }
                 }
             }
@@ -7459,13 +7774,7 @@ impl App {
                         let is_any_enabled = group_packs.iter().any(|(_, p)| p.status == SceneryPackType::Active);
                         let is_any_in_bucket = group_packs.iter().any(|(_, p)| bucket.contains(&p.name));
                         // A group is a "conflict" group when the current mode is focused
-                        // on the *other* photo-streamer system — e.g. in Map Enhancement
-                        // mode the AutoOrtho group is the conflict group, and vice versa.
-                        let is_conflict = matches!(
-                            (scenery_view_mode, group_name.as_str()),
-                            (SceneryViewMode::MapEnhancement, "AutoOrtho")
-                                | (SceneryViewMode::AutoOrtho, "Map Enhancement")
-                        );
+                        let is_conflict = false;
 
                         items.push(Self::render_scenery_group_header(
                             group_name.to_string(),
@@ -8103,6 +8412,110 @@ impl App {
         .into()
     }
 
+    fn view_nlp_editor(&self) -> Element<'_, Message> {
+        let editor = text_editor(&self.nlp_json)
+            .on_action(Message::NLPAction)
+            .font(iced::Font::MONOSPACE);
+
+        let error_banner = if let Some(err) = &self.nlp_error {
+            container(
+                text(err)
+                    .color(Color::from_rgb(1.0, 0.3, 0.3))
+                    .size(13),
+            )
+            .padding(10)
+            .style(style::container_card)
+        } else {
+            container(column![])
+        };
+
+        // --- Collapsible reference panel ---
+        let help_toggle_label = if self.nlp_help_expanded {
+            "▼ Valid Values Reference"
+        } else {
+            "▶ Valid Values Reference"
+        };
+        let help_toggle = button(text(help_toggle_label).size(13))
+            .on_press(Message::ToggleNLPHelp)
+            .style(style::button_secondary)
+            .padding([6, 12]);
+
+        let help_panel: Element<'_, Message> = if self.nlp_help_expanded {
+            fn ref_row<'a>(label: &'a str, values: &'a str) -> Element<'a, Message> {
+                column![
+                    text(label).size(12).color(Color::from_rgb(0.4, 0.8, 1.0)),
+                    text(values).size(11).color(Color::from_rgb(0.7, 0.7, 0.7)),
+                ]
+                .spacing(2)
+                .into()
+            }
+            container(
+                column![
+                    ref_row("aircraft_rules › mapped_value", "Free-form tag matched against your aircraft library (e.g. \"General Aviation\", \"Jet\"). Optional: speed_kts (cruise knots), min_distance_nm, max_distance_nm, priority."),
+                    ref_row("time_rules › mapped_value", "dawn · sunrise · morning · golden hour · golden | day · daytime · daylight · afternoon · noon | dusk · sunset · evening · twilight · civil twilight | night · midnight · dark · night flight · moonlight · late night"),
+                    ref_row("weather_rules › mapped_value", "clear · sunny · fair · vfr · cavok · blue sky | cloudy · overcast · mvfr · scattered · broken | storm · thunder · lifr · low ifr | gusty · windy · turbulent | calm · still · smooth · glassy | snow · blizzard · ice · wintry | rain · showers · wet | fog · mist · haze · ifr · instrument"),
+                    ref_row("surface_rules › mapped_value", "soft · grass · dirt · gravel · strip · unpaved | hard · paved · tarmac · concrete · asphalt | water · seaplane · float"),
+                    ref_row("flight_type_rules › mapped_value", "bush · backcountry · remote · stol | regional · commuter"),
+                    ref_row("duration_rules › mapped_value", "short · hop · quick · sprint | medium · mid | long · long range | haul · long haul · ultra long · intercontinental · transatlantic · transpacific · transcontinental"),
+                    ref_row("priority field", "Higher number = checked first within the same category. Use to ensure specific rules beat general ones (e.g. \"long haul\" priority 1 beats \"long\" priority 0)."),
+                ]
+                .spacing(10)
+                .padding(12),
+            )
+            .style(style::container_card)
+            .width(Length::Fill)
+            .into()
+        } else {
+            column![].into()
+        };
+
+        let toolbar = row![
+            button(text("Import...").size(14))
+                .on_press(Message::ImportNLP)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+            button(text("Export...").size(14))
+                .on_press(Message::ExportNLP)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+            button(text("Save Dictionary").size(14))
+                .on_press(Message::SaveNLP)
+                .style(style::button_primary)
+                .padding([10, 20]),
+            button(text("Reset to Defaults").size(14))
+                .on_press(Message::ResetNLP)
+                .style(style::button_secondary)
+                .padding([10, 20]),
+        ]
+        .spacing(15);
+
+        container(
+            column![
+                text("NLP Dictionary (JSON Editor)")
+                    .size(20)
+                    .width(Length::Fill),
+                text("Customize aircraft names, time, weather, surface, flight type, and duration mappings. Click \"Valid Values Reference\" for field documentation.")
+                    .size(14)
+                    .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                help_toggle,
+                help_panel,
+                error_banner,
+                container(editor)
+                    .height(Length::Fill)
+                    .width(Length::Fill)
+                    .style(style::container_card)
+                    .padding(5),
+                toolbar,
+            ]
+            .spacing(10)
+            .padding(20),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(style::container_main_content)
+        .into()
+    }
+
     fn view_settings(&self) -> Element<'_, Message> {
         let title = text("Scan Settings").size(24);
 
@@ -8360,7 +8773,37 @@ impl App {
                 container(filter_content)
                     .padding(20)
                     .style(style::container_card)
-                    .width(Length::Fill)
+                    .width(Length::Fill),
+
+                iced::widget::horizontal_rule(1.0),
+
+                // About section
+                container(
+                    column![
+                        container(
+                            image(self.logo_handle.clone())
+                                .width(280)
+                                .height(153),
+                        )
+                        .width(Length::Fill)
+                        .align_x(iced::Alignment::Center),
+                        text("X-Addon-Oxide")
+                            .size(20)
+                            .color(style::palette::TEXT_PRIMARY),
+                        text("Version 2.4.0")
+                            .size(13)
+                            .color(style::palette::TEXT_SECONDARY),
+                        text("The Modern Addon Manager for X-Plane 11 & 12")
+                            .size(12)
+                            .color(style::palette::TEXT_SECONDARY),
+                    ]
+                    .spacing(6)
+                    .align_x(iced::Alignment::Center)
+                    .width(Length::Fill),
+                )
+                .padding(30)
+                .style(style::container_card)
+                .width(Length::Fill)
             ]
             .spacing(20)
             .padding(20),
@@ -10608,6 +11051,50 @@ fn restore_expanded_paths(node: &mut AircraftNode, paths: &std::collections::Has
     for child in &mut node.children {
         restore_expanded_paths(child, paths);
     }
+}
+
+/// Expands all ancestor folder nodes in the tree that lead to `target`.
+/// Returns true if `target` was found in this node's subtree.
+fn expand_ancestors_for_path(node: &mut AircraftNode, target: &std::path::Path) -> bool {
+    if !node.is_folder {
+        return node.relative_path == target;
+    }
+    if node.relative_path == target {
+        return true;
+    }
+    for child in &mut node.children {
+        if expand_ancestors_for_path(child, target) {
+            node.is_expanded = true;
+            return true;
+        }
+    }
+    false
+}
+
+/// Counts visible rendered rows before `target` using the same traversal order as
+/// `collect_tree_nodes`. Mirrors the `is_root` logic: root node is not rendered.
+/// Returns true if target was found (count holds its row index).
+fn count_aircraft_rows_before(
+    node: &AircraftNode,
+    target: &std::path::Path,
+    is_root: bool,
+    count: &mut usize,
+) -> bool {
+    if !is_root {
+        if node.relative_path == target {
+            return true;
+        }
+        // Each node renders itself + its variants
+        *count += 1 + node.variants.len();
+    }
+    if is_root || node.is_expanded {
+        for child in &node.children {
+            if count_aircraft_rows_before(child, target, false, count) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 async fn install_addon(

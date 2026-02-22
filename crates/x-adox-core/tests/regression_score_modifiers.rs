@@ -37,18 +37,18 @@ fn sorted_names(packs: &mut Vec<SceneryPack>) -> Vec<String> {
 fn test_category_score_ordering() {
     // Full tier ordering from top to bottom
     let mut packs = vec![
-        make_pack("zzz_UHD_Mesh", SceneryCategory::Mesh),         // 30
-        make_pack("Ortho4XP_Region", SceneryCategory::OrthoBase),   // 50
-        make_pack("Demo_Area", SceneryCategory::GlobalBase),        // 60
+        make_pack("zzz_UHD_Mesh", SceneryCategory::Mesh), // 30
+        make_pack("Ortho4XP_Region", SceneryCategory::OrthoBase), // 50
+        make_pack("Demo_Area", SceneryCategory::GlobalBase), // 60
         make_pack("AutoOrtho_Overlays", SceneryCategory::AutoOrthoOverlay), // 65
         make_pack("Global_Forests", SceneryCategory::RegionalFluff), // 70
         make_pack("simHeaven_Europe", SceneryCategory::RegionalOverlay), // 75
         make_pack("FollowMe_Cars", SceneryCategory::AirportOverlay), // 80
-        make_pack("OpenSceneryX", SceneryCategory::Library),        // 85
+        make_pack("OpenSceneryX", SceneryCategory::Library), // 85
         make_pack("Global Airports", SceneryCategory::GlobalAirport), // 90
         make_pack("X-Plane Landmarks Paris", SceneryCategory::Landmark), // 95
-        make_pack("Orbx_A_EGLC", SceneryCategory::OrbxAirport),    // 95
-        make_pack("KSEA_Airport", SceneryCategory::CustomAirport),  // 100
+        make_pack("Orbx_A_EGLC", SceneryCategory::OrbxAirport), // 95
+        make_pack("KSEA_Airport", SceneryCategory::CustomAirport), // 100
     ];
 
     let names = sorted_names(&mut packs);
@@ -66,34 +66,19 @@ fn test_category_score_ordering() {
 
     assert!(
         names.iter().position(|n| n == "Global Airports").unwrap()
-            < names
-                .iter()
-                .position(|n| n == "OpenSceneryX")
-                .unwrap(),
+            < names.iter().position(|n| n == "OpenSceneryX").unwrap(),
         "GlobalAirport (90) should be above Library (85)"
     );
 
     assert!(
-        names
-            .iter()
-            .position(|n| n == "OpenSceneryX")
-            .unwrap()
-            < names
-                .iter()
-                .position(|n| n == "FollowMe_Cars")
-                .unwrap(),
+        names.iter().position(|n| n == "OpenSceneryX").unwrap()
+            < names.iter().position(|n| n == "FollowMe_Cars").unwrap(),
         "Library (85) should be above AirportOverlay (80)"
     );
 
     assert!(
-        names
-            .iter()
-            .position(|n| n == "simHeaven_Europe")
-            .unwrap()
-            < names
-                .iter()
-                .position(|n| n == "Global_Forests")
-                .unwrap(),
+        names.iter().position(|n| n == "simHeaven_Europe").unwrap()
+            < names.iter().position(|n| n == "Global_Forests").unwrap(),
         "RegionalOverlay (75) should be above RegionalFluff (70)"
     );
 
@@ -186,7 +171,7 @@ fn test_yz_prefix_penalty_y_prefix() {
     // y prefix also gets penalty
     let mut packs = vec![
         make_pack("yOrtho4XP_+40", SceneryCategory::OrthoBase), // 50 - 20 = 30
-        make_pack("Regular_Ortho", SceneryCategory::OrthoBase),  // 50
+        make_pack("Regular_Ortho", SceneryCategory::OrthoBase), // 50
     ];
 
     let names = sorted_names(&mut packs);
@@ -229,7 +214,7 @@ fn test_yz_prefix_exempt_airport_overlay() {
 fn test_yz_prefix_exempt_library() {
     // Library is EXEMPT from y/z penalty
     let mut packs = vec![
-        make_pack("zLib_Something", SceneryCategory::Library),    // 85 (exempt)
+        make_pack("zLib_Something", SceneryCategory::Library), // 85 (exempt)
         make_pack("FollowMe_Cars", SceneryCategory::AirportOverlay), // 80
     ];
 
@@ -281,7 +266,10 @@ fn test_yz_prefix_not_exempt_regional_overlay() {
 fn test_mesh_name_caps_score_at_30() {
     // A pack classified as RegionalOverlay (75) but with "mesh" in name → capped to 30
     let mut packs = vec![
-        make_pack("FlyTampa_Amsterdam_3_mesh", SceneryCategory::RegionalOverlay), // 75 → 30
+        make_pack(
+            "FlyTampa_Amsterdam_3_mesh",
+            SceneryCategory::RegionalOverlay,
+        ), // 75 → 30
         make_pack("Regular_Ortho", SceneryCategory::OrthoBase), // 50
     ];
 
@@ -298,7 +286,7 @@ fn test_mesh_name_overrides_category() {
     // Even CustomAirport (100) with "mesh" in name gets capped to 30
     let mut packs = vec![
         make_pack("Airport_mesh_terrain", SceneryCategory::CustomAirport), // 100 → 30
-        make_pack("Regular_Ortho", SceneryCategory::OrthoBase), // 50
+        make_pack("Regular_Ortho", SceneryCategory::OrthoBase),            // 50
     ];
 
     let names = sorted_names(&mut packs);
@@ -313,7 +301,7 @@ fn test_mesh_category_pack_stays_at_30() {
     // Mesh category = 30, no additional penalty from name
     let mut packs = vec![
         make_pack("zzz_UHD_Mesh_v4", SceneryCategory::Mesh), // 30 (name has mesh, already 30)
-        make_pack("Another_Mesh", SceneryCategory::Mesh),     // 30
+        make_pack("Another_Mesh", SceneryCategory::Mesh),    // 30
     ];
 
     let names = sorted_names(&mut packs);
@@ -349,7 +337,7 @@ fn test_yz_penalty_plus_vfr_boost() {
     // Total: 75 + 5 - 20 = 60
     let mut packs = vec![
         make_pack("z_VFR_Overlay", SceneryCategory::RegionalOverlay), // 75 + 5 - 20 = 60
-        make_pack("Demo_Area", SceneryCategory::GlobalBase),           // 60
+        make_pack("Demo_Area", SceneryCategory::GlobalBase),          // 60
     ];
 
     let names = sorted_names(&mut packs);
