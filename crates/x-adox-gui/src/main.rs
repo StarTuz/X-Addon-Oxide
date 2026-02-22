@@ -6455,17 +6455,8 @@ impl App {
     }
 
     fn view_navigator(&self) -> Element<'_, Message> {
-        // Small brand logo at the top of the sidebar
-        let sidebar_logo = container(
-            image(self.logo_handle.clone())
-                .width(115)
-                .height(63),
-        )
-        .padding(Padding { top: 14.0, bottom: 4.0, left: 10.0, right: 10.0 });
-
         container(
             Column::<Message, Theme, Renderer>::new()
-                .push(sidebar_logo)
                 .push(self.sidebar_button("Aircraft", Tab::Aircraft))
                 .push(self.sidebar_button("Scenery", Tab::Scenery))
                 .push(self.sidebar_button("Plugins", Tab::Plugins))
@@ -6475,7 +6466,7 @@ impl App {
                 .push(self.sidebar_button("Issues", Tab::Issues))
                 .push(self.sidebar_button("Settings", Tab::Settings))
                 .spacing(25)
-                .padding([8, 0]),
+                .padding([20, 0]),
         )
         .width(Length::Fixed(145.0))
         .height(Length::Fill)
@@ -6730,6 +6721,10 @@ impl App {
                         row![]
                     },
                     iced::widget::horizontal_space(),
+                    // Brand logo — compact horizontal placement in the toolbar
+                    image(self.logo_handle.clone())
+                        .width(88)
+                        .height(48),
                     text(format!("v{}", env!("CARGO_PKG_VERSION")))
                         .size(12)
                         .color(style::palette::TEXT_SECONDARY),
