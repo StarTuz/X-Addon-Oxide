@@ -562,19 +562,22 @@ impl SceneryManager {
                 // Apply heuristic classification (now parallelized)
                 pack.category = classifier::Classifier::classify_heuristic(&pack.path, &pack.name);
 
-                // 2. Discover details with cache check
-                let (airports, tiles, descriptor, cache_entry) =
+                // 2. Discover details with cache check.
+                // Direct assignment to pack fields avoids an intermediate tuple allocation.
+                // Cache-miss path: originals go to pack, clones go to the cache entry.
+                let cache_entry: Option<crate::cache::CacheEntry> =
                     if let Some(entry) = cache_ref.get(&pack.path) {
-                        (
-                            entry.airports.clone(),
-                            entry.tiles.clone(),
-                            entry.descriptor.clone(),
-                            None,
-                        )
+                        pack.airports = entry.airports.clone();
+                        pack.tiles = entry.tiles.clone();
+                        pack.descriptor = entry.descriptor.clone();
+                        None
                     } else if quick {
                         // Quick mode: skip disk I/O for uncached packs.
                         // Airport/tile data will be filled in by a background deep scan.
-                        (Vec::<Airport>::new(), Vec::<(i32, i32)>::new(), SceneryDescriptor::default(), None)
+                        pack.airports = Vec::new();
+                        pack.tiles = Vec::new();
+                        pack.descriptor = SceneryDescriptor::default();
+                        None
                     } else {
                         let mut airports = discover_airports_in_pack(&pack.path);
                         // X-Plane 12 may ship the default airport database in Resources instead of
@@ -605,23 +608,18 @@ impl SceneryManager {
                             .map(|m| m.into())
                             .unwrap_or_else(|_| chrono::Utc::now());
 
-                        (
-                            airports.clone(),
-                            tiles.clone(),
-                            descriptor.clone(),
-                            Some(crate::cache::CacheEntry {
-                                mtime,
-                                addons: Vec::new(),
-                                airports,
-                                tiles,
-                                descriptor,
-                            }),
-                        )
+                        let entry = crate::cache::CacheEntry {
+                            mtime,
+                            addons: Vec::new(),
+                            airports: airports.clone(),
+                            tiles: tiles.clone(),
+                            descriptor: descriptor.clone(),
+                        };
+                        pack.airports = airports;
+                        pack.tiles = tiles;
+                        pack.descriptor = descriptor;
+                        Some(entry)
                     };
-
-                pack.airports = airports;
-                pack.tiles = tiles;
-                pack.descriptor = descriptor;
 
                 // 3. Structural Library Detection (before promotion)
                 // Check for library.txt FIRST — the X-Plane standard for declaring
