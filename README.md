@@ -25,6 +25,10 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ## Feature Highlights
 
+- **New for 2.4.1**:
+  - **Chinese (zh-CN) Flight Generator NLP**: Type flight prompts in Simplified Chinese — 「从北京到上海短途飞行下雨天使用A320在凌晨」 is parsed correctly into origin, destination, duration, weather, aircraft, and time keywords. Includes 80+ city/country aliases (18 new Chinese cities), full weather vocabulary (暴雨→storm, 大雨/小雨→rain, 凌晨→night, etc.), aircraft type hints (直升机, 波音, 空客), and grammatical particle stripping.
+  - **Internationalized Flight Generator Chat UI**: The System/User chat labels and welcome message now respect the selected language — switch to Chinese in Settings and the entire Flight Generator interface follows immediately.
+  - **Aircraft Tag Parser Fix**: The NLP aircraft capture regex now uses a `\bat\b` terminator, fixing prompts like "A320 at night" or "A320在凌晨" to correctly extract just the aircraft model rather than the trailing context.
 - **New for 2.4.0**:
   - **Flight Generator — Weather & Time NLP**: Describe your flight in plain English including weather and time of day. "Stormy morning flight from EGLL to LFPG in a 737" will filter airports by live METAR conditions and pick a realistic departure time automatically. Supports storm, rain, snow, fog, clear, gusty, and calm weather; dawn, morning, noon, afternoon, evening, and night time slots.
   - **Seaplane & Water Routing**: Dedicated water surface keyword detection — "floatplane", "seaplane", or "amphibian" routes exclusively to seaplane bases, no hardcoded pack filters.
@@ -72,6 +76,12 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 - **Developer Friendly**: Hot-swap addons while the sim is running (plugin dependent) for rapid testing.
 
 ## Release Notes
+
+### v2.4.1
+
+- **Chinese (zh-CN) Flight Generator NLP**: Full Chinese-language input support for the Flight Generator. Prompts like 「从北京到上海短途飞行下雨天使用A320在凌晨」 are parsed into origin, destination, duration, weather, aircraft, and time. Includes 80+ city/country aliases, weather intensity variants (暴雨→storm, 大雨/小雨→rain), time keywords (凌晨→night, 黄昏→dusk), aircraft type hints (直升机, 波音, 空客, 涡桨), vehicle connectors (搭乘/乘坐/使用/驾驶→"in a"), and grammatical particle stripping (在, 的, 了).
+- **Internationalized Flight Generator Chat UI**: System/User labels and the welcome message now respect the selected language. Switching to Chinese in Settings updates the chat UI immediately — no restart required.
+- **Aircraft Tag Parser Fix**: Added `\bat\b` as an ACF regex terminator so "A320 at night" and "A320在凌晨" (Chinese preprocessing maps 在→"at") correctly extract tag `a320` rather than `a320 at night`.
 
 ### v2.4.0
 
@@ -204,7 +214,7 @@ This will create `X-Addon-Oxide-x86_64.AppImage` in the root directory.
 
 Planned for future releases:
 
-- **Full Internationalization (i18n)**: Complete UI translation system with community-contributed locale files. Chinese (Simplified), Japanese, and other language packs planned. Contributions welcome.
+- **Additional Language Support**: English and Simplified Chinese (zh-CN) ship with 219 UI keys each. Japanese, Korean, German, French, and other community-contributed locale files welcome — contributions open on GitHub.
 - **X-Plane 12.2 compatibility**: Track new sim-level API changes as they land.
 
 ## Contributing
