@@ -78,7 +78,11 @@ pub fn sort_packs(
                             }
                             ord => return ord,
                         }
+                    } else {
+                        return std::cmp::Ordering::Less;
                     }
+                } else if extract_simheaven_info(&b.name).is_some() {
+                    return std::cmp::Ordering::Greater;
                 }
 
                 // Pure Stability: items with the same score tier stay exactly where they were
