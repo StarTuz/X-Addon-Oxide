@@ -1,5 +1,6 @@
 use crate::style;
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
+use rust_i18n::t;
 use iced::{Element, Length, Padding, Task};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -511,13 +512,14 @@ impl FlightGenState {
         .height(Length::Fill)
         .width(Length::Fill);
 
+        let flight_placeholder = t!("flight.placeholder");
         let input_area = row![
-            text_input("Ask for a flight...", &self.input_value)
+            text_input(&flight_placeholder, &self.input_value)
                 .on_input(Message::InputChanged)
                 .on_submit(Message::Submit)
                 .padding(10)
                 .style(style::text_input_primary),
-            button("Send")
+            button(text(t!("flight.send")))
                 .on_press(Message::Submit)
                 .padding(10)
                 .style(style::button_primary)
@@ -530,7 +532,7 @@ impl FlightGenState {
         // Always show Regenerate if we have at least one user prompt to regenerate from
         if self.history.iter().any(|m| m.is_user) {
             export_controls = export_controls.push(
-                button("Regenerate")
+                button(text(t!("flight.regenerate")))
                     .on_press(Message::Regenerate)
                     .style(style::button_success_glow),
             );
@@ -563,27 +565,27 @@ impl FlightGenState {
 
             if plan.origin_region_id.is_some() && plan.dest_region_id.is_some() {
                 learning_controls = learning_controls.push(
-                    button("Remember this flight")
+                    button(text(t!("flight.remember")))
                         .on_press(Message::RememberThisFlight)
                         .style(style::button_ghost_amber),
                 );
             }
             if plan.origin_region_id.is_some() {
                 learning_controls = learning_controls.push(
-                    button("Prefer this origin")
+                    button(text(t!("flight.prefer_origin")))
                         .on_press(Message::PreferThisOrigin)
                         .style(style::button_ghost_teal),
                 );
             }
             if plan.dest_region_id.is_some() {
                 learning_controls = learning_controls.push(
-                    button("Prefer this destination")
+                    button(text(t!("flight.prefer_dest")))
                         .on_press(Message::PreferThisDestination)
                         .style(style::button_ghost_indigo),
                 );
             }
             learning_controls = learning_controls.push(
-                button("History & Context")
+                button(text(t!("flight.history_context")))
                     .on_press(Message::ToggleFlightContextWindow)
                     .style(style::button_primary_glow),
             );
@@ -1018,85 +1020,99 @@ fn poi_fetch_agent() -> ureq::Agent {
         .build()
 }
 
-/// Fetches decoded METAR for origin and destination ICAO. Returns (origin_text, dest_text). Used for "Weather (as of now)" in History & context.
+/// Fetches raw METAR for origin and destination ICAO. Returns (origin_text, dest_text).
+/// Primary source: local bulk METAR cache (global coverage, downloaded by WeatherEngine).
+/// Fallback: AWC point API (covers US airports when the cache is missing or stale).
 pub fn fetch_weather_for_plan(
     origin_icao: &str,
     dest_icao: &str,
 ) -> (Option<String>, Option<String>) {
-    let mut requested_ids = vec![
-        origin_icao.trim().to_uppercase(),
-        dest_icao.trim().to_uppercase(),
-    ];
-
-    // Add K-prefixed versions for 3-char US airports (e.g. F70 -> KF70)
     let origin_icao_up = origin_icao.trim().to_uppercase();
     let dest_icao_up = dest_icao.trim().to_uppercase();
 
-    if origin_icao_up.len() == 3 {
-        requested_ids.push(format!("K{}", origin_icao_up));
-    }
-    if dest_icao_up.len() == 3 {
-        requested_ids.push(format!("K{}", dest_icao_up));
-    }
+    // --- Primary: local bulk METAR cache (has global coverage including EGLL, ZBNY, etc.) ---
+    let engine = x_adox_core::weather::WeatherEngine::new();
+    let ids_slice: Vec<&str> = vec![origin_icao_up.as_str(), dest_icao_up.as_str()];
+    let mut metar_map = engine.get_raw_metars(&ids_slice);
 
-    let ids = requested_ids.join(",");
-    let url = format!(
-        "{}?ids={}&format=decoded",
-        AWC_METAR_URL,
-        urlencoding::encode(&ids)
-    );
-    let agent = ureq::Agent::new();
-    let resp = match agent
-        .get(&url)
-        .set("User-Agent", "X-Addon-Oxide/1.0 (flight context)")
-        .call()
-    {
-        Ok(r) => r,
-        Err(_) => return (None, None),
-    };
-    let body = match resp.into_string() {
-        Ok(s) => s,
-        Err(_) => return (None, None),
-    };
-
-    // Parse response into a map of ICAO -> Raw Text
-    let mut metar_map = std::collections::HashMap::new();
-    for s in body.split("METAR for ") {
-        let t = s.trim();
-        if t.is_empty() {
-            continue;
+    // For 3-char US airports, also try the K-prefixed version
+    if !metar_map.contains_key(&origin_icao_up) && origin_icao_up.len() == 3 {
+        let k_ids: Vec<&str> = vec![&origin_icao_up];
+        let k_origin = format!("K{}", origin_icao_up);
+        let k_ids2: Vec<&str> = vec![k_origin.as_str()];
+        let r = engine.get_raw_metars(&k_ids2);
+        if let Some(v) = r.get(&k_origin) {
+            metar_map.insert(origin_icao_up.clone(), v.clone());
         }
-        // Extract ICAO from the start (e.g. "KDLS ...")
-        if let Some(icao) = t.split_whitespace().next() {
-            // The API sometimes returns "KDLS (The Dalles..." so we just take the first token
-            let key = icao
-                .trim_matches(|c: char| !c.is_alphanumeric())
-                .to_uppercase();
-            metar_map.insert(key, format!("METAR for {}", t));
+        let _ = k_ids; // suppress unused warning
+    }
+    if !metar_map.contains_key(&dest_icao_up) && dest_icao_up.len() == 3 {
+        let k_dest = format!("K{}", dest_icao_up);
+        let k_ids: Vec<&str> = vec![k_dest.as_str()];
+        let r = engine.get_raw_metars(&k_ids);
+        if let Some(v) = r.get(&k_dest) {
+            metar_map.insert(dest_icao_up.clone(), v.clone());
         }
     }
 
-    let get_with_fallback = |icao: &str| {
-        let icao = icao.to_uppercase();
-        if let Some(m) = metar_map.get(&icao) {
-            return Some(m.clone());
-        }
-        if icao.len() == 3 {
-            let k_icao = format!("K{}", icao);
-            if let Some(m) = metar_map.get(&k_icao) {
-                return Some(m.clone());
+    // --- Fallback: AWC point API for any ICAOs still missing (US airport coverage) ---
+    let need_api: Vec<String> = [&origin_icao_up, &dest_icao_up]
+        .iter()
+        .filter(|id| !metar_map.contains_key(id.as_str()))
+        .map(|id| id.to_string())
+        .collect();
+
+    if !need_api.is_empty() {
+        let mut api_ids = need_api.clone();
+        for id in &need_api {
+            if id.len() == 3 {
+                api_ids.push(format!("K{}", id));
             }
         }
-        None
-    };
+        let ids_str = api_ids.join(",");
+        let url = format!(
+            "{}?ids={}&format=raw",
+            AWC_METAR_URL,
+            urlencoding::encode(&ids_str)
+        );
+        let agent = ureq::Agent::new();
+        if let Ok(resp) = agent
+            .get(&url)
+            .set("User-Agent", "X-Addon-Oxide/1.0 (flight context)")
+            .call()
+        {
+            if let Ok(body) = resp.into_string() {
+                for line in body.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    if let Some(icao) = line.split_whitespace().next() {
+                        let key = icao.trim().to_uppercase();
+                        // Match directly or via K-prefix strip
+                        if need_api.contains(&key) {
+                            metar_map.entry(key).or_insert_with(|| line.to_string());
+                        } else if key.starts_with('K') && key.len() == 4 {
+                            let bare = &key[1..];
+                            if need_api.iter().any(|id| id == bare) {
+                                metar_map
+                                    .entry(bare.to_string())
+                                    .or_insert_with(|| line.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-    let origin = get_with_fallback(&origin_icao_up).or_else(|| {
+    let origin = metar_map.get(&origin_icao_up).cloned().or_else(|| {
         Some(format!(
             "No METAR available for {} (no reporting station).",
             origin_icao_up
         ))
     });
-    let dest = get_with_fallback(&dest_icao_up).or_else(|| {
+    let dest = metar_map.get(&dest_icao_up).cloned().or_else(|| {
         Some(format!(
             "No METAR available for {} (no reporting station).",
             dest_icao_up

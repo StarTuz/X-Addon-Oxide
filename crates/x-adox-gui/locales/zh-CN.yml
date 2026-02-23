@@ -1,0 +1,172 @@
+# Tabs
+tab.scenery: "景观库"
+tab.aircraft: "飞机库"
+tab.plugins: "插件"
+tab.csls: "CSL模型"
+tab.flight_gen: "航班生成"
+tab.heuristics: "启发式规则"
+tab.nlp_editor: "NLP编辑器"
+tab.issues: "问题"
+tab.utilities: "工具"
+tab.settings: "设置"
+
+# Toolbar / header
+btn.refresh: "刷新"
+btn.install: "安装..."
+btn.delete: "删除..."
+btn.smart_sort: "智能排序"
+btn.edit_sort: "编辑排序"
+btn.edit_dict: "编辑词典"
+btn.settings: "设置"
+
+# Common actions
+btn.confirm: "确认"
+btn.cancel: "取消"
+btn.apply: "应用"
+btn.save: "保存"
+btn.close: "关闭"
+btn.enable: "启用"
+btn.disable: "禁用"
+btn.launch: "启动"
+btn.export: "导出"
+btn.export_list: "导出列表"
+btn.import: "导入配置"
+btn.add_exclusion: "添加排除文件夹"
+btn.back: "返回"
+
+# Scenery tab
+scenery.title: "景观库"
+scenery.search: "搜索景观..."
+scenery.no_packs: "未找到景观包。"
+
+# Aircraft tab
+aircraft.title: "飞机库"
+aircraft.search: "搜索飞机..."
+aircraft.no_aircraft: "未找到飞机。"
+aircraft.loading: "正在加载飞机..."
+aircraft.smart_view: "AI智能视图"
+aircraft.folder_view: "文件夹视图"
+aircraft.no_preview: "无预览"
+
+# Plugins / CSLs
+plugins.title: "插件库"
+csls.title: "CSL模型库"
+
+# Settings tab
+settings.title: "扫描设置"
+settings.backup: "备份与恢复"
+settings.export_config: "导出配置（.xback）"
+settings.import_config: "导入配置"
+settings.exclusions: "已排除的文件夹（AI扫描忽略）"
+settings.aircraft_export: "飞机导出设置"
+settings.language: "语言"
+
+# Flight Generator
+flight.title: "航班生成器"
+flight.placeholder: "请描述您的飞行..."
+flight.send: "发送"
+flight.regenerate: "重新生成"
+flight.remember: "记住此次飞行"
+flight.prefer_origin: "偏好此出发地"
+flight.prefer_dest: "偏好此目的地"
+flight.history_context: "历史与情境"
+
+# Status / feedback
+status.complete: "完成"
+status.loading: "加载中..."
+status.all_ok: "所有检查通过！"
+
+# SceneryViewMode display names
+scenery.view.flat: "平面视图"
+scenery.view.region: "按地区分组"
+scenery.view.tag: "按标签分组"
+scenery.view.map_enhancement: "按地图增强分组"
+scenery.view.autoortho: "按AutoOrtho分组"
+
+# Loading overlay subsystem labels
+loading.aircraft: "飞机插件"
+loading.plugins: "插件与CSL"
+loading.airports: "机场数据库"
+loading.logbook: "飞行日志"
+
+# Scenery basket
+scenery.basket.title: "景观篮"
+scenery.basket.auto_pin: "自动固定"
+scenery.basket.clear: "清除"
+scenery.basket.drop_here: "拖放景观到此处..."
+scenery.basket.disable_selected: "禁用已选（%{count}）"
+scenery.basket.enable_selected: "启用已选（%{count}）"
+scenery.basket.toggle_selected: "切换已选（%{count}）"
+scenery.basket.drag_selected: "拖动已选（%{count}）"
+
+# Scenery group headers
+scenery.group.add_to_bucket: "添加到篮中"
+scenery.group.remove_from_bucket: "从篮中移除"
+scenery.group.enable_all: "全部启用"
+scenery.group.disable_all: "全部禁用"
+
+# Issues tab
+issues.title: "问题面板"
+issues.log.title: "X-Plane 日志分析"
+issues.log.none: "Log.txt 中未检测到问题"
+issues.log.rescan: "重新扫描日志"
+issues.log.select_all: "全选"
+issues.log.found: "在 Log.txt 中发现 %{count} 个问题。"
+issues.log.export: "导出报告（%{count}）"
+issues.validation.title: "景观顺序验证"
+issues.validation.ok: "未发现验证问题。景观顺序正常！"
+issues.validation.found: "发现 %{count} 个验证问题。"
+issues.validation.not_run: "尚未运行验证。"
+issues.validation.hint: "运行「智能排序/模拟」以生成验证报告。"
+
+# Profile dialogs
+profile.save.title: "保存新配置文件"
+profile.save.hint: "输入当前配置的名称"
+profile.save.placeholder: "配置文件名"
+profile.save.btn: "保存配置文件"
+profile.rename.title: "重命名配置文件"
+profile.rename.placeholder: "新名称"
+profile.rename.btn: "重命名配置文件"
+
+# Settings — map filter section
+settings.map_filter.toggle_open: "地图筛选 v"
+settings.map_filter.toggle_closed: "地图筛选 >"
+settings.map_filter.airports: "机场与地标"
+settings.map_filter.terrain: "地形与区域"
+settings.map_filter.utilities: "工具"
+settings.map_filter.custom_airports: "自定义机场"
+settings.map_filter.enhancements: "地图增强（小型）"
+settings.map_filter.global_airports: "全球机场"
+settings.map_filter.ortho_coverage: "显示正射覆盖"
+settings.map_filter.ortho_markers: "正射标记（点）"
+settings.map_filter.regional_overlays: "区域覆盖层"
+settings.map_filter.flight_paths: "飞行路径"
+settings.map_filter.health_scores: "景观健康分数"
+
+# Settings — remaining
+settings.no_exclusions: "未排除任何文件夹。"
+settings.remove: "移除"
+settings.export_desc: "将您的配置文件、景观覆盖和排序规则导出为单个文件。"
+settings.refresh_required: "更改需要刷新后才能生效。"
+settings.aircraft_export_desc: "自定义飞机库导出的格式和内容。"
+settings.include_liveries: "包含涂装名称"
+settings.expanded_format: "扩展格式（高级用户：每个涂装一行）"
+settings.flight_context_title: "机场历史与趣闻"
+settings.enable_wikipedia: "从维基百科获取更多机场的增强历史信息"
+
+# Utilities / Logbook tab
+utilities.logbook.title: "飞行日志"
+utilities.logbook.select: "选择日志："
+utilities.logbook.placeholder: "选择日志..."
+utilities.logbook.none: "在 Output/logbooks 中未找到日志"
+utilities.logbook.filter_aircraft: "筛选飞机（尾号/类型）..."
+utilities.logbook.circular_only: "仅环形飞行"
+utilities.logbook.duration: "时长（小时）："
+utilities.logbook.min: "最小"
+utilities.logbook.to: "至"
+utilities.logbook.max: "最大"
+utilities.logbook.bulk_actions: "批量操作："
+utilities.logbook.select_all: "全选（已筛选）"
+utilities.logbook.delete_selected: "删除已选（%{count}）"
+utilities.logbook.none_found: "未找到日志条目或日志未加载。"
+utilities.logbook.no_match: "没有符合筛选条件的条目。"

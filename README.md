@@ -128,6 +128,18 @@ Grab the latest professional installers from the [Releases](https://github.com/S
 - **macOS**: `.dmg` (Disk Image)
 - **Linux**: `.AppImage` (Portable — no install required) or `.tar.gz` (Binary tarball)
 
+> **macOS — "App is Broken" / Gatekeeper warning**
+>
+> Because X-Addon-Oxide is currently unsigned (no Apple Developer certificate), macOS Gatekeeper may refuse to open it with a message like *"X-Addon-Oxide is broken and cannot be opened."*
+>
+> **One-time fix:** Open Terminal and run:
+> ```bash
+> xattr -cr /Applications/X-Addon-Oxide.app
+> ```
+> Then try launching again. If macOS still blocks it, go to **System Settings → Privacy & Security** and click **"Open Anyway"**.
+>
+> This is a known limitation until the project has a paid Apple Developer ID for code-signing and notarization. It does not indicate a problem with the app itself.
+
 ### Building from Source
 
 #### Prerequisites

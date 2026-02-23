@@ -4,6 +4,8 @@ use std::process::{Command, Stdio};
 // Copyright (c) 2026 StarTuz
 // Note: This is a test comment strictly intended to trigger Qodo Merge review
 
+rust_i18n::i18n!("locales", fallback = "en");
+
 use iced::widget::{
     button, checkbox, column, container, horizontal_space, image, mouse_area, pick_list,
     progress_bar, responsive, row, scrollable, slider, stack, svg, text, text_editor, text_input,
@@ -89,9 +91,11 @@ fn main() -> iced::Result {
     iced::application("X-Addon-Oxide", App::update, App::view)
         .theme(|_| Theme::Dark)
         .subscription(App::subscription)
-        // Fallback font for CJK (Chinese/Japanese/Korean) character rendering in
-        // scenery pack names, aircraft folder names, and airport names.
+        // Primary font — Noto Sans CJK SC covers both Latin and CJK scripts,
+        // ensuring Chinese/Japanese/Korean characters render correctly on all
+        // platforms without relying on system CJK fonts being installed.
         .font(include_bytes!("../assets/fonts/NotoSansSC-subset.ttf").as_slice())
+        .default_font(iced::Font::with_name("Noto Sans CJK SC"))
         .window(iced::window::Settings {
             size: [1280.0, 960.0].into(),
             icon: window_icon,
@@ -455,6 +459,9 @@ enum Message {
     CloseModal,
     ConfirmModal(ConfirmType),
     NoOp,
+
+    // i18n
+    SetLanguage(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -583,17 +590,14 @@ pub enum SceneryViewMode {
 
 impl std::fmt::Display for SceneryViewMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                SceneryViewMode::Flat => "Flat View",
-                SceneryViewMode::Region => "Group by Region",
-                SceneryViewMode::Tags => "Group by Tag",
-                SceneryViewMode::MapEnhancement => "Group by Map Enhancement",
-                SceneryViewMode::AutoOrtho => "Group by AutoOrtho",
-            }
-        )
+        let key = match self {
+            SceneryViewMode::Flat => "scenery.view.flat",
+            SceneryViewMode::Region => "scenery.view.region",
+            SceneryViewMode::Tags => "scenery.view.tag",
+            SceneryViewMode::MapEnhancement => "scenery.view.map_enhancement",
+            SceneryViewMode::AutoOrtho => "scenery.view.autoortho",
+        };
+        write!(f, "{}", rust_i18n::t!(key))
     }
 }
 
@@ -809,6 +813,9 @@ struct App {
     pub active_context_resize_edge: Option<ResizeEdge>,
     // Modal
     active_modal: Option<ModalState>,
+
+    // i18n
+    current_language: String,
 }
 
 impl App {
@@ -1041,6 +1048,7 @@ impl App {
             flight_context_window_size: iced::Vector::new(420.0, 520.0),
             active_context_resize_edge: None,
             active_modal: None,
+            current_language: "en".to_string(),
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -1072,6 +1080,7 @@ impl App {
 
         app.load_icon_overrides();
         app.load_scan_config();
+        rust_i18n::set_locale(&app.current_language);
 
         let tasks = if let Some(r) = root {
             app.loading_state.is_loading = true;
@@ -5246,6 +5255,12 @@ impl App {
                 }
             }
             Message::NoOp => Task::none(),
+            Message::SetLanguage(lang) => {
+                self.current_language = lang.clone();
+                rust_i18n::set_locale(&lang);
+                self.save_scan_config();
+                Task::none()
+            }
         }
     }
 
@@ -5486,7 +5501,7 @@ impl App {
         let title = text(&modal.title).size(20).color(Color::WHITE);
         let message = text(&modal.message).size(16).color(style::palette::TEXT_SECONDARY);
 
-        let confirm_btn = button(text("Confirm").size(14))
+        let confirm_btn = button(text(rust_i18n::t!("btn.confirm")).size(14))
             .on_press(Message::ConfirmModal(modal.confirm_type.clone()))
             .style(if modal.is_danger {
                 style::button_danger
@@ -5495,7 +5510,7 @@ impl App {
             })
             .padding([10, 25]);
 
-        let cancel_btn = button(text("Cancel").size(14))
+        let cancel_btn = button(text(rust_i18n::t!("btn.cancel")).size(14))
             .on_press(Message::CloseModal)
             .style(style::button_secondary)
             .padding([10, 20]);
@@ -5557,13 +5572,13 @@ impl App {
             .color(style::palette::TEXT_SECONDARY);
 
         let other_items = [
-            ("Aircraft Addons", self.loading_state.aircraft),
+            (rust_i18n::t!("loading.aircraft").to_string(), self.loading_state.aircraft),
             (
-                "Plugins & CSLs",
+                rust_i18n::t!("loading.plugins").to_string(),
                 self.loading_state.plugins && self.loading_state.csls,
             ),
-            ("Airport Database", self.loading_state.airports),
-            ("Pilot Logbook", self.loading_state.logbook),
+            (rust_i18n::t!("loading.airports").to_string(), self.loading_state.airports),
+            (rust_i18n::t!("loading.logbook").to_string(), self.loading_state.logbook),
         ];
 
         let scenery_done = self.loading_state.scenery;
@@ -5573,16 +5588,16 @@ impl App {
         // Scenery Library row — shows a mini progress bar while scanning
         let scenery_row: Element<'_, Message> = if scenery_done {
             row![
-                text("Scenery Library").size(12).color(style::palette::TEXT_PRIMARY),
+                text(rust_i18n::t!("scenery.title")).size(12).color(style::palette::TEXT_PRIMARY),
                 iced::widget::horizontal_space(),
-                text("COMPLETE").size(10).color(style::palette::ACCENT_GREEN),
+                text(rust_i18n::t!("status.complete")).size(10).color(style::palette::ACCENT_GREEN),
             ]
             .align_y(iced::Alignment::Center)
             .into()
         } else {
             column![
                 row![
-                    text("Scenery Library")
+                    text(rust_i18n::t!("scenery.title"))
                         .size(12)
                         .color(style::palette::TEXT_SECONDARY),
                     iced::widget::horizontal_space(),
@@ -5618,13 +5633,13 @@ impl App {
                     }),
                     iced::widget::horizontal_space(),
                     if done {
-                        text("COMPLETE")
+                        text(rust_i18n::t!("status.complete"))
                             .size(10)
                             .color(style::palette::ACCENT_GREEN)
                     } else {
-                        // Pulse the "LOADING..." text
+                        // Pulse the loading text
                         let alpha = (self.animation_time * 3.0).sin() * 0.3 + 0.7;
-                        text("LOADING...")
+                        text(rust_i18n::t!("status.loading"))
                             .size(10)
                             .color(Color { a: alpha, ..style::palette::ACCENT_BLUE })
                     }
@@ -5798,7 +5813,7 @@ impl App {
                     svg(self.icon_scenery.clone()) // Use scenery icon as placeholder or add a "check" icon
                         .width(Length::Fixed(48.0))
                         .height(Length::Fixed(48.0)),
-                    text("All checks passed!")
+                    text(rust_i18n::t!("status.all_ok"))
                         .size(20)
                         .color(style::palette::ACCENT_GREEN),
                     text("Safe to apply these changes to scenery_packs.ini.")
@@ -6249,7 +6264,7 @@ impl App {
     fn view_utilities(&self) -> Element<'_, Message> {
         let logbook_header = button(
             row![
-                text("Logbook").size(16),
+                text(rust_i18n::t!("utilities.logbook.title")).size(16),
                 svg(self.icon_arrow_down.clone())
                     .width(14)
                     .height(14)
@@ -6277,13 +6292,13 @@ impl App {
             let logbook_selector = if !self.available_logbooks.is_empty() {
                 container(
                     row![
-                        text("Select Logbook:").size(14).color(style::palette::TEXT_SECONDARY),
+                        text(rust_i18n::t!("utilities.logbook.select")).size(14).color(style::palette::TEXT_SECONDARY),
                         pick_list(
                             self.available_logbooks.as_slice(),
                             self.selected_logbook_path.clone(),
                             Message::SelectLogbook,
                         )
-                        .placeholder("Select logbook...")
+                        .placeholder(rust_i18n::t!("utilities.logbook.placeholder").to_string())
                         .text_size(14)
                         .padding(5)
                         .style(style::pick_list_primary),
@@ -6292,39 +6307,43 @@ impl App {
                     .align_y(iced::Alignment::Center)
                 )
             } else {
-                container(text("No logbooks found in Output/logbooks").size(14).color(style::palette::ACCENT_RED))
+                container(text(rust_i18n::t!("utilities.logbook.none")).size(14).color(style::palette::ACCENT_RED))
             };
 
+            {
+            let lb_filter_ph = rust_i18n::t!("utilities.logbook.filter_aircraft");
+            let lb_min_ph = rust_i18n::t!("utilities.logbook.min");
+            let lb_max_ph = rust_i18n::t!("utilities.logbook.max");
             container(
                 column![
                     logbook_selector,
                     row![
                         text_input(
-                            "Filter Aircraft (Tail/Type)...",
+                            lb_filter_ph.as_ref(),
                             &self.logbook_filter_aircraft
                         )
                         .on_input(Message::LogbookFilterAircraftChanged)
                         .padding(8)
                         .size(14)
                         .style(style::text_input_primary),
-                        checkbox("Circular Only", self.logbook_filter_circular)
+                        checkbox(rust_i18n::t!("utilities.logbook.circular_only"), self.logbook_filter_circular)
                             .on_toggle(Message::LogbookFilterCircularToggled)
                             .size(16),
                     ]
                     .spacing(20)
                     .align_y(iced::Alignment::Center),
                     row![
-                        text("Duration (h):")
+                        text(rust_i18n::t!("utilities.logbook.duration"))
                             .size(14)
                             .color(style::palette::TEXT_SECONDARY),
-                        text_input("Min", &self.logbook_filter_duration_min)
+                        text_input(lb_min_ph.as_ref(), &self.logbook_filter_duration_min)
                             .on_input(Message::LogbookFilterDurationMinChanged)
                             .padding(6)
                             .width(Length::Fixed(60.0))
                             .size(12)
                             .style(style::text_input_primary),
-                        text("to").size(12).color(style::palette::TEXT_SECONDARY),
-                        text_input("Max", &self.logbook_filter_duration_max)
+                        text(rust_i18n::t!("utilities.logbook.to")).size(12).color(style::palette::TEXT_SECONDARY),
+                        text_input(lb_max_ph.as_ref(), &self.logbook_filter_duration_max)
                             .on_input(Message::LogbookFilterDurationMaxChanged)
                             .padding(6)
                             .width(Length::Fixed(60.0))
@@ -6339,10 +6358,10 @@ impl App {
                     .spacing(15)
                     .align_y(iced::Alignment::Center),
                     row![
-                        text("Bulk Actions:")
+                        text(rust_i18n::t!("utilities.logbook.bulk_actions"))
                             .size(14)
                             .color(style::palette::TEXT_SECONDARY),
-                        checkbox("Select All (filtered)", {
+                        checkbox(rust_i18n::t!("utilities.logbook.select_all"), {
                             let filtered = self.filtered_logbook_indices();
                             !filtered.is_empty() && filtered.iter().all(|idx| self.logbook_selection.contains(idx))
                         })
@@ -6352,10 +6371,7 @@ impl App {
                         if !self.logbook_selection.is_empty() {
                             Element::from(
                                 button(
-                                    text(format!(
-                                        "Delete Selected ({})",
-                                        self.logbook_selection.len()
-                                    ))
+                                    text(rust_i18n::t!("utilities.logbook.delete_selected", count = self.logbook_selection.len()))
                                     .size(12),
                                 )
                                 .on_press(Message::RequestLogbookBulkDelete)
@@ -6373,6 +6389,7 @@ impl App {
             )
             .padding(10)
             .style(style::container_sidebar)
+            } // end let-block for logbook filter placeholders
         } else {
             container(column![])
         };
@@ -6380,7 +6397,7 @@ impl App {
         let log_list_content: Element<'_, Message> = if !self.logbook_expanded {
             container(column![]).into()
         } else if self.logbook.is_empty() {
-            container(text("No logbook entries found or logbook not loaded.").size(14))
+            container(text(rust_i18n::t!("utilities.logbook.none_found")).size(14))
                 .center_x(Length::Fill)
                 .padding(20)
                 .into()
@@ -6388,7 +6405,7 @@ impl App {
             let filtered_indices = self.filtered_logbook_indices();
 
             if filtered_indices.is_empty() {
-                container(text("No entries match filters.").size(14))
+                container(text(rust_i18n::t!("utilities.logbook.no_match")).size(14))
                     .center_x(Length::Fill)
                     .padding(20)
                     .into()
@@ -6460,14 +6477,14 @@ impl App {
     fn view_navigator(&self) -> Element<'_, Message> {
         container(
             Column::<Message, Theme, Renderer>::new()
-                .push(self.sidebar_button("Aircraft", Tab::Aircraft))
-                .push(self.sidebar_button("Scenery", Tab::Scenery))
-                .push(self.sidebar_button("Plugins", Tab::Plugins))
-                .push(self.sidebar_button("CSLs", Tab::CSLs))
-                .push(self.sidebar_button("Flight Gen", Tab::FlightGenerator))
-                .push(self.sidebar_button("Utilities", Tab::Utilities))
-                .push(self.sidebar_button("Issues", Tab::Issues))
-                .push(self.sidebar_button("Settings", Tab::Settings))
+                .push(self.sidebar_button(rust_i18n::t!("tab.aircraft"), Tab::Aircraft))
+                .push(self.sidebar_button(rust_i18n::t!("tab.scenery"), Tab::Scenery))
+                .push(self.sidebar_button(rust_i18n::t!("tab.plugins"), Tab::Plugins))
+                .push(self.sidebar_button(rust_i18n::t!("tab.csls"), Tab::CSLs))
+                .push(self.sidebar_button(rust_i18n::t!("tab.flight_gen"), Tab::FlightGenerator))
+                .push(self.sidebar_button(rust_i18n::t!("tab.utilities"), Tab::Utilities))
+                .push(self.sidebar_button(rust_i18n::t!("tab.issues"), Tab::Issues))
+                .push(self.sidebar_button(rust_i18n::t!("tab.settings"), Tab::Settings))
                 .spacing(25)
                 .padding([20, 0]),
         )
@@ -6484,8 +6501,8 @@ impl App {
             Tab::Plugins => {
                 column![
                     row![
-                        text("Plugin Library").size(18).width(Length::Fill),
-                        button(text("Export List").size(12))
+                        text(rust_i18n::t!("plugins.title")).size(18).width(Length::Fill),
+                        button(text(rust_i18n::t!("btn.export_list")).size(12))
                             .on_press(Message::ExportPluginList)
                             .style(style::button_secondary)
                             .padding([4, 8]),
@@ -6502,8 +6519,8 @@ impl App {
             Tab::CSLs => {
                 column![
                     row![
-                        text("CSL Library").size(18).width(Length::Fill),
-                        button(text("Export List").size(12))
+                        text(rust_i18n::t!("csls.title")).size(18).width(Length::Fill),
+                        button(text(rust_i18n::t!("btn.export_list")).size(12))
                             .on_press(Message::ExportCSLList)
                             .style(style::button_secondary)
                             .padding([4, 8]),
@@ -6562,7 +6579,7 @@ impl App {
         };
 
         let install_btn = button(
-            text("Install...")
+            text(rust_i18n::t!("btn.install"))
                 .size(12)
                 .align_x(iced::alignment::Horizontal::Center),
         )
@@ -6571,7 +6588,7 @@ impl App {
         .padding([6, 12]);
 
         let delete_btn = button(
-            text("Delete...")
+            text(rust_i18n::t!("btn.delete"))
                 .size(12)
                 .align_x(iced::alignment::Horizontal::Center),
         )
@@ -6593,7 +6610,7 @@ impl App {
                     .style(|_, _| svg::Style {
                         color: Some(Color::WHITE),
                     }),
-                text("Refresh").size(12),
+                text(rust_i18n::t!("btn.refresh")).size(12),
                 horizontal_space().width(22)
             ]
             .spacing(8)
@@ -6606,7 +6623,7 @@ impl App {
         let smart_sort_btn =
             if self.active_tab == Tab::Scenery || self.active_tab == Tab::Heuristics {
                 Some(
-                    button(text("Smart Sort").size(12))
+                    button(text(rust_i18n::t!("btn.smart_sort")).size(12))
                         .on_press(Message::SmartSort)
                         .style(style::button_ai)
                         .padding([6, 12]),
@@ -6626,7 +6643,7 @@ impl App {
                         .style(|_, _| svg::Style {
                             color: Some(Color::WHITE),
                         }),
-                    text("Settings").size(12),
+                    text(rust_i18n::t!("btn.settings")).size(12),
                     horizontal_space().width(22)
                 ]
                 .spacing(8)
@@ -6642,7 +6659,7 @@ impl App {
             actions = actions.push(btn);
 
             // Add Edit Sort button next to Smart Sort
-            let edit_sort_btn = button(text("Edit Sort").size(12))
+            let edit_sort_btn = button(text(rust_i18n::t!("btn.edit_sort")).size(12))
                 .on_press(Message::OpenHeuristicsEditor)
                 .style(style::button_premium_glow)
                 .padding([6, 12]);
@@ -6650,7 +6667,7 @@ impl App {
         }
 
         if self.active_tab == Tab::FlightGenerator {
-            let edit_nlp_btn = button(text("Edit Dictionary").size(12))
+            let edit_nlp_btn = button(text(rust_i18n::t!("btn.edit_dict")).size(12))
                 .on_press(Message::OpenNLPEditor)
                 .style(style::button_premium_glow)
                 .padding([6, 12]);
@@ -6883,23 +6900,24 @@ impl App {
     }
 
     fn view_profile_dialog(&self) -> Element<'_, Message> {
+        let ph_save = rust_i18n::t!("profile.save.placeholder");
         let content = column![
-            text("Save New Profile").size(24),
-            text("Enter a name for the current configuration")
+            text(rust_i18n::t!("profile.save.title")).size(24),
+            text(rust_i18n::t!("profile.save.hint"))
                 .size(14)
                 .color(style::palette::TEXT_SECONDARY),
-            text_input("Profile Name", &self.new_profile_name)
+            text_input(&ph_save, &self.new_profile_name)
                 .on_input(Message::NewProfileNameChanged)
                 .on_submit(Message::SaveCurrentProfile(self.new_profile_name.clone()))
                 .padding(10)
                 .size(16)
                 .style(style::text_input_primary),
             row![
-                button(text("Cancel").size(14))
+                button(text(rust_i18n::t!("btn.cancel")).size(14))
                     .on_press(Message::CloseProfileDialog)
                     .style(style::button_secondary)
                     .padding([10, 20]),
-                button(text("Save Profile").size(14))
+                button(text(rust_i18n::t!("profile.save.btn")).size(14))
                     .on_press(Message::SaveCurrentProfile(self.new_profile_name.clone()))
                     .style(style::button_premium_glow)
                     .padding([10, 30]),
@@ -6919,12 +6937,13 @@ impl App {
 
     fn view_rename_dialog(&self) -> Element<'_, Message> {
         let old_name = self.profiles.active_profile.clone().unwrap_or_default();
+        let ph_rename = rust_i18n::t!("profile.rename.placeholder");
         let content = column![
-            text("Rename Profile").size(24),
+            text(rust_i18n::t!("profile.rename.title")).size(24),
             text(format!("Enter a new name for '{}'", old_name))
                 .size(14)
                 .color(style::palette::TEXT_SECONDARY),
-            text_input("New Name", &self.rename_profile_name)
+            text_input(&ph_rename, &self.rename_profile_name)
                 .on_input(Message::RenameProfileNameChanged)
                 .on_submit(Message::RenameProfile(
                     old_name.clone(),
@@ -6934,11 +6953,11 @@ impl App {
                 .size(16)
                 .style(style::text_input_primary),
             row![
-                button(text("Cancel").size(14))
+                button(text(rust_i18n::t!("btn.cancel")).size(14))
                     .on_press(Message::CloseProfileDialog)
                     .style(style::button_secondary)
                     .padding([10, 20]),
-                button(text("Rename Profile").size(14))
+                button(text(rust_i18n::t!("profile.rename.btn")).size(14))
                     .on_press(Message::RenameProfile(
                         old_name,
                         self.rename_profile_name.clone()
@@ -7523,7 +7542,8 @@ impl App {
         x_adox_core::scenery::sorter::sort_packs(packs, Some(&self.heuristics_model), &context);
     }
 
-    fn sidebar_button(&self, label: &'static str, tab: Tab) -> Element<'_, Message> {
+    fn sidebar_button(&self, label: impl Into<String>, tab: Tab) -> Element<'_, Message> {
+        let label = label.into();
         let is_active = self.active_tab == tab;
 
         let (icon_handle, active_color) = match tab {
@@ -7881,9 +7901,10 @@ impl App {
         })
         .padding([4, 8]);
 
+        let scenery_search_label = rust_i18n::t!("scenery.search");
         let main_view = column![
             row![
-                text("Scenery Library").size(24).width(Length::Fill),
+                text(rust_i18n::t!("scenery.title")).size(24).width(Length::Fill),
                 {
                     let count = self.heuristics_model.config.overrides.len();
                     let mut btn = button(
@@ -7961,7 +7982,7 @@ impl App {
                     .padding([6, 12])
                 },
                 button(
-                    text("Export List")
+                    text(rust_i18n::t!("btn.export_list"))
                         .size(12)
                 )
                 .on_press(Message::ExportSceneryList)
@@ -7980,7 +8001,7 @@ impl App {
             .align_y(iced::Alignment::Center)
             .padding(10),
             row![
-                text_input("Search scenery...", &self.scenery_search_query)
+                text_input(&scenery_search_label, &self.scenery_search_query)
                     .on_input(Message::ScenerySearchChanged)
                     .on_submit(Message::ScenerySearchSubmit)
                     .padding(8)
@@ -8151,17 +8172,17 @@ impl App {
                     container(
                         row![
                             svg(self.icon_basket.clone()).width(20).height(20).style(|_, _| svg::Style { color: Some(style::palette::ACCENT_BLUE) }),
-                            text("Scenery Basket").size(18),
+                            text(rust_i18n::t!("scenery.basket.title")).size(18),
                         ].spacing(8).align_y(iced::Alignment::Center)
                     ).width(Length::Fill)
                 )
                 .on_press(Message::BasketDragStart)
                 .interaction(mouse::Interaction::Grab),
                 row![
-                    text("Auto-pin").size(10),
+                    text(rust_i18n::t!("scenery.basket.auto_pin")).size(10),
                     checkbox("", self.autopin_enabled).size(12).on_toggle(Message::ToggleAutopin),
                 ].spacing(5).align_y(iced::Alignment::Center),
-                button(text("Clear").size(10))
+                button(text(rust_i18n::t!("scenery.basket.clear")).size(10))
                     .on_press(Message::ClearBucket)
                     .style(style::button_ghost)
             ].align_y(iced::Alignment::Center)
@@ -8175,7 +8196,7 @@ impl App {
         content = content.push(header);
 
         let items_list: Element<'_, Message> = if bucket.is_empty() {
-            container(text("Drop scenery here...").color(style::palette::TEXT_SECONDARY))
+            container(text(rust_i18n::t!("scenery.basket.drop_here")).color(style::palette::TEXT_SECONDARY))
                 .width(Length::Fill)
                 .height(Length::Fixed(150.0))
                 .center_x(Length::Fill)
@@ -8223,18 +8244,18 @@ impl App {
             }
 
             let (label, style, icon): (String, fn(&Theme, button::Status) -> button::Style, _) = if enabled_count > 0 && disabled_count == 0 {
-                (format!("Disable Selected ({})", selected.len()), style::button_danger_glow, self.icon_trash.clone())
+                (rust_i18n::t!("scenery.basket.disable_selected", count = selected.len()).into_owned(), style::button_danger_glow, self.icon_trash.clone())
             } else if disabled_count > 0 && enabled_count == 0 {
-                (format!("Enable Selected ({})", selected.len()), style::button_primary_glow, self.icon_grip.clone())
+                (rust_i18n::t!("scenery.basket.enable_selected", count = selected.len()).into_owned(), style::button_primary_glow, self.icon_grip.clone())
             } else {
-                (format!("Toggle Selected ({})", selected.len()), style::button_toggle_glow, self.icon_grip.clone())
+                (rust_i18n::t!("scenery.basket.toggle_selected", count = selected.len()).into_owned(), style::button_toggle_glow, self.icon_grip.clone())
             };
 
             bottom_actions = bottom_actions.push(
                 button(
                     row![
                         svg(self.icon_grip.clone()).width(14).height(14).style(|_, _| svg::Style { color: Some(Color::WHITE) }),
-                        text(format!("Drag Selected ({})", selected.len())).size(12)
+                        text(rust_i18n::t!("scenery.basket.drag_selected", count = selected.len())).size(12)
                     ].spacing(8).align_y(iced::Alignment::Center)
                 )
                 .on_press(Message::DragBucketStart(None))
@@ -8520,21 +8541,21 @@ impl App {
     }
 
     fn view_settings(&self) -> Element<'_, Message> {
-        let title = text("Scan Settings").size(24);
+        let title = text(rust_i18n::t!("settings.title")).size(24);
 
         // 1. Backup & Restore Section
         let backup_section: Element<'_, Message> = container(
             column![
-                text("Backup & Restore").size(18),
-                text("Export your profiles, scenery overrides, and sorting rules to a single file.")
+                text(rust_i18n::t!("settings.backup")).size(18),
+                text(rust_i18n::t!("settings.export_desc"))
                     .size(12)
                     .color(style::palette::TEXT_SECONDARY),
                 row![
-                    button(text("Export Config (.xback)").size(14))
+                    button(text(rust_i18n::t!("settings.export_config")).size(14))
                         .on_press(Message::BackupUserData)
                         .style(style::button_primary)
                         .padding([10, 20]),
-                    button(text("Import Config").size(14))
+                    button(text(rust_i18n::t!("settings.import_config")).size(14))
                         .on_press(Message::RestoreUserData)
                         .style(style::button_secondary)
                         .padding([10, 20]),
@@ -8549,10 +8570,10 @@ impl App {
         .into();
 
         // 2. Exclusions Section
-        let exclusions_title = text("Excluded Folders (Ignored by AI Scan)").size(18);
+        let exclusions_title = text(rust_i18n::t!("settings.exclusions")).size(18);
 
         let exclusions_list: Element<'_, Message> = if self.scan_exclusions.is_empty() {
-            text("No folders excluded.")
+            text(rust_i18n::t!("settings.no_exclusions"))
                 .color(style::palette::TEXT_SECONDARY)
                 .into()
         } else {
@@ -8564,7 +8585,7 @@ impl App {
                         container(
                             row![
                                 text(path.to_string_lossy()).width(Length::Fill),
-                                button(text("Remove").size(12))
+                                button(text(rust_i18n::t!("settings.remove")).size(12))
                                     .on_press(Message::RemoveExclusion(p))
                                     .style(style::button_danger)
                                     .padding([5, 10])
@@ -8585,7 +8606,7 @@ impl App {
         let add_btn = button(
             row![
                 svg(self.icon_plugins.clone()).width(Length::Fixed(16.0)),
-                text("Add Exclusion Folder")
+                text(rust_i18n::t!("btn.add_exclusion"))
             ]
             .spacing(8)
             .align_y(iced::Alignment::Center),
@@ -8597,16 +8618,16 @@ impl App {
         // 2. Export Settings Section
         let export_settings: Element<'_, Message> = container(
             column![
-                text("Aircraft Export Settings").size(18),
-                text("Customize the format and content of your aircraft library exports.")
+                text(rust_i18n::t!("settings.aircraft_export")).size(18),
+                text(rust_i18n::t!("settings.aircraft_export_desc"))
                     .size(12)
                     .color(style::palette::TEXT_SECONDARY),
                 column![
-                    checkbox("Include Livery Names", self.export_include_liveries)
+                    checkbox(rust_i18n::t!("settings.include_liveries"), self.export_include_liveries)
                         .on_toggle(Message::ToggleExportIncludeLiveries)
                         .size(18)
                         .text_size(14),
-                    checkbox("Expanded Format (Power User: One row per livery)", self.export_expanded_format)
+                    checkbox(rust_i18n::t!("settings.expanded_format"), self.export_expanded_format)
                         .on_toggle(Message::ToggleExportExpandedFormat)
                         .size(18)
                         .text_size(14)
@@ -8623,12 +8644,12 @@ impl App {
         // 2b. Airport History & Trivia (Option B: bundled first, optional enhanced from Wikipedia)
         let flight_context_section: Element<'_, Message> = container(
             column![
-                text("Airport History & Trivia").size(18),
+                text(rust_i18n::t!("settings.flight_context_title")).size(18),
                 text("Adds short historical notes and nearby points of interest for departure and arrival airports when you generate a flight. Works automatically for many airports from built-in data.")
                     .size(12)
                     .color(style::palette::TEXT_SECONDARY),
                 checkbox(
-                    "Enable enhanced history from Wikipedia (for more airports)",
+                    rust_i18n::t!("settings.enable_wikipedia"),
                     self.flight_context_fetch_enabled,
                 )
                 .on_toggle(Message::ToggleFlightContextFetch)
@@ -8648,14 +8669,14 @@ impl App {
         // 3. Map Filter Section
         let mut filter_content = Column::<'_, Message, Theme, Renderer>::new().spacing(5);
 
+        let mf_toggle_label = if self.show_map_filter_settings {
+            rust_i18n::t!("settings.map_filter.toggle_open")
+        } else {
+            rust_i18n::t!("settings.map_filter.toggle_closed")
+        };
         filter_content = filter_content.push(
             button(
-                row![text(if self.show_map_filter_settings {
-                    "Map Filter v"
-                } else {
-                    "Map Filter >"
-                })
-                .size(18)]
+                row![text(mf_toggle_label).size(18)]
                 .spacing(10)
                 .align_y(iced::Alignment::Center),
             )
@@ -8665,7 +8686,7 @@ impl App {
         );
 
         if self.show_map_filter_settings {
-            let filter_row = |label: &str, filter_type: MapFilterType, active: bool| {
+            let filter_row = |label: String, filter_type: MapFilterType, active: bool| {
                 checkbox(label, active)
                     .on_toggle(move |_| Message::ToggleMapFilter(filter_type))
                     .size(18)
@@ -8675,57 +8696,57 @@ impl App {
             filter_content = filter_content.push(
                 container(
                     column![
-                        text("Airports & Landmarks")
+                        text(rust_i18n::t!("settings.map_filter.airports").to_string())
                             .size(14)
                             .color(style::palette::ACCENT_MAGENTA),
                         filter_row(
-                            "Custom Airports",
+                            rust_i18n::t!("settings.map_filter.custom_airports").to_string(),
                             MapFilterType::CustomAirports,
                             self.map_filters.show_custom_airports
                         ),
                         filter_row(
-                            "Enhancements (Small)",
+                            rust_i18n::t!("settings.map_filter.enhancements").to_string(),
                             MapFilterType::Enhancements,
                             self.map_filters.show_enhancements
                         ),
                         filter_row(
-                            "Global Airports",
+                            rust_i18n::t!("settings.map_filter.global_airports").to_string(),
                             MapFilterType::GlobalAirports,
                             self.map_filters.show_global_airports
                         ),
                         iced::widget::vertical_space().height(5),
-                        text("Terrain & Regions")
+                        text(rust_i18n::t!("settings.map_filter.terrain").to_string())
                             .size(14)
                             .color(style::palette::ACCENT_MAGENTA),
                         filter_row(
-                            "Show Ortho Coverage",
+                            rust_i18n::t!("settings.map_filter.ortho_coverage").to_string(),
                             MapFilterType::OrthoCoverage,
                             self.map_filters.show_ortho_coverage
                         ),
                         filter_row(
-                            "Ortho Markers (Dot)",
+                            rust_i18n::t!("settings.map_filter.ortho_markers").to_string(),
                             MapFilterType::OrthoMarkers,
                             self.map_filters.show_ortho_markers
                         ),
                         filter_row(
-                            "Regional Overlays",
+                            rust_i18n::t!("settings.map_filter.regional_overlays").to_string(),
                             MapFilterType::RegionalOverlays,
                             self.map_filters.show_regional_overlays
                         ),
                         iced::widget::vertical_space().height(5),
-                        text("Utilities")
+                        text(rust_i18n::t!("settings.map_filter.utilities").to_string())
                             .size(14)
                             .color(style::palette::ACCENT_MAGENTA),
                         filter_row(
-                            "Flight Paths",
+                            rust_i18n::t!("settings.map_filter.flight_paths").to_string(),
                             MapFilterType::FlightPaths,
                             self.map_filters.show_flight_paths
                         ),
                         filter_row(
-                             "Scenery Health Scores",
-                             MapFilterType::HealthScores,
-                             self.map_filters.show_health_scores
-                         ),
+                            rust_i18n::t!("settings.map_filter.health_scores").to_string(),
+                            MapFilterType::HealthScores,
+                            self.map_filters.show_health_scores
+                        ),
                     ]
                     .spacing(8),
                 )
@@ -8739,11 +8760,39 @@ impl App {
             );
         }
 
+        // Language selector
+        const LANG_OPTIONS: &[&str] = &["English", "中文 (简体)"];
+        let selected_lang_label = if self.current_language == "zh-CN" {
+            "中文 (简体)"
+        } else {
+            "English"
+        };
+        let language_section: Element<'_, Message> = container(
+            column![
+                text(rust_i18n::t!("settings.language")).size(18),
+                pick_list(
+                    LANG_OPTIONS,
+                    Some(selected_lang_label),
+                    |label: &str| {
+                        let code = if label == "中文 (简体)" { "zh-CN" } else { "en" };
+                        Message::SetLanguage(code.to_string())
+                    },
+                )
+                .width(Length::Fixed(200.0))
+                .style(style::pick_list_primary),
+            ]
+            .spacing(10),
+        )
+        .padding(20)
+        .style(style::container_card)
+        .width(Length::Fill)
+        .into();
+
         // Final Assembly
         scrollable(
             column![
                 row![
-                    button(text("Back").size(12))
+                    button(text(rust_i18n::t!("btn.back")).size(12))
                         .on_press(Message::SwitchTab(Tab::Scenery))
                         .style(style::button_secondary)
                         .padding([5, 10]),
@@ -8751,7 +8800,8 @@ impl App {
                 ]
                 .spacing(20)
                 .align_y(iced::Alignment::Center),
-                
+
+                language_section,
                 backup_section,
                 export_settings,
                 flight_context_section,
@@ -8761,7 +8811,7 @@ impl App {
                 container(
                     column![
                         exclusions_title,
-                        text("Changes require a refresh to take effect.")
+                        text(rust_i18n::t!("settings.refresh_required"))
                             .size(12)
                             .color(style::palette::TEXT_SECONDARY),
                         add_btn,
@@ -8815,20 +8865,20 @@ impl App {
     }
 
     fn view_issues(&self) -> Element<'_, Message> {
-        let title = text("Issues Dashboard")
+        let title = text(rust_i18n::t!("issues.title"))
             .size(32)
             .color(style::palette::ACCENT_ORANGE);
 
         let mut content = column![title].spacing(30);
 
         // 1. Log Issues Section
-        content = content.push(text("X-Plane Log Analysis").size(24));
+        content = content.push(text(rust_i18n::t!("issues.log.title")).size(24));
 
         let log_content: Element<'_, Message> = if self.log_issues.is_empty() {
             container(
                 column![
-                    text("No issues detected in Log.txt").size(16),
-                    button("Re-scan Log")
+                    text(rust_i18n::t!("issues.log.none")).size(16),
+                    button(text(rust_i18n::t!("issues.log.rescan")))
                         .padding([8, 16])
                         .style(style::button_primary)
                         .on_press(Message::CheckLogIssues),
@@ -8909,23 +8959,20 @@ impl App {
 
             column![
                 row![
-                    iced::widget::checkbox("Select All", all_selected)
+                    iced::widget::checkbox(rust_i18n::t!("issues.log.select_all").to_string(), all_selected)
                         .on_toggle(Message::ToggleAllLogIssues)
                         .size(18),
-                    text(format!(
-                        "Found {} issues in Log.txt.",
-                        self.log_issues.len()
-                    ))
+                    text(rust_i18n::t!("issues.log.found", count = self.log_issues.len()))
                     .color(style::palette::ACCENT_RED),
                 ]
                 .spacing(20)
                 .align_y(iced::Alignment::Center),
                 issues_list,
                 row![
-                    button("Re-scan Log")
+                    button(text(rust_i18n::t!("issues.log.rescan")))
                         .on_press(Message::CheckLogIssues)
                         .style(style::button_secondary),
-                    button(text(format!("Export Report ({})", self.selected_log_issues.len())))
+                    button(text(rust_i18n::t!("issues.log.export", count = self.selected_log_issues.len())))
                         .on_press(Message::ExportLogIssues)
                         .style(style::button_primary),
                 ]
@@ -8939,12 +8986,12 @@ impl App {
         content = content.push(iced::widget::horizontal_rule(1.0));
 
         // 2. Validation Issues Section
-        content = content.push(text("Scenery Order Validation").size(24));
+        content = content.push(text(rust_i18n::t!("issues.validation.title")).size(24));
 
         let validation_content = if let Some(report) = &self.validation_report {
             if report.issues.is_empty() {
                 let c = container(
-                    text("No validation issues found. Scenery order looks good!")
+                    text(rust_i18n::t!("issues.validation.ok"))
                         .size(16)
                         .color(style::palette::ACCENT_GREEN),
                 )
@@ -8982,7 +9029,7 @@ impl App {
                 .spacing(10);
 
                 column![
-                    text(format!("Found {} validation issues.", report.issues.len()))
+                    text(rust_i18n::t!("issues.validation.found", count = report.issues.len()))
                         .color(style::palette::ACCENT_RED),
                     issues
                 ]
@@ -8992,8 +9039,8 @@ impl App {
         } else {
             container(
                 column![
-                    text("Validation not run yet.").size(16),
-                    text("Run 'Smart Sort/Simulate' to generate a validation report.")
+                    text(rust_i18n::t!("issues.validation.not_run")).size(16),
+                    text(rust_i18n::t!("issues.validation.hint"))
                         .size(12)
                         .color(style::palette::TEXT_SECONDARY)
                 ]
@@ -9055,9 +9102,9 @@ impl App {
             horizontal_space(),
             button(
                 text(if is_any_in_bucket {
-                    "Remove from Bucket"
+                    rust_i18n::t!("scenery.group.remove_from_bucket")
                 } else {
-                    "Add to Bucket"
+                    rust_i18n::t!("scenery.group.add_to_bucket")
                 })
                 .size(10)
             )
@@ -9066,9 +9113,9 @@ impl App {
             .padding([4, 8]),
             button(
                 text(if is_any_enabled {
-                    "Disable All"
+                    rust_i18n::t!("scenery.group.disable_all")
                 } else {
-                    "Enable All"
+                    rust_i18n::t!("scenery.group.enable_all")
                 })
                 .size(10)
             )
@@ -9717,9 +9764,9 @@ impl App {
 
         let toggle_view = button(
             text(if self.use_smart_view {
-                "Folder View"
+                rust_i18n::t!("aircraft.folder_view")
             } else {
-                "AI Smart View"
+                rust_i18n::t!("aircraft.smart_view")
             })
             .size(12),
         )
@@ -9730,9 +9777,9 @@ impl App {
         use iced::widget::lazy;
 
         let tree_content = if self.aircraft_tree.is_none() {
-            Element::from(text("Loading aircraft...").size(14))
+            Element::from(text(rust_i18n::t!("aircraft.loading")).size(14))
         } else if self.use_smart_view && self.smart_groups.is_empty() {
-            Element::from(text("No aircraft found.").size(14))
+            Element::from(text(rust_i18n::t!("aircraft.no_aircraft")).size(14))
         } else {
             let use_smart = self.use_smart_view;
             let tree = self.aircraft_tree.clone();
@@ -9774,10 +9821,11 @@ impl App {
             .into()
         };
 
+        let aircraft_search_label = rust_i18n::t!("aircraft.search");
         let list_pane = column![
             row![
-                text("Aircraft Library").size(18).width(Length::Fill),
-                button(text("Export List").size(12))
+                text(rust_i18n::t!("aircraft.title")).size(18).width(Length::Fill),
+                button(text(rust_i18n::t!("btn.export_list")).size(12))
                     .on_press(Message::ExportAircraftList)
                     .style(style::button_secondary)
                     .padding([4, 8]),
@@ -9787,7 +9835,7 @@ impl App {
             .align_y(iced::Alignment::Center)
             .padding(10),
             row![
-                text_input("Search aircraft...", &self.aircraft_search_query)
+                text_input(&aircraft_search_label, &self.aircraft_search_query)
                     .on_input(Message::AircraftSearchChanged)
                     .on_submit(Message::AircraftSearchSubmit)
                     .padding(8)
@@ -9919,7 +9967,7 @@ impl App {
             .style(style::container_card)
             .into()
         } else {
-            container(text("No preview available").color(style::palette::TEXT_SECONDARY))
+            container(text(rust_i18n::t!("aircraft.no_preview")).color(style::palette::TEXT_SECONDARY))
                 .width(Length::FillPortion(1))
                 .height(Length::Fill)
                 .center_x(Length::Fill)
@@ -10514,7 +10562,10 @@ impl App {
                     inclusions: Vec<PathBuf>,
                     #[serde(default)]
                     av_tip_dismissed: bool,
+                    #[serde(default = "default_language")]
+                    language: String,
                 }
+                fn default_language() -> String { "en".to_string() }
 
                 if let Ok(config) = serde_json::from_reader::<_, ScanConfig>(reader) {
                     self.scan_exclusions = config
@@ -10524,6 +10575,7 @@ impl App {
                         .collect();
                     self.scan_inclusions = config.inclusions;
                     self.av_tip_dismissed = config.av_tip_dismissed;
+                    self.current_language = config.language;
                     println!("Loaded {} excluded paths from scoped config", self.scan_exclusions.len());
                     loaded = true;
                 }
@@ -10543,7 +10595,10 @@ impl App {
                         inclusions: Vec<PathBuf>,
                         #[serde(default)]
                         av_tip_dismissed: bool,
+                        #[serde(default = "default_language_global")]
+                        language: String,
                     }
+                    fn default_language_global() -> String { "en".to_string() }
 
                     if let Ok(config) = serde_json::from_reader::<_, ScanConfig>(reader) {
                         self.scan_exclusions = config
@@ -10553,6 +10608,7 @@ impl App {
                             .collect();
                         self.scan_inclusions = config.inclusions;
                         self.av_tip_dismissed = config.av_tip_dismissed;
+                        self.current_language = config.language;
                         println!("Loaded {} excluded paths from global config (fallback)", self.scan_exclusions.len());
                     }
                 }
@@ -10572,11 +10628,13 @@ impl App {
                     exclusions: &'a [PathBuf],
                     inclusions: &'a [PathBuf],
                     av_tip_dismissed: bool,
+                    language: &'a str,
                 }
                 let config = ScanConfig {
                     exclusions: &self.scan_exclusions,
                     inclusions: &self.scan_inclusions,
                     av_tip_dismissed: self.av_tip_dismissed,
+                    language: &self.current_language,
                 };
                 let writer = std::io::BufWriter::new(file);
                 let _ = serde_json::to_writer_pretty(writer, &config);

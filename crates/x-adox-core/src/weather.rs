@@ -80,6 +80,68 @@ impl WeatherEngine {
         Ok(())
     }
 
+    /// Returns the raw METAR string for each requested station ID from the local cache.
+    /// Key is uppercase station_id; value is the raw METAR text (e.g. "EGLL 220520Z ...").
+    /// Returns an empty map if the cache file is missing or unreadable.
+    pub fn get_raw_metars(&self, ids: &[&str]) -> HashMap<String, String> {
+        if !self.cache_path.exists() {
+            return HashMap::new();
+        }
+
+        let targets: std::collections::HashSet<String> =
+            ids.iter().map(|s| s.trim().to_uppercase()).collect();
+
+        let mut result = HashMap::new();
+
+        let mut rdr = match csv::ReaderBuilder::new()
+            .flexible(true)
+            .has_headers(false)
+            .from_path(&self.cache_path)
+        {
+            Ok(r) => r,
+            Err(_) => return result,
+        };
+
+        let mut headers_found = false;
+        let mut idx_raw_text = 0usize;
+        let mut idx_station = 1usize;
+
+        for record in rdr.records().flatten() {
+            if !headers_found {
+                if record.len() > 0 && record[0].starts_with("raw_text") {
+                    for (i, field) in record.iter().enumerate() {
+                        match field {
+                            "raw_text" => idx_raw_text = i,
+                            "station_id" => idx_station = i,
+                            _ => {}
+                        }
+                    }
+                    headers_found = true;
+                }
+                continue;
+            }
+
+            if let Some(station) = record.get(idx_station) {
+                let station_up = station.trim().to_uppercase();
+                if targets.contains(&station_up) {
+                    if let Some(raw) = record.get(idx_raw_text) {
+                        let clean = raw.trim().to_string();
+                        if !clean.is_empty() {
+                            result.insert(station_up, clean);
+                        }
+                    }
+                }
+            }
+        }
+
+        debug!(
+            "get_raw_metars — requested={} found={}",
+            targets.len(),
+            result.len()
+        );
+        result
+    }
+
     /// Parses the local METAR cache and maps station IDs to their currently active `WeatherKeyword`.
     pub fn get_global_weather_map(&self) -> Result<HashMap<String, WeatherKeyword>> {
         if !self.cache_path.exists() {

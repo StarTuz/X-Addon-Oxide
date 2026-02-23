@@ -1,0 +1,172 @@
+# Tabs
+tab.scenery: "Scenery"
+tab.aircraft: "Aircraft"
+tab.plugins: "Plugins"
+tab.csls: "CSLs"
+tab.flight_gen: "Flight Gen"
+tab.heuristics: "Heuristics"
+tab.nlp_editor: "NLP Editor"
+tab.issues: "Issues"
+tab.utilities: "Utilities"
+tab.settings: "Settings"
+
+# Toolbar / header
+btn.refresh: "Refresh"
+btn.install: "Install..."
+btn.delete: "Delete..."
+btn.smart_sort: "Smart Sort"
+btn.edit_sort: "Edit Sort"
+btn.edit_dict: "Edit Dictionary"
+btn.settings: "Settings"
+
+# Common actions
+btn.confirm: "Confirm"
+btn.cancel: "Cancel"
+btn.apply: "Apply"
+btn.save: "Save"
+btn.close: "Close"
+btn.enable: "Enable"
+btn.disable: "Disable"
+btn.launch: "Launch"
+btn.export: "Export"
+btn.export_list: "Export List"
+btn.import: "Import Config"
+btn.add_exclusion: "Add Exclusion Folder"
+btn.back: "Back"
+
+# Scenery tab
+scenery.title: "Scenery Library"
+scenery.search: "Search scenery..."
+scenery.no_packs: "No scenery packs found."
+
+# Aircraft tab
+aircraft.title: "Aircraft Library"
+aircraft.search: "Search aircraft..."
+aircraft.no_aircraft: "No aircraft found."
+aircraft.loading: "Loading aircraft..."
+aircraft.smart_view: "AI Smart View"
+aircraft.folder_view: "Folder View"
+aircraft.no_preview: "No preview available"
+
+# Plugins / CSLs
+plugins.title: "Plugin Library"
+csls.title: "CSL Library"
+
+# Settings tab
+settings.title: "Scan Settings"
+settings.backup: "Backup & Restore"
+settings.export_config: "Export Config (.xback)"
+settings.import_config: "Import Config"
+settings.exclusions: "Excluded Folders (Ignored by AI Scan)"
+settings.aircraft_export: "Aircraft Export Settings"
+settings.language: "Language"
+
+# Flight Generator
+flight.title: "Flight Generator"
+flight.placeholder: "Ask for a flight..."
+flight.send: "Send"
+flight.regenerate: "Regenerate"
+flight.remember: "Remember this flight"
+flight.prefer_origin: "Prefer this origin"
+flight.prefer_dest: "Prefer this destination"
+flight.history_context: "History & Context"
+
+# Status / feedback
+status.complete: "COMPLETE"
+status.loading: "LOADING..."
+status.all_ok: "All checks passed!"
+
+# SceneryViewMode display names
+scenery.view.flat: "Flat View"
+scenery.view.region: "Group by Region"
+scenery.view.tag: "Group by Tag"
+scenery.view.map_enhancement: "Group by Map Enhancement"
+scenery.view.autoortho: "Group by AutoOrtho"
+
+# Loading overlay subsystem labels
+loading.aircraft: "Aircraft Addons"
+loading.plugins: "Plugins & CSLs"
+loading.airports: "Airport Database"
+loading.logbook: "Pilot Logbook"
+
+# Scenery basket
+scenery.basket.title: "Scenery Basket"
+scenery.basket.auto_pin: "Auto-pin"
+scenery.basket.clear: "Clear"
+scenery.basket.drop_here: "Drop scenery here..."
+scenery.basket.disable_selected: "Disable Selected (%{count})"
+scenery.basket.enable_selected: "Enable Selected (%{count})"
+scenery.basket.toggle_selected: "Toggle Selected (%{count})"
+scenery.basket.drag_selected: "Drag Selected (%{count})"
+
+# Scenery group headers
+scenery.group.add_to_bucket: "Add to Bucket"
+scenery.group.remove_from_bucket: "Remove from Bucket"
+scenery.group.enable_all: "Enable All"
+scenery.group.disable_all: "Disable All"
+
+# Issues tab
+issues.title: "Issues Dashboard"
+issues.log.title: "X-Plane Log Analysis"
+issues.log.none: "No issues detected in Log.txt"
+issues.log.rescan: "Re-scan Log"
+issues.log.select_all: "Select All"
+issues.log.found: "Found %{count} issues in Log.txt."
+issues.log.export: "Export Report (%{count})"
+issues.validation.title: "Scenery Order Validation"
+issues.validation.ok: "No validation issues found. Scenery order looks good!"
+issues.validation.found: "Found %{count} validation issues."
+issues.validation.not_run: "Validation not run yet."
+issues.validation.hint: "Run 'Smart Sort/Simulate' to generate a validation report."
+
+# Profile dialogs
+profile.save.title: "Save New Profile"
+profile.save.hint: "Enter a name for the current configuration"
+profile.save.placeholder: "Profile Name"
+profile.save.btn: "Save Profile"
+profile.rename.title: "Rename Profile"
+profile.rename.placeholder: "New Name"
+profile.rename.btn: "Rename Profile"
+
+# Settings — map filter section
+settings.map_filter.toggle_open: "Map Filter v"
+settings.map_filter.toggle_closed: "Map Filter >"
+settings.map_filter.airports: "Airports & Landmarks"
+settings.map_filter.terrain: "Terrain & Regions"
+settings.map_filter.utilities: "Utilities"
+settings.map_filter.custom_airports: "Custom Airports"
+settings.map_filter.enhancements: "Enhancements (Small)"
+settings.map_filter.global_airports: "Global Airports"
+settings.map_filter.ortho_coverage: "Show Ortho Coverage"
+settings.map_filter.ortho_markers: "Ortho Markers (Dot)"
+settings.map_filter.regional_overlays: "Regional Overlays"
+settings.map_filter.flight_paths: "Flight Paths"
+settings.map_filter.health_scores: "Scenery Health Scores"
+
+# Settings — remaining
+settings.no_exclusions: "No folders excluded."
+settings.remove: "Remove"
+settings.export_desc: "Export your profiles, scenery overrides, and sorting rules to a single file."
+settings.refresh_required: "Changes require a refresh to take effect."
+settings.aircraft_export_desc: "Customize the format and content of your aircraft library exports."
+settings.include_liveries: "Include Livery Names"
+settings.expanded_format: "Expanded Format (Power User: One row per livery)"
+settings.flight_context_title: "Airport History & Trivia"
+settings.enable_wikipedia: "Enable enhanced history from Wikipedia (for more airports)"
+
+# Utilities / Logbook tab
+utilities.logbook.title: "Logbook"
+utilities.logbook.select: "Select Logbook:"
+utilities.logbook.placeholder: "Select logbook..."
+utilities.logbook.none: "No logbooks found in Output/logbooks"
+utilities.logbook.filter_aircraft: "Filter Aircraft (Tail/Type)..."
+utilities.logbook.circular_only: "Circular Only"
+utilities.logbook.duration: "Duration (h):"
+utilities.logbook.min: "Min"
+utilities.logbook.to: "to"
+utilities.logbook.max: "Max"
+utilities.logbook.bulk_actions: "Bulk Actions:"
+utilities.logbook.select_all: "Select All (filtered)"
+utilities.logbook.delete_selected: "Delete Selected (%{count})"
+utilities.logbook.none_found: "No logbook entries found or logbook not loaded."
+utilities.logbook.no_match: "No entries match filters."
