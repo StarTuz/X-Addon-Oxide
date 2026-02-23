@@ -30,6 +30,9 @@ nom = "7.1"
 chrono = { version = "0.4", features = ["serde"] }
 rayon = "1.8"
 
+[patch.crates-io]
+iced_graphics = { path = "patches/iced_graphics" }
+
 [profile.release]
 lto = "thin"
 strip = true
