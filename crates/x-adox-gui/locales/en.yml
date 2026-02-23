@@ -170,3 +170,114 @@ utilities.logbook.select_all: "Select All (filtered)"
 utilities.logbook.delete_selected: "Delete Selected (%{count})"
 utilities.logbook.none_found: "No logbook entries found or logbook not loaded."
 utilities.logbook.no_match: "No entries match filters."
+
+# Flight context panel
+flight.context.title: "Flight Context"
+flight.context.copy: "Copy"
+flight.context.copied: "Copied!"
+flight.context.fetch: "Fetch Context"
+flight.context.no_context: "No context loaded. Click \"Fetch Context\" to load history and weather."
+flight.context.weather_now: "Weather (as of now)"
+flight.context.history: "History"
+flight.context.no_wikipedia: "No Wikipedia summary for this airport. Enable \"Enhanced history from Wikipedia\" in Settings and click \"Fetch Context\" to load one."
+flight.context.show_full: "Show full context"
+flight.context.landmarks_title: "Surrounding Landmarks (within 10 nm)"
+flight.context.landmarks_attr: "From Wikipedia and Wikidata (geo-tagged). Wrong or missing? Edit on Wikipedia or add to the overlay (see docs)."
+flight.context.no_landmarks: "No landmarks in range. Click \"Fetch Context\" to load from Wikipedia and Wikidata."
+flight.context.fetch_metar: "Click \"Fetch Context\" to load METAR."
+
+# Loading splash subtitle
+loading.subtitle: "Synchronising Simulation Environment..."
+
+# Order adjustment modal
+modal.order.overall_progress: "Overall Progress"
+modal.order.top: "0 (Top)"
+modal.order.bottom: "100 (Bottom)"
+modal.order.reset: "Reset Default"
+
+# Smart sort simulation modal
+modal.smart_sort.title: "Smart Sort Simulation Report"
+modal.smart_sort.desc: "Review potential issues before applying changes."
+modal.smart_sort.top15: "Resulting Order (Top 15):"
+modal.smart_sort.apply: "Apply Changes"
+
+# Validation issues modal
+modal.validation.safe: "Safe to apply these changes to scenery_packs.ini."
+modal.validation.group_details: "Group Details"
+modal.validation.go_to: "Go to"
+modal.validation.ignore: "Ignore"
+modal.validation.auto_fix: "Auto-Fix"
+modal.validation.manual_edit: "Manual Edit"
+modal.validation.ignore_this: "Ignore this"
+
+# Companion apps
+companion.title: "Companion Apps"
+companion.no_apps: "No apps added"
+companion.select_app: "Select App..."
+companion.hide_manager: "Hide Manager"
+companion.manage_apps: "Manage Apps..."
+companion.col_launch_with: "Launch with X-Plane"
+companion.col_application: "Application"
+companion.add_new: "Add New Companion App"
+companion.browse: "Browse..."
+companion.no_executable: "No executable selected"
+companion.add: "Add Application"
+
+# Scenery controls
+scenery.clear_filters: "Clear Filters"
+
+# Profile section
+profile.label: "Profile:"
+profile.default: "Default"
+profile.select_xplane: "Select X-Plane Installation"
+
+# Bulk delete modal
+modal.bulk_delete.title: "Confirm Bulk Deletion"
+modal.bulk_delete.warning: "This action cannot be undone. A backup of your logbook will be created."
+
+# Launch args modal
+modal.launch_args.title: "Launch Arguments Reference"
+
+# Inspector panel
+inspector.title: "Inspector Panel"
+inspector.no_coords: "No coordinates"
+inspector.parent_health: "Parent Pack Health"
+inspector.conflicts: "Potential Conflicts Detected"
+inspector.no_conflicts: "Geographically isolated (No conflicts)"
+inspector.health_score: "Health Score"
+inspector.category: "Category"
+inspector.recommendation: "RECOMMENDATION"
+inspector.content: "Content"
+inspector.no_airports: "No airports detected"
+inspector.no_tiles: "No coverage tiles detected"
+inspector.tile_warning: "No tiles detected! Check if 'Earth nav data' is nested correctly."
+inspector.included_airports: "Included Airports"
+inspector.tags: "Tags"
+inspector.no_tags: "No tags"
+inspector.pack_not_found: "Pack not found"
+
+# Windows AV tip
+av_tip.title: "Slow startup detected"
+av_tip.desc: "Windows Defender may be scanning your scenery files. Add X-Plane to its exclusion list for faster startup:"
+av_tip.instruction: "Run the above in PowerShell (Admin) — or open Windows Security → Virus & threat protection → Manage settings → Add an exclusion."
+av_tip.dismiss: "Dismiss"
+
+# Heuristics tab
+heuristics.region_focus: "Region Focus:"
+heuristics.region.america: "America"
+heuristics.region.europe: "Europe"
+heuristics.region.asia: "Asia"
+heuristics.region.australia: "Australia"
+heuristics.region.africa: "Africa"
+
+# Aircraft / Plugin tree
+aircraft.set_category: "Set AI Category Manually:"
+aircraft.choose_override: "Choose override..."
+aircraft.change_icon: "Change Icon"
+
+# Settings — flight context descriptions
+settings.flight_context_desc: "Adds short historical notes and nearby points of interest for departure and arrival airports when you generate a flight. Works automatically for many airports from built-in data."
+settings.wikipedia_desc: "Uses a built-in service to fetch summaries when an airport isn't in the built-in set. Results are cached for speed and offline use."
+
+# About
+about.tagline: "The Modern Addon Manager for X-Plane 11 & 12"

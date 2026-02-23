@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 // Note: This is a test comment strictly intended to trigger Qodo Merge review
 
 rust_i18n::i18n!("locales", fallback = "en");
+use rust_i18n::t;
 
 use iced::widget::{
     button, checkbox, column, container, horizontal_space, image, mouse_area, pick_list,
@@ -1179,7 +1180,7 @@ impl App {
                                 .style(|_, _| svg::Style {
                                     color: Some(style::palette::ACCENT_BLUE)
                                 }),
-                            text("Flight context").size(16),
+                            text(t!("flight.context.title")).size(16),
                         ]
                         .spacing(8)
                         .align_y(iced::Alignment::Center)
@@ -1188,7 +1189,7 @@ impl App {
                 )
                 .on_press(Message::FlightContextWindowDragStart)
                 .interaction(mouse::Interaction::Grab),
-                button(text("Close").size(10))
+                button(text(t!("btn.close")).size(10))
                     .on_press(Message::ToggleFlightContextWindow)
                     .style(style::button_ghost)
             ]
@@ -1203,12 +1204,12 @@ impl App {
 
         // Toolbar: Fetch Context + Copy + status
         let copy_label = if self.flight_gen.context_copy_feedback.is_some() {
-            "Copied!"
+            t!("flight.context.copied")
         } else {
-            "Copy"
+            t!("flight.context.copy")
         };
         let toolbar = row![
-            button(text("Fetch Context").size(12))
+            button(text(t!("flight.context.fetch")).size(12))
                 .on_press(Message::FlightGen(flight_gen_gui::Message::FetchContext))
                 .style(style::button_primary_glow)
                 .padding([6, 14]),
@@ -5567,7 +5568,7 @@ impl App {
         let float_offset = (self.animation_time * 0.5).sin() * 5.0;
         let title = title.color(title_color);
 
-        let subtitle = text("Synchronizing Simulation Environment...")
+        let subtitle = text(t!("loading.subtitle"))
             .size(14)
             .color(style::palette::TEXT_SECONDARY);
 
@@ -5668,7 +5669,7 @@ impl App {
                 container(
                     column![
                         row![
-                            text("Overall Progress")
+                            text(t!("modal.order.overall_progress"))
                                 .size(12)
                                 .color(style::palette::TEXT_PRIMARY),
                             iced::widget::horizontal_space(),
@@ -5748,26 +5749,26 @@ impl App {
                 .size(14)
                 .color(style::palette::TEXT_SECONDARY),
                 row![
-                    text("0 (Top)").size(10),
+                    text(t!("modal.order.top")).size(10),
                     slider(0..=100, current_score, move |s| {
                         Message::UpdatePriorityValue(pack_name.to_string(), s)
                     })
                     .width(Length::Fill),
-                    text("100 (Bottom)").size(10),
+                    text(t!("modal.order.bottom")).size(10),
                 ]
                 .spacing(10)
                 .align_y(iced::Alignment::Center),
                 row![
-                    button(text("Reset Default").size(12))
+                    button(text(t!("modal.order.reset")).size(12))
                         .on_press(Message::RemovePriority(pack_name.to_string()))
                         .style(style::button_secondary)
                         .padding([8, 16]),
                     iced::widget::Space::with_width(Length::Fill),
-                    button(text("Cancel").size(12))
+                    button(text(t!("btn.cancel")).size(12))
                         .on_press(Message::CancelPriorityEdit)
                         .style(style::button_secondary)
                         .padding([8, 16]),
-                    button(text("Apply").size(12))
+                    button(text(t!("btn.apply")).size(12))
                         .on_press(Message::SetPriority(pack_name.to_string(), current_score))
                         .style(style::button_primary)
                         .padding([8, 16]),
@@ -5816,7 +5817,7 @@ impl App {
                     text(rust_i18n::t!("status.all_ok"))
                         .size(20)
                         .color(style::palette::ACCENT_GREEN),
-                    text("Safe to apply these changes to scenery_packs.ini.")
+                    text(t!("modal.validation.safe"))
                         .size(14)
                         .color(style::palette::TEXT_SECONDARY),
                 ]
@@ -5917,7 +5918,7 @@ impl App {
                             ))
                         } else {
                             Element::from(container(
-                                text("Group Details")
+                                text(t!("modal.validation.group_details"))
                                     .size(12)
                                     .color(style::palette::TEXT_SECONDARY),
                             ))
@@ -5947,11 +5948,11 @@ impl App {
                                             .size(13)
                                             .width(Length::Fill)
                                             .color(style::palette::TEXT_PRIMARY),
-                                        button(text("Go to").size(11))
+                                        button(text(t!("modal.validation.go_to")).size(11))
                                             .on_press(Message::GotoScenery(issue.pack_name.clone()))
                                             .style(style::button_secondary)
                                             .padding([4, 8]),
-                                        button(text("Ignore").size(11))
+                                        button(text(t!("modal.validation.ignore")).size(11))
                                             .on_press(Message::IgnoreIssue(
                                                 issue.issue_type.clone(),
                                                 issue.pack_name.clone()
@@ -5977,15 +5978,15 @@ impl App {
                                     .size(13)
                                     .color(style::palette::TEXT_PRIMARY),
                                 row![
-                                    button(text("Auto-Fix").size(12))
+                                    button(text(t!("modal.validation.auto_fix")).size(12))
                                         .on_press(Message::AutoFixIssue(issue_type.to_string()))
                                         .style(style::button_primary)
                                         .padding([6, 12]),
-                                    button(text("Manual Edit").size(12))
+                                    button(text(t!("modal.validation.manual_edit")).size(12))
                                         .on_press(Message::GotoScenery(first.pack_name.clone()))
                                         .style(style::button_secondary)
                                         .padding([6, 12]),
-                                    button(text("Ignore this").size(12))
+                                    button(text(t!("modal.validation.ignore_this")).size(12))
                                         .on_press(Message::IgnoreIssue(
                                             first.issue_type.clone(),
                                             first.pack_name.clone()
@@ -6037,28 +6038,28 @@ impl App {
 
         container(
             column![
-                text("Smart Sort Simulation Report")
+                text(t!("modal.smart_sort.title"))
                     .size(24)
                     .color(Color::WHITE),
-                text("Review potential issues before applying changes.")
+                text(t!("modal.smart_sort.desc"))
                     .size(14)
                     .color(style::palette::TEXT_SECONDARY),
                 scrollable(
                     Column::<Message, Theme, Renderer>::new()
                         .push(issues_view)
                         .push(
-                            container(text("Resulting Order (Top 15):").size(18)).padding([10, 0])
+                            container(text(t!("modal.smart_sort.top15")).size(18)).padding([10, 0])
                         )
                         .push(container(preview).padding(10).style(style::container_card))
                         .spacing(20)
                 )
                 .height(Length::Fill),
                 row![
-                    button(text("Cancel").size(14))
+                    button(text(t!("btn.cancel")).size(14))
                         .on_press(Message::CancelSort)
                         .style(style::button_secondary)
                         .padding([10, 20]),
-                    button(text("Apply Changes").size(14))
+                    button(text(t!("modal.smart_sort.apply")).size(14))
                         .on_press(Message::ApplySort(simulated_packs.clone()))
                         .style(style::button_premium_glow)
                         .padding([10, 30]),
@@ -6076,11 +6077,11 @@ impl App {
     }
 
     fn view_companion_apps(&self) -> Element<'_, Message> {
-        let title = text("Companion Apps").size(18);
+        let title = text(t!("companion.title")).size(18);
 
         let app_selector = if self.companion_apps.is_empty() {
             container(
-                text("No apps added")
+                text(t!("companion.no_apps"))
                     .size(14)
                     .color(style::palette::TEXT_SECONDARY),
             )
@@ -6090,6 +6091,7 @@ impl App {
                 .selected_companion_app
                 .and_then(|idx| self.companion_apps.get(idx).map(|a| a.name.clone()));
 
+            let select_ph = t!("companion.select_app");
             container(
                 row![
                     pick_list(
@@ -6108,8 +6110,8 @@ impl App {
                         }
                     )
                     .width(Length::Fill)
-                    .placeholder("Select App..."),
-                    button(text("Launch").size(14))
+                    .placeholder(select_ph.as_ref()),
+                    button(text(t!("btn.launch")).size(14))
                         .on_press(Message::LaunchCompanionApp)
                         .style(style::button_primary)
                         .padding([8, 20]),
@@ -6121,9 +6123,9 @@ impl App {
 
         let manage_button = button(
             text(if self.show_companion_manage {
-                "Hide Manager"
+                t!("companion.hide_manager")
             } else {
-                "Manage Apps..."
+                t!("companion.manage_apps")
             })
             .size(12),
         )
@@ -6145,11 +6147,11 @@ impl App {
             if !self.companion_apps.is_empty() {
                 apps_list = apps_list.push(
                     row![
-                        text("Launch with X-Plane")
+                        text(t!("companion.col_launch_with"))
                             .size(10)
                             .color(style::palette::TEXT_SECONDARY)
                             .width(Length::Fixed(120.0)),
-                        text("Application")
+                        text(t!("companion.col_application"))
                             .size(10)
                             .color(style::palette::TEXT_SECONDARY),
                     ]
@@ -6197,12 +6199,12 @@ impl App {
 
             let add_form = container(
                 column![
-                    text("Add New Companion App").size(14),
+                    text(t!("companion.add_new")).size(14),
                     row![
                         text_input("Application Name", &self.new_companion_name)
                             .on_input(Message::UpdateCompanionNameInput)
                             .padding(8),
-                        button(text("Browse...").size(12))
+                        button(text(t!("companion.browse")).size(12))
                             .on_press(Message::BrowseForCompanionPath)
                             .style(style::button_secondary)
                             .padding([8, 15]),
@@ -6213,13 +6215,13 @@ impl App {
                             .size(10)
                             .color(style::palette::ACCENT_GREEN)
                     } else {
-                        text("No executable selected")
+                        text(t!("companion.no_executable"))
                             .size(10)
                             .color(style::palette::TEXT_SECONDARY)
                     },
                     container(
                         button(
-                            text("Add Application")
+                            text(t!("companion.add"))
                                 .size(14)
                                 .width(Length::Fill)
                                 .align_x(iced::alignment::Horizontal::Center)
@@ -6350,7 +6352,7 @@ impl App {
                             .size(12)
                             .style(style::text_input_primary),
                         iced::widget::horizontal_space(),
-                        button(text("Clear Filters").size(12))
+                        button(text(t!("scenery.clear_filters")).size(12))
                             .on_press(Message::LogbookFilterAircraftChanged(String::new())) // Hacky clear
                             .style(style::button_secondary)
                             .padding([5, 10]),
@@ -6694,11 +6696,11 @@ impl App {
                         let selected = self.profiles.active_profile.clone();
 
                         row![
-                            text("Profile:")
+                            text(t!("profile.label"))
                                 .size(12)
                                 .color(style::palette::TEXT_SECONDARY),
                             pick_list(options, selected.clone(), Message::SwitchProfile)
-                                .placeholder("Default")
+                                .placeholder(t!("profile.default").as_ref())
                                 .width(Length::Fixed(140.0))
                                 .style(style::pick_list_primary)
                                 .padding(4),
@@ -6775,7 +6777,7 @@ impl App {
                                 Message::SelectXPlaneRoot(PathBuf::from(s))
                             })
                             .text_size(12)
-                            .placeholder("Select X-Plane Installation")
+                            .placeholder(t!("profile.select_xplane").as_ref())
                             .style(style::pick_list_primary)
                             .into()
                         };
@@ -7057,7 +7059,7 @@ impl App {
         ];
 
         let mut content_col = column![row![
-            text("Launch Arguments Reference").size(24),
+            text(t!("modal.launch_args.title")).size(24),
             iced::widget::horizontal_space(),
             button(text("X").size(18).color(Color::WHITE))
                 .on_press(Message::CloseLaunchHelp)
@@ -7098,7 +7100,7 @@ impl App {
         container(
             column![
                 scrollable_content,
-                button(text("Close").size(14))
+                button(text(t!("btn.close")).size(14))
                     .on_press(Message::CloseLaunchHelp)
                     .style(style::button_premium_glow)
                     .padding([10, 20]),
@@ -7115,18 +7117,18 @@ impl App {
     fn view_logbook_bulk_delete_dialog(&self) -> Element<'_, Message> {
         let count = self.logbook_selection.len();
         let content = column![
-            text("Confirm Bulk Deletion").size(24).color(Color::WHITE),
+            text(t!("modal.bulk_delete.title")).size(24).color(Color::WHITE),
             text(format!(
                 "Are you sure you want to delete {} selected logbook entries?",
                 count
             ))
             .size(16)
             .color(style::palette::TEXT_PRIMARY),
-            text("This action cannot be undone. A backup of your logbook will be created.")
+            text(t!("modal.bulk_delete.warning"))
                 .size(14)
                 .color(style::palette::TEXT_SECONDARY),
             row![
-                button(text("Cancel").size(14))
+                button(text(t!("btn.cancel")).size(14))
                     .on_press(Message::CancelLogbookBulkDelete)
                     .style(style::button_secondary)
                     .padding([10, 20]),
@@ -7221,7 +7223,7 @@ impl App {
                 .spacing(6)
             } else {
                 column![
-                    text("Inspector Panel").size(18),
+                    text(t!("inspector.title")).size(18),
                     container({
                         // When on Flight Gen with a plan and nothing hovered, show origin so context matches History & context.
                         let inspector_airport_id = self.hovered_airport_id.as_ref().or_else(|| {
@@ -7240,7 +7242,7 @@ impl App {
                                 if let (Some(lat), Some(lon)) = (airport.lat, airport.lon) {
                                     text(format!("Coords: {:.4}, {:.4}", lat, lon)).size(12).color(style::palette::TEXT_SECONDARY)
                                 } else {
-                                    text("No coordinates").size(12).color(style::palette::TEXT_SECONDARY)
+                                    text(t!("inspector.no_coords")).size(12).color(style::palette::TEXT_SECONDARY)
                                 },
                                 
                                 // Link back to Scenery Pack health if enabled
@@ -7257,7 +7259,7 @@ impl App {
                                          Element::from(
                                              column![
                                                  iced::widget::vertical_space().height(10),
-                                                 text("Parent Pack Health").size(10).color(style::palette::TEXT_SECONDARY),
+                                                 text(t!("inspector.parent_health")).size(10).color(style::palette::TEXT_SECONDARY),
                                                  row![
                                                      text(format!("{}%", health)).size(18).color(health_color),
                                                      text(health_label).size(10).color(health_color),
@@ -7351,12 +7353,12 @@ impl App {
                                 .wrap();
                                 r.into()
                             } else {
-                                text("No tags").size(12).color(style::palette::TEXT_SECONDARY).into()
+                                text(t!("inspector.no_tags")).size(12).color(style::palette::TEXT_SECONDARY).into()
                             };
 
                             let conflict_ui: Element<'_, Message> = if !conflicts.is_empty() {
                                 column![
-                                    text("Potential Conflicts Detected")
+                                    text(t!("inspector.conflicts"))
                                         .size(14)
                                         .color(style::palette::ACCENT_ORANGE),
                                     column(conflicts.iter().map(|c| {
@@ -7369,7 +7371,7 @@ impl App {
                                 .spacing(5)
                                 .into()
                             } else {
-                                text("Geographically isolated (No conflicts)").size(11).color(style::palette::TEXT_SECONDARY).into()
+                                text(t!("inspector.no_conflicts")).size(11).color(style::palette::TEXT_SECONDARY).into()
                             };
 
                             let recommendation = match (pack.category.clone(), health, !conflicts.is_empty()) {
@@ -7386,7 +7388,7 @@ impl App {
                                      if self.map_filters.show_health_scores {
                                          Element::from(
                                              column![
-                                                 text("Health Score").size(10).color(style::palette::TEXT_SECONDARY),
+                                                 text(t!("inspector.health_score")).size(10).color(style::palette::TEXT_SECONDARY),
                                                  text(format!("{}%", health)).size(24).color(health_color).font(iced::Font::DEFAULT),
                                                  text(health_label).size(10).color(health_color),
                                              ].spacing(2)
@@ -7396,13 +7398,13 @@ impl App {
                                      },
                                      iced::widget::horizontal_space().width(Length::Fixed(40.0)),
                                      column![
-                                         text("Category").size(10).color(style::palette::TEXT_SECONDARY),
+                                         text(t!("inspector.category")).size(10).color(style::palette::TEXT_SECONDARY),
                                           text(format!("{:?}", pack.category)).size(14).color(style::palette::TEXT_PRIMARY).width(Length::Fill),
                                      ].spacing(2),
                                  ].align_y(iced::Alignment::Center),
                                 
                                 container(column![
-                                    text("RECOMMENDATION").size(10).color(style::palette::TEXT_SECONDARY),
+                                    text(t!("inspector.recommendation")).size(10).color(style::palette::TEXT_SECONDARY),
                                     text(recommendation).size(12).color(style::palette::TEXT_PRIMARY),
                                 ].spacing(5))
                                 .padding(10)
@@ -7417,12 +7419,12 @@ impl App {
                                 }),
 
                                 column![
-                                    text("Content").size(14),
+                                    text(t!("inspector.content")).size(14),
                                     {
                                         let el: Element<'_, Message> = if !pack.airports.is_empty() {
                                             text(format!("• {} Airports detected", pack.airports.len())).size(12).color(style::palette::TEXT_SECONDARY).into()
                                         } else {
-                                            text("No airports detected").size(12).color(style::palette::TEXT_SECONDARY).into()
+                                            text(t!("inspector.no_airports")).size(12).color(style::palette::TEXT_SECONDARY).into()
                                         };
                                         el
                                     },
@@ -7430,7 +7432,7 @@ impl App {
                                         let el: Element<'_, Message> = if !pack.tiles.is_empty() {
                                             text(format!("• {} Coverage tiles", pack.tiles.len())).size(12).color(style::palette::TEXT_SECONDARY).into()
                                         } else {
-                                            text("No coverage tiles detected").size(12).color(style::palette::TEXT_SECONDARY).into()
+                                            text(t!("inspector.no_tiles")).size(12).color(style::palette::TEXT_SECONDARY).into()
                                         };
                                         el
                                     },
@@ -7438,7 +7440,7 @@ impl App {
                                         let el: Element<'_, Message> = if (pack.category == x_adox_core::scenery::SceneryCategory::RegionalOverlay || 
                                            pack.category == x_adox_core::scenery::SceneryCategory::OrthoBase) && 
                                            pack.tiles.is_empty() {
-                                                text("⚠️ No tiles detected! Check if 'Earth nav data' is nested correctly.")
+                                                text(t!("inspector.tile_warning"))
                                                     .size(11)
                                                     .color(style::palette::ACCENT_ORANGE)
                                                     .into()
@@ -7451,7 +7453,7 @@ impl App {
 
                                 if !pack.airports.is_empty() && pack.airports.len() <= 25 {
                                     let el: Element<'_, Message> = column![
-                                        text("Included Airports").size(12).color(style::palette::TEXT_SECONDARY),
+                                        text(t!("inspector.included_airports")).size(12).color(style::palette::TEXT_SECONDARY),
                                         scrollable(column(pack.airports.iter().map(|a| {
                                             text(format!("• {} - {}", a.id, a.name)).size(11).into()
                                         })).spacing(2))
@@ -7465,7 +7467,7 @@ impl App {
                                 conflict_ui,
                                 
                                 column![
-                                    text("Tags").size(14),
+                                    text(t!("inspector.tags")).size(14),
                                     tags_ui,
                                 ].spacing(10),
 
@@ -7484,7 +7486,7 @@ impl App {
                             .spacing(15)
                             .padding([10, 0])
                         } else {
-                            column![text("Pack not found").size(12)].spacing(10)
+                            column![text(t!("inspector.pack_not_found")).size(12)].spacing(10)
                         }
                     } else {
                         column![text("None").size(12)].spacing(10)
@@ -8104,10 +8106,10 @@ impl App {
                             row![
                                 column![
                                     row![
-                                        text("⚡ Slow startup detected").size(12).color(style::palette::ACCENT_ORANGE),
+                                        text(t!("av_tip.title")).size(12).color(style::palette::ACCENT_ORANGE),
                                         iced::widget::horizontal_space(),
                                     ],
-                                    text("Windows Defender may be scanning your scenery files. Add X-Plane to its exclusion list for faster startup:")
+                                    text(t!("av_tip.desc"))
                                         .size(11)
                                         .color(style::palette::TEXT_SECONDARY),
                                     container(
@@ -8120,13 +8122,13 @@ impl App {
                                         border: Border { radius: 4.0.into(), ..Default::default() },
                                         ..Default::default()
                                     }),
-                                    text("Run the above in PowerShell (Admin) — or open Windows Security → Virus & threat protection → Manage settings → Add an exclusion.")
+                                    text(t!("av_tip.instruction"))
                                         .size(10)
                                         .color(style::palette::TEXT_SECONDARY),
                                 ]
                                 .spacing(6)
                                 .width(Length::Fill),
-                                button(text("Dismiss").size(11))
+                                button(text(t!("av_tip.dismiss")).size(11))
                                     .on_press(Message::DismissAvTip)
                                     .style(style::button_secondary)
                                     .padding([4, 10]),
@@ -8363,23 +8365,23 @@ impl App {
         };
 
         let toolbar = row![
-            button(text("Save Rules").size(14))
+            button(text(t!("heuristics.save")).size(14))
                 .on_press(Message::SaveHeuristics)
                 .style(style::button_primary)
                 .padding([10, 20]),
-            button(text("Import").size(14))
+            button(text(t!("btn.import")).size(14))
                 .on_press(Message::ImportHeuristics)
                 .style(style::button_secondary)
                 .padding([10, 20]),
-            button(text("Export").size(14))
+            button(text(t!("btn.export")).size(14))
                 .on_press(Message::ExportHeuristics)
                 .style(style::button_secondary)
                 .padding([10, 20]),
-            button(text("Reset to Defaults").size(14))
+            button(text(t!("heuristics.reset")).size(14))
                 .on_press(Message::ResetHeuristics)
                 .style(style::button_secondary)
                 .padding([10, 20]),
-            button(text("Clear Overrides").size(14))
+            button(text(t!("heuristics.clear_overrides")).size(14))
                 .on_press(Message::ClearOverrides)
                 .style(style::button_secondary)
                 .padding([10, 20]),
@@ -8395,12 +8397,18 @@ impl App {
                     .size(14)
                     .color(Color::from_rgb(0.6, 0.6, 0.6)),
                 row![
-                    text("Region Focus:").size(14),
-                    row(vec!["America", "Europe", "Asia", "Australia", "Africa"]
+                    text(t!("heuristics.region_focus")).size(14),
+                    row(vec![
+                        ("America",   "heuristics.region.america"),
+                        ("Europe",    "heuristics.region.europe"),
+                        ("Asia",      "heuristics.region.asia"),
+                        ("Australia", "heuristics.region.australia"),
+                        ("Africa",    "heuristics.region.africa"),
+                    ]
                         .into_iter()
-                        .map(|r| {
+                        .map(|(r, key)| {
                             let is_selected = self.region_focus.as_deref() == Some(r);
-                            button(text(r).size(12))
+                            button(text(t!(key)).size(12))
                                 .on_press(Message::SetRegionFocus(if is_selected {
                                     None
                                 } else {
@@ -8645,7 +8653,7 @@ impl App {
         let flight_context_section: Element<'_, Message> = container(
             column![
                 text(rust_i18n::t!("settings.flight_context_title")).size(18),
-                text("Adds short historical notes and nearby points of interest for departure and arrival airports when you generate a flight. Works automatically for many airports from built-in data.")
+                text(t!("settings.flight_context_desc"))
                     .size(12)
                     .color(style::palette::TEXT_SECONDARY),
                 checkbox(
@@ -8655,7 +8663,7 @@ impl App {
                 .on_toggle(Message::ToggleFlightContextFetch)
                 .size(18)
                 .text_size(14),
-                text("Uses a built-in service to fetch summaries when an airport isn't in the built-in set. Results are cached for speed and offline use.")
+                text(t!("settings.wikipedia_desc"))
                     .size(12)
                     .color(style::palette::TEXT_SECONDARY),
             ]
@@ -8846,7 +8854,7 @@ impl App {
                         text("Version 2.4.0")
                             .size(13)
                             .color(style::palette::TEXT_SECONDARY),
-                        text("The Modern Addon Manager for X-Plane 11 & 12")
+                        text(t!("about.tagline"))
                             .size(12)
                             .color(style::palette::TEXT_SECONDARY),
                     ]
@@ -9896,13 +9904,13 @@ impl App {
                     let options: Vec<String> =
                         AIRCRAFT_CATEGORIES.iter().map(|&s| s.to_string()).collect();
                     column![
-                        text("Set AI Category Manually:")
+                        text(t!("aircraft.set_category"))
                             .size(12)
                             .color(style::palette::TEXT_SECONDARY),
                         pick_list(options, None::<String>, move |selected| {
                             Message::SetAircraftCategory(name.clone(), selected)
                         })
-                        .placeholder("Choose override...")
+                        .placeholder(t!("aircraft.choose_override").as_ref())
                         .padding(8)
                         .width(Length::Fill),
                     ]
@@ -9915,7 +9923,7 @@ impl App {
             let change_icon_btn: Element<'_, Message> = if let Some(path) = &self.selected_aircraft
             {
                 let p = path.clone();
-                button(text("Change Icon").size(12))
+                button(text(t!("aircraft.change_icon")).size(12))
                     .on_press(Message::BrowseForIcon(p))
                     .style(style::button_secondary)
                     .padding([5, 10])

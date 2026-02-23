@@ -170,3 +170,114 @@ utilities.logbook.select_all: "全选（已筛选）"
 utilities.logbook.delete_selected: "删除已选（%{count}）"
 utilities.logbook.none_found: "未找到日志条目或日志未加载。"
 utilities.logbook.no_match: "没有符合筛选条件的条目。"
+
+# Flight context panel
+flight.context.title: "航班情境"
+flight.context.copy: "复制"
+flight.context.copied: "已复制！"
+flight.context.fetch: "获取情境"
+flight.context.no_context: "未加载情境。点击「获取情境」以加载历史和天气。"
+flight.context.weather_now: "当前天气"
+flight.context.history: "历史"
+flight.context.no_wikipedia: "此机场暂无维基百科摘要。在设置中启用「从维基百科获取增强历史信息」，然后点击「获取情境」以加载。"
+flight.context.show_full: "显示完整情境"
+flight.context.landmarks_title: "周边地标（10海里内）"
+flight.context.landmarks_attr: "来源：维基百科和维基数据（地理标注）。有误或缺失？请在维基百科上编辑或添加到覆盖层（见文档）。"
+flight.context.no_landmarks: "范围内无地标。点击「获取情境」以从维基百科和维基数据加载。"
+flight.context.fetch_metar: "点击「获取情境」以加载METAR。"
+
+# Loading splash subtitle
+loading.subtitle: "正在同步模拟环境..."
+
+# Order adjustment modal
+modal.order.overall_progress: "整体进度"
+modal.order.top: "0（最高）"
+modal.order.bottom: "100（最低）"
+modal.order.reset: "重置默认"
+
+# Smart sort simulation modal
+modal.smart_sort.title: "智能排序模拟报告"
+modal.smart_sort.desc: "应用更改前，请检查潜在问题。"
+modal.smart_sort.top15: "排序结果（前15项）："
+modal.smart_sort.apply: "应用更改"
+
+# Validation issues modal
+modal.validation.safe: "可安全将这些更改应用到 scenery_packs.ini。"
+modal.validation.group_details: "组详情"
+modal.validation.go_to: "跳转"
+modal.validation.ignore: "忽略"
+modal.validation.auto_fix: "自动修复"
+modal.validation.manual_edit: "手动编辑"
+modal.validation.ignore_this: "忽略此项"
+
+# Companion apps
+companion.title: "伴侣程序"
+companion.no_apps: "未添加程序"
+companion.select_app: "选择程序..."
+companion.hide_manager: "隐藏管理器"
+companion.manage_apps: "管理程序..."
+companion.col_launch_with: "与X-Plane一起启动"
+companion.col_application: "程序"
+companion.add_new: "添加新伴侣程序"
+companion.browse: "浏览..."
+companion.no_executable: "未选择可执行文件"
+companion.add: "添加程序"
+
+# Scenery controls
+scenery.clear_filters: "清除筛选"
+
+# Profile section
+profile.label: "配置文件："
+profile.default: "默认"
+profile.select_xplane: "选择X-Plane安装目录"
+
+# Bulk delete modal
+modal.bulk_delete.title: "确认批量删除"
+modal.bulk_delete.warning: "此操作不可撤销。系统将自动备份您的飞行日志。"
+
+# Launch args modal
+modal.launch_args.title: "启动参数参考"
+
+# Inspector panel
+inspector.title: "检查面板"
+inspector.no_coords: "无坐标"
+inspector.parent_health: "父包健康状态"
+inspector.conflicts: "检测到潜在冲突"
+inspector.no_conflicts: "地理上独立（无冲突）"
+inspector.health_score: "健康分数"
+inspector.category: "分类"
+inspector.recommendation: "建议"
+inspector.content: "内容"
+inspector.no_airports: "未检测到机场"
+inspector.no_tiles: "未检测到覆盖切片"
+inspector.tile_warning: '未检测到切片！请检查"Earth nav data"是否正确嵌套。'
+inspector.included_airports: "包含的机场"
+inspector.tags: "标签"
+inspector.no_tags: "无标签"
+inspector.pack_not_found: "未找到包"
+
+# Windows AV tip
+av_tip.title: "检测到启动缓慢"
+av_tip.desc: "Windows Defender 可能正在扫描您的景观文件。将 X-Plane 添加到排除列表以加快启动速度："
+av_tip.instruction: "在 PowerShell（管理员）中运行以上命令——或打开 Windows 安全中心 → 病毒和威胁防护 → 管理设置 → 添加排除项。"
+av_tip.dismiss: "关闭"
+
+# Heuristics tab
+heuristics.region_focus: "区域专注："
+heuristics.region.america: "美洲"
+heuristics.region.europe: "欧洲"
+heuristics.region.asia: "亚洲"
+heuristics.region.australia: "澳大利亚"
+heuristics.region.africa: "非洲"
+
+# Aircraft / Plugin tree
+aircraft.set_category: "手动设置AI分类："
+aircraft.choose_override: "选择覆盖..."
+aircraft.change_icon: "更改图标"
+
+# Settings — flight context descriptions
+settings.flight_context_desc: "生成航班时，为出发和到达机场添加简短历史注释和附近兴趣点。适用于内置数据库中的许多机场。"
+settings.wikipedia_desc: "当机场不在内置数据库中时，使用内置服务获取摘要。结果已缓存，可离线使用。"
+
+# About
+about.tagline: "X-Plane 11 & 12 的现代插件管理器"

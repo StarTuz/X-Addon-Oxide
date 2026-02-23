@@ -421,7 +421,7 @@ impl FlightGenState {
             let modal_content = container(
                 column![
                     row![
-                        text("Full Context")
+                        text(t!("flight.context.title"))
                             .size(20)
                             .color(style::palette::TEXT_PRIMARY)
                             .width(Length::Fill),
@@ -437,7 +437,7 @@ impl FlightGenState {
                         }
                     }))
                     .height(Length::Fill),
-                    button(text("Close").size(14))
+                    button(text(t!("btn.close")).size(14))
                         .on_press(Message::CloseFullContext)
                         .style(style::button_secondary)
                         .padding([8, 16])
@@ -636,10 +636,10 @@ impl FlightGenState {
             Some(ctx) => (self.origin_tree_content(ctx), self.dest_tree_content(ctx)),
             None => (
                 column![
-                    text("No context loaded. Click \"Fetch Context\" to load history and weather.")
+                    text(t!("flight.context.no_context"))
                         .size(12)
                         .color(style::palette::TEXT_SECONDARY),
-                    text("Weather (as of now)")
+                    text(t!("flight.context.weather_now"))
                         .size(11)
                         .color(iced::Color::from_rgb(0.6, 0.6, 0.65)),
                     text(self.origin_weather.as_deref().unwrap_or("—")).size(12),
@@ -647,10 +647,10 @@ impl FlightGenState {
                 .spacing(6)
                 .into(),
                 column![
-                    text("No context loaded. Click \"Fetch Context\" to load history and weather.")
+                    text(t!("flight.context.no_context"))
                         .size(12)
                         .color(style::palette::TEXT_SECONDARY),
-                    text("Weather (as of now)")
+                    text(t!("flight.context.weather_now"))
                         .size(11)
                         .color(iced::Color::from_rgb(0.6, 0.6, 0.65)),
                     text(self.dest_weather.as_deref().unwrap_or("—")).size(12),
@@ -746,7 +746,7 @@ impl FlightGenState {
     }
 
     fn origin_tree_content<'a>(&'a self, ctx: &'a FlightContext) -> Element<'a, Message> {
-        let history_label = text("History")
+        let history_label = text(t!("flight.context.history"))
             .size(11)
             .style(move |_| iced::widget::text::Style {
                 color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
@@ -755,7 +755,7 @@ impl FlightGenState {
         let mut history_elements = vec![];
         if ctx.origin.snippet.is_empty() {
             history_elements.push(
-                text("No Wikipedia summary for this airport. Enable \"Enhanced history from Wikipedia\" in Settings and click \"Fetch Context\" to load one.")
+                text(t!("flight.context.no_wikipedia"))
                 .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .width(Length::Fill)
@@ -778,7 +778,7 @@ impl FlightGenState {
             if snippet.len() > 1500 {
                 history_elements.push(
                     button(
-                        text("Show full context")
+                        text(t!("flight.context.show_full"))
                             .size(12)
                             .color(style::palette::ACCENT_BLUE),
                     )
@@ -791,17 +791,17 @@ impl FlightGenState {
         };
 
         let landmarks_label =
-            text("Surrounding Landmarks (within 10 nm)")
+            text(t!("flight.context.landmarks_title"))
                 .size(11)
                 .style(move |_| iced::widget::text::Style {
                     color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
                 });
-        let landmarks_attribution = text("From Wikipedia and Wikidata (geo-tagged). Wrong or missing? Edit on Wikipedia or add to the overlay (see docs).")
+        let landmarks_attribution = text(t!("flight.context.landmarks_attr"))
             .size(10)
             .color(style::palette::TEXT_SECONDARY);
 
         let landmarks_list: Vec<Element<_>> = if ctx.origin.points_nearby.is_empty() {
-            vec![text("No landmarks in range. Click \"Fetch Context\" to load from Wikipedia and Wikidata.")
+            vec![text(t!("flight.context.no_landmarks"))
                 .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .into()]
@@ -826,7 +826,7 @@ impl FlightGenState {
         };
 
         let weather_label =
-            text("Weather (as of now)")
+            text(t!("flight.context.weather_now"))
                 .size(11)
                 .style(move |_| iced::widget::text::Style {
                     color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
@@ -834,7 +834,8 @@ impl FlightGenState {
         let weather_body = text(
             self.origin_weather
                 .as_deref()
-                .unwrap_or("Click \"Fetch Context\" to load METAR."),
+                .map(|s| s.to_owned())
+                .unwrap_or_else(|| t!("flight.context.fetch_metar").into_owned()),
         )
         .size(13)
         .width(Length::Fill);
@@ -856,7 +857,7 @@ impl FlightGenState {
     }
 
     fn dest_tree_content<'a>(&'a self, ctx: &'a FlightContext) -> Element<'a, Message> {
-        let history_label = text("History")
+        let history_label = text(t!("flight.context.history"))
             .size(11)
             .style(move |_| iced::widget::text::Style {
                 color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
@@ -865,7 +866,7 @@ impl FlightGenState {
         let mut history_elements = vec![];
         if ctx.destination.snippet.is_empty() {
             history_elements.push(
-                text("No Wikipedia summary for this airport. Enable \"Enhanced history from Wikipedia\" in Settings and click \"Fetch context\" to load one.")
+                text(t!("flight.context.no_wikipedia"))
                 .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .width(Length::Fill)
@@ -885,7 +886,7 @@ impl FlightGenState {
             if snippet.len() > 1500 {
                 history_elements.push(
                     button(
-                        text("Show full context")
+                        text(t!("flight.context.show_full"))
                             .size(12)
                             .color(style::palette::ACCENT_BLUE),
                     )
@@ -898,16 +899,16 @@ impl FlightGenState {
         };
 
         let landmarks_label =
-            text("Surrounding Landmarks (within 10 nm)")
+            text(t!("flight.context.landmarks_title"))
                 .size(11)
                 .style(move |_| iced::widget::text::Style {
                     color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
                 });
-        let landmarks_attribution = text("From Wikipedia and Wikidata (geo-tagged). Wrong or missing? Edit on Wikipedia or add to the overlay (see docs).")
+        let landmarks_attribution = text(t!("flight.context.landmarks_attr"))
             .size(10)
             .color(style::palette::TEXT_SECONDARY);
         let landmarks_list: Vec<Element<_>> = if ctx.destination.points_nearby.is_empty() {
-            vec![text("No landmarks in range. Click \"Fetch Context\" to load from Wikipedia and Wikidata.")
+            vec![text(t!("flight.context.no_landmarks"))
                 .size(12)
                 .color(style::palette::TEXT_SECONDARY)
                 .into()]
@@ -931,7 +932,7 @@ impl FlightGenState {
                 .collect()
         };
         let weather_label =
-            text("Weather (as of now)")
+            text(t!("flight.context.weather_now"))
                 .size(11)
                 .style(move |_| iced::widget::text::Style {
                     color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
@@ -939,7 +940,8 @@ impl FlightGenState {
         let weather_body = text(
             self.dest_weather
                 .as_deref()
-                .unwrap_or("Click \"Fetch Context\" to load METAR."),
+                .map(|s| s.to_owned())
+                .unwrap_or_else(|| t!("flight.context.fetch_metar").into_owned()),
         )
         .size(13)
         .width(Length::Fill);
