@@ -123,10 +123,179 @@ impl Default for FlightPrompt {
     }
 }
 
+/// Returns true if `s` contains any CJK Unified Ideographs (U+4E00–U+9FFF).
+fn has_cjk(s: &str) -> bool {
+    s.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
+}
+
+/// Preprocesses Chinese input by replacing Chinese directional/modifier phrases
+/// with their English equivalents so the English NLP pipeline can parse them.
+/// Returns a new `String`; if no CJK characters are detected the input is returned
+/// unchanged (cheap clone of a short &str).
+fn preprocess_chinese(input: &str) -> String {
+    if !has_cjk(input) {
+        return input.to_string();
+    }
+    let mut s = input.to_string();
+
+    // ── Directional markers ──────────────────────────────────────────────────
+    // Apply longer/more-specific phrases first to avoid partial-match collisions.
+    s = s.replace("飞往", " to ");
+    s = s.replace("飞去", " to ");
+    s = s.replace("飞向", " to ");
+    s = s.replace("前往", " to ");
+    s = s.replace("从", "from ");
+    s = s.replace("到", " to ");   // single-char; applied after multi-char compounds
+
+    // ── Duration ─────────────────────────────────────────────────────────────
+    s = s.replace("超长途", "long haul");
+    s = s.replace("洲际", "long haul");
+    s = s.replace("跨洋", "long haul");
+    s = s.replace("跨大西洋", "long haul");
+    s = s.replace("跨太平洋", "long haul");
+    s = s.replace("长途", "long");
+    s = s.replace("远程", "long");
+    s = s.replace("长程", "long");
+    s = s.replace("中途", "medium");
+    s = s.replace("中程", "medium");
+    s = s.replace("短途", "short");
+    s = s.replace("短程", "short");
+    s = s.replace("近距", "short");
+
+    // ── Surface ──────────────────────────────────────────────────────────────
+    // Seaplane phrases before generic "water" to avoid partial replacement.
+    s = s.replace("水上飞机", "seaplane");
+    s = s.replace("水飞机", "seaplane");
+    s = s.replace("浮筒飞机", "seaplane");
+    s = s.replace("水陆两用", "seaplane");
+    s = s.replace("草地跑道", "grass");
+    s = s.replace("草坪", "grass");
+    s = s.replace("土跑道", "grass");
+    s = s.replace("泥土", "grass");
+    s = s.replace("碎石", "grass");
+    s = s.replace("砂砾", "grass");
+    s = s.replace("未铺设", "grass");
+    s = s.replace("未铺装", "grass");
+    s = s.replace("柏油", "tarmac");
+    s = s.replace("混凝土", "tarmac");
+    s = s.replace("沥青", "tarmac");
+    s = s.replace("硬地跑道", "tarmac");
+    s = s.replace("铺装", "tarmac");
+    s = s.replace("水上", "water");
+    s = s.replace("水面", "water");
+
+    // ── Weather ──────────────────────────────────────────────────────────────
+    s = s.replace("晴天", "clear");
+    s = s.replace("晴朗", "clear");
+    s = s.replace("晴空万里", "clear");
+    s = s.replace("多云", "cloudy");
+    s = s.replace("阴天", "cloudy");
+    s = s.replace("暴风雨", "storm");
+    s = s.replace("雷暴", "storm");
+    s = s.replace("风暴", "storm");
+    // Heavy/light rain — longer phrases first so "暴雨" isn't partially caught by later "雨" rules.
+    s = s.replace("暴雨", "storm");   // torrential → storm intensity
+    s = s.replace("大雨", "rain");
+    s = s.replace("小雨", "rain");
+    s = s.replace("阵风", "gusty");
+    s = s.replace("大风", "gusty");
+    s = s.replace("强风", "gusty");
+    s = s.replace("平静", "calm");
+    s = s.replace("无风", "calm");
+    s = s.replace("下雪", "snow");
+    s = s.replace("暴雪", "snow");
+    s = s.replace("冰雪", "snow");
+    s = s.replace("下雨", "rain");
+    s = s.replace("阵雨", "rain");
+    s = s.replace("降雨", "rain");
+    s = s.replace("大雾", "fog");
+    s = s.replace("薄雾", "fog");
+    s = s.replace("霾", "fog");
+
+    // ── Time ─────────────────────────────────────────────────────────────────
+    s = s.replace("黎明", "dawn");
+    s = s.replace("日出", "dawn");
+    s = s.replace("清晨", "dawn");
+    s = s.replace("拂晓", "dawn");
+    s = s.replace("黄昏", "dusk");
+    s = s.replace("日落", "dusk");
+    s = s.replace("傍晚", "dusk");
+    s = s.replace("凌晨", "night");  // early morning hours (0–4 am) = night from a flight-context view
+    s = s.replace("午夜", "night");
+    s = s.replace("深夜", "night");
+    s = s.replace("夜间", "night");
+    s = s.replace("夜晚", "night");
+    s = s.replace("晚上", "night");
+    s = s.replace("白天", "day");
+    s = s.replace("上午", "day");
+    s = s.replace("下午", "day");
+    s = s.replace("正午", "day");
+
+    // ── Flight type ──────────────────────────────────────────────────────────
+    s = s.replace("丛林飞行", "bush");
+    s = s.replace("偏远地区", "bush");
+    s = s.replace("越野", "bush");
+    s = s.replace("野外", "bush");
+
+    // ── Aircraft type hints ──────────────────────────────────────────────────
+    s = s.replace("直升机", "helicopter");
+    s = s.replace("旋翼机", "helicopter");
+    s = s.replace("波音", "boeing");
+    s = s.replace("空客", "airbus");
+    // Longer phrase first so "涡轮螺旋桨" doesn't get partially replaced by "涡桨".
+    s = s.replace("涡轮螺旋桨", "turboprop");
+    s = s.replace("涡桨", "turboprop");
+    s = s.replace("喷气式", "jet");
+    s = s.replace("喷气机", "jet");
+
+    // ── Grammatical particles ────────────────────────────────────────────────
+    // "在" (at/in/located-at) often appears between aircraft and time context,
+    // e.g. "A320在凌晨" (A320 at dawn).  Map to " at " so the ACF_RE \bat\b
+    // terminator can cleanly cut off time context from the aircraft token.
+    s = s.replace("在", " at ");
+    // Other high-frequency particles that carry no NLP value in this context.
+    s = s.replace("的", " ");  // possessive/attributive
+    s = s.replace("了", " ");  // perfective marker
+
+    // ── Vehicle connector ────────────────────────────────────────────────────
+    s = s.replace("搭乘", " in a ");  // board / travel on (common for flights)
+    s = s.replace("乘坐", " in a ");
+    s = s.replace("使用", " in a ");
+    s = s.replace("驾驶", " in a ");
+
+    // ── Generic flight / trip noise words ───────────────────────────────────
+    s = s.replace("飞行", " flight ");
+    s = s.replace("航班", " flight ");
+    s = s.replace("航程", " ");
+
+    // ── CJK ↔ ASCII spacing pass ─────────────────────────────────────────────
+    // After keyword substitution, remaining CJK characters (city names) may be
+    // directly adjacent to converted ASCII keywords (e.g. "成都short").
+    // Insert a space at every CJK↔ASCII transition so the location regex can
+    // cleanly tokenise city names from trailing English keywords.
+    let chars: Vec<char> = s.chars().collect();
+    let mut spaced = String::with_capacity(s.len() + 16);
+    for (i, &ch) in chars.iter().enumerate() {
+        let is_cjk = ('\u{4E00}'..='\u{9FFF}').contains(&ch);
+        if i > 0 {
+            let prev = chars[i - 1];
+            let prev_cjk = ('\u{4E00}'..='\u{9FFF}').contains(&prev);
+            let prev_space = prev == ' ';
+            if is_cjk != prev_cjk && !prev_space && ch != ' ' {
+                spaced.push(' ');
+            }
+        }
+        spaced.push(ch);
+    }
+
+    spaced.trim().to_string()
+}
+
 impl FlightPrompt {
     pub fn parse(input: &str, rules: &crate::NLPRulesConfig) -> Self {
         let mut prompt = FlightPrompt::default();
-        let input_lower = input.to_lowercase();
+        let preprocessed = preprocess_chinese(input.trim());
+        let input_lower = preprocessed.trim().to_lowercase();
 
         // 1. Check for "ignore guardrails"
         let mut clean_input = input_lower.clone();
@@ -526,12 +695,28 @@ impl FlightPrompt {
         if !acf_matched {
             static ACF_RE: OnceLock<Regex> = OnceLock::new();
             let acf_re = ACF_RE.get_or_init(|| {
-                Regex::new(r"\b(?:using|in|with)\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bfor\b|\s+\bfrom\b|\s+\blanding\b|\s+\barriving\b|\s+\bdeparting\b|$)")
+                // \bat\b added as terminator: handles "in a Cessna at night" and
+                // "使用A320在凌晨" (在 → "at" in Chinese preprocessing).
+                Regex::new(r"\b(?:using|in|with)\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bat\b|\s+\bfor\b|\s+\bfrom\b|\s+\blanding\b|\s+\barriving\b|\s+\bdeparting\b|$)")
                     .unwrap()
             });
 
             if let Some(caps) = acf_re.captures(&acf_input) {
                 let mut acf_str = caps[1].trim().to_string();
+
+                // Safety net: strip any residual CJK characters that may have slipped
+                // through preprocessing (aircraft names are always ASCII).
+                if has_cjk(&acf_str) {
+                    let cleaned: String = acf_str
+                        .chars()
+                        .filter(|c| !('\u{4E00}'..='\u{9FFF}').contains(c))
+                        .collect();
+                    let cleaned = cleaned.trim().to_string();
+                    if !cleaned.is_empty() {
+                        acf_str = cleaned;
+                    }
+                }
+
                 let acf_lower = acf_str.to_lowercase();
 
                 let is_weather_false_positive = matches!(
@@ -695,6 +880,21 @@ fn parse_location(s: &str) -> LocationConstraint {
         // This prevents city names like "Lamu" or "Lima" from being
         // misidentified as ICAO codes.
         region
+    } else if has_cjk(s) {
+        // When Chinese preprocessing has left a city name followed by English
+        // keywords (e.g. "成都 short flight rain 天"), the location regex may
+        // capture the full suffix.  Try matching just the leading CJK segment.
+        let cjk_prefix: String = s
+            .chars()
+            .take_while(|c| !c.is_ascii_alphabetic())
+            .collect();
+        let cjk_prefix = cjk_prefix.trim();
+        if !cjk_prefix.is_empty() {
+            if let Some(region) = try_as_region(cjk_prefix) {
+                return region;
+            }
+        }
+        LocationConstraint::AirportName(s.to_string())
     } else if (s.len() >= 4 && s.len() <= 7) && s.chars().all(|c| c.is_alphanumeric()) {
         // Real ICAO codes are 4 characters (EGLL, KJFK, RJAA, …).
         // Allow up to 7 to cover IATA/domestic variants, but 3-char codes like
@@ -1002,6 +1202,87 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
         "montevideo" => nc("Montevideo", -34.9011, -56.1645),
         "asuncion" | "asunción" => nc("Asunción", -25.2867, -57.6470),
         "la paz" => nc("La Paz", -16.5000, -68.1500),
+
+        // ===================== CHINESE CHARACTER ALIASES =====================
+        // Country / region names
+        "中国" => Some(LocationConstraint::Region("CN".to_string())),
+        "日本" => Some(LocationConstraint::Region("JP".to_string())),
+        "韩国" | "南韩" => Some(LocationConstraint::Region("KR".to_string())),
+        "泰国" => Some(LocationConstraint::Region("TH".to_string())),
+        "新加坡" => Some(LocationConstraint::Region("SG".to_string())),
+        "台湾" | "台灣" => Some(LocationConstraint::Region("TW".to_string())),
+        "印度" => Some(LocationConstraint::Region("IN".to_string())),
+        "澳大利亚" | "澳洲" => Some(LocationConstraint::Region("AU".to_string())),
+        "美国" => Some(LocationConstraint::Region("US".to_string())),
+        "英国" => Some(LocationConstraint::Region("UK".to_string())),
+        "法国" => Some(LocationConstraint::Region("FR".to_string())),
+        "德国" => Some(LocationConstraint::Region("DE".to_string())),
+        "意大利" => Some(LocationConstraint::Region("IT".to_string())),
+        "西班牙" => Some(LocationConstraint::Region("ES".to_string())),
+        "加拿大" => Some(LocationConstraint::Region("CA".to_string())),
+        "俄罗斯" => Some(LocationConstraint::Region("RU".to_string())),
+
+        // Chinese cities — existing 3 now also with character arms
+        "北京" => nc("Beijing", 39.9042, 116.4074),
+        "上海" => nc("Shanghai", 31.2304, 121.4737),
+        "广州" => nc("Guangzhou", 23.1291, 113.2644),
+
+        // Chinese cities — new 18 (Pinyin + characters)
+        "chengdu" | "成都" => nc("Chengdu", 30.5728, 104.0668),
+        "shenzhen" | "深圳" => nc("Shenzhen", 22.5431, 114.0579),
+        "wuhan" | "武汉" => nc("Wuhan", 30.5928, 114.3052),
+        "xian" | "xi'an" | "西安" => nc("Xi'an", 34.3416, 108.9398),
+        "hangzhou" | "杭州" => nc("Hangzhou", 30.2741, 120.1551),
+        "nanjing" | "南京" => nc("Nanjing", 32.0603, 118.7969),
+        "chongqing" | "重庆" => nc("Chongqing", 29.5630, 106.5516),
+        "tianjin" | "天津" => nc("Tianjin", 39.3434, 117.3616),
+        "qingdao" | "青岛" => nc("Qingdao", 36.0671, 120.3826),
+        "kunming" | "昆明" => nc("Kunming", 25.0389, 102.7183),
+        "dalian" | "大连" => nc("Dalian", 38.9140, 121.6147),
+        "harbin" | "哈尔滨" => nc("Harbin", 45.8038, 126.5350),
+        "xiamen" | "厦门" => nc("Xiamen", 24.4798, 118.0894),
+        "changsha" | "长沙" => nc("Changsha", 28.2282, 112.9388),
+        "zhengzhou" | "郑州" => nc("Zhengzhou", 34.7473, 113.6249),
+        "sanya" | "三亚" => nc("Sanya", 18.2524, 109.5120),
+        "urumqi" | "乌鲁木齐" => nc("Urumqi", 43.8256, 87.6168),
+        "lhasa" | "拉萨" => nc("Lhasa", 29.6520, 91.1721),
+
+        // Key Asian cities — Chinese character aliases for existing entries
+        "东京" => nc("Tokyo", 35.6762, 139.6503),
+        "大阪" => nc("Osaka", 34.6937, 135.5023),
+        "首尔" => nc("Seoul", 37.5665, 126.9780),
+        "台北" => nc("Taipei", 25.0330, 121.5654),
+        "曼谷" => nc("Bangkok", 13.7563, 100.5018),
+        "香港" => Some(LocationConstraint::Region("HK".to_string())),
+        "吉隆坡" => nc("Kuala Lumpur", 3.1390, 101.6869),
+        "马尼拉" => nc("Manila", 14.5995, 120.9842),
+        "河内" => nc("Hanoi", 21.0278, 105.8342),
+        "胡志明市" | "西贡" => nc("Ho Chi Minh City", 10.8231, 106.6297),
+        "雅加达" => nc("Jakarta", -6.2088, 106.8456),
+        "孟买" => nc("Mumbai", 19.0760, 72.8777),
+        "新德里" => nc("Delhi", 28.7041, 77.1025),
+
+        // Middle East cities — Chinese character aliases
+        "迪拜" => nc("Dubai", 25.2048, 55.2708),
+        "多哈" => nc("Doha", 25.2854, 51.5310),
+
+        // Oceania — Chinese character aliases
+        "悉尼" => nc("Sydney", -33.8688, 151.2093),
+        "墨尔本" => nc("Melbourne", -37.8136, 144.9631),
+
+        // European capitals — Chinese character aliases
+        "伦敦" => nc("London", 51.5074, -0.1278),
+        "巴黎" => nc("Paris", 48.8566, 2.3522),
+        "柏林" => nc("Berlin", 52.5200, 13.4050),
+        "罗马" => nc("Rome", 41.9028, 12.4964),
+        "马德里" => nc("Madrid", 40.4168, -3.7038),
+
+        // North American cities — Chinese character aliases
+        "纽约" => nc("New York", 40.7128, -74.0060),
+        "洛杉矶" => nc("Los Angeles", 34.0522, -118.2437),
+        "旧金山" => nc("San Francisco", 37.7749, -122.4194),
+        "芝加哥" => nc("Chicago", 41.8781, -87.6298),
+
         _ => {
             // 2. Fallback: check RegionIndex for geographic regions not in the explicit table
             let index = crate::geo::RegionIndex::new();
@@ -1504,5 +1785,202 @@ mod tests {
 
         assert_eq!(p1.keywords.weather, Some(WeatherKeyword::Clear));
         assert_eq!(p2.keywords.weather, Some(WeatherKeyword::Fog));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Chinese NLP tests
+    // ─────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_chinese_from_to() {
+        // "从北京到上海" — "from Beijing to Shanghai"
+        let p = FlightPrompt::parse("从北京到上海", &crate::NLPRulesConfig::default());
+        match &p.origin {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Beijing"),
+            other => panic!("Origin should be NearCity(Beijing), got {:?}", other),
+        }
+        match &p.destination {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Shanghai"),
+            other => panic!("Destination should be NearCity(Shanghai), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_chinese_city_chars() {
+        // Bare Chinese city name should resolve to NearCity
+        let p = FlightPrompt::parse("北京", &crate::NLPRulesConfig::default());
+        let loc = p.destination.or(p.origin);
+        match loc {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Beijing"),
+            other => panic!("北京 should be NearCity(Beijing), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_chinese_new_city() {
+        // 成都 — new city added in this PR
+        let p = FlightPrompt::parse("成都", &crate::NLPRulesConfig::default());
+        let loc = p.destination.or(p.origin);
+        match loc {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Chengdu"),
+            other => panic!("成都 should be NearCity(Chengdu), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_chinese_to_only() {
+        // "飞往广州" — destination only, no origin
+        let p = FlightPrompt::parse("飞往广州", &crate::NLPRulesConfig::default());
+        match &p.destination {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Guangzhou"),
+            other => panic!("Destination should be NearCity(Guangzhou), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_chinese_duration() {
+        let p = FlightPrompt::parse("短途飞行", &crate::NLPRulesConfig::default());
+        assert_eq!(
+            p.keywords.duration,
+            Some(DurationKeyword::Short),
+            "短途飞行 should produce DurationKeyword::Short"
+        );
+    }
+
+    #[test]
+    fn test_parse_chinese_weather() {
+        let p = FlightPrompt::parse("下雨天飞行", &crate::NLPRulesConfig::default());
+        assert_eq!(
+            p.keywords.weather,
+            Some(WeatherKeyword::Rain),
+            "下雨 should produce WeatherKeyword::Rain"
+        );
+    }
+
+    #[test]
+    fn test_parse_chinese_aircraft() {
+        let p = FlightPrompt::parse("驾驶直升机", &crate::NLPRulesConfig::default());
+        match &p.aircraft {
+            Some(AircraftConstraint::Tag(t)) => assert!(
+                t.to_lowercase().contains("helicopter"),
+                "Aircraft tag should contain 'helicopter', got {:?}",
+                t
+            ),
+            other => panic!("Aircraft should be Tag(helicopter), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_chinese_country() {
+        let p = FlightPrompt::parse("中国", &crate::NLPRulesConfig::default());
+        let loc = p.destination.or(p.origin);
+        assert_eq!(
+            loc,
+            Some(LocationConstraint::Region("CN".to_string())),
+            "中国 should be Region(CN)"
+        );
+    }
+
+    #[test]
+    fn test_parse_chinese_full_prompt() {
+        // "从北京到成都短途飞行下雨天" — origin, dest, duration, weather all parsed
+        let p = FlightPrompt::parse(
+            "从北京到成都短途飞行下雨天",
+            &crate::NLPRulesConfig::default(),
+        );
+        match &p.origin {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Beijing"),
+            other => panic!("Origin should be NearCity(Beijing), got {:?}", other),
+        }
+        match &p.destination {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Chengdu"),
+            other => panic!("Destination should be NearCity(Chengdu), got {:?}", other),
+        }
+        assert_eq!(
+            p.keywords.duration,
+            Some(DurationKeyword::Short),
+            "Should detect Short duration"
+        );
+        assert_eq!(
+            p.keywords.weather,
+            Some(WeatherKeyword::Rain),
+            "Should detect Rain weather"
+        );
+    }
+
+    #[test]
+    fn test_parse_chinese_mixed_language_a320() {
+        // Mixed Chinese + ASCII: "从北京到上海短途飞行下雨天使用A320在凌晨"
+        // Includes "在" particle + time word after aircraft — must not bleed into tag.
+        let p = FlightPrompt::parse(
+            "从北京到上海短途飞行下雨天使用A320在凌晨",
+            &crate::NLPRulesConfig::default(),
+        );
+        match &p.origin {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Beijing"),
+            other => panic!("Origin should be NearCity(Beijing), got {:?}", other),
+        }
+        match &p.destination {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Shanghai"),
+            other => panic!("Destination should be NearCity(Shanghai), got {:?}", other),
+        }
+        assert_eq!(
+            p.keywords.duration,
+            Some(DurationKeyword::Short),
+            "Should detect Short duration"
+        );
+        assert_eq!(
+            p.keywords.weather,
+            Some(WeatherKeyword::Rain),
+            "Should detect Rain weather"
+        );
+        match &p.aircraft {
+            Some(AircraftConstraint::Tag(t)) => assert!(
+                t.to_lowercase().contains("a320"),
+                "Aircraft tag should contain 'a320', got {:?}",
+                t
+            ),
+            other => panic!("Aircraft should be Tag containing a320, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_chinese_heavy_rain_is_storm() {
+        // 暴雨 (torrential rain) → storm intensity
+        let p = FlightPrompt::parse("暴雨飞行", &crate::NLPRulesConfig::default());
+        assert_eq!(
+            p.keywords.weather,
+            Some(WeatherKeyword::Storm),
+            "暴雨 should produce WeatherKeyword::Storm"
+        );
+    }
+
+    #[test]
+    fn test_parse_chinese_aircraft_tag_clean() {
+        // "使用A320在凌晨" — the "在" particle and "凌晨" (→ "night") must NOT bleed into
+        // the aircraft tag; tag should be exactly "a320".
+        let p = FlightPrompt::parse("使用A320在凌晨", &crate::NLPRulesConfig::default());
+        match &p.aircraft {
+            Some(AircraftConstraint::Tag(t)) => {
+                let lower = t.to_lowercase();
+                assert!(
+                    lower == "a320",
+                    "Aircraft tag should be 'a320', got {:?}",
+                    t
+                );
+            }
+            other => panic!("Expected Tag(a320), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_chinese_late_night_is_night() {
+        // 凌晨 (early hours before dawn) → Night
+        let p = FlightPrompt::parse("凌晨飞行", &crate::NLPRulesConfig::default());
+        assert_eq!(
+            p.keywords.time,
+            Some(TimeKeyword::Night),
+            "凌晨 should produce TimeKeyword::Night"
+        );
     }
 }

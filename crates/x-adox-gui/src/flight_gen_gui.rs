@@ -41,7 +41,6 @@ pub struct FlightGenState {
 
 #[derive(Debug, Clone)]
 pub struct ChatMessage {
-    pub sender: String,
     pub text: String,
     pub is_user: bool,
 }
@@ -90,8 +89,7 @@ impl Default for FlightGenState {
         Self {
             input_value: String::new(),
             history: vec![ChatMessage {
-                sender: "System".to_string(),
-                text: "Welcome to the Flight Generator. Ask for a flight! e.g., 'Flight from EGLL to LFPG using Cessna'".to_string(),
+                text: t!("flight.welcome").to_string(),
                 is_user: false,
             }],
             current_plan: None,
@@ -135,7 +133,6 @@ impl FlightGenState {
 
                 let prompt = self.input_value.clone();
                 self.history.push(ChatMessage {
-                    sender: "User".to_string(),
                     text: prompt.clone(),
                     is_user: true,
                 });
@@ -254,7 +251,6 @@ impl FlightGenState {
                             plan.duration_minutes
                         );
                         self.history.push(ChatMessage {
-                            sender: "System".to_string(),
                             text: response,
                             is_user: false,
                         });
@@ -275,7 +271,6 @@ impl FlightGenState {
                         }
 
                         self.history.push(ChatMessage {
-                            sender: "System".to_string(),
                             text,
                             is_user: false,
                         });
@@ -468,7 +463,11 @@ impl FlightGenState {
         let chat_history = scrollable(
             column(self.history.iter().map(|msg| {
                 container(column![
-                    text(&msg.sender).size(12).style(move |_| if msg.is_user {
+                    text(if msg.is_user {
+                        t!("flight.sender_user").to_string()
+                    } else {
+                        t!("flight.sender_system").to_string()
+                    }).size(12).style(move |_| if msg.is_user {
                         iced::widget::text::Style {
                             color: Some(iced::Color::from_rgb(0.6, 0.8, 1.0)), // Lighter blue for User
                         }

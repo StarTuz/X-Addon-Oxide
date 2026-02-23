@@ -70,6 +70,9 @@ flight.remember: "Remember this flight"
 flight.prefer_origin: "Prefer this origin"
 flight.prefer_dest: "Prefer this destination"
 flight.history_context: "History & Context"
+flight.welcome: "Welcome to the Flight Generator. Ask for a flight! e.g., 'Flight from EGLL to LFPG using Cessna'"
+flight.sender_system: "System"
+flight.sender_user: "User"
 
 # Status / feedback
 status.complete: "COMPLETE"

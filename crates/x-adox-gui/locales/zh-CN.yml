@@ -70,6 +70,9 @@ flight.remember: "记住此次飞行"
 flight.prefer_origin: "偏好此出发地"
 flight.prefer_dest: "偏好此目的地"
 flight.history_context: "历史与情境"
+flight.welcome: "欢迎使用航班生成器。输入您的飞行请求！例如：「从EGLL到LFPG，使用塞斯纳」"
+flight.sender_system: "系统"
+flight.sender_user: "用户"
 
 # Status / feedback
 status.complete: "完成"

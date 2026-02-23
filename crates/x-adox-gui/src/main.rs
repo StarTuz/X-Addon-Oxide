@@ -5260,6 +5260,12 @@ impl App {
                 self.current_language = lang.clone();
                 rust_i18n::set_locale(&lang);
                 self.save_scan_config();
+                // Refresh the welcome message if the user hasn't sent anything yet.
+                if !self.flight_gen.history.iter().any(|m| m.is_user) {
+                    if let Some(msg) = self.flight_gen.history.first_mut() {
+                        msg.text = t!("flight.welcome").to_string();
+                    }
+                }
                 Task::none()
             }
         }
