@@ -2,7 +2,7 @@
 Builds - XAddonManager.xojo_project
 XAddonManager-*.zip
 /target
-Cargo.lock
+
 **/*.rs.bk
 *.AppImage
 AppDir/
