@@ -20,7 +20,7 @@ jobs:
       matrix:
         platform:
           - name: Linux
-            os: ubuntu-latest
+            os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             bin: x-adox-gui
             formats: ""
@@ -31,7 +31,7 @@ jobs:
             formats: nsis
           - name: macOS
             os: macos-latest
-            target: x86_64-apple-darwin
+            target: universal-apple-darwin
             bin: x-adox-gui
             formats: dmg,app
 
@@ -47,11 +47,34 @@ jobs:
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
 
+    - name: Add Intel target for universal binary (macOS)
+      if: matrix.platform.name == 'macOS'
+      run: rustup target add x86_64-apple-darwin
+
     - name: Rust Cache
       uses: Swatinem/rust-cache@v2
 
     - name: Build
+      if: matrix.platform.name != 'macOS'
       run: cargo build --release -p x-adox-gui
+
+    - name: Build universal binary (macOS)
+      if: matrix.platform.name == 'macOS'
+      run: |
+        # Build for Apple Silicon (native on this runner)
+        cargo build --release -p x-adox-gui --target aarch64-apple-darwin
+        # Cross-compile for Intel
+        cargo build --release -p x-adox-gui --target x86_64-apple-darwin
+        # Merge into a universal (fat) binary
+        mkdir -p target/release
+        lipo -create \
+          target/aarch64-apple-darwin/release/x-adox-gui \
+          target/x86_64-apple-darwin/release/x-adox-gui \
+          -output target/release/x-adox-gui
+        # Verify
+        echo "=== Universal binary info ==="
+        lipo -info target/release/x-adox-gui
+        file target/release/x-adox-gui
 
     - name: Run Tests
       run: cargo test
@@ -187,8 +210,8 @@ jobs:
           | Platform | File |
           | :--- | :--- |
           | **Windows** | `*-setup.exe` (NSIS Installer) |
-          | **macOS** | `*.dmg` (Disk Image) |
-          | **Linux** | `*.AppImage` (Portable) · `*.tar.gz` (Binary tarball) |
+          | **macOS** | `*.dmg` (Universal Binary — Intel + Apple Silicon) |
+          | **Linux** | `*.AppImage` (Portable) · `*.tar.gz` (Binary tarball) — requires glibc ≥ 2.35 (Ubuntu 22.04+, Mint 21+, Fedora 36+) |
 
           ---
 

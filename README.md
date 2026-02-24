@@ -25,7 +25,7 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ## Feature Highlights
 
-- **New for 2.4.2**:
+- **New for 2.4.3**:
   - **Rust 1.81+ Stability Fix**: Eliminated a scenery-sort panic triggered on Rust 1.81+ when the SimHeaven tiebreaker comparator returned non-transitive results. The `sort_by` comparator now satisfies total ordering in all SimHeaven / non-SimHeaven mixed comparisons. Also backports the `iced_graphics 0.14` `total_cmp()` fix for the renderer damage-grouping path (`damage.rs`) to prevent NaN-induced panics on the tiny_skia fallback renderer. Thanks to [@mmaechtel](https://github.com/mmaechtel) for both fixes.
 - **New for 2.4.1**:
   - **Chinese (zh-CN) Flight Generator NLP**: Type flight prompts in Simplified Chinese — 「从北京到上海短途飞行下雨天使用A320在凌晨」 is parsed correctly into origin, destination, duration, weather, aircraft, and time keywords. Includes 80+ city/country aliases (18 new Chinese cities), full weather vocabulary (暴雨→storm, 大雨/小雨→rain, 凌晨→night, etc.), aircraft type hints (直升机, 波音, 空客), and grammatical particle stripping.
@@ -79,7 +79,7 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ## Release Notes
 
-### v2.4.2
+### v2.4.3
 
 - **Rust 1.81+ Scenery Sort Stability**: Added missing `else`-branches to the SimHeaven tiebreaker in `sorter.rs` so `sort_by()` satisfies total ordering — fixes a panic on Rust 1.81+ (sort now enforces strict total order checks). Fixes [#2](https://github.com/StarTuz/X-Addon-Oxide/pull/2).
 - **iced_graphics `total_cmp()` backport**: Vendor-patches `iced_graphics 0.13` with the upstream `iced 0.14` fix for `damage::group()` using `partial_cmp().unwrap_or(Equal)` on `f32` distances — NaN values could trigger a panic on the tiny_skia fallback renderer path. Replaced with `total_cmp()`. Contributed by [@mmaechtel](https://github.com/mmaechtel).
@@ -150,9 +150,11 @@ Grab the latest professional installers from the [Releases](https://github.com/S
 > Because X-Addon-Oxide is currently unsigned (no Apple Developer certificate), macOS Gatekeeper may refuse to open it with a message like *"X-Addon-Oxide is broken and cannot be opened."*
 >
 > **One-time fix:** Open Terminal and run:
+>
 > ```bash
 > xattr -cr /Applications/X-Addon-Oxide.app
 > ```
+>
 > Then try launching again. If macOS still blocks it, go to **System Settings → Privacy & Security** and click **"Open Anyway"**.
 >
 > This is a known limitation until the project has a paid Apple Developer ID for code-signing and notarization. It does not indicate a problem with the app itself.

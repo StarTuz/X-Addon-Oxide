@@ -58,6 +58,7 @@ crates/
 - `lib.rs` - Path normalization, config root detection, X-Plane install registry lookup, **stable hashing** (FNV-1a)
 - `discovery.rs` - Scans Aircraft/, Custom Scenery/, plugins/, CSLs
 - `management.rs` - Enables/disables plugins and aircraft via "(Disabled)" suffix folders
+- `migration.rs` - Unified migration engine for legacy `heuristics.json` and pin data (v2.4.0+)
 - `profiles.rs` - Profile management for switching hangar configurations (root-specific isolation)
 - `cache.rs` - Disk-backed caching for scenery bounds and metadata (mtime-based invalidation, versioned schema)
 - `logbook.rs` - X-Plane Pilot.txt parsing (character-perfect for X-Plane 12)
@@ -87,6 +88,22 @@ Rules-based heuristics engine (not ML despite the name) that:
 - Supports manual priority overrides (sticky sort / pins)
 - **Flight preferences** (schema v11): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; used by flight gen to prefer airports/remember last flight for region-based prompts
 - Lower score = higher priority (inverted from category scores)
+
+**Scoring hierarchy** (lower score = higher priority in `scenery_packs.ini`):
+
+| Category | Score | Notes |
+|---|---|---|
+| Custom Airports / Named Airports | 10 | e.g., "Charles De Gaulle" packs |
+| Airport Overlays | 12 | e.g., FlyTampa overlays |
+| Global Airports | 13 | **CRITICAL ANCHOR**: must be above SimHeaven |
+| Landmarks | 14 | Official X-Plane Landmarks |
+| City Enhancements | 16 | Generic city enhancement packs |
+| SimHeaven / X-World | 20 | **MUST BE BELOW GLOBAL AIRPORTS** — exclusion zones hide terminals otherwise |
+| Libraries | 40 | Position-independent; never flag as ordering issue |
+| Ortho/Photo | 50+ | |
+| Mesh | 60+ | |
+
+> When modifying these rules, always run: `cargo test -p x-adox-bitnet --test ordering_guardrails`
 
 **`geo/` module** — `RegionIndex` backed by bundled `regions.json`. Provides `Region` (with one or more `BoundingBox` spans) and fuzzy `search(query)` for resolving natural-language region names (e.g., "British Isles", "Alaska") to bounding boxes used by flight gen for filtering airports.
 
@@ -244,6 +261,7 @@ Follow conventional commits: `feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `release
 - If you create a new test file, run it explicitly: `cargo test -p <crate> --test <filename>`
 - **Env var tests must serialize**: `X_ADOX_CONFIG_DIR` is process-global. Tests that call `set_var("X_ADOX_CONFIG_DIR", ...)` must acquire a shared `static ENV_MUTEX: Mutex<()>` to avoid racing. See `regression_hashing_migration.rs` for the pattern.
 - **Flight gen tests**: `flight_gen_stress.rs` runs randomized prompts; set `STRESS_SEED=<u64>` for reproducible failures. Run with `--nocapture` to see per-iteration output. `flight_gen_robustness.rs` and `flight_gen_test.rs` cover deterministic edge cases.
+- **Stress tests are ignored by default** — run explicitly: `STRESS_SEED=12345 cargo test -p x-adox-core --test flight_gen_stress -- --include-ignored --nocapture`
 
 ## CI/CD
 

@@ -20,6 +20,7 @@
 - **Aircraft Immediate Retagging**: Fixed a UI bug where manually overriding an aircraft's category required an app restart. It now instantly parses the tree in-memory via `retag_aircraft_tree` using an updated `BitNetModel` instance.
 - **Aircraft Thumbnails**: Expanded the image engine to look for multiple variations of custom thumbnails (e.g., `[acf_name].png`, `[folder_name].jpg`, `icon_hq.png`) to support different aircraft developer schemas.
 - **Qodo Review Automation**: Overhauled `.github/workflows/pr_agent.yml` and `.pr_agent.toml` to fully integrate `qodo-ai/pr-agent@main` on GitHub Actions, successfully migrating from GitHub App syntax to `github_action_config`.
+- **macOS Universal Binary**: Fixed CI to build a universal (fat) binary for macOS via `lipo` (arm64 + x86_64). Previous builds were arm64-only because `macos-latest` switched to Apple Silicon but `cargo build` was never passed `--target`. Intel Macs now work correctly.
 
 ## Critical Context
 
