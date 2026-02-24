@@ -28,9 +28,16 @@ cargo test -p x-adox-bitnet
 # Build AppImage (Linux via Docker)
 ./scripts/build_appimage.sh
 
-# Local CI pipeline (build + test)
+# Local CI pipeline (build + test). MANDATORY BEFORE EVERY PUSH.
 ./scripts/local_ci.sh
 ```
+
+## The Golden Rule
+
+> [!IMPORTANT]
+> **Always run `./scripts/local_ci.sh` before every push.**
+>
+> This script builds the release binary and runs all unit and integration tests. It ensures that your changes haven't broken the build or introduced regressions. Committing and pushing without running local CI is the primary cause of build failures in GitHub Actions.
 
 ## CI/CD
 

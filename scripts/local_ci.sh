@@ -1,4 +1,5 @@
 #!/bin/bash
+# MANDATORY: Run this script before every push to ensure build and test pass!
 set -e
 
 # Colors for output

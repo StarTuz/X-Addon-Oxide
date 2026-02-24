@@ -171,6 +171,8 @@ Config directories are isolated per X-Plane installation using a hash of the ins
 1. **Normalize** (`normalize_install_path`): Resolves the install path against X-Plane's own registry files (`x-plane_install_12.txt`, `x-plane_install_11.txt`) to handle symlinks, trailing slashes, and case variations
 2. **Hash** (`calculate_stable_hash`): Uses FNV-1a (deterministic across restarts, unlike Rust's `DefaultHasher`) → 16-char hex string
 3. **Migrate** (`get_scoped_config_root`): If a legacy-hash directory exists but no stable-hash directory, moves/copies config automatically. Handles cross-device moves (EXDEV fallback to copy+delete)
+4. **Stable Hashing**: Use FNV-1a (deterministic) for installation-specific config paths.
+5. **Pre-Push CI**: You **MUST** run `./scripts/local_ci.sh` before every push to ensure build stability and functional correctness. Non-local CI failures because `local_ci.sh` was skipped are unacceptable.
 
 **Pin migration**: Old versions stored pins globally in `heuristics.json`. New versions store them per-profile in `profiles.json`. `ProfileCollection::sync_with_heuristics()` handles the migration.
 
@@ -179,6 +181,7 @@ Config directories are isolated per X-Plane installation using a hash of the ins
 Startup uses a **two-phase load** to keep the UI responsive even on cold-start (no cache) with Windows Defender active:
 
 **Phase 1 — `SceneryManager::load_quick()`** (fires `Message::SceneryLoaded`, < 500ms):
+
 1. Read existing INI entries (preserves order and raw_path)
 2. Scan filesystem for folders via `discovery.rs` (filesystem order, no sorting)
 3. Reconcile: match discovered folders to INI entries by name/path
@@ -186,6 +189,7 @@ Startup uses a **two-phase load** to keep the UI responsive even on cold-start (
 5. Loading overlay dismisses once all subsystems complete; scenery list is immediately usable.
 
 **Phase 2 — `SceneryManager::load_with_progress(cb)`** (fires `Message::SceneryDeepScanComplete`):
+
 1. Full parallel disk scan for uncached packs: `discover_airports_in_pack`, `discover_tiles_in_pack`
 2. Progress reported via `cb(0.0..=1.0)` → `Message::SceneryProgress` → slim progress bar in scenery tab
 3. `SceneryDeepScanComplete` merges airports/tiles/categories into `self.packs` (preserving user status changes), re-runs `merge_custom_airports()` and validation, saves cache.
