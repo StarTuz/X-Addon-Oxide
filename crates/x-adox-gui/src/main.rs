@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
 use x_adox_core::discovery::{AddonScript, AddonType, DiscoveredAddon, DiscoveryManager};
-use x_adox_core::management::{AddonType as ManagementAddonType, ModManager};
+use x_adox_core::management::{AddonType as ManagementAddonType, ArchiveType, ModManager};
 use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};
 use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType};
 use x_adox_core::XPlaneManager;
@@ -9625,12 +9625,23 @@ impl App {
                                 );
 
                                 if has_scripts {
-                                    let script_count = scripts.len();
-                                    let enabled_count = scripts.iter().filter(|s| s.is_enabled).count();
+                                    let quarantined_count = scripts.iter().filter(|s| s.is_quarantined).count();
+                                    let active_scripts: Vec<_> = scripts.iter().filter(|s| !s.is_quarantined).collect();
+                                    let script_count = active_scripts.len();
+                                    let enabled_count = active_scripts.iter().filter(|s| s.is_enabled).count();
+                                    let badge_text = if quarantined_count > 0 {
+                                        format!("{}/{} +{}Q", enabled_count, script_count, quarantined_count)
+                                    } else {
+                                        format!("{}/{}", enabled_count, script_count)
+                                    };
                                     plugin_row = plugin_row.push(
-                                        text(format!("{}/{}", enabled_count, script_count))
+                                        text(badge_text)
                                             .size(11)
-                                            .color(style::palette::TEXT_SECONDARY),
+                                            .color(if quarantined_count > 0 {
+                                                Color::from_rgb(0.9, 0.7, 0.2)
+                                            } else {
+                                                style::palette::TEXT_SECONDARY
+                                            }),
                                     );
                                 }
 
@@ -9681,30 +9692,53 @@ impl App {
                                 scripts.iter().fold(col, |col, script| {
                                     let script_path = script.path.clone();
                                     let script_enabled = script.is_enabled;
+                                    let script_quarantined = script.is_quarantined;
                                     let script_name = script.name.clone();
 
-                                    let color = if script_enabled {
+                                    let color = if script_quarantined {
+                                        Color::from_rgb(0.9, 0.7, 0.2) // amber for quarantined
+                                    } else if script_enabled {
                                         style::palette::TEXT_PRIMARY
                                     } else {
                                         style::palette::TEXT_SECONDARY
                                     };
 
-                                    let script_row: Element<'_, Message, Theme, Renderer> = row![
-                                        horizontal_space().width(32),
-                                        checkbox("", script_enabled)
-                                            .on_toggle({
-                                                let sp = script_path.clone();
-                                                move |e| Message::ToggleScript(sp.clone(), e)
-                                            })
-                                            .text_size(12),
-                                        text(script_name)
-                                            .size(12)
-                                            .color(color),
-                                    ]
-                                    .spacing(4)
-                                    .align_y(iced::Alignment::Center)
-                                    .width(Length::Fill)
-                                    .into();
+                                    let script_row: Element<'_, Message, Theme, Renderer> = if script_quarantined {
+                                        // Quarantined scripts: show a [Q] badge, no toggle
+                                        row![
+                                            horizontal_space().width(32),
+                                            text("[Q]")
+                                                .size(11)
+                                                .color(Color::from_rgb(0.9, 0.7, 0.2)),
+                                            text(script_name.clone())
+                                                .size(12)
+                                                .color(color),
+                                            text("awaiting approval")
+                                                .size(10)
+                                                .color(style::palette::TEXT_SECONDARY),
+                                        ]
+                                        .spacing(4)
+                                        .align_y(iced::Alignment::Center)
+                                        .width(Length::Fill)
+                                        .into()
+                                    } else {
+                                        row![
+                                            horizontal_space().width(32),
+                                            checkbox("", script_enabled)
+                                                .on_toggle({
+                                                    let sp = script_path.clone();
+                                                    move |e| Message::ToggleScript(sp.clone(), e)
+                                                })
+                                                .text_size(12),
+                                            text(script_name)
+                                                .size(12)
+                                                .color(color),
+                                        ]
+                                        .spacing(4)
+                                        .align_y(iced::Alignment::Center)
+                                        .width(Length::Fill)
+                                        .into()
+                                    };
 
                                     col.push(script_row)
                                 })
@@ -10887,7 +10921,10 @@ fn load_aircraft(
 
 fn load_plugins(root: Option<PathBuf>) -> Result<Arc<Vec<DiscoveredAddon>>, String> {
     let root = root.ok_or("X-Plane root not found")?;
-    let mut cache = x_adox_core::cache::DiscoveryCache::load(Some(&root));
+    // Always use a fresh cache for plugins to avoid stale Lua script data.
+    // Script changes (delete/move a .lua file) only update the Scripts/ subfolder mtime,
+    // not the parent plugin folder mtime, so a persisted cache would return stale results.
+    let mut cache = x_adox_core::cache::DiscoveryCache::new();
     let plugins = DiscoveryManager::scan_plugins(&root, &mut cache);
     let _ = cache.save(Some(&root));
     Ok(Arc::new(plugins))
@@ -11214,20 +11251,22 @@ fn extract_zip_task(
     let mut archive =
         zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
 
+    // Detect archive type (plugin vs script)
+    let filenames_list: Vec<String> = archive.file_names().map(|s| s.to_string()).collect();
+    let archive_type = ModManager::detect_archive_type(&filenames_list);
+
     // Detect whether the zip has a single root folder or is flat
     let mut top_level_entries = std::collections::HashSet::new();
-    for i in 0..archive.len() {
-        if let Ok(entry) = archive.by_index(i) {
-            if let Some(first_component) = entry.name().split('/').next() {
-                if !first_component.is_empty() {
-                    top_level_entries.insert(first_component.to_string());
-                }
+    for name in &filenames_list {
+        if let Some(first_component) = name.split('/').next() {
+            if !first_component.is_empty() {
+                top_level_entries.insert(first_component.to_string());
             }
         }
     }
 
     let has_single_root = top_level_entries.len() == 1
-        && archive.file_names().any(|n| n.contains('/'));
+        && filenames_list.iter().any(|n| n.contains('/'));
 
     let top_folder = if has_single_root {
         top_level_entries.into_iter().next().unwrap_or_else(|| "Unknown".to_string())
@@ -11242,21 +11281,53 @@ fn extract_zip_task(
 
     let root = root.ok_or("X-Plane root not found".to_string())?;
 
+    let mut is_script_redirection = false;
     let base_dest = if let Some(dest) = dest_override {
         dest
     } else {
         match tab {
             Tab::Aircraft => root.join("Aircraft"),
-            Tab::Plugins => root.join("Resources").join("plugins"),
+            Tab::Plugins => {
+                let fw_lua_scripts = root.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
+                let py_scripts = root.join("Resources").join("plugins").join("XPPython3").join("PythonPlugins");
+
+                match archive_type {
+                    ArchiveType::LuaScripts if fw_lua_scripts.exists() => {
+                        log::info!("[Installer] Redirecting Lua script package to FlyWithLua/Scripts");
+                        is_script_redirection = true;
+                        fw_lua_scripts
+                    }
+                    ArchiveType::PythonScripts if py_scripts.exists() => {
+                        log::info!("[Installer] Redirecting Python script package to XPPython3/PythonPlugins");
+                        is_script_redirection = true;
+                        py_scripts
+                    }
+                    _ => root.join("Resources").join("plugins"),
+                }
+            }
             Tab::Scenery => root.join("Custom Scenery"),
             Tab::CSLs => root.join("Resources").join("plugins"),
             _ => return Err("Unsupported install tab".to_string()),
         }
     };
 
-    // If the archive is flat (no single root), extract into a created subfolder
+    // If the archive is flat (no single root), extract into a created subfolder.
+    // EXCEPTION: For redirected scripts, if the archive is flat, we extract directly into the script folder
+    // to avoid creating an extra layer like FlyWithLua/Scripts/ScriptZipName/script.lua.
     let dest_dir = if has_single_root {
         base_dest
+    } else if is_script_redirection {
+        // For script redirection, we still check if there are multiple files.
+        // If it's just one script file, we drop it directly. If it has structure, we keep it.
+        if filenames_list.len() <= 2 && filenames_list.iter().all(|n| !n.contains('/')) {
+             log::info!("[Installer] Flat script archive detected — extracting directly to: {:?}", base_dest);
+             base_dest
+        } else {
+            let subfolder = base_dest.join(&top_folder);
+            std::fs::create_dir_all(&subfolder)
+                .map_err(|e| format!("Failed to create script subfolder '{}': {}", top_folder, e))?;
+            subfolder
+        }
     } else {
         let subfolder = base_dest.join(&top_folder);
         std::fs::create_dir_all(&subfolder)

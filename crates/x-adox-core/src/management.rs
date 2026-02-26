@@ -401,6 +401,51 @@ impl ModManager {
 
         suppressed
     }
+
+    /// Identifies what kind of addon an archive contains based on a list of its file paths.
+    pub fn detect_archive_type(file_paths: &[String]) -> ArchiveType {
+        let mut has_plugin_binary = false;
+        let mut has_lua_scripts = false;
+        let mut has_python_scripts = false;
+
+        for path in file_paths {
+            let lower = path.to_lowercase();
+            // Binary plugin indicators
+            if lower.ends_with(".xpl")
+                || lower.contains("/64/")
+                || lower.contains("/lin_x64/")
+                || lower.contains("/win_x64/")
+                || lower.contains("/mac_x64/")
+            {
+                has_plugin_binary = true;
+            }
+            // Script indicators
+            if lower.ends_with(".lua") {
+                has_lua_scripts = true;
+            }
+            if lower.ends_with(".py") {
+                has_python_scripts = true;
+            }
+        }
+
+        if has_plugin_binary {
+            ArchiveType::StandardPlugin
+        } else if has_lua_scripts {
+            ArchiveType::LuaScripts
+        } else if has_python_scripts {
+            ArchiveType::PythonScripts
+        } else {
+            ArchiveType::Unknown
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchiveType {
+    StandardPlugin,
+    LuaScripts,
+    PythonScripts,
+    Unknown,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

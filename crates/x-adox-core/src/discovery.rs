@@ -12,6 +12,9 @@ pub struct AddonScript {
     pub name: String,
     pub path: PathBuf,
     pub is_enabled: bool,
+    /// True if this script is in FlyWithLua's quarantine folder and awaiting approval.
+    #[serde(default)]
+    pub is_quarantined: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
@@ -289,8 +292,38 @@ impl DiscoveryManager {
         }
 
         if let Some(entry) = cache.get(dir) {
-            results.extend(entry.addons.clone());
-            return;
+            // For plugin directories, also check if any of the known script subdirectories
+            // have been modified more recently than the cached mtime. This prevents staleness
+            // when a .lua file is added, removed or moved (which only changes the Scripts/
+            // subfolder mtime, not the parent plugin dir mtime).
+            let script_subdirs = ["Scripts", "Scripts (disabled)", "Scripts (Quarantine)"];
+            let mut subdir_is_fresh = true;
+            for subdir_name in &script_subdirs {
+                // Look for any plugin inside this dir that could have script subdirs
+                if let Ok(plugin_entries) = std::fs::read_dir(dir) {
+                    for pentry in plugin_entries.flatten() {
+                        let scripts_path = pentry.path().join(subdir_name);
+                        if scripts_path.exists() {
+                            if let Ok(metadata) = std::fs::metadata(&scripts_path) {
+                                if let Ok(mtime) = metadata.modified() {
+                                    let mtime: chrono::DateTime<chrono::Utc> = mtime.into();
+                                    if mtime > entry.mtime {
+                                        subdir_is_fresh = false;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if !subdir_is_fresh {
+                        break;
+                    }
+                }
+            }
+            if subdir_is_fresh {
+                results.extend(entry.addons.clone());
+                return;
+            }
         }
 
         let mut dir_results = Vec::new();
@@ -520,6 +553,7 @@ impl DiscoveryManager {
                         name: name.clone(),
                         path: path.clone(),
                         is_enabled: name.ends_with(".py"),
+                        is_quarantined: false,
                     });
                 }
             }
@@ -530,30 +564,43 @@ impl DiscoveryManager {
     }
 
     /// Scans for Lua scripts in a FlyWithLua/X-Lua plugin folder.
-    /// Detects scripts in both `Scripts/` (enabled) and `Scripts (disabled)/` (disabled).
-    /// Also detects the `.lua.disabled` suffix convention within `Scripts/`.
+    /// Detects scripts in both `Scripts/` (enabled), `Scripts (disabled)/` (disabled),
+    /// and `Scripts (Quarantine)/` (quarantined, awaiting approval).
     pub fn scan_lua_scripts(plugin_path: &Path) -> Vec<AddonScript> {
         let mut results = Vec::new();
 
-        // 1. Scan active Scripts/ folder
+        // 1. Scan active Scripts/ folder (non-recursively into special subdirs)
         let script_dir = plugin_path.join("Scripts");
         if script_dir.exists() {
-            Self::collect_lua_files(&script_dir, true, &mut results);
+            Self::collect_lua_files(&script_dir, true, false, &mut results);
         }
 
         // 2. Scan disabled Scripts (disabled)/ folder (FlyWithLua native convention)
         let disabled_dir = plugin_path.join("Scripts (disabled)");
         if disabled_dir.exists() {
-            Self::collect_lua_files(&disabled_dir, false, &mut results);
+            Self::collect_lua_files(&disabled_dir, false, false, &mut results);
+        }
+
+        // 3. Scan quarantined Scripts (Quarantine)/ folder (FlyWithLua NG)
+        let quarantine_dir = plugin_path.join("Scripts (Quarantine)");
+        if quarantine_dir.exists() {
+            Self::collect_lua_files(&quarantine_dir, true, true, &mut results);
         }
 
         results.sort_by(|a, b| a.name.cmp(&b.name));
         results
     }
 
-    /// Recursively collects `.lua` files from a directory.
+    /// Collects `.lua` files from a directory.
     /// Files with `.lua.disabled` suffix in an enabled dir are treated as disabled.
-    fn collect_lua_files(dir: &Path, dir_is_enabled: bool, results: &mut Vec<AddonScript>) {
+    /// Does NOT recurse into subdirectories whose names suggest they are special
+    /// managed directories (quarantine, disabled), as those are scanned separately.
+    fn collect_lua_files(
+        dir: &Path,
+        dir_is_enabled: bool,
+        is_quarantined: bool,
+        results: &mut Vec<AddonScript>,
+    ) {
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -564,14 +611,20 @@ impl DiscoveryManager {
                     .to_string();
 
                 if path.is_dir() {
-                    // Recurse into subdirectories (e.g. Scripts (disabled)/Custom/)
-                    Self::collect_lua_files(&path, dir_is_enabled, results);
+                    // Skip special subdirectories that are managed at the top level.
+                    // Only recurse into neutral "user organisational" subdirs.
+                    let lower = name.to_lowercase();
+                    if lower.contains("quarantine") || lower.contains("disabled") {
+                        continue;
+                    }
+                    Self::collect_lua_files(&path, dir_is_enabled, is_quarantined, results);
                 } else if name.ends_with(".lua") || name.ends_with(".lua.disabled") {
-                    let is_enabled = dir_is_enabled && name.ends_with(".lua");
+                    let is_enabled = dir_is_enabled && name.ends_with(".lua") && !is_quarantined;
                     results.push(AddonScript {
                         name: name.clone(),
                         path: path.clone(),
                         is_enabled,
+                        is_quarantined,
                     });
                 }
             }
