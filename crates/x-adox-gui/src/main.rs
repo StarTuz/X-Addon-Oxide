@@ -11304,7 +11304,10 @@ fn save_scenery_packs(
 ) -> Result<(), String> {
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
-    sm.packs = packs;
+    // Load fresh disk state but apply GUI intent (enablement/tags)
+    sm.load_quick().map_err(|e| e.to_string())?;
+    sm.reconcile_with_external_packs(&packs);
+    
     sm.save(Some(&model)).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -12077,8 +12080,9 @@ fn simulate_sort_task(
     let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
     let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
     
-    // Instead of loading from disk (which has old order), use the current GUI order
-    sm.packs = (*current_packs).clone();
+    // Load fresh disk state but apply GUI intent (enablement/tags)
+    sm.load_quick().map_err(|e| e.to_string())?;
+    sm.reconcile_with_external_packs(current_packs.as_ref());
     
     let (packs, report) = sm.simulate_sort(&model, &context);
     Ok((Arc::new(packs), report))
@@ -12096,7 +12100,10 @@ fn save_packs_task(
     // Backups are now handled automatically by sm.save() in x-adox-core
 
     let mut sm = SceneryManager::new(ini_path);
-    sm.packs = packs.as_ref().clone();
+    // Load fresh disk state but apply GUI intent (enablement/tags)
+    sm.load_quick().map_err(|e| e.to_string())?;
+    sm.reconcile_with_external_packs(packs.as_ref());
+    
     sm.save(Some(&model)).map_err(|e| e.to_string())
 }
 

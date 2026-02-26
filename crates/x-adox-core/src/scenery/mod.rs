@@ -805,6 +805,47 @@ impl SceneryManager {
         ui_packs
     }
 
+    /// Reconciles the current disk state (self.packs) with intent from a GUI state.
+    /// Preserves new packs found on disk while applying status (enablement) and tags
+    /// from the GUI state to existing packs.
+    pub fn reconcile_with_external_packs(&mut self, gui_packs: &[SceneryPack]) {
+        use std::collections::HashMap;
+
+        // Build a lookup map from the GUI state (stale)
+        // Key: path (absolute) OR virtual name
+        let mut gui_map = HashMap::new();
+        for pack in gui_packs {
+            let key = if pack.name.starts_with('*') {
+                pack.name.clone()
+            } else {
+                pack.path.to_string_lossy().to_string()
+            };
+            gui_map.insert(key, pack);
+        }
+
+        // Apply GUI intent to the fresh disk state
+        for pack in &mut self.packs {
+            let key = if pack.name.starts_with('*') {
+                pack.name.clone()
+            } else {
+                pack.path.to_string_lossy().to_string()
+            };
+
+            if let Some(gui_pack) = gui_map.get(&key) {
+                // Apply status and tags
+                pack.status = gui_pack.status.clone();
+                pack.tags = gui_pack.tags.clone();
+                // Note: Category is usually re-calculated/healed on load, so we don't
+                // necessarily want to overwrite it with stale GUI category unless it's a "Group".
+                if gui_pack.category == SceneryCategory::Group {
+                    pack.category = SceneryCategory::Group;
+                }
+            }
+            // If NOT in gui_map, it's a NEW pack on disk.
+            // We keep it (status defaults to Active from load) and do NOT delete it.
+        }
+    }
+
     pub fn sort(
         &mut self,
         model: Option<&x_adox_bitnet::BitNetModel>,
@@ -1656,5 +1697,68 @@ mod tests {
         assert!(!is_subset(&[(50, 50)], &[(10, 20)]));
         // Empty small is always subset
         assert!(is_subset(&[], &[(10, 20)]));
+    }
+
+    #[test]
+    fn test_scenery_reconciliation() {
+        let mut manager = SceneryManager::new(PathBuf::from("scenery_packs.ini"));
+        manager.packs = vec![
+            SceneryPack {
+                name: "Existing_Pack".to_string(),
+                path: PathBuf::from("/path/to/existing"),
+                raw_path: None,
+                status: SceneryPackType::Active, // Will be changed by GUI
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "New_On_Disk".to_string(),
+                path: PathBuf::from("/path/to/new"),
+                raw_path: None,
+                status: SceneryPackType::Active, // Freshly loaded
+                category: SceneryCategory::Unknown,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+        ];
+
+        let gui_packs = vec![SceneryPack {
+            name: "Existing_Pack".to_string(),
+            path: PathBuf::from("/path/to/existing"),
+            raw_path: None,
+            status: SceneryPackType::Disabled, // GUI "intent"
+            category: SceneryCategory::CustomAirport,
+            airports: Vec::new(),
+            tiles: Vec::new(),
+            tags: vec!["MyTag".to_string()], // GUI "intent"
+            descriptor: SceneryDescriptor::default(),
+            region: None,
+        }];
+
+        manager.reconcile_with_external_packs(&gui_packs);
+
+        assert_eq!(manager.packs.len(), 2);
+
+        let existing = manager
+            .packs
+            .iter()
+            .find(|p| p.name == "Existing_Pack")
+            .unwrap();
+        assert_eq!(existing.status, SceneryPackType::Disabled);
+        assert_eq!(existing.tags, vec!["MyTag".to_string()]);
+
+        let new_pack = manager
+            .packs
+            .iter()
+            .find(|p| p.name == "New_On_Disk")
+            .unwrap();
+        assert_eq!(new_pack.status, SceneryPackType::Active); // Preserved
     }
 }
