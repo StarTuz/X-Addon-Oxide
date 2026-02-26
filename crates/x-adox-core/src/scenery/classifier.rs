@@ -54,6 +54,7 @@ impl Classifier {
             || name_lower.contains("world-models")
             || name_lower.contains("sea_life")
             || name_lower.contains("ruscenery")
+            || name_lower.contains("seasons_manager")
         {
             return SceneryCategory::Library;
         }
@@ -158,6 +159,7 @@ impl Classifier {
             || name_lower.contains("airstrip")
             || name_lower.contains("hydrobase")
             || name_lower.contains("heliport")
+            || name_lower.contains("helicopter")
         {
             return SceneryCategory::CustomAirport;
         }

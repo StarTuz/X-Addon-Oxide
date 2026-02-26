@@ -135,7 +135,7 @@ pub struct HeuristicsConfig {
 }
 
 /// When a user's file has a lower version, migration logic is applied on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 12;
+pub const CURRENT_SCHEMA_VERSION: u32 = 13;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
@@ -212,7 +212,7 @@ impl Default for HeuristicsConfig {
                         "x-world".to_string(),
                         "w2xp".to_string(),
                     ],
-                    score: 20, // Community standard: SimHeaven ABOVE Global Airports
+                    score: 20, // MUST be BELOW Global Airports (13) in INI load order
                     is_exclusion: false,
                 },
                 Rule {
@@ -266,6 +266,10 @@ impl Default for HeuristicsConfig {
                         "zdp".to_string(),
                         "sam".to_string(),
                         "assets".to_string(),
+                        "ruscenery".to_string(),
+                        "sea_life".to_string(),
+                        "world-models".to_string(),
+                        "seasons_manager".to_string(),
                     ],
                     score: 35,
                     is_exclusion: false,
@@ -590,6 +594,30 @@ impl BitNetModel {
                     }
                 }
 
+                // v12→v13: Append missing community library keywords so packs
+                // like ruscenery, Sea_Life, world-models, o4xp_Seasons_Manager
+                // get sorted as Libraries instead of "Other Scenery".
+                if config.schema_version <= 12 {
+                    let new_keywords: &[&str] =
+                        &["ruscenery", "sea_life", "world-models", "seasons_manager"];
+                    if let Some(lib_rule) = config.rules.iter_mut().find(|r| r.name == "Libraries")
+                    {
+                        let mut added = 0usize;
+                        for &kw in new_keywords {
+                            if !lib_rule.keywords.iter().any(|k| k == kw) {
+                                lib_rule.keywords.push(kw.to_string());
+                                added += 1;
+                            }
+                        }
+                        if added > 0 {
+                            log::info!(
+                                "[BitNet] v12→v13: Appended {} keyword(s) to Libraries rule",
+                                added
+                            );
+                        }
+                    }
+                }
+
                 config.schema_version = CURRENT_SCHEMA_VERSION;
                 // Save the migrated config
                 if let Some(parent) = path.parent() {
@@ -774,13 +802,16 @@ impl BitNetModel {
                 || name_lower.contains("airstrip")
                 || name_lower.contains("hydrobase")
                 || name_lower.contains("heliport")
+                || name_lower.contains("helicopter")
                 || name_lower.contains("seaplane"));
 
         let has_icao = !is_service_pack
             && name.split(|c: char| !c.is_alphanumeric()).any(|word| {
                 word.len() == 4
                     && word.chars().any(|c| c.is_alphabetic())
-                    && (word.chars().all(|c| c.is_uppercase() || c.is_numeric()) || name_lower.starts_with(word))
+                    && (word.chars().all(|c| c.is_uppercase() || c.is_numeric())
+                        || (word.chars().all(|c| c.is_alphabetic())
+                            && name_lower.starts_with(&word.to_lowercase())))
             });
 
         let is_airport = has_airport_keyword || has_icao;
@@ -850,10 +881,14 @@ impl BitNetModel {
         // excluding Global Airports which must keep its own dedicated score.
         // Uses rule NAME check (not score value) so it works with any config version.
         // Discovery (context.has_airports) also forces promotion to Airports tier.
+        // When has_airport_keyword is true (name explicitly says "airport"/"heliport"/
+        // "helicopter"/etc.), promotion also overrides Ortho/Mesh tiers (score >= 50)
+        // since strong name evidence trumps incidental tool-name keyword matches
+        // (e.g. "MontanaHelicopterDestinations_Ortho4XP130" matching "ortho").
         if (is_airport || context.has_airports) && !name_lower.contains("overlay") {
             if let Some(s) = score {
                 let is_global_airports = matched_rule_name.as_deref() == Some("Global Airports");
-                if s > 14 && s < 50 && !is_global_airports {
+                if s > 14 && (s < 50 || has_airport_keyword) && !is_global_airports {
                     score = Some(10);
                     matched_rule_name = Some("Airports".to_string());
                 }

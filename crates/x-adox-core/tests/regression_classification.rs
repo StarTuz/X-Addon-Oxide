@@ -370,3 +370,116 @@ fn test_reconcile_preserves_discovery_data() {
     assert_eq!(pack.tags[0], "custom");
 }
 
+#[test]
+fn test_helicopter_destinations_not_classified_as_ortho() {
+    // Packs with "Helicopter" in the name and "Ortho4XP" as a tool-name suffix
+    // must be classified as CustomAirport (not OrthoBase).
+    let name = "01_MontanaHelicopterDestinations_XP12_Ortho4XP130";
+    let path = PathBuf::from(format!("Custom Scenery/{}", name));
+    let result = Classifier::classify_heuristic(&path, name);
+    assert_eq!(
+        result,
+        SceneryCategory::CustomAirport,
+        "'{}' should be CustomAirport (helicopter destinations), got {:?}",
+        name,
+        result
+    );
+}
+
+#[test]
+fn test_seasons_manager_classified_as_library() {
+    // o4xp_Seasons_Manager is a seasons plugin, not mesh/terrain content.
+    let name = "o4xp_Seasons_Manager";
+    let path = PathBuf::from(format!("Custom Scenery/{}", name));
+    let result = Classifier::classify_heuristic(&path, name);
+    assert_eq!(
+        result,
+        SceneryCategory::Library,
+        "'{}' should be Library (seasons plugin), got {:?}",
+        name,
+        result
+    );
+}
+
+#[test]
+fn test_bitnet_helicopter_pack_promoted_to_airports() {
+    // BitNet should promote helicopter destination packs to Airports tier even
+    // though "ortho" keyword matches the Ortho/Photo rule (score 58).
+    // The "helicopter" airport keyword widens the promotion range.
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
+    let (score, rule) = model.predict_with_rule_name(
+        "01_MontanaHelicopterDestinations_XP12_Ortho4XP130",
+        &PathBuf::from("Custom Scenery/01_MontanaHelicopterDestinations_XP12_Ortho4XP130"),
+        &ctx,
+    );
+    assert_eq!(score, 10, "Helicopter pack score should be 10 (Airports tier)");
+    assert_eq!(rule, "Airports", "Helicopter pack should be promoted to 'Airports'");
+}
+
+#[test]
+fn test_bitnet_community_libraries_match_libraries_rule() {
+    // ruscenery, Sea_Life, world-models, o4xp_Seasons_Manager must match the
+    // Libraries rule (score 35) instead of falling through to "Other Scenery".
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
+
+    let library_packs = [
+        "ruscenery",
+        "Sea_Life",
+        "world-models",
+        "o4xp_Seasons_Manager",
+    ];
+
+    for name in &library_packs {
+        let (score, rule) = model.predict_with_rule_name(
+            name,
+            &PathBuf::from(format!("Custom Scenery/{}", name)),
+            &ctx,
+        );
+        assert_eq!(
+            score, 35,
+            "'{}' score should be 35 (Libraries), got {}",
+            name, score
+        );
+        assert_eq!(
+            rule, "Libraries",
+            "'{}' should match 'Libraries' rule, got '{}'",
+            name, rule
+        );
+    }
+}
+
+#[test]
+fn test_bitnet_crow_in_name_with_icao_still_promoted() {
+    // Packs with "crow" in the name (from "Crow Valley" or "Ironcrown")
+    // that also have ICAO codes should be promoted to Airports, not Birds.
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
+
+    // Note: "crow" is NOT in default Birds keywords, but we test the ICAO
+    // promotion path which would catch it even with a custom "crow" keyword.
+    let cases = [
+        ("SJI Crow Valley, WA39", 10, "Airports"),
+        ("ORABC_09_22OR - Ironcrown", 10, "Airports"),
+    ];
+
+    for (name, expected_score, expected_rule) in &cases {
+        let (score, rule) = model.predict_with_rule_name(
+            name,
+            &PathBuf::from(format!("Custom Scenery/{}", name)),
+            &ctx,
+        );
+        assert_eq!(
+            score, *expected_score,
+            "'{}' score should be {} (got {})",
+            name, expected_score, score
+        );
+        assert_eq!(
+            rule, *expected_rule,
+            "'{}' should be '{}' (got '{}')",
+            name, expected_rule, rule
+        );
+    }
+}
+
