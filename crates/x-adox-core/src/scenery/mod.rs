@@ -811,30 +811,58 @@ impl SceneryManager {
     pub fn reconcile_with_external_packs(&mut self, gui_packs: &[SceneryPack]) {
         use std::collections::HashMap;
 
+        let pack_key = |pack: &SceneryPack| {
+            if pack.name.starts_with('*') {
+                pack.name.clone()
+            } else {
+                pack.path.to_string_lossy().to_string()
+            }
+        };
+
         // Build a lookup map from the GUI state (stale)
         // Key: path (absolute) OR virtual name
         let mut gui_map = HashMap::new();
+        let mut gui_order = HashMap::new();
         for pack in gui_packs {
-            let key = if pack.name.starts_with('*') {
-                pack.name.clone()
-            } else {
-                pack.path.to_string_lossy().to_string()
-            };
+            let key = pack_key(pack);
             gui_map.insert(key, pack);
+            gui_order.insert(pack_key(pack), gui_order.len());
         }
+
+        // Preserve GUI ordering as the source of truth when available.
+        // This prevents section/header fragmentation when saving after a prior sort.
+        let original_order: HashMap<String, usize> = self
+            .packs
+            .iter()
+            .enumerate()
+            .map(|(idx, p)| (pack_key(p), idx))
+            .collect();
+
+        self.packs.sort_by_key(|p| {
+            let key = pack_key(p);
+            (
+                gui_order.get(&key).copied().unwrap_or(usize::MAX),
+                original_order.get(&key).copied().unwrap_or(usize::MAX),
+            )
+        });
 
         // Apply GUI intent to the fresh disk state
         for pack in &mut self.packs {
-            let key = if pack.name.starts_with('*') {
-                pack.name.clone()
-            } else {
-                pack.path.to_string_lossy().to_string()
-            };
+            let key = pack_key(pack);
 
             if let Some(gui_pack) = gui_map.get(&key) {
                 // Apply status and tags
                 pack.status = gui_pack.status.clone();
                 pack.tags = gui_pack.tags.clone();
+
+                // CRITICAL: Preserve discovered deep-scan data.
+                // Reconciliation often happens when re-loading from disk during a background task.
+                // We MUST keep the data discovered by the main process or previous scans.
+                pack.airports = gui_pack.airports.clone();
+                pack.tiles = gui_pack.tiles.clone();
+                pack.descriptor = gui_pack.descriptor.clone();
+                pack.region = gui_pack.region.clone();
+
                 // Note: Category is usually re-calculated/healed on load, so we don't
                 // necessarily want to overwrite it with stale GUI category unless it's a "Group".
                 if gui_pack.category == SceneryCategory::Group {
@@ -1760,5 +1788,346 @@ mod tests {
             .find(|p| p.name == "New_On_Disk")
             .unwrap();
         assert_eq!(new_pack.status, SceneryPackType::Active); // Preserved
+    }
+
+    #[test]
+    fn test_reconcile_preserves_gui_order() {
+        let mut manager = SceneryManager::new(PathBuf::from("scenery_packs.ini"));
+        manager.packs = vec![
+            SceneryPack {
+                name: "Airport_A".to_string(),
+                path: PathBuf::from("/path/to/airport_a"),
+                raw_path: None,
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "Overlay_B".to_string(),
+                path: PathBuf::from("/path/to/overlay_b"),
+                raw_path: None,
+                status: SceneryPackType::Active,
+                category: SceneryCategory::AirportOverlay,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "Airport_C".to_string(),
+                path: PathBuf::from("/path/to/airport_c"),
+                raw_path: None,
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+        ];
+
+        // GUI order was already regrouped via sort: A, C, B.
+        let gui_packs = vec![
+            SceneryPack {
+                name: "Airport_A".to_string(),
+                path: PathBuf::from("/path/to/airport_a"),
+                raw_path: None,
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "Airport_C".to_string(),
+                path: PathBuf::from("/path/to/airport_c"),
+                raw_path: None,
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "Overlay_B".to_string(),
+                path: PathBuf::from("/path/to/overlay_b"),
+                raw_path: None,
+                status: SceneryPackType::Active,
+                category: SceneryCategory::AirportOverlay,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+        ];
+
+        manager.reconcile_with_external_packs(&gui_packs);
+
+        assert_eq!(manager.packs[0].name, "Airport_A");
+        assert_eq!(manager.packs[1].name, "Airport_C");
+        assert_eq!(manager.packs[2].name, "Overlay_B");
+    }
+
+    #[test]
+    fn test_reconcile_write_keeps_single_contiguous_airport_block() {
+        use std::fs;
+
+        let mut manager = SceneryManager::new(PathBuf::from("scenery_packs.ini"));
+        // Simulate fresh disk state that can cause header fragmentation if order is not preserved.
+        manager.packs = vec![
+            SceneryPack {
+                name: "AAA_Test_Airport_One".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_airport_one"),
+                raw_path: Some("Custom Scenery/AAA_Test_Airport_One/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "AAA_Test_Overlay_One".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_overlay_one"),
+                raw_path: Some("Custom Scenery/AAA_Test_Overlay_One/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::AirportOverlay,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "AAA_Test_Airport_Two".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_airport_two"),
+                raw_path: Some("Custom Scenery/AAA_Test_Airport_Two/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+        ];
+
+        // GUI order was already regrouped by sort: airports together first, then overlays.
+        let gui_packs = vec![
+            SceneryPack {
+                name: "AAA_Test_Airport_One".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_airport_one"),
+                raw_path: Some("Custom Scenery/AAA_Test_Airport_One/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "AAA_Test_Airport_Two".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_airport_two"),
+                raw_path: Some("Custom Scenery/AAA_Test_Airport_Two/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "AAA_Test_Overlay_One".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_overlay_one"),
+                raw_path: Some("Custom Scenery/AAA_Test_Overlay_One/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::AirportOverlay,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+        ];
+
+        manager.reconcile_with_external_packs(&gui_packs);
+
+        let tmp = tempfile::tempdir().unwrap();
+        let ini_path = tmp.path().join("scenery_packs.ini");
+        crate::scenery::ini_handler::write_ini(&ini_path, &manager.packs, None).unwrap();
+
+        let contents = fs::read_to_string(&ini_path).unwrap();
+
+        // Middle-ground semantic assertion:
+        // no duplicate Airports header after reconcile+write.
+        let airports_header_count = contents
+            .lines()
+            .filter(|l| l.trim() == "# Airports")
+            .count();
+        assert_eq!(
+            airports_header_count, 1,
+            "Expected a single '# Airports' section, got:\n{}",
+            contents
+        );
+
+        // Airport entries should form one contiguous range in SCENERY_PACK order.
+        let pack_lines: Vec<&str> = contents
+            .lines()
+            .filter(|l| l.starts_with("SCENERY_PACK "))
+            .collect();
+        let airport_flags: Vec<bool> = pack_lines
+            .iter()
+            .map(|l| l.contains("AAA_Test_Airport_One") || l.contains("AAA_Test_Airport_Two"))
+            .collect();
+
+        let first_airport = airport_flags.iter().position(|v| *v).unwrap();
+        let last_airport = airport_flags.iter().rposition(|v| *v).unwrap();
+        assert!(
+            airport_flags[first_airport..=last_airport]
+                .iter()
+                .all(|v| *v),
+            "Airport packs are not contiguous in output:\n{}",
+            contents
+        );
+    }
+
+    #[test]
+    fn test_reconcile_write_keeps_single_contiguous_overlay_block() {
+        use std::fs;
+
+        let mut manager = SceneryManager::new(PathBuf::from("scenery_packs.ini"));
+        // Simulate disk order that can fragment overlay headers.
+        manager.packs = vec![
+            SceneryPack {
+                name: "AAA_Test_Airport_One".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_airport_one"),
+                raw_path: Some("Custom Scenery/AAA_Test_Airport_One/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "AAA_Test_Overlay_One".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_overlay_one"),
+                raw_path: Some("Custom Scenery/AAA_Test_Overlay_One/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::AirportOverlay,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "AAA_Test_Overlay_Two".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_overlay_two"),
+                raw_path: Some("Custom Scenery/AAA_Test_Overlay_Two/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::AirportOverlay,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+        ];
+
+        // GUI order should keep overlays together after airports.
+        let gui_packs = vec![
+            SceneryPack {
+                name: "AAA_Test_Airport_One".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_airport_one"),
+                raw_path: Some("Custom Scenery/AAA_Test_Airport_One/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "AAA_Test_Overlay_One".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_overlay_one"),
+                raw_path: Some("Custom Scenery/AAA_Test_Overlay_One/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::AirportOverlay,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "AAA_Test_Overlay_Two".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_overlay_two"),
+                raw_path: Some("Custom Scenery/AAA_Test_Overlay_Two/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::AirportOverlay,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+        ];
+
+        manager.reconcile_with_external_packs(&gui_packs);
+
+        let tmp = tempfile::tempdir().unwrap();
+        let ini_path = tmp.path().join("scenery_packs.ini");
+        crate::scenery::ini_handler::write_ini(&ini_path, &manager.packs, None).unwrap();
+
+        let contents = fs::read_to_string(&ini_path).unwrap();
+
+        let overlay_header_count = contents
+            .lines()
+            .filter(|l| {
+                let t = l.trim();
+                t == "# Airport Overlays" || t == "# Regional & Overlays"
+            })
+            .count();
+        assert_eq!(
+            overlay_header_count, 1,
+            "Expected a single overlay section header, got:\n{}",
+            contents
+        );
+
+        let pack_lines: Vec<&str> = contents
+            .lines()
+            .filter(|l| l.starts_with("SCENERY_PACK "))
+            .collect();
+        let overlay_flags: Vec<bool> = pack_lines
+            .iter()
+            .map(|l| l.contains("AAA_Test_Overlay_One") || l.contains("AAA_Test_Overlay_Two"))
+            .collect();
+
+        let first_overlay = overlay_flags.iter().position(|v| *v).unwrap();
+        let last_overlay = overlay_flags.iter().rposition(|v| *v).unwrap();
+        assert!(
+            overlay_flags[first_overlay..=last_overlay]
+                .iter()
+                .all(|v| *v),
+            "Overlay packs are not contiguous in output:\n{}",
+            contents
+        );
     }
 }

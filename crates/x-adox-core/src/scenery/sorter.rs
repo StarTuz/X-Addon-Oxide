@@ -32,6 +32,9 @@ pub fn sort_packs(
     model: Option<&x_adox_bitnet::BitNetModel>,
     context: &x_adox_bitnet::PredictContext,
 ) {
+    // CRITICAL: Sorting must be stable and deterministic.
+    // To prevent section fragmentation in scenery_packs.ini, we MUST use the 
+    // matched rule name as a secondary tie-breaker after the priority score.
     packs.sort_by(|a, b| {
         // Calculate scores - use BitNet model if provided, otherwise fall back to category scores
         let (score_a, score_b, _name_a, _name_b, lower_is_better) = if let Some(m) = model {
@@ -67,26 +70,51 @@ pub fn sort_packs(
 
         match primary {
             std::cmp::Ordering::Equal => {
-                // Secondary Sort Rules (SimHeaven only)
-                if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
-                    if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
-                        match cont_a.cmp(&cont_b) {
-                            std::cmp::Ordering::Equal => {
-                                return layer_a
-                                    .partial_cmp(&layer_b)
-                                    .unwrap_or(std::cmp::Ordering::Equal);
-                            }
-                            ord => return ord,
-                        }
-                    } else {
-                        return std::cmp::Ordering::Less;
-                    }
-                } else if extract_simheaven_info(&b.name).is_some() {
-                    return std::cmp::Ordering::Greater;
+                // Pinned packs keep their exact position; do not reorder relative to others.
+                if _name_a == x_adox_bitnet::PINNED_RULE_NAME || _name_b == x_adox_bitnet::PINNED_RULE_NAME {
+                    return std::cmp::Ordering::Equal;
                 }
+                // Secondary Sort Rules: Group by Rule Name to prevent INI fragmentation
+                // When scores are equal, items belonging to the same "# Section" must be adjacent.
+                let section_a = x_adox_bitnet::canonical_section_name(&_name_a);
+                let section_b = x_adox_bitnet::canonical_section_name(&_name_b);
+                match section_a.cmp(&section_b) {
+                    std::cmp::Ordering::Equal => {
+                        // Tertiary Sort: SimHeaven specialized layers (if applicable)
+                        if let Some((cont_a, layer_a)) = extract_simheaven_info(&a.name) {
+                            if let Some((cont_b, layer_b)) = extract_simheaven_info(&b.name) {
+                                match cont_a.cmp(&cont_b) {
+                                    std::cmp::Ordering::Equal => {
+                                        return layer_a
+                                            .partial_cmp(&layer_b)
+                                            .unwrap_or(std::cmp::Ordering::Equal);
+                                    }
+                                    ord => return ord,
+                                }
+                            } else {
+                                return std::cmp::Ordering::Less;
+                            }
+                        } else if extract_simheaven_info(&b.name).is_some() {
+                            return std::cmp::Ordering::Greater;
+                        }
 
-                // Pure Stability: items with the same score tier stay exactly where they were
-                std::cmp::Ordering::Equal
+                        // Quaternary Sort: overlay-specific deterministic ordering.
+                        // This keeps numbered families (e.g. Amsterdam 1/2 overlays) in natural order
+                        // even when other overlay packs are interleaved.
+                        if section_a == "Airport Overlays" && section_b == "Airport Overlays" {
+                            let key_a = overlay_order_key(&a.name);
+                            let key_b = overlay_order_key(&b.name);
+                            if key_a != key_b {
+                                return key_a.cmp(&key_b);
+                            }
+                        }
+
+                        // Preserve user/discovery order for true ties.
+                        // sort_by is stable, so returning Equal keeps relative order.
+                        std::cmp::Ordering::Equal
+                    }
+                    ord => ord,
+                }
             }
             ord => ord,
         }
@@ -175,6 +203,40 @@ fn extract_simheaven_info(name: &str) -> Option<(String, f32)> {
     };
 
     Some((continent, layer))
+}
+
+fn extract_numbered_overlay_family(name: &str) -> Option<(String, u32)> {
+    let lower = name.to_lowercase();
+    if !lower.contains("overlay") {
+        return None;
+    }
+
+    let bytes = lower.as_bytes();
+    for i in 1..bytes.len().saturating_sub(1) {
+        if bytes[i] == b'_' && bytes[i - 1].is_ascii_digit() {
+            let mut start = i - 1;
+            while start > 0 && bytes[start - 1].is_ascii_digit() {
+                start -= 1;
+            }
+            if i + 1 < bytes.len() && bytes[i + 1].is_ascii_alphabetic() {
+                let num = lower[start..i].parse::<u32>().ok()?;
+                let family = lower[..start].trim_end_matches('_').to_string();
+                return Some((family, num));
+            }
+        }
+    }
+
+    None
+}
+
+fn overlay_order_key(name: &str) -> (String, u32, String) {
+    let lower = name.to_lowercase();
+    if let Some((family, part)) = extract_numbered_overlay_family(name) {
+        (family, part, lower)
+    } else {
+        // Non-numbered overlays sort after numbered family parts by default.
+        (lower.clone(), u32::MAX, lower)
+    }
 }
 
 #[cfg(test)]
@@ -364,5 +426,55 @@ mod tests {
             &crate::scenery::SceneryDescriptor::default(),
         );
         assert_eq!(healed_ao, SceneryCategory::AutoOrthoOverlay);
+    }
+
+    #[test]
+    fn test_numbered_overlay_family_ordering() {
+        let mut packs = vec![
+            make_pack("FlyTampa_Amsterdam_2_default_overlays"),
+            make_pack("FlyTampa_Amsterdam_1_overlays"),
+        ];
+        let model = x_adox_bitnet::BitNetModel::default();
+
+        sort_packs(&mut packs, Some(&model), &x_adox_bitnet::PredictContext::default());
+
+        assert_eq!(packs[0].name, "FlyTampa_Amsterdam_1_overlays");
+        assert_eq!(packs[1].name, "FlyTampa_Amsterdam_2_default_overlays");
+    }
+
+    #[test]
+    fn test_numbered_overlay_family_ordering_with_interleaved_packs() {
+        let mut packs = vec![
+            make_pack("FlyTampa_Amsterdam_2_default_overlays"),
+            make_pack("Aircraft-Static_and_Animated"),
+            make_pack("DarkBlue-RJTT_Haneda_Overlays1"),
+            make_pack("FlyTampa_Amsterdam_1_overlays"),
+        ];
+        let model = x_adox_bitnet::BitNetModel::default();
+        let ctx = x_adox_bitnet::PredictContext::default();
+        let (s1, r1) = model.predict_with_rule_name(
+            "FlyTampa_Amsterdam_1_overlays",
+            &std::path::PathBuf::from("FlyTampa_Amsterdam_1_overlays"),
+            &ctx,
+        );
+        let (s2, r2) = model.predict_with_rule_name(
+            "FlyTampa_Amsterdam_2_default_overlays",
+            &std::path::PathBuf::from("FlyTampa_Amsterdam_2_default_overlays"),
+            &ctx,
+        );
+        assert_eq!(r1, "Airport Overlays");
+        assert_eq!(r2, "Airport Overlays");
+        assert_eq!(s1, s2);
+
+        sort_packs(&mut packs, Some(&model), &ctx);
+        let idx_amsterdam_1 = packs
+            .iter()
+            .position(|p| p.name == "FlyTampa_Amsterdam_1_overlays")
+            .unwrap();
+        let idx_amsterdam_2 = packs
+            .iter()
+            .position(|p| p.name == "FlyTampa_Amsterdam_2_default_overlays")
+            .unwrap();
+        assert!(idx_amsterdam_1 < idx_amsterdam_2);
     }
 }

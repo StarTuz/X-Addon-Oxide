@@ -272,6 +272,11 @@ heuristics.region.europe: "Europe"
 heuristics.region.asia: "Asia"
 heuristics.region.australia: "Australia"
 heuristics.region.africa: "Africa"
+heuristics.title: "Scenery Sorting Heuristics (JSON Editor)"
+heuristics.desc: "Customize the weights and keywords used by the BitNet AI for sorting."
+heuristics.save: "Save"
+heuristics.reset: "Reset"
+heuristics.clear_overrides: "Clear Overrides"
 
 # Aircraft / Plugin tree
 aircraft.set_category: "Set AI Category Manually:"

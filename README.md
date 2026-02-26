@@ -25,6 +25,10 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ## Feature Highlights
 
+- **New for 2.4.4**:
+  - **Archive Preview Mode & Robust Installation**: All `.zip`, `.7z`, and `.rar` archive installations now trigger an interactive preview modal. Support for **selective extraction**, **flattening** (stripping redundant top-level folders), and **wrapping** (forcing subfolder creation).
+  - **Unified Script Redirection**: Detailed redirection logic for **FlyWithLua** and **XPPython3** is now consistent across all archive formats, ensuring scripts always land in the correct simulator directory.
+  - **Destination Transparency**: The "Final Destination" path is now displayed in the preview modal for user verification before installation.
 - **New for 2.4.3**:
   - **Rust 1.81+ Stability Fix**: Eliminated a scenery-sort panic triggered on Rust 1.81+ when the SimHeaven tiebreaker comparator returned non-transitive results. The `sort_by` comparator now satisfies total ordering in all SimHeaven / non-SimHeaven mixed comparisons. Also backports the `iced_graphics 0.14` `total_cmp()` fix for the renderer damage-grouping path (`damage.rs`) to prevent NaN-induced panics on the tiny_skia fallback renderer. Thanks to [@mmaechtel](https://github.com/mmaechtel) for both fixes.
 - **New for 2.4.1**:
@@ -56,7 +60,8 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 ### 🚀 Core Management
 
 - **Non-Destructive Workflow**: Enable or disable Scenery, Aircraft, and Plugins with a single click. We never move your files destructively; we manage logical links to keep your simulator safe.
-- **Direct Zip Install**: Install Aircraft, Scenery, and Plugins directly from their archives (`.zip`)—no manual unzipping required.
+- **Direct Zip & Multi-Format Install**: Install Aircraft, Scenery, and Plugins directly from `.zip`, `.7z`, or `.rar` archives.
+- **Archive Preview Mode**: Preview and selectively extract contents from addons before they touch your sim. Includes **Flatten** and **Wrap in Folder** options to fix common nesting issues.
 - **Shadow Mesh Detection**: Automatically identifies redundant mesh scenery that destroys load times, helping you optimize performance.
 - **Profiles**: Create and switch between different hangar configurations (e.g., "IFR Online", "VFR Scenery Heavy") instantly.
 - **Companion App Launcher**: Manage and launch external tools like SimBrief, Navigraph, or VATSIM clients directly from the Plugins tab.
@@ -78,6 +83,12 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 - **Developer Friendly**: Hot-swap addons while the sim is running (plugin dependent) for rapid testing.
 
 ## Release Notes
+
+### v2.4.4
+
+- **Robust Installation Options**: Unified the installation bridge for all formats. Added flattening and wrapping toggles to resolve directory nesting bugs (e.g. `Plugins/Name/Name`).
+- **Archive Preview Expansion**: Selective file extraction now supported for `.zip`, `.7z`, and `.rar`.
+- **Redirection Parity**: Script-only packages now redirect to `FlyWithLua/Scripts` or `XPPython3/PythonPlugins` consistently across all supported archive types.
 
 ### v2.4.3
 

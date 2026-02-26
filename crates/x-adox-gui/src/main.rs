@@ -8726,10 +8726,10 @@ impl App {
 
         container(
             column![
-                text("Scenery Sorting Heuristics (JSON Editor)")
+                text(t!("heuristics.title"))
                     .size(20)
                     .width(Length::Fill),
-                text("Customize the weights and keywords used by the BitNet AI for sorting.")
+                text(t!("heuristics.desc"))
                     .size(14)
                     .color(Color::from_rgb(0.6, 0.6, 0.6)),
                 row![

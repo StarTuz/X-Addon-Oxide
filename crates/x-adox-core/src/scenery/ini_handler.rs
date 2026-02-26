@@ -109,7 +109,8 @@ pub fn write_ini(
     let mut last_section = String::new();
 
     for pack in packs {
-        // Determine section header based on matched rule name (dynamic!)
+        // Determine section header from the matched rule name, then normalize it
+        // through the canonical section mapping used by sorter.rs.
         let current_section = if let Some(m) = model {
             let (_score, rule_name) = m.predict_with_rule_name(
                 &pack.name,
@@ -120,7 +121,8 @@ pub fn write_ini(
                     ..Default::default()
                 },
             );
-            format!("# {}", rule_name)
+            let canonical = x_adox_bitnet::canonical_section_name(&rule_name);
+            format!("# {}", canonical)
         } else {
             // Fallback to category-based headers if no model
             match pack.category {

@@ -93,13 +93,27 @@ Accessible via the **Gear Icon** in the Aircraft toolbar (when Smart View is ena
 - **Live Map**: Track your aircraft's latest position and historical flight paths on the global interactive map.
 - **Performance**: The Utilities engine is optimized to handle large log files without affecting simulator performance.
 
+- **Centralized**: No more hunting through your desktop for different flight planning or online tools.
+
 ### 🚀 Companion Apps (managed in Plugins tab)
 
 - **One-Click Launch**: Store and launch your favorite external flight sim tools (SimBrief, Navigraph, VATSIM clients) directly from within X-Addon-Oxide.
 - **Auto-Naming**: The manager will attempt to suggest a name based on the executable you select.
 - **Centralized**: No more hunting through your desktop for different flight planning or online tools.
 
-## UI Features
+## Direct Installation & Archive Preview
+
+You can install addons directly from `.zip`, `.7z`, or `.rar` archives by clicking the **Install** button in any tab, or by simply **dragging and dropping** an archive onto the application.
+
+### 📦 Archive Preview Mode
+
+When an archive is detected, X-Addon-Oxide opens the **Archive Preview** modal. This allows you to:
+
+- **Select Contents**: Toggle individual files or entire folders to extract only what you need (e.g., just the aircraft, without the 4K liveries).
+- **Smart Recommendations**: The app automatically highlights "recommended" folders (like a primary scenery pack) and suggests ignoring junk (like `__MACOSX` or `.DS_Store`).
+- **Flatten Archive**: Use this toggle if an archive contains a redundant top-level folder (e.g., `PluginName/PluginName/...`). It strips the extra layer so the addon lands correctly.
+- **Wrap in Folder**: Use this if an archive is "flat" (no root folder) to ensure it stays organized in its own sub-directory.
+- **Final Destination**: The modal explicitly shows where the files will land (e.g., `Resources/plugins` or `FlyWithLua/Scripts`) so you can verify before clicking **Extract Selected**.
 
 - **Neon Indicators**: When a category is active, the icon and sidebar glow in its specific color.
 - **Window Icon**: The application now features a custom high-resolution window icon for better visibility in your taskbar.

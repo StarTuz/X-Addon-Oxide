@@ -8,6 +8,10 @@
   - **Logic**: `crates/x-adox-gui/src/main.rs`. State managed via `DragContext` struct.
   - **Persistence**: Hybrid approach. Physical move in memory (`self.packs`), BitNet Pinning (`heuristics.json`: scenery overrides, aircraft overrides, **flight preferences** — origin/dest prefs, last success), and Immediate File Write (`scenery_packs.ini` via `save_scenery_packs`).
   - **Parity**: We strictly mirror the order of `self.packs` to the INI file.
+- **Archive Handling & Installation**:
+  - **Unified Reader**: `crates/x-adox-core/src/archive.rs` provides a common interface for `.zip`, `.7z`, and `.rar`.
+  - **Path Discovery**: `get_installation_paths` centrally handles script redirection (FlyWithLua/XPPython3) and destination resolution.
+  - **Preview State**: `ArchivePreviewState` in `main.rs` manages the interactive modal and selective extraction logic.
 
 ### Critical Invariants
 

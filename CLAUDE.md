@@ -61,6 +61,7 @@ crates/
 - `migration.rs` - Unified migration engine for legacy `heuristics.json` and pin data (v2.4.0+)
 - `profiles.rs` - Profile management for switching hangar configurations (root-specific isolation)
 - `cache.rs` - Disk-backed caching for scenery bounds and metadata (mtime-based invalidation, versioned schema)
+- `archive.rs` - `UnifiedArchiveReader` for listing `.zip`, `.7z`, and `.rar` contents (metadata-only for preview)
 - `logbook.rs` - X-Plane Pilot.txt parsing (character-perfect for X-Plane 12)
 - `apt_dat.rs` - Parser for X-Plane `apt.dat` airport data files (runways, coordinates, ICAO codes, datum row 1302)
 - `groups.rs` - User-defined tag/group management for scenery packs (persisted per-config)
@@ -147,6 +148,10 @@ Iced framework (v0.13) with Elm-like message-driven architecture. `App` struct h
   - States: **Disable Selected** (all enabled, ACCENT_RED), **Enable Selected** (all disabled, ACCENT_BLUE), **Toggle Selected** (mixed, ACCENT_PURPLE).
   - Logic: `BulkToggledSelectedBasket` flips each pack's state individually.
   - Concurrency: Button must be `on_press(None)` when `scenery_is_saving` is true to prevent race conditions during I/O.
+- **Archive Preview & Installation**:
+  - `ArchivePreviewState` in `App`: Manages selected entries, progress, and robust options (`flatten`, `use_subfolder`).
+  - `get_installation_paths()`: Centrally calculates destinations and handles script redirection for all archive types.
+  - Messages: `Message::ConfirmArchiveInstall`, `Message::ToggleFlatten`, `Message::ToggleUseSubfolder`.
 - **Companion Apps**: External tools (SimBrief, Navigraph) managed in Plugins tab
 - **Logbook/Utilities**: Flight path visualization on map, bulk cleanup tools
 
@@ -206,6 +211,13 @@ Classification is a 3-stage pipeline across multiple files — understanding thi
 1. **`classifier.rs`** — Name-based heuristic classification. Uses regex patterns on folder names to assign initial `SceneryCategory` (e.g., `Airport`, `Mesh`, `Overlay`, `Library`).
 2. **`mod.rs` (post-discovery promotion)** — Content-aware "healing" overrides classifier results by inspecting actual files (`library.txt` → Library, `apt.dat` → Airport, DSF tiles → Mesh). Has a protected category list — check it when adding new categories.
 3. **`validator.rs`** — Order validation using resolved `pack.category` (not raw names). Detects issues like SimHeaven below Global Airports, mesh-above-overlay conflicts. Libraries are position-independent and should not be flagged.
+
+### Sorting & Header Invariants (Agent Warning)
+
+- **Rule Name Persistence**: The `scenery_packs.ini` section headers are derived directly from BitNet rule names (`# Rule Name`). 
+- **NO Unasked Mapping**: Do NOT introduce "canonical" or "unified" header mappings (e.g., merging "Named Airports" into "Airports") without explicit USER approval. This can split sections if not applied perfectly across both the sorter and writer.
+- **Header Tie-Breaker**: Always use the matched rule name as the secondary sort key after the priority score. This ensures items in the same section stay together.
+- **Preserve Scan Data**: The `airports`, `tiles`, and `region` fields on `SceneryPack` must be preserved during `reconcile_with_external_packs`. Clearing them triggers non-deterministic sorting flips.
 
 ## X-Plane Integration Points
 

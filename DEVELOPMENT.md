@@ -107,6 +107,15 @@ The sorting hierarchy is strictly defined to prevent scenery conflicts. Future c
 
 **Regression Testing**: Always run `cargo test -p x-adox-bitnet --test ordering_guardrails` when modifying these rules.
 
+#### Sorting Stability & Fragmentation
+
+To ensure a clean and predictable `scenery_packs.ini`, the following rules apply:
+
+1.  **Deterministic Sort**: Sorting MUST be stable. If two packs have the same score, their relative order must be preserved (use `sort_by`) or tied with an alphabetical name check.
+2.  **Section Grouping**: When multiple rules have the same score (e.g., different types of Airports), they should be grouped by their **Rule Name** as a secondary tie-breaker. This prevents "# Airports" and "# Named Airports" sections from being interleaved.
+3.  **Deep-Scan Preservation**: Never clear discovery data (airports, tiles, regions) during a reconciliation or sync. This data is essential for consistent classification; losing it causes "flipping" behavior where packs jump between sections on refresh.
+4.  **No Header Over-Engineering**: Avoid introducing complex "canonical header" mappings that aggregate distinct rules unless explicitly requested. X-Plane users often expect headers to reflect the specific classification rule matched.
+
 ### x-adox-gui
 
 Iced framework with Elm-like message-driven architecture:

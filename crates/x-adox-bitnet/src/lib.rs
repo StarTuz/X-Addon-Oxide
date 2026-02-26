@@ -134,10 +134,21 @@ pub struct HeuristicsConfig {
     pub schema_version: u32,
 }
 
-/// When a user's file has a lower version, their `overrides` will be cleared on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 11;
+/// When a user's file has a lower version, migration logic is applied on load.
+pub const CURRENT_SCHEMA_VERSION: u32 = 12;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
+
+/// Canonical display/grouping label used by both sorter and INI writer.
+/// Related rules can still exist, but they render as one section.
+pub fn canonical_section_name(rule_name: &str) -> String {
+    let lower = rule_name.trim().to_lowercase();
+    match lower.as_str() {
+        "airports" | "named airports" | "orbx a airport" => "Airports".to_string(),
+        "airport overlays" | "orbx b / trueearth overlay" => "Airport Overlays".to_string(),
+        _ => rule_name.trim().to_string(),
+    }
+}
 
 impl Default for HeuristicsConfig {
     fn default() -> Self {
@@ -159,7 +170,7 @@ impl Default for HeuristicsConfig {
                 },
                 // --- Tier 3: High Priority Overlays (Cities, Landmarks) ---
                 Rule {
-                    name: "Named Airports".to_string(),
+                    name: "Airports".to_string(),
                     keywords: vec![
                         "charles de gaulle".to_string(),
                         "cdg".to_string(),
@@ -235,7 +246,6 @@ impl Default for HeuristicsConfig {
                     keywords: vec![
                         "birds".to_string(),
                         "birdofprey".to_string(),
-                        "crow".to_string(),
                         "goose".to_string(),
                         "pigeon".to_string(),
                         "seagulls".to_string(),
@@ -562,6 +572,24 @@ impl BitNetModel {
                     log::info!("[BitNet] v10→v11: Reset rules to defaults (Map Enhancement Base)");
                 }
 
+                // v11→v12: normalize section naming so airport rules
+                // don't split into separate blocks (e.g. Named Airports).
+                if config.schema_version <= 11 {
+                    let mut renamed = 0usize;
+                    for rule in &mut config.rules {
+                        if rule.name == "Named Airports" {
+                            rule.name = "Airports".to_string();
+                            renamed += 1;
+                        }
+                    }
+                    if renamed > 0 {
+                        log::info!(
+                            "[BitNet] v11→v12: Renamed {} rule(s) from 'Named Airports' to 'Airports'",
+                            renamed
+                        );
+                    }
+                }
+
                 config.schema_version = CURRENT_SCHEMA_VERSION;
                 // Save the migrated config
                 if let Some(parent) = path.parent() {
@@ -743,14 +771,16 @@ impl BitNetModel {
             && (name_lower.contains("airport")
                 || name_lower.contains("apt")
                 || name_lower.contains("airfield")
+                || name_lower.contains("airstrip")
+                || name_lower.contains("hydrobase")
                 || name_lower.contains("heliport")
                 || name_lower.contains("seaplane"));
 
         let has_icao = !is_service_pack
             && name.split(|c: char| !c.is_alphanumeric()).any(|word| {
                 word.len() == 4
-                    && word.chars().all(|c| c.is_alphabetic())
-                    && (word.chars().all(|c| c.is_uppercase()) || name_lower.starts_with(word))
+                    && word.chars().any(|c| c.is_alphabetic())
+                    && (word.chars().all(|c| c.is_uppercase() || c.is_numeric()) || name_lower.starts_with(word))
             });
 
         let is_airport = has_airport_keyword || has_icao;
@@ -819,7 +849,8 @@ impl BitNetModel {
         // Override range: above Official Landmarks (14) and below SpecificMesh (50),
         // excluding Global Airports which must keep its own dedicated score.
         // Uses rule NAME check (not score value) so it works with any config version.
-        if is_airport && !name_lower.contains("overlay") {
+        // Discovery (context.has_airports) also forces promotion to Airports tier.
+        if (is_airport || context.has_airports) && !name_lower.contains("overlay") {
             if let Some(s) = score {
                 let is_global_airports = matched_rule_name.as_deref() == Some("Global Airports");
                 if s > 14 && s < 50 && !is_global_airports {

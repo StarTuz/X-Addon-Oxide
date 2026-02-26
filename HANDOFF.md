@@ -5,6 +5,8 @@
 
 ## Recent Changes
 
+- **Archive Preview Mode (2.4.4)**: Interactive selection of files from `.zip`, `.7z`, and `.rar`. Added `ArchivePreviewState` to `App` and `UnifiedArchiveReader` to `x-adox-core`.
+- **Robust Installation**: Added "Flatten Archive" (strips redundant root) and "Wrap in Folder" (forces subfolder) toggles. Unified script redirection for all archive types via `get_installation_paths`.
 - **Flight Gen: Detached Context Window**: Implemented a floating, draggable window for the "History & context" panel. Introduced "Pop out" interaction in the inline panel. Refactored UI logic for reusability between inline and window modes.
 - **Flight Gen: UX Density Polish**: Updated typography (13.5px, 1.6 line height), added emerald status badges, and implemented an adaptive height system (30-35vh).
 - **Flight Gen: Context Modal**: Added a "Show full context" overlay for long snippets.

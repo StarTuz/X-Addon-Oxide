@@ -155,6 +155,8 @@ impl Classifier {
             || name_lower.contains("panc---anchorage")
             || name_lower.contains("airport")
             || name_lower.contains("airfield")
+            || name_lower.contains("airstrip")
+            || name_lower.contains("hydrobase")
             || name_lower.contains("heliport")
         {
             return SceneryCategory::CustomAirport;
@@ -252,9 +254,11 @@ impl Classifier {
 // Helper: matches 4-letter ICAO codes (e.g., KLAX, EGLL) roughly
 // Must be simplistic to rely on string matching as requested.
 fn has_icao_pattern(name: &str) -> bool {
-    // Basic heuristics: 4 uppercase letters, possibly surrounded by [_- ]
+    // Basic heuristics: 4 characters (alphanumeric), possibly surrounded by [_- ]
+    // Must contain at least one letter and at least one digit OR be all letters.
+    // Handles KLAX, EGLL, 38WA, WA39 etc.
     use std::sync::OnceLock;
     static RE_ICAO: OnceLock<regex::Regex> = OnceLock::new();
-    let re = RE_ICAO.get_or_init(|| regex::Regex::new(r"(^|[^A-Z])[A-Z]{4}([^A-Z]|$)").unwrap());
+    let re = RE_ICAO.get_or_init(|| regex::Regex::new(r"(^|[^A-Z0-9])[A-Z0-9]{4}([^A-Z0-9]|$)").unwrap());
     re.is_match(name)
 }

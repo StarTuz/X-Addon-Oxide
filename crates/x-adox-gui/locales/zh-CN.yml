@@ -272,6 +272,11 @@ heuristics.region.europe: "欧洲"
 heuristics.region.asia: "亚洲"
 heuristics.region.australia: "澳大利亚"
 heuristics.region.africa: "非洲"
+heuristics.title: "景观排序启发式规则 (JSON 编辑器)"
+heuristics.desc: "自定义 BitNet AI 排序时使用的权重和关键词。"
+heuristics.save: "保存"
+heuristics.reset: "重置"
+heuristics.clear_overrides: "清除覆盖信息"
 
 # Aircraft / Plugin tree
 aircraft.set_category: "手动设置AI分类："

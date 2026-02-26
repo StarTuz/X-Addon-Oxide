@@ -281,3 +281,92 @@ fn test_orthobase_with_airports_stays_orthobase() {
         );
     }
 }
+
+#[test]
+fn test_sji_airports_and_alphanumeric_icao() {
+    // SJI airports (airstrips) and alphanumeric ICAO codes (38WA, WA39)
+    // should be correctly classified as CustomAirport.
+    let cases = [
+        ("SJI Allan Island Airstrip", SceneryCategory::CustomAirport),
+        ("SJI Crow Valley, WA39", SceneryCategory::CustomAirport),
+        ("SJI Blakeley Island, 38WA, D", SceneryCategory::CustomAirport),
+        ("SJI Center Island, 78WA, D", SceneryCategory::CustomAirport),
+    ];
+
+    for (name, expected) in &cases {
+        let path = PathBuf::from(format!("Custom Scenery/{}", name));
+        let result = Classifier::classify_heuristic(&path, name);
+        assert_eq!(
+            &result, expected,
+            "'{}' should be {:?}, got {:?}",
+            name, expected, result
+        );
+    }
+}
+
+#[test]
+fn test_reconcile_preserves_discovery_data() {
+    use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType, SceneryCategory, SceneryDescriptor};
+    use std::path::PathBuf;
+
+    // GUI state with deep-scan data
+    let gui_pack = SceneryPack {
+        name: "Test Airport".to_string(),
+        path: PathBuf::from("Custom Scenery/Test Airport"),
+        raw_path: None,
+        status: SceneryPackType::Active,
+        category: SceneryCategory::CustomAirport,
+        airports: vec![x_adox_core::apt_dat::Airport {
+            id: "KTEST".to_string(),
+            name: "Test".to_string(),
+            airport_type: x_adox_core::apt_dat::AirportType::Land,
+            lat: None,
+            lon: None,
+            proj_x: None,
+            proj_y: None,
+            max_runway_length: None,
+            surface_type: None,
+        }],
+        tiles: vec![(40, -70)],
+        tags: vec!["custom".to_string()],
+        descriptor: SceneryDescriptor {
+            object_count: 100,
+            facade_count: 0,
+            forest_count: 0,
+            polygon_count: 0,
+            mesh_count: 0,
+            has_airport_properties: false,
+            library_refs: vec![],
+        },
+        region: Some("North America".to_string()),
+    };
+
+    // Fresh manager state (normally loaded from disk)
+    let mut manager = SceneryManager {
+        file_path: PathBuf::from("scenery_packs.ini"),
+        packs: vec![SceneryPack {
+            name: "Test Airport".to_string(),
+            path: PathBuf::from("Custom Scenery/Test Airport"),
+            raw_path: None,
+            status: SceneryPackType::Active,
+            category: SceneryCategory::Unknown,
+            airports: vec![],
+            tiles: vec![],
+            tags: vec![],
+            descriptor: SceneryDescriptor::default(),
+            region: None,
+        }],
+        group_manager: None,
+    };
+
+    manager.reconcile_with_external_packs(&[gui_pack]);
+
+    let pack = &manager.packs[0];
+    assert_eq!(pack.airports.len(), 1);
+    assert_eq!(pack.airports[0].id, "KTEST");
+    assert_eq!(pack.tiles.len(), 1);
+    assert_eq!(pack.descriptor.object_count, 100);
+    assert_eq!(pack.region.as_deref(), Some("North America"));
+    assert_eq!(pack.tags[0], "custom");
+}
+
