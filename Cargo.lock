@@ -6527,11 +6527,14 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sevenz-rust2",
  "simplelog",
  "tempfile",
  "thiserror 1.0.69",
+ "unrar",
  "walkdir",
  "x-adox-bitnet",
+ "zip",
 ]
 
 [[package]]

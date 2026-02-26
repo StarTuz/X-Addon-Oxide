@@ -22,6 +22,7 @@ use iced::mouse;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use x_adox_bitnet::BitNetModel;
+use x_adox_core::archive::{ArchiveEntry, UnifiedArchiveReader};
 use x_adox_core::discovery::{AddonScript, AddonType, DiscoveredAddon, DiscoveryManager};
 use x_adox_core::management::{AddonType as ManagementAddonType, ArchiveType, ModManager};
 use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};
@@ -174,6 +175,19 @@ pub struct ModalState {
 }
 
 #[derive(Debug, Clone)]
+pub struct ArchivePreviewState {
+    pub archive_path: PathBuf,
+    pub entries: Vec<ArchiveEntry>,
+    pub selection: std::collections::HashMap<String, bool>,
+    pub target_tab: Tab,
+    pub dest_override: Option<PathBuf>,
+    pub flatten: bool,
+    pub use_subfolder: bool,
+    pub is_extracting: bool,
+    pub progress: f32,
+}
+
+#[derive(Debug, Clone)]
 enum Message {
     // Tab navigation
     SwitchTab(Tab),
@@ -243,6 +257,12 @@ enum Message {
     InstallPicked(Tab, Option<PathBuf>),
     InstallAircraftDestPicked(PathBuf, Option<PathBuf>),
     InstallComplete(Result<String, String>),
+    FileDropped(PathBuf),
+    ArchiveMetadataLoaded(Result<(PathBuf, Vec<ArchiveEntry>), String>, Option<PathBuf>),
+    ToggleArchiveEntry(String),
+    ToggleFlatten,
+    ToggleUseSubfolder,
+    ConfirmArchiveInstall,
     DeleteAddon(Tab),
     DeleteAddonDirect(PathBuf, Tab),
     ConfirmDelete(Tab, bool),
@@ -819,6 +839,7 @@ struct App {
 
     // i18n
     current_language: String,
+    archive_preview: Option<ArchivePreviewState>,
 }
 
 impl App {
@@ -1052,6 +1073,7 @@ impl App {
             active_context_resize_edge: None,
             active_modal: None,
             current_language: "en".to_string(),
+            archive_preview: None,
         };
 
         if let Some(pm) = &app.profile_manager {
@@ -3881,37 +3903,14 @@ impl App {
                         );
                     }
 
-                    let root = self.xplane_root.clone();
-                    let model = self.heuristics_model.clone();
-                    let context = x_adox_bitnet::PredictContext {
-                        region_focus: self.region_focus.clone(),
-                        ..Default::default()
-                    };
-                    self.status = format!("Installing to {:?}...", tab);
-                    self.install_progress = Some(0.0);
-
-                    return Task::run(
-                        iced::stream::channel(
-                            10,
-                            move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-                                let mut output_progress = output.clone();
-                                let res = install_addon(
-                                    root,
-                                    zip_path,
-                                    tab,
-                                    None,
-                                    model,
-                                    context,
-                                    move |p| {
-                                        let _ =
-                                            output_progress.try_send(Message::InstallProgress(p));
-                                    },
-                                )
-                                .await;
-                                let _ = output.try_send(Message::InstallComplete(res));
-                            },
-                        ),
-                        |msg| msg,
+                    self.status = format!("Opening archive: {:?}...", zip_path.file_name().unwrap_or_default());
+                    return Task::perform(
+                        async move {
+                            UnifiedArchiveReader::list_contents(&zip_path)
+                                .map(|entries| (zip_path, entries))
+                                .map_err(|e| e.to_string())
+                        },
+                        move |res| Message::ArchiveMetadataLoaded(res, None),
                     );
                 } else {
                     self.status = "Install cancelled".to_string();
@@ -3920,15 +3919,173 @@ impl App {
             }
             Message::InstallAircraftDestPicked(zip_path, dest_opt) => {
                 if let Some(dest_path) = dest_opt {
+                    self.status = format!("Opening archive (Dest: {})...", dest_path.display());
+                    let dp = dest_path.clone();
+                    return Task::perform(
+                        async move {
+                            UnifiedArchiveReader::list_contents(&zip_path)
+                                .map(|entries| (zip_path, entries))
+                                .map_err(|e| e.to_string())
+                        },
+                        move |res| Message::ArchiveMetadataLoaded(res, Some(dp.clone())),
+                    );
+                } else {
+                    self.status = "Install cancelled (no destination selected)".to_string();
+                    Task::none()
+                }
+            }
+            Message::InstallComplete(result) => {
+                self.install_progress = None;
+                if let Some(ref mut preview) = self.archive_preview {
+                    preview.is_extracting = false;
+                }
+                match result {
+                    Ok(name) => {
+                        self.status = format!("Installed: {}", name);
+                        self.archive_preview = None; // Close preview on success
+                        return Task::done(Message::Refresh);
+                    }
+                    Err(e) => {
+                        self.status = format!("Install error: {}", e);
+                    }
+                }
+                Task::none()
+            }
+            Message::FileDropped(path) => {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_lowercase();
+                if ext == "zip" || ext == "7z" || ext == "rar" {
+                    self.status = format!("Opening archive: {:?}...", path.file_name().unwrap_or_default());
+                    Task::perform(
+                        async move {
+                            UnifiedArchiveReader::list_contents(&path)
+                                .map(|entries| (path, entries))
+                                .map_err(|e| e.to_string())
+                        },
+                        |res| Message::ArchiveMetadataLoaded(res, None),
+                    )
+                } else {
+                    self.status = format!("Unsupported file type: .{}", ext);
+                    Task::none()
+                }
+            }
+            Message::ArchiveMetadataLoaded(result, dest_override) => {
+                match result {
+                    Ok((path, entries)) => {
+                        let mut selection = std::collections::HashMap::new();
+                        for entry in &entries {
+                            selection.insert(entry.path.clone(), entry.recommended);
+                        }
+                        let filenames: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();
+                        let archive_type = ModManager::detect_archive_type(&filenames);
+                        
+                        // Detect whether the archive has a single root folder
+                        let mut top_level_entries = std::collections::HashSet::new();
+                        for name in &filenames {
+                            if let Some(first_component) = name.split('/').next() {
+                                if !first_component.is_empty() {
+                                    top_level_entries.insert(first_component.to_string());
+                                }
+                            }
+                        }
+                        let has_single_root = top_level_entries.len() == 1
+                            && filenames.iter().any(|n| n.contains('/'));
+
+                        // Default heuristics:
+                        // If it has a single root, we might want to flatten it if that root is redundant.
+                        // If it's flat, we usually want to wrap it in a folder.
+                        let flatten = has_single_root && (archive_type == ArchiveType::LuaScripts || archive_type == ArchiveType::PythonScripts);
+                        let use_subfolder = !has_single_root;
+
+                        self.archive_preview = Some(ArchivePreviewState {
+                            archive_path: path.clone(),
+                            entries,
+                            selection,
+                            target_tab: self.active_tab,
+                            dest_override,
+                            flatten,
+                            use_subfolder,
+                            is_extracting: false,
+                            progress: 0.0,
+                        });
+                        self.status = format!("Archive preview ready: {:?}", path.file_name().unwrap_or_default());
+                    }
+                    Err(e) => {
+                        self.status = format!("Failed to read archive: {}", e);
+                    }
+                }
+                Task::none()
+            }
+            Message::ToggleFlatten => {
+                if let Some(ref mut preview) = self.archive_preview {
+                    preview.flatten = !preview.flatten;
+                    if preview.flatten {
+                        preview.use_subfolder = false;
+                    }
+                }
+                Task::none()
+            }
+            Message::ToggleUseSubfolder => {
+                if let Some(ref mut preview) = self.archive_preview {
+                    preview.use_subfolder = !preview.use_subfolder;
+                    if preview.use_subfolder {
+                        preview.flatten = false;
+                    }
+                }
+                Task::none()
+            }
+            Message::ToggleArchiveEntry(path) => {
+                if let Some(ref mut preview) = self.archive_preview {
+                    let new_status = if let Some(included) = preview.selection.get_mut(&path) {
+                        *included = !*included;
+                        *included
+                    } else {
+                        return Task::none();
+                    };
+
+                    // If it's a directory, toggle all children recursively
+                    let is_dir = preview.entries.iter().any(|e| e.path == path && e.is_dir);
+                    if is_dir {
+                        let prefix = if path.ends_with('/') { path.clone() } else { format!("{}/", path) };
+                        for entry in &preview.entries {
+                            if entry.path.starts_with(&prefix) {
+                                preview.selection.insert(entry.path.clone(), new_status);
+                            }
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::ConfirmArchiveInstall => {
+                if let Some(ref mut preview) = self.archive_preview {
+                    preview.is_extracting = true;
+                    let archive_path = preview.archive_path.clone();
+                    let tab = preview.target_tab;
+                    let dest_override = preview.dest_override.clone();
+                    let flatten = preview.flatten;
+                    let use_subfolder = preview.use_subfolder;
+                    
+                    let mut selected_files = std::collections::HashSet::new();
+                    for (path, selected) in &preview.selection {
+                        if *selected {
+                            selected_files.insert(path.clone());
+                        }
+                    }
+                    
+                    if selected_files.is_empty() {
+                        self.status = "No files selected for extraction.".to_string();
+                        return Task::none();
+                    }
+                    
                     let root = self.xplane_root.clone();
                     let model = self.heuristics_model.clone();
                     let context = x_adox_bitnet::PredictContext {
                         region_focus: self.region_focus.clone(),
                         ..Default::default()
                     };
-                    self.status = format!("Installing to {}...", dest_path.display());
+                    
+                    self.status = format!("Extracting selected files from {:?}...", archive_path.file_name().unwrap_or_default());
                     self.install_progress = Some(0.0);
-
+                    
                     return Task::run(
                         iced::stream::channel(
                             10,
@@ -3936,11 +4093,14 @@ impl App {
                                 let mut output_progress = output.clone();
                                 let res = install_addon(
                                     root,
-                                    zip_path,
-                                    Tab::Aircraft,
-                                    Some(dest_path),
+                                    archive_path,
+                                    tab,
+                                    dest_override,
+                                    flatten,
+                                    use_subfolder,
                                     model,
                                     context,
+                                    Some(selected_files),
                                     move |p| {
                                         let _ =
                                             output_progress.try_send(Message::InstallProgress(p));
@@ -3952,21 +4112,6 @@ impl App {
                         ),
                         |msg| msg,
                     );
-                } else {
-                    self.status = "Install cancelled (no destination selected)".to_string();
-                    Task::none()
-                }
-            }
-            Message::InstallComplete(result) => {
-                self.install_progress = None;
-                match result {
-                    Ok(name) => {
-                        self.status = format!("Installed: {}", name);
-                        return Task::done(Message::Refresh);
-                    }
-                    Err(e) => {
-                        self.status = format!("Install error: {}", e);
-                    }
                 }
                 Task::none()
             }
@@ -5406,6 +5551,11 @@ impl App {
             _ => None,
         });
 
+        let file_dropped_sub = event::listen_with(|event, _status, _window| match event {
+            Event::Window(iced::window::Event::FileDropped(path)) => Some(Message::FileDropped(path)),
+            _ => None,
+        });
+
         Subscription::batch(vec![
             dragging,
             basket_dragging,
@@ -5414,6 +5564,7 @@ impl App {
             context_resizing,
             tick,
             kb_sub,
+            file_dropped_sub,
             window_sub,
         ])
     }
@@ -5514,7 +5665,6 @@ impl App {
 
                 final_view = final_view.push(ghost);
             }
-
             if let Some(modal) = &self.active_modal {
                 let modal_content = container(self.view_modal(modal))
                     .width(Length::Fill)
@@ -5527,6 +5677,20 @@ impl App {
                     });
 
                 final_view = final_view.push(modal_content);
+            }
+
+            if let Some(preview) = &self.archive_preview {
+                let preview_modal = container(self.view_archive_preview(preview))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .style(|_| container::Style {
+                        background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.9))),
+                        ..Default::default()
+                    });
+
+                final_view = final_view.push(preview_modal);
             }
 
             final_view.into()
@@ -5760,6 +5924,143 @@ impl App {
                 ..Default::default()
             }
         })
+        .into()
+    }
+
+    fn view_archive_preview<'a>(&self, state: &'a ArchivePreviewState) -> Element<'a, Message> {
+        let title = text(format!(
+            "Archive Preview: {}",
+            state
+                .archive_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+        ))
+        .size(24)
+        .color(style::palette::TEXT_PRIMARY);
+
+        let mut entries_col = Column::new().spacing(2).width(Length::Fill);
+
+        // Sorting entries to group by directory structure
+        let mut sorted_entries: Vec<&'a ArchiveEntry> = state.entries.iter().collect();
+        sorted_entries.sort_by(|a, b| a.path.cmp(&b.path));
+
+        for entry in sorted_entries {
+            let depth = entry
+                .path
+                .split('/')
+                .count()
+                .saturating_sub(if entry.is_dir { 2 } else { 1 });
+            let included = state.selection.get(&entry.path).cloned().unwrap_or(false);
+            entries_col = entries_col.push(self.view_archive_entry(entry, included, depth));
+        }
+
+        let footer = row![
+            horizontal_space(),
+            button(text("Cancel").size(14).color(style::palette::TEXT_PRIMARY))
+                .on_press(Message::InstallComplete(Err("Cancelled".to_string())))
+                .style(style::button_danger)
+                .padding([8, 20]),
+            button(
+                text(if state.is_extracting {
+                    "Extracting..."
+                } else {
+                    "Extract Selected"
+                })
+                .size(14)
+                .color(style::palette::TEXT_PRIMARY)
+            )
+            .on_press(Message::ConfirmArchiveInstall)
+            .style(style::button_primary)
+            .padding([8, 20]),
+        ]
+        .spacing(10)
+        .align_y(iced::Alignment::Center);
+
+        container(
+            column![
+                title,
+                text("Select folders and files to extract from the archive.")
+                    .size(14)
+                    .color(style::palette::TEXT_SECONDARY),
+                container(scrollable(entries_col).height(Length::Fixed(400.0)))
+                    .style(style::container_sidebar)
+                    .padding(5),
+                if state.is_extracting {
+                    column![progress_bar(0.0..=1.0, state.progress)
+                        .height(10)
+                        .style(move |_theme: &Theme| progress_bar::Style {
+                            background: Background::Color(style::palette::SURFACE_VARIANT),
+                            bar: Background::Color(style::palette::ACCENT_BLUE),
+                            border: Border::default(),
+                        }),]
+                    .spacing(5)
+                } else {
+                    column![
+                        row![
+                            checkbox("Flatten Archive", state.flatten).on_toggle(|_| Message::ToggleFlatten).size(14),
+                            horizontal_space().width(Length::Fixed(20.0)),
+                            checkbox("Wrap in Folder", state.use_subfolder).on_toggle(|_| Message::ToggleUseSubfolder).size(14),
+                        ].spacing(10),
+                        text(format!("Final Destination: {}", state.dest_override.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "Auto-detected".to_string())))
+                            .size(12)
+                            .color(style::palette::TEXT_SECONDARY),
+                    ].spacing(10)
+                },
+                footer
+            ]
+            .spacing(15)
+            .padding(20)
+            .width(Length::Fixed(600.0))
+        )
+        .style(style::container_sidebar)
+        .into()
+    }
+
+    fn view_archive_entry<'a>(
+        &self,
+        entry: &'a ArchiveEntry,
+        included: bool,
+        depth: usize,
+    ) -> Element<'a, Message> {
+        let color = if entry.recommended {
+            style::palette::TEXT_PRIMARY
+        } else if entry.path.contains("__MACOSX") || entry.path.contains(".DS_Store") {
+            style::palette::TEXT_SECONDARY
+        } else {
+            style::palette::TEXT_PRIMARY
+        };
+
+        let name = entry.path.split('/').last().unwrap_or(&entry.path);
+
+        row![
+            horizontal_space().width(Length::Fixed(depth as f32 * 20.0)),
+            checkbox("", included)
+                .on_toggle(move |_| Message::ToggleArchiveEntry(entry.path.clone()))
+                .size(14),
+            text(if entry.is_dir {
+                format!("📁 {}", name)
+            } else {
+                format!("📄 {}", name)
+            })
+            .size(13)
+            .color(color),
+            horizontal_space(),
+            if entry.recommended {
+                Element::from(
+                    container(text("recommended").size(9).color(style::palette::ACCENT_GREEN))
+                        .padding([1, 4])
+                        .style(style::container_sidebar),
+                )
+            } else {
+                horizontal_space().into()
+            },
+            text(format!("{:.2} MB", entry.size as f32 / 1024.0 / 1024.0))
+                .size(10)
+                .color(style::palette::TEXT_SECONDARY),
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center)
         .into()
     }
 
@@ -10013,7 +10314,7 @@ impl App {
                     .find(|a| &a.path == path)
                     .and_then(|a| {
                         if let AddonType::Aircraft { livery_count, .. } = &a.addon_type {
-                            Some(*livery_count)
+                            Some(livery_count)
                         } else {
                             None
                         }
@@ -11244,22 +11545,6 @@ fn count_aircraft_rows_before(
     false
 }
 
-async fn install_addon(
-    root: Option<PathBuf>,
-    zip_path: PathBuf,
-    tab: Tab,
-    dest_override: Option<PathBuf>,
-    model: BitNetModel,
-    context: x_adox_bitnet::PredictContext,
-    on_progress: impl FnMut(f32) + Send + 'static,
-) -> Result<String, String> {
-    let res = tokio::task::spawn_blocking(move || {
-        extract_archive_task(root, zip_path, tab, dest_override, model, context, on_progress)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-    res
-}
 
 fn toggle_aircraft(root: Option<PathBuf>, path: PathBuf, enable: bool) -> Result<(), String> {
     let root = root.ok_or("X-Plane root not found")?;
@@ -11277,8 +11562,11 @@ fn extract_zip_task(
     zip_path: PathBuf,
     tab: Tab,
     dest_override: Option<PathBuf>,
+    flatten: bool,
+    use_subfolder: bool,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
+    selected_files: Option<std::collections::HashSet<String>>,
     mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     // Open the zip file
@@ -11288,97 +11576,43 @@ fn extract_zip_task(
 
     // Detect archive type (plugin vs script)
     let filenames_list: Vec<String> = archive.file_names().map(|s| s.to_string()).collect();
-    let archive_type = ModManager::detect_archive_type(&filenames_list);
-
-    // Detect whether the zip has a single root folder or is flat
-    let mut top_level_entries = std::collections::HashSet::new();
-    for name in &filenames_list {
-        if let Some(first_component) = name.split('/').next() {
-            if !first_component.is_empty() {
-                top_level_entries.insert(first_component.to_string());
-            }
-        }
-    }
-
-    let has_single_root = top_level_entries.len() == 1
-        && filenames_list.iter().any(|n| n.contains('/'));
-
-    let top_folder = if has_single_root {
-        top_level_entries.into_iter().next().unwrap_or_else(|| "Unknown".to_string())
-    } else {
-        // Flat archive: use the zip filename as the folder name
-        zip_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Unknown")
-            .to_string()
-    };
-
     let root = root.ok_or("X-Plane root not found".to_string())?;
+    let paths = get_installation_paths(&root, &zip_path, &filenames_list, tab, dest_override, flatten, use_subfolder)?;
+    
+    let dest_dir = paths.dest_dir;
+    let top_folder = paths.top_folder;
+    let has_single_root = paths.has_single_root;
 
-    let mut is_script_redirection = false;
-    let base_dest = if let Some(dest) = dest_override {
-        dest
-    } else {
-        match tab {
-            Tab::Aircraft => root.join("Aircraft"),
-            Tab::Plugins => {
-                let fw_lua_scripts = root.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
-                let py_scripts = root.join("Resources").join("plugins").join("XPPython3").join("PythonPlugins");
-
-                match archive_type {
-                    ArchiveType::LuaScripts if fw_lua_scripts.exists() => {
-                        log::info!("[Installer] Redirecting Lua script package to FlyWithLua/Scripts");
-                        is_script_redirection = true;
-                        fw_lua_scripts
-                    }
-                    ArchiveType::PythonScripts if py_scripts.exists() => {
-                        log::info!("[Installer] Redirecting Python script package to XPPython3/PythonPlugins");
-                        is_script_redirection = true;
-                        py_scripts
-                    }
-                    _ => root.join("Resources").join("plugins"),
-                }
-            }
-            Tab::Scenery => root.join("Custom Scenery"),
-            Tab::CSLs => root.join("Resources").join("plugins"),
-            _ => return Err("Unsupported install tab".to_string()),
-        }
-    };
-
-    // If the archive is flat (no single root), extract into a created subfolder.
-    // EXCEPTION: For redirected scripts, if the archive is flat, we extract directly into the script folder
-    // to avoid creating an extra layer like FlyWithLua/Scripts/ScriptZipName/script.lua.
-    let dest_dir = if has_single_root {
-        base_dest
-    } else if is_script_redirection {
-        // For script redirection, we still check if there are multiple files.
-        // If it's just one script file, we drop it directly. If it has structure, we keep it.
-        if filenames_list.len() <= 2 && filenames_list.iter().all(|n| !n.contains('/')) {
-             log::info!("[Installer] Flat script archive detected — extracting directly to: {:?}", base_dest);
-             base_dest
-        } else {
-            let subfolder = base_dest.join(&top_folder);
-            std::fs::create_dir_all(&subfolder)
-                .map_err(|e| format!("Failed to create script subfolder '{}': {}", top_folder, e))?;
-            subfolder
-        }
-    } else {
-        let subfolder = base_dest.join(&top_folder);
-        std::fs::create_dir_all(&subfolder)
-            .map_err(|e| format!("Failed to create subfolder '{}': {}", top_folder, e))?;
-        log::info!("[Installer] Flat archive detected — creating subfolder: {:?}", subfolder);
-        subfolder
-    };
-
-    // Extract to destination
     let total_files = archive.len();
     for i in 0..total_files {
         let mut file = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry: {}", e))?;
 
-        let outpath = dest_dir.join(file.name());
+        let mut name = file.name().to_string();
+        
+        // Selective extraction: skip if not in selected_files (if provided)
+        if let Some(ref selected) = selected_files {
+            if !selected.contains(&name) {
+                continue;
+            }
+        }
+
+        // Flattening: strip the top-folder if has_single_root
+        if flatten && has_single_root {
+            if let Some(stripped) = name.strip_prefix(&format!("{}/", top_folder)) {
+                name = stripped.to_string();
+            } else if name == top_folder || name == format!("{}/", top_folder) {
+                // Skip the top folder itself if it's an entry
+                continue;
+            }
+        }
+
+        if name.is_empty() {
+            continue;
+        }
+
+        let outpath = dest_dir.join(&name);
 
         if file.name().ends_with('/') {
             std::fs::create_dir_all(&outpath)
@@ -11417,29 +11651,69 @@ fn extract_7z_task(
     archive_path: PathBuf,
     tab: Tab,
     dest_override: Option<PathBuf>,
+    flatten: bool,
+    use_subfolder: bool,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
+    selected_files: Option<std::collections::HashSet<String>>,
     mut on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let root = root.ok_or("X-Plane root not found".to_string())?;
 
-    let dest_dir = if let Some(dest) = dest_override {
-        dest
-    } else {
-        match tab {
-            Tab::Aircraft => root.join("Aircraft"),
-            Tab::Plugins => root.join("Resources").join("plugins"),
-            Tab::Scenery => root.join("Custom Scenery"),
-            Tab::CSLs => root.join("Resources").join("plugins"),
-            _ => return Err("Unsupported install tab".to_string()),
-        }
-    };
+    let mut reader = sevenz_rust2::SevenZReader::open(&archive_path, sevenz_rust2::Password::empty())
+        .map_err(|e| format!("Failed to open 7z: {}", e))?;
+    
+    let filenames_list: Vec<String> = reader.archive().files.iter().map(|f| f.name().to_string()).collect();
+    let paths = get_installation_paths(&root, &archive_path, &filenames_list, tab, dest_override, flatten, use_subfolder)?;
+    
+    let dest_dir = paths.dest_dir;
+    let top_folder = paths.top_folder;
+    let has_single_root = paths.has_single_root;
 
     // Signal start of extraction
     on_progress(5.0);
 
-    // Extract using sevenz-rust2
-    sevenz_rust2::decompress_file(&archive_path, &dest_dir)
+    reader
+        .for_each_entries(|entry, reader| {
+            let mut name = entry.name().to_string();
+            // Selective extraction: skip if not in selected_files (if provided)
+            if let Some(ref selected) = selected_files {
+                if !selected.contains(&name) {
+                    return Ok(true);
+                }
+            }
+
+            // Flattening: strip the top-folder if has_single_root
+            if flatten && has_single_root {
+                if let Some(stripped) = name.strip_prefix(&format!("{}/", top_folder)) {
+                    name = stripped.to_string();
+                } else if name == top_folder || name == format!("{}/", top_folder) {
+                    // Skip the top folder itself
+                    return Ok(true);
+                }
+            }
+
+            if name.is_empty() {
+                return Ok(true);
+            }
+
+            let outpath = dest_dir.join(&name);
+            if entry.is_directory() {
+                std::fs::create_dir_all(&outpath).ok();
+            } else {
+                if let Some(parent) = outpath.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                let mut outfile = std::fs::File::create(&outpath).map_err(|e| {
+                    sevenz_rust2::Error::other(format!(
+                        "Failed to create 7z output file {:?}: {}",
+                        outpath, e
+                    ))
+                })?;
+                std::io::copy(reader, &mut outfile).map_err(sevenz_rust2::Error::io)?;
+            }
+            Ok(true)
+        })
         .map_err(|e| format!("Failed to extract 7z: {}", e))?;
 
     // Signal extraction complete
@@ -11467,13 +11741,229 @@ fn extract_7z_task(
     Ok(top_folder)
 }
 
+fn extract_rar_task(
+    root: Option<PathBuf>,
+    archive_path: PathBuf,
+    tab: Tab,
+    dest_override: Option<PathBuf>,
+    flatten: bool,
+    use_subfolder: bool,
+    model: BitNetModel,
+    context: x_adox_bitnet::PredictContext,
+    selected_files: Option<std::collections::HashSet<String>>,
+    mut on_progress: impl FnMut(f32) + Send + 'static,
+) -> Result<String, String> {
+    let root = root.ok_or("X-Plane root not found".to_string())?;
+
+    let mut filenames_list = Vec::new();
+    {
+        let mut open_archive = unrar::Archive::new(&archive_path)
+            .open_for_listing()
+            .map_err(|e| format!("Failed to open RAR for listing: {:?}", e))?;
+        while let Some(header) = open_archive.next() {
+            let header = header.map_err(|e| format!("RAR entry error: {:?}", e))?;
+            filenames_list.push(header.filename.to_string_lossy().to_string());
+        }
+    }
+
+    let paths = get_installation_paths(&root, &archive_path, &filenames_list, tab, dest_override, flatten, use_subfolder)?;
+    
+    let dest_dir = paths.dest_dir;
+    let top_folder = paths.top_folder;
+    let has_single_root = paths.has_single_root;
+
+    let mut archive = unrar::Archive::new(&archive_path)
+        .open_for_processing()
+        .map_err(|e| format!("Failed to open RAR for extraction: {:?}", e))?;
+
+    while let Some(cursor) = archive
+        .read_header()
+        .map_err(|e| format!("RAR header error: {:?}", e))?
+    {
+        let mut name = cursor.entry().filename.to_string_lossy().to_string();
+
+        // Selective extraction: skip if not in selected_files (if provided)
+        if let Some(ref selected) = selected_files {
+            if !selected.contains(&name) {
+                archive = cursor.skip().map_err(|e| format!("RAR skip error: {:?}", e))?;
+                continue;
+            }
+        }
+
+        // Flattening: strip the top-folder if has_single_root
+        if flatten && has_single_root {
+            if let Some(stripped) = name.strip_prefix(&format!("{}/", top_folder)) {
+                name = stripped.to_string();
+            } else if name == top_folder || name == format!("{}/", top_folder) {
+                // Skip the top folder itself
+                archive = cursor.skip().map_err(|e| format!("RAR skip error: {:?}", e))?;
+                continue;
+            }
+        }
+
+        if name.is_empty() {
+            archive = cursor.skip().map_err(|e| format!("RAR skip error: {:?}", e))?;
+            continue;
+        }
+
+        let outpath = dest_dir.join(&name);
+        if let Some(parent) = outpath.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+
+        archive = cursor
+            .extract_to(&outpath)
+            .map_err(|e| format!("RAR extraction error: {:?}", e))?;
+    }
+
+    // Special handling for Scenery: add to scenery_packs.ini
+    if matches!(tab, Tab::Scenery) {
+        let xpm = XPlaneManager::new(&root).map_err(|e| e.to_string())?;
+        let mut sm = SceneryManager::new(xpm.get_scenery_packs_path());
+        sm.load().map_err(|e| e.to_string())?;
+        
+        // Auto-sort every time a new pack is installed
+        sm.sort(Some(&model), &context);
+        sm.save(Some(&model)).map_err(|e| e.to_string())?;
+    }
+
+    on_progress(100.0);
+    Ok(top_folder)
+}
+struct InstallationPaths {
+    dest_dir: PathBuf,
+    top_folder: String,
+    has_single_root: bool,
+}
+
+fn get_installation_paths(
+    root: &Path,
+    archive_path: &Path,
+    filenames: &[String],
+    tab: Tab,
+    dest_override: Option<PathBuf>,
+    flatten: bool,
+    use_subfolder: bool,
+) -> Result<InstallationPaths, String> {
+    let archive_type = ModManager::detect_archive_type(filenames);
+
+    // Detect whether the archive has a single root folder
+    let mut top_level_entries = std::collections::HashSet::new();
+    for name in filenames {
+        if let Some(first_component) = name.split('/').next() {
+            if !first_component.is_empty() {
+                top_level_entries.insert(first_component.to_string());
+            }
+        }
+    }
+
+    let has_single_root = top_level_entries.len() == 1
+        && filenames.iter().any(|n| n.contains('/'));
+
+    let top_folder = if has_single_root {
+        top_level_entries.into_iter().next().unwrap_or_else(|| "Unknown".to_string())
+    } else {
+        archive_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unknown")
+            .to_string()
+    };
+
+    let base_dest = if let Some(dest) = dest_override {
+        dest
+    } else {
+        match tab {
+            Tab::Aircraft => root.join("Aircraft"),
+            Tab::Plugins => {
+                let fw_lua_scripts = root.join("Resources").join("plugins").join("FlyWithLua").join("Scripts");
+                let py_scripts = root.join("Resources").join("plugins").join("XPPython3").join("PythonPlugins");
+
+                match archive_type {
+                    ArchiveType::LuaScripts if fw_lua_scripts.exists() => {
+                        log::info!("[Installer] Redirecting Lua script package to FlyWithLua/Scripts");
+                        fw_lua_scripts
+                    }
+                    ArchiveType::PythonScripts if py_scripts.exists() => {
+                        log::info!("[Installer] Redirecting Python script package to XPPython3/PythonPlugins");
+                        py_scripts
+                    }
+                    _ => root.join("Resources").join("plugins"),
+                }
+            }
+            Tab::Scenery => root.join("Custom Scenery"),
+            Tab::CSLs => root.join("Resources").join("plugins"),
+            _ => return Err("Unsupported install tab".to_string()),
+        }
+    };
+    log::info!("[Installer] Calculated destination: {:?} (Subfolder: {}, Flatten: {})", base_dest, use_subfolder, flatten);
+
+    let dest_dir = if use_subfolder {
+        let subfolder = base_dest.join(&top_folder);
+        std::fs::create_dir_all(&subfolder)
+            .map_err(|e| format!("Failed to create subfolder '{}': {}", top_folder, e))?;
+        subfolder
+    } else if flatten {
+        base_dest.clone()
+    } else {
+        if has_single_root {
+            base_dest.clone()
+        } else {
+            let subfolder = base_dest.join(&top_folder);
+            std::fs::create_dir_all(&subfolder)
+                .map_err(|e| format!("Failed to create subfolder '{}': {}", top_folder, e))?;
+            subfolder
+        }
+    };
+
+    Ok(InstallationPaths {
+        dest_dir,
+        top_folder,
+        has_single_root,
+    })
+}
+
+async fn install_addon(
+    root: Option<PathBuf>,
+    zip_path: PathBuf,
+    tab: Tab,
+    dest_override: Option<PathBuf>,
+    flatten: bool,
+    use_subfolder: bool,
+    model: BitNetModel,
+    context: x_adox_bitnet::PredictContext,
+    selected_files: Option<std::collections::HashSet<String>>,
+    on_progress: impl FnMut(f32) + Send + 'static,
+) -> Result<String, String> {
+    let res = tokio::task::spawn_blocking(move || {
+        extract_archive_task(
+            root,
+            zip_path,
+            tab,
+            dest_override,
+            flatten,
+            use_subfolder,
+            model,
+            context,
+            selected_files,
+            on_progress,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    res
+}
+
 fn extract_archive_task(
     root: Option<PathBuf>,
     archive_path: PathBuf,
     tab: Tab,
     dest_override: Option<PathBuf>,
+    flatten: bool,
+    use_subfolder: bool,
     model: BitNetModel,
     context: x_adox_bitnet::PredictContext,
+    selected_files: Option<std::collections::HashSet<String>>,
     on_progress: impl FnMut(f32) + Send + 'static,
 ) -> Result<String, String> {
     let extension = archive_path
@@ -11483,8 +11973,9 @@ fn extract_archive_task(
         .to_lowercase();
 
     match extension.as_str() {
-        "zip" => extract_zip_task(root, archive_path, tab, dest_override, model, context, on_progress),
-        "7z" => extract_7z_task(root, archive_path, tab, dest_override, model, context, on_progress),
+        "zip" => extract_zip_task(root, archive_path, tab, dest_override, flatten, use_subfolder, model, context, selected_files, on_progress),
+        "7z" => extract_7z_task(root, archive_path, tab, dest_override, flatten, use_subfolder, model, context, selected_files, on_progress),
+        "rar" => extract_rar_task(root, archive_path, tab, dest_override, flatten, use_subfolder, model, context, selected_files, on_progress),
         _ => Err(format!("Unsupported archive format: .{}", extension)),
     }
 }

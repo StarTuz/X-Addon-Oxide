@@ -3,6 +3,7 @@
 // Copyright (c) 2026 StarTuz
 
 pub mod apt_dat;
+pub mod archive;
 pub mod cache;
 pub mod discovery;
 pub mod flight_gen;
