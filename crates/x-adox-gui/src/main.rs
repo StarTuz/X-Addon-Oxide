@@ -208,6 +208,8 @@ enum Message {
     PluginToggled(Result<(), String>),
     ToggleScript(PathBuf, bool),
     ScriptToggled(Result<(), String>),
+    ApproveQuarantinedScript(PathBuf),
+    ScriptApproved(Result<(), String>),
     TogglePluginScripts(PathBuf), // Expand/collapse script sub-tree
     CSLsLoaded(Result<Arc<Vec<DiscoveredAddon>>, String>),
     ToggleCSL(PathBuf, bool),
@@ -2249,6 +2251,33 @@ impl App {
                 }
                 Err(e) => {
                     self.status = format!("Error toggling script: {}", e);
+                    Task::none()
+                }
+            },
+            Message::ApproveQuarantinedScript(path) => {
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                self.status = format!("Approving {}...", name);
+                Task::perform(
+                    async move {
+                        ModManager::approve_quarantined_script(&path)
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    },
+                    Message::ScriptApproved,
+                )
+            }
+            Message::ScriptApproved(result) => match result {
+                Ok(_) => {
+                    self.status = "Script approved and moved to Scripts/!".to_string();
+                    let root = self.xplane_root.clone();
+                    Task::perform(async move { load_plugins(root) }, Message::PluginsLoaded)
+                }
+                Err(e) => {
+                    self.status = format!("Error approving script: {}", e);
                     Task::none()
                 }
             },
@@ -9704,16 +9733,22 @@ impl App {
                                     };
 
                                     let script_row: Element<'_, Message, Theme, Renderer> = if script_quarantined {
-                                        // Quarantined scripts: show a [Q] badge, no toggle
+                                        // Quarantined scripts: clickable [Q] badge to approve
+                                        let approve_path = script_path.clone();
                                         row![
                                             horizontal_space().width(32),
-                                            text("[Q]")
-                                                .size(11)
-                                                .color(Color::from_rgb(0.9, 0.7, 0.2)),
+                                            button(
+                                                text("[Q]")
+                                                    .size(11)
+                                                    .color(Color::from_rgb(0.9, 0.7, 0.2))
+                                            )
+                                            .on_press(Message::ApproveQuarantinedScript(approve_path))
+                                            .style(style::button_ghost)
+                                            .padding([1, 3]),
                                             text(script_name.clone())
                                                 .size(12)
                                                 .color(color),
-                                            text("awaiting approval")
+                                            text("← click [Q] to approve")
                                                 .size(10)
                                                 .color(style::palette::TEXT_SECONDARY),
                                         ]

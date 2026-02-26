@@ -116,6 +116,48 @@ impl ModManager {
         Ok(target_path)
     }
 
+    /// Approves a quarantined FlyWithLua script by moving it from
+    /// `Scripts (Quarantine)/` into `Scripts/`, making it active.
+    pub fn approve_quarantined_script(script_path: &Path) -> Result<PathBuf, std::io::Error> {
+        let script_name = script_path.file_name().ok_or(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Invalid script path",
+        ))?;
+
+        // Find the plugin root by walking up through the quarantine folder
+        let mut plugin_root = None;
+        let mut ancestor = script_path.parent();
+        while let Some(dir) = ancestor {
+            let dir_name = dir
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_lowercase();
+            if dir_name == "scripts (quarantine)" {
+                plugin_root = dir.parent();
+                break;
+            }
+            ancestor = dir.parent();
+        }
+
+        let plugin_root = plugin_root.ok_or(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Script does not appear to be in a Scripts (Quarantine) directory",
+        ))?;
+
+        let scripts_dir = plugin_root.join("Scripts");
+        if !scripts_dir.exists() {
+            fs::create_dir_all(&scripts_dir)?;
+        }
+
+        let target_path = scripts_dir.join(script_name);
+        if script_path != target_path {
+            fs::rename(script_path, &target_path)?;
+        }
+
+        Ok(target_path)
+    }
+
     /// Enables or disables a scenery pack by modifying `scenery_packs.ini`.
     pub fn set_scenery_enabled(
         xplane_root: &Path,
