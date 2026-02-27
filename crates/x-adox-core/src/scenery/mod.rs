@@ -2130,4 +2130,70 @@ mod tests {
             contents
         );
     }
+
+    #[test]
+    fn test_write_ini_emits_readable_section_comments_with_model() {
+        use std::fs;
+
+        let packs = vec![
+            SceneryPack {
+                name: "AAA_Test_Airport_One".to_string(),
+                path: PathBuf::from("/path/to/aaa_test_airport_one"),
+                raw_path: Some("Custom Scenery/AAA_Test_Airport_One/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::CustomAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "Orbx_A_Brisbane_Landmarks".to_string(),
+                path: PathBuf::from("/path/to/orbx_a_brisbane_landmarks"),
+                raw_path: Some("Custom Scenery/Orbx_A_Brisbane_Landmarks/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::Landmark,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+            SceneryPack {
+                name: "Orbx_A_GB_South_TrueEarth_Custom".to_string(),
+                path: PathBuf::from("/path/to/orbx_a_gb_south_trueearth_custom"),
+                raw_path: Some("Custom Scenery/Orbx_A_GB_South_TrueEarth_Custom/".to_string()),
+                status: SceneryPackType::Active,
+                category: SceneryCategory::OrbxAirport,
+                airports: Vec::new(),
+                tiles: Vec::new(),
+                tags: Vec::new(),
+                descriptor: SceneryDescriptor::default(),
+                region: None,
+            },
+        ];
+
+        let model = x_adox_bitnet::BitNetModel::default();
+        let tmp = tempfile::tempdir().unwrap();
+        let ini_path = tmp.path().join("scenery_packs.ini");
+        crate::scenery::ini_handler::write_ini(&ini_path, &packs, Some(&model)).unwrap();
+
+        let contents = fs::read_to_string(&ini_path).unwrap();
+        assert!(
+            contents.lines().any(|l| l.trim() == "# Airports"),
+            "Expected '# Airports' comment header:\n{}",
+            contents
+        );
+        assert!(
+            contents.lines().any(|l| l.trim() == "# Orbx A Landmarks"),
+            "Expected '# Orbx A Landmarks' comment header:\n{}",
+            contents
+        );
+        assert!(
+            contents.lines().any(|l| l.trim() == "# Orbx A Custom"),
+            "Expected '# Orbx A Custom' comment header:\n{}",
+            contents
+        );
+    }
 }

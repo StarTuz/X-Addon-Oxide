@@ -913,6 +913,9 @@ impl BitNetModel {
             && !name_lower.contains("overlay")
             && !name_lower.contains("library")
             && !name_lower.contains("landmark")
+            // Ambiguous "base" packs can contain incidental airport data;
+            // require explicit airport evidence before promoting them.
+            && (!name_lower.contains("base") || has_icao || has_airport_keyword)
         {
             // Healing: Discovery found airports even if name didn't match
             (10, "Airports".to_string())
@@ -1842,6 +1845,42 @@ mod tests {
         );
         assert_eq!(score, 35, "Library packs should stay Libraries even with airport data");
         assert_eq!(rule, "Libraries");
+    }
+
+    #[test]
+    fn test_predict_ambiguous_base_not_promoted_without_airport_signal() {
+        let model = BitNetModel::default();
+        let (score, rule) = model.predict_with_rule_name(
+            "Example_Regional_Base_Pack",
+            Path::new("test"),
+            &PredictContext {
+                has_airports: true,
+                ..PredictContext::default()
+            },
+        );
+        assert_ne!(
+            score, 10,
+            "Ambiguous base pack should not be promoted to Airports tier"
+        );
+        assert_ne!(
+            rule, "Airports",
+            "Ambiguous base pack should not be labeled as Airports"
+        );
+    }
+
+    #[test]
+    fn test_predict_airport_base_with_icao_still_promoted() {
+        let model = BitNetModel::default();
+        let (score, rule) = model.predict_with_rule_name(
+            "Skyline Simulations KAST Astoria Base",
+            Path::new("test"),
+            &PredictContext {
+                has_airports: true,
+                ..PredictContext::default()
+            },
+        );
+        assert_eq!(score, 10, "Airport companion base with ICAO should stay Airports");
+        assert_eq!(rule, "Airports");
     }
 
     #[test]
