@@ -280,7 +280,9 @@ fn test_orbx_b_mesh_scored_above_mesh_tier() {
 
 #[test]
 fn test_orbx_a_location_specific_above_regional() {
-    // Location-specific Orbx A packs (airports, landmarks) → score 11, "Orbx A Airport"
+    // Location-specific Orbx A packs stay above regional TrueEarth at score 11.
+    // Airports use "Orbx A Airport"; landmarks use "Orbx A Landmarks" so they
+    // don't merge into Airports sections.
     // Regional TrueEarth packs → score 12, "Orbx A Custom"
     // Detection: anything WITHOUT "trueearth" or "_te_" in name gets promoted.
     let mut model = BitNetModel::new().unwrap();
@@ -307,7 +309,7 @@ fn test_orbx_a_location_specific_above_regional() {
     let (score, rule) =
         model.predict_with_rule_name("Orbx_A_Brisbane_Landmarks", dummy_path, &context);
     assert_eq!(score, 11, "Brisbane Landmarks should score 11");
-    assert_eq!(rule, "Orbx A Airport");
+    assert_eq!(rule, "Orbx A Landmarks");
 
     // --- Regional TrueEarth packs (score 12) ---
 

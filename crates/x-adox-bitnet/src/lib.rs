@@ -803,15 +803,16 @@ impl BitNetModel {
                 || name_lower.contains("hydrobase")
                 || name_lower.contains("heliport")
                 || name_lower.contains("helicopter")
-                || name_lower.contains("seaplane"));
+                || name_lower.contains("seaplane")
+                || name_lower.contains("panc---anchorage"));
 
         let has_icao = !is_service_pack
             && name.split(|c: char| !c.is_alphanumeric()).any(|word| {
                 word.len() == 4
                     && word.chars().any(|c| c.is_alphabetic())
-                    && (word.chars().all(|c| c.is_uppercase() || c.is_numeric())
-                        || (word.chars().all(|c| c.is_alphabetic())
-                            && name_lower.starts_with(&word.to_lowercase())))
+                    && word.chars().all(|c| c.is_uppercase() || c.is_numeric())
+                    // Avoid version tokens like XP12 being treated as ICAO.
+                    && !word.starts_with("XP")
             });
 
         let is_airport = has_airport_keyword || has_icao;
@@ -863,11 +864,18 @@ impl BitNetModel {
 
         // Orbx A sub-ordering: location-specific packs (airports, landmarks, cities)
         // must sort ABOVE regional TrueEarth packs within the same Orbx A tier.
-        // TrueEarth regional packs stay at 12, everything else gets 11.
+        // TrueEarth regional packs stay at 12, location-specific airports get 11.
+        // Orbx landmark packs also stay at 11 (above regional), but with a distinct
+        // rule label so they don't merge into Airports sections.
         if let Some(ref rule_name) = matched_rule_name {
             if rule_name == "Orbx A Custom" {
                 let is_trueearth = name_lower.contains("trueearth") || name_lower.contains("_te_");
-                if !is_trueearth {
+                let is_landmark_pack =
+                    name_lower.contains("landmark") || name_lower.contains("landmarks");
+                if is_landmark_pack {
+                    score = Some(11);
+                    matched_rule_name = Some("Orbx A Landmarks".to_string());
+                } else if !is_trueearth {
                     score = Some(11);
                     matched_rule_name = Some("Orbx A Airport".to_string());
                 }
@@ -880,12 +888,11 @@ impl BitNetModel {
         // Override range: above Official Landmarks (14) and below SpecificMesh (50),
         // excluding Global Airports which must keep its own dedicated score.
         // Uses rule NAME check (not score value) so it works with any config version.
-        // Discovery (context.has_airports) also forces promotion to Airports tier.
         // When has_airport_keyword is true (name explicitly says "airport"/"heliport"/
         // "helicopter"/etc.), promotion also overrides Ortho/Mesh tiers (score >= 50)
         // since strong name evidence trumps incidental tool-name keyword matches
         // (e.g. "MontanaHelicopterDestinations_Ortho4XP130" matching "ortho").
-        if (is_airport || context.has_airports) && !name_lower.contains("overlay") {
+        if is_airport && !name_lower.contains("overlay") {
             if let Some(s) = score {
                 let is_global_airports = matched_rule_name.as_deref() == Some("Global Airports");
                 if s > 14 && (s < 50 || has_airport_keyword) && !is_global_airports {
@@ -902,7 +909,11 @@ impl BitNetModel {
             )
         } else if is_airport && !name_lower.contains("overlay") {
             (10, "Airports".to_string())
-        } else if context.has_airports && !name_lower.contains("overlay") {
+        } else if context.has_airports
+            && !name_lower.contains("overlay")
+            && !name_lower.contains("library")
+            && !name_lower.contains("landmark")
+        {
             // Healing: Discovery found airports even if name didn't match
             (10, "Airports".to_string())
         } else if name_lower.contains("overlay") || name_lower.contains("static") {
@@ -1786,6 +1797,51 @@ mod tests {
             score, 10,
             "PANC should be recognized as a high-priority airport"
         );
+    }
+
+    #[test]
+    fn test_predict_riga_not_promoted_to_airport() {
+        let model = BitNetModel::default();
+        let (score, rule) = model.predict_with_rule_name(
+            "Riga Latvija",
+            Path::new("test"),
+            &PredictContext {
+                has_airports: true,
+                ..PredictContext::default()
+            },
+        );
+        assert_eq!(score, 16, "Riga should stay City Enhancements");
+        assert_eq!(rule, "City Enhancements");
+    }
+
+    #[test]
+    fn test_predict_orbx_a_landmarks_stays_landmarks() {
+        let model = BitNetModel::default();
+        let (score, rule) = model.predict_with_rule_name(
+            "Orbx_A_Brisbane_Landmarks",
+            Path::new("test"),
+            &PredictContext::default(),
+        );
+        assert_eq!(
+            score, 11,
+            "Orbx A landmarks should stay above regional TrueEarth packs"
+        );
+        assert_eq!(rule, "Orbx A Landmarks");
+    }
+
+    #[test]
+    fn test_predict_library_not_promoted_by_discovered_airports() {
+        let model = BitNetModel::default();
+        let (score, rule) = model.predict_with_rule_name(
+            "Orbx_XP12_Library",
+            Path::new("test"),
+            &PredictContext {
+                has_airports: true,
+                ..PredictContext::default()
+            },
+        );
+        assert_eq!(score, 35, "Library packs should stay Libraries even with airport data");
+        assert_eq!(rule, "Libraries");
     }
 
     #[test]

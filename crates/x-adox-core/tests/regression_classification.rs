@@ -483,3 +483,50 @@ fn test_bitnet_crow_in_name_with_icao_still_promoted() {
     }
 }
 
+#[test]
+fn test_bitnet_riga_not_promoted_by_discovered_airports() {
+    // Regression: generic city packs with discovered airport data must not be
+    // forced into Airports tier.
+    let model = x_adox_bitnet::BitNetModel::default();
+    let (score, rule) = model.predict_with_rule_name(
+        "Riga Latvija",
+        &PathBuf::from("Custom Scenery/Riga Latvija"),
+        &x_adox_bitnet::PredictContext {
+            has_airports: true,
+            ..x_adox_bitnet::PredictContext::default()
+        },
+    );
+    assert_eq!(score, 16, "'Riga Latvija' should remain City Enhancements");
+    assert_eq!(rule, "City Enhancements");
+}
+
+#[test]
+fn test_bitnet_orbx_landmarks_not_grouped_into_airports() {
+    // Regression: Orbx_A landmark packs should not be merged into Airports.
+    // They should keep high priority above regional TrueEarth with a dedicated label.
+    let model = x_adox_bitnet::BitNetModel::default();
+    let (score, rule) = model.predict_with_rule_name(
+        "Orbx_A_Brisbane_Landmarks",
+        &PathBuf::from("Custom Scenery/Orbx_A_Brisbane_Landmarks"),
+        &x_adox_bitnet::PredictContext::default(),
+    );
+    assert_eq!(score, 11);
+    assert_eq!(rule, "Orbx A Landmarks");
+}
+
+#[test]
+fn test_bitnet_library_not_promoted_by_discovered_airports() {
+    // Regression: library packs with incidental airport data must remain Libraries.
+    let model = x_adox_bitnet::BitNetModel::default();
+    let (score, rule) = model.predict_with_rule_name(
+        "Orbx_XP12_Library",
+        &PathBuf::from("Custom Scenery/Orbx_XP12_Library"),
+        &x_adox_bitnet::PredictContext {
+            has_airports: true,
+            ..x_adox_bitnet::PredictContext::default()
+        },
+    );
+    assert_eq!(score, 35);
+    assert_eq!(rule, "Libraries");
+}
+
