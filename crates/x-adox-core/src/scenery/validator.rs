@@ -211,7 +211,7 @@ pub(crate) fn is_subset(small: &[(i32, i32)], big: &[(i32, i32)]) -> bool {
     let mut big_iter = big.iter();
     for s_tile in small {
         let mut found = false;
-        while let Some(b_tile) = big_iter.next() {
+        for b_tile in big_iter.by_ref() {
             if b_tile == s_tile {
                 found = true;
                 break;

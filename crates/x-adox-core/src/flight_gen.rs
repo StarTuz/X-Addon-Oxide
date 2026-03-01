@@ -16,7 +16,7 @@ use x_adox_bitnet::HeuristicsConfig;
 /// London area bounds (lat 51–52, lon -1 to 0.6). Excludes e.g. Great Yarmouth (52.6°N, 1.7°E).
 /// Used when region is UK:London so origin/dest are always restricted to London even if region index is stale.
 fn in_bounds_london(lat: f64, lon: f64) -> bool {
-    lat >= 51.0 && lat <= 52.0 && lon >= -1.0 && lon <= 0.6
+    (51.0..=52.0).contains(&lat) && (-1.0..=0.6).contains(&lon)
 }
 
 /// Loads the default airport database from X-Plane root (Option B: guaranteed base layer).
@@ -82,7 +82,7 @@ pub struct AirportPool<'a> {
     pub airports: Vec<&'a Airport>,
     pub icao_map: HashMap<&'a str, &'a Airport>,
     pub name_map: HashMap<String, Vec<usize>>, // Lowercase name -> indices in airports
-    pub search_names: Vec<String>, // Parallel to airports, pre-lowercased
+    pub search_names: Vec<String>,             // Parallel to airports, pre-lowercased
 }
 
 impl<'a> AirportPool<'a> {
@@ -191,14 +191,12 @@ fn parse_icao_to_wikipedia_csv() -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     let raw = get_icao_to_wikipedia_csv_raw();
     let mut rdr = csv::Reader::from_reader(Cursor::new(raw));
-    for result in rdr.records() {
-        if let Ok(record) = result {
-            if record.len() >= 2 {
-                let ident = record[0].trim().to_string();
-                let title = record[1].trim().to_string();
-                if !ident.is_empty() && !title.is_empty() {
-                    map.insert(ident, title);
-                }
+    for record in rdr.records().flatten() {
+        if record.len() >= 2 {
+            let ident = record[0].trim().to_string();
+            let title = record[1].trim().to_string();
+            if !ident.is_empty() && !title.is_empty() {
+                map.insert(ident, title);
             }
         }
     }
@@ -343,8 +341,7 @@ pub fn save_airport_context_to_cache(
     let _ = std::fs::create_dir_all(cache_dir);
     let path = cache_dir.join(format!("{}.json", icao.to_uppercase()));
     let file = std::fs::File::create(path)?;
-    serde_json::to_writer_pretty(file, data)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    serde_json::to_writer_pretty(file, data).map_err(std::io::Error::other)
 }
 
 /// Builds FlightContext from cache (per-ICAO files) and optionally curated map. Cache takes precedence per airport.
@@ -489,9 +486,11 @@ fn estimate_speed(a: &DiscoveredAddon, prompt: &FlightPrompt) -> u32 {
         350
     } else if tags_joined.contains("turboprop") {
         250
-    } else if tags_joined.contains("helicopter") || tags_joined.contains("helo") {
-        100
-    } else if tags_joined.contains("seaplane") || tags_joined.contains("float") {
+    } else if tags_joined.contains("helicopter")
+        || tags_joined.contains("helo")
+        || tags_joined.contains("seaplane")
+        || tags_joined.contains("float")
+    {
         100
     } else {
         120
@@ -586,7 +585,7 @@ pub fn generate_flight_from_prompt(
     let selected_aircraft = *suitable_aircraft.choose(&mut rng).unwrap();
 
     // Speed for duration-based distance calculation
-    let speed_kts = estimate_speed(selected_aircraft, &prompt);
+    let speed_kts = estimate_speed(selected_aircraft, prompt);
     // Surface preference comes from keywords only — not aircraft type
     let req_surface: Option<SurfaceType> = match prompt.keywords.surface {
         Some(SurfaceKeyword::Soft) => Some(SurfaceType::Soft),
@@ -617,8 +616,7 @@ pub fn generate_flight_from_prompt(
         all_airports_ref_owned = base_slice.iter().collect();
         &all_airports_ref_owned
     } else {
-        let total_hint = base_slice.len()
-            + packs.iter().map(|p| p.airports.len()).sum::<usize>();
+        let total_hint = base_slice.len() + packs.iter().map(|p| p.airports.len()).sum::<usize>();
         let mut pool: HashMap<String, Airport> = HashMap::with_capacity(total_hint);
 
         // Add base layer first (baseline data)
@@ -689,54 +687,52 @@ pub fn generate_flight_from_prompt(
         None
     };
     // True only when we actually have METAR data to filter against (non-empty map).
-    let metar_available = weather_map
-        .as_ref()
-        .map(|m| !m.is_empty())
-        .unwrap_or(false);
+    let metar_available = weather_map.as_ref().map(|m| !m.is_empty()).unwrap_or(false);
 
     let filtered_airports_owned: Vec<&Airport>;
-    let all_airports: &[&Airport] =
-        if prompt.keywords.time.is_some() || prompt.keywords.weather.is_some() {
-            let utc_now = chrono::Utc::now();
-            let before = all_airports.len();
-            filtered_airports_owned = all_airports
-                .iter()
-                .filter(|apt| {
-                    // Solar Time Filter — soft: airports without lon are kept.
-                    if let Some(req_time) = &prompt.keywords.time {
-                        if let Some(lon) = apt.lon {
-                            let solar_time = calculate_solar_time(lon, utc_now);
-                            if solar_time != *req_time {
-                                return false;
-                            }
+    let all_airports: &[&Airport] = if prompt.keywords.time.is_some()
+        || prompt.keywords.weather.is_some()
+    {
+        let utc_now = chrono::Utc::now();
+        let before = all_airports.len();
+        filtered_airports_owned = all_airports
+            .iter()
+            .filter(|apt| {
+                // Solar Time Filter — soft: airports without lon are kept.
+                if let Some(req_time) = &prompt.keywords.time {
+                    if let Some(lon) = apt.lon {
+                        let solar_time = calculate_solar_time(lon, utc_now);
+                        if solar_time != *req_time {
+                            return false;
                         }
-                        // No lon → can't determine time → keep airport.
                     }
-                    // Weather Filter — soft: only exclude when the airport IS in the
-                    // METAR map and its actual weather explicitly doesn't match.
-                    // Airports not in the map (no METAR station) are kept.
-                    // If the map is empty (fetch failed), skip the filter entirely.
-                    if let Some(req_wx) = &prompt.keywords.weather {
-                        if metar_available {
-                            if let Some(map) = &weather_map {
-                                if let Some(apt_wx) = map.get(apt.id.as_str()) {
-                                    if apt_wx != req_wx {
-                                        return false;
-                                    }
+                    // No lon → can't determine time → keep airport.
+                }
+                // Weather Filter — soft: only exclude when the airport IS in the
+                // METAR map and its actual weather explicitly doesn't match.
+                // Airports not in the map (no METAR station) are kept.
+                // If the map is empty (fetch failed), skip the filter entirely.
+                if let Some(req_wx) = &prompt.keywords.weather {
+                    if metar_available {
+                        if let Some(map) = &weather_map {
+                            if let Some(apt_wx) = map.get(apt.id.as_str()) {
+                                if apt_wx != req_wx {
+                                    return false;
                                 }
-                                // Airport not in METAR map → keep (no data ≠ wrong weather).
                             }
+                            // Airport not in METAR map → keep (no data ≠ wrong weather).
                         }
-                        // metar_available=false → fetch failed → skip weather filter.
-                        let _ = req_wx; // suppress unused warning
                     }
-                    true
-                })
-                .copied()
-                .collect();
+                    // metar_available=false → fetch failed → skip weather filter.
+                    let _ = req_wx; // suppress unused warning
+                }
+                true
+            })
+            .copied()
+            .collect();
 
-            let after = filtered_airports_owned.len();
-            log::debug!(
+        let after = filtered_airports_owned.len();
+        log::debug!(
                 "[flight_gen] Real-World Filters: {} → {} airports (time={}, weather={}, metar_data={})",
                 before,
                 after,
@@ -745,19 +741,19 @@ pub fn generate_flight_from_prompt(
                 metar_available,
             );
 
-            // Fallback: if filters eliminated every airport, discard them and use
-            // the full pool so generation doesn't fail for a transient/time reason.
-            if filtered_airports_owned.is_empty() && before > 0 {
-                log::warn!(
+        // Fallback: if filters eliminated every airport, discard them and use
+        // the full pool so generation doesn't fail for a transient/time reason.
+        if filtered_airports_owned.is_empty() && before > 0 {
+            log::warn!(
                     "[flight_gen] Real-World Filters produced 0 airports; ignoring time/weather constraints and using full pool."
                 );
-                all_airports
-            } else {
-                &filtered_airports_owned
-            }
-        } else {
             all_airports
-        };
+        } else {
+            &filtered_airports_owned
+        }
+    } else {
+        all_airports
+    };
 
     // Refined Origin Selection
     let mut candidate_origins: Vec<&Airport> = match prompt.origin {
@@ -789,18 +785,18 @@ pub fn generate_flight_from_prompt(
                             }
                         }
                     }
-                    if !prompt.ignore_guardrails {
-                        if !check_safety_constraints(apt, selected_aircraft, req_surface) {
-                            return false;
-                        }
+                    if !prompt.ignore_guardrails
+                        && !check_safety_constraints(apt, selected_aircraft, req_surface)
+                    {
+                        return false;
                     }
                     apt.lat.is_some() && apt.lon.is_some()
                 })
-                .map(|a| *a)
+                .copied()
                 .collect()
         }
         Some(LocationConstraint::AirportName(ref name)) => score_airports_by_name(
-            &all_airports,
+            all_airports,
             precomputed_pool.map(|p| p.search_names.as_slice()),
             precomputed_pool.map(|p| &p.name_map),
             name,
@@ -895,17 +891,16 @@ pub fn generate_flight_from_prompt(
         let mut preferred_icaos: Vec<String> = prefs
             .and_then(|c| c.flight_origin_prefs.get(region_id).cloned())
             .unwrap_or_default();
-        if let (Some(ref last), Some(LocationConstraint::Region(ref dest_r))) = (
+        if let (Some(last), Some(LocationConstraint::Region(ref dest_r))) = (
             prefs.and_then(|c| c.flight_last_success.as_ref()),
             &prompt.destination,
         ) {
             if last.origin_region == *region_id
                 && last.dest_region == *dest_r
                 && !last.origin_icao.is_empty()
+                && !preferred_icaos.contains(&last.origin_icao)
             {
-                if !preferred_icaos.contains(&last.origin_icao) {
-                    preferred_icaos.insert(0, last.origin_icao.clone());
-                }
+                preferred_icaos.insert(0, last.origin_icao.clone());
             }
         }
         if !preferred_icaos.is_empty() {
@@ -1012,10 +1007,10 @@ pub fn generate_flight_from_prompt(
                                 }
                             }
                         }
-                        if !prompt.ignore_guardrails {
-                            if !check_safety_constraints(apt, selected_aircraft, req_surface) {
-                                return false;
-                            }
+                        if !prompt.ignore_guardrails
+                            && !check_safety_constraints(apt, selected_aircraft, req_surface)
+                        {
+                            return false;
                         }
                         apt.lat.is_some() && apt.lon.is_some()
                     })
@@ -1023,7 +1018,7 @@ pub fn generate_flight_from_prompt(
                     .collect()
             }
             Some(LocationConstraint::AirportName(ref name)) => score_airports_by_name(
-                &all_airports,
+                all_airports,
                 precomputed_pool.map(|p| p.search_names.as_slice()),
                 precomputed_pool.map(|p| &p.name_map),
                 name,
@@ -1167,17 +1162,16 @@ pub fn generate_flight_from_prompt(
                     let mut icaos = prefs
                         .and_then(|c| c.flight_dest_prefs.get(region_id).cloned())
                         .unwrap_or_default();
-                    if let (Some(ref last), Some(LocationConstraint::Region(ref orig_r))) = (
+                    if let (Some(last), Some(LocationConstraint::Region(ref orig_r))) = (
                         prefs.and_then(|c| c.flight_last_success.as_ref()),
                         &prompt.origin,
                     ) {
                         if last.dest_region == *region_id
                             && last.origin_region == *orig_r
                             && !last.dest_icao.is_empty()
+                            && !icaos.contains(&last.dest_icao)
                         {
-                            if !icaos.contains(&last.dest_icao) {
-                                icaos.insert(0, last.dest_icao.clone());
-                            }
+                            icaos.insert(0, last.dest_icao.clone());
                         }
                     }
                     icaos
@@ -1251,7 +1245,10 @@ pub fn generate_flight_from_prompt(
                     .as_ref()
                     .and_then(|map| map.get(origin.id.as_str()))
                     .map(|actual_wx| {
-                        prompt.keywords.weather.as_ref()
+                        prompt
+                            .keywords
+                            .weather
+                            .as_ref()
                             .map(|req| actual_wx == req)
                             .unwrap_or(false)
                     })
@@ -1738,7 +1735,9 @@ fn read_cycle_from_dat(path: &std::path::Path) -> Option<String> {
     let tag = "data cycle ";
     let idx = line.find(tag)?;
     let rest = &line[idx + tag.len()..];
-    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
     let cycle = &rest[..end];
     if cycle.len() == 4 {
         Some(cycle.to_string())
@@ -1752,11 +1751,15 @@ fn read_cycle_from_dat(path: &std::path::Path) -> Option<String> {
 ///   1. Custom Data/earth_nav.dat  — Navigraph or other custom navdata
 ///   2. Resources/default data/earth_nav.dat — stock X-Plane navdata
 ///   3. Global Scenery/Global Airports/Earth nav data/apt.dat — apt.dat header
+///
 /// Returns `None` if none of the files contain a parseable cycle.
 pub fn detect_xplane_airac_cycle(xplane_root: &std::path::Path) -> Option<String> {
     let candidates = [
         xplane_root.join("Custom Data").join("earth_nav.dat"),
-        xplane_root.join("Resources").join("default data").join("earth_nav.dat"),
+        xplane_root
+            .join("Resources")
+            .join("default data")
+            .join("earth_nav.dat"),
         xplane_root
             .join("Global Scenery")
             .join("Global Airports")
@@ -1823,7 +1826,7 @@ pub fn export_lnmpln(plan: &FlightPlan, xplane_root: Option<&std::path::Path>) -
       <CreationDate>{}</CreationDate>
       <FileVersion>1.0</FileVersion>
       <ProgramName>X-Addon-Oxide</ProgramName>
-      <ProgramVersion>2.4.0</ProgramVersion>
+      <ProgramVersion>2.4.4</ProgramVersion>
       <Documentation>{}</Documentation>
     </Header>
     <SimData>XPlane12</SimData>
@@ -2346,7 +2349,7 @@ mod tests {
         assert_eq!(ctx.origin.icao, "EGLL");
         assert!(ctx.origin.snippet.contains("Heathrow"));
         // File has 1 POI (Windsor); overlay adds 1 (Windsor Castle) for EGLL → 2 total
-        assert!(ctx.origin.points_nearby.len() >= 1);
+        assert!(!ctx.origin.points_nearby.is_empty());
         assert!(ctx.origin.points_nearby.iter().any(|p| p.name == "Windsor"));
         assert!(ctx
             .origin

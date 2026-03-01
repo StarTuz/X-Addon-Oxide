@@ -18,7 +18,7 @@ fn contains_phrase(text: &str, phrase: &str) -> bool {
     false
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct FlightPrompt {
     pub origin: Option<LocationConstraint>,
     pub destination: Option<LocationConstraint>,
@@ -107,22 +107,6 @@ pub enum AircraftConstraint {
     Any,
 }
 
-impl Default for FlightPrompt {
-    fn default() -> Self {
-        Self {
-            origin: None,
-            destination: None,
-            aircraft: None,
-            duration_minutes: None,
-            ignore_guardrails: false,
-            keywords: FlightKeywords::default(),
-            aircraft_min_dist: None,
-            aircraft_max_dist: None,
-            aircraft_speed_kts: None,
-        }
-    }
-}
-
 /// Returns true if `s` contains any CJK Unified Ideographs (U+4E00–U+9FFF).
 fn has_cjk(s: &str) -> bool {
     s.chars().any(|c| ('\u{4E00}'..='\u{9FFF}').contains(&c))
@@ -145,7 +129,7 @@ fn preprocess_chinese(input: &str) -> String {
     s = s.replace("飞向", " to ");
     s = s.replace("前往", " to ");
     s = s.replace("从", "from ");
-    s = s.replace("到", " to ");   // single-char; applied after multi-char compounds
+    s = s.replace("到", " to "); // single-char; applied after multi-char compounds
 
     // ── Duration ─────────────────────────────────────────────────────────────
     s = s.replace("超长途", "long haul");
@@ -194,7 +178,7 @@ fn preprocess_chinese(input: &str) -> String {
     s = s.replace("雷暴", "storm");
     s = s.replace("风暴", "storm");
     // Heavy/light rain — longer phrases first so "暴雨" isn't partially caught by later "雨" rules.
-    s = s.replace("暴雨", "storm");   // torrential → storm intensity
+    s = s.replace("暴雨", "storm"); // torrential → storm intensity
     s = s.replace("大雨", "rain");
     s = s.replace("小雨", "rain");
     s = s.replace("阵风", "gusty");
@@ -220,7 +204,7 @@ fn preprocess_chinese(input: &str) -> String {
     s = s.replace("黄昏", "dusk");
     s = s.replace("日落", "dusk");
     s = s.replace("傍晚", "dusk");
-    s = s.replace("凌晨", "night");  // early morning hours (0–4 am) = night from a flight-context view
+    s = s.replace("凌晨", "night"); // early morning hours (0–4 am) = night from a flight-context view
     s = s.replace("午夜", "night");
     s = s.replace("深夜", "night");
     s = s.replace("夜间", "night");
@@ -254,11 +238,11 @@ fn preprocess_chinese(input: &str) -> String {
     // terminator can cleanly cut off time context from the aircraft token.
     s = s.replace("在", " at ");
     // Other high-frequency particles that carry no NLP value in this context.
-    s = s.replace("的", " ");  // possessive/attributive
-    s = s.replace("了", " ");  // perfective marker
+    s = s.replace("的", " "); // possessive/attributive
+    s = s.replace("了", " "); // perfective marker
 
     // ── Vehicle connector ────────────────────────────────────────────────────
-    s = s.replace("搭乘", " in a ");  // board / travel on (common for flights)
+    s = s.replace("搭乘", " in a "); // board / travel on (common for flights)
     s = s.replace("乘坐", " in a ");
     s = s.replace("使用", " in a ");
     s = s.replace("驾驶", " in a ");
@@ -305,7 +289,7 @@ impl FlightPrompt {
         }
 
         // Helper: sort rule slice by priority descending, return sorted references.
-        fn sorted_rules<'a>(rules: &'a [crate::NLPRule]) -> Vec<&'a crate::NLPRule> {
+        fn sorted_rules(rules: &[crate::NLPRule]) -> Vec<&crate::NLPRule> {
             let mut v: Vec<&crate::NLPRule> = rules.iter().collect();
             v.sort_by(|a, b| b.priority.cmp(&a.priority));
             v
@@ -323,7 +307,9 @@ impl FlightPrompt {
                 let mapped = match rule.mapped_value.to_lowercase().as_str() {
                     "short" | "hop" | "quick" | "sprint" => DurationKeyword::Short,
                     "medium" | "mid" => DurationKeyword::Medium,
-                    "haul" | "long haul" | "ultra long" | "intercontinental" => DurationKeyword::Haul,
+                    "haul" | "long haul" | "ultra long" | "intercontinental" => {
+                        DurationKeyword::Haul
+                    }
                     _ => DurationKeyword::Long, // "long" and anything else
                 };
                 prompt.keywords.duration = Some(mapped);
@@ -884,10 +870,7 @@ fn parse_location(s: &str) -> LocationConstraint {
         // When Chinese preprocessing has left a city name followed by English
         // keywords (e.g. "成都 short flight rain 天"), the location regex may
         // capture the full suffix.  Try matching just the leading CJK segment.
-        let cjk_prefix: String = s
-            .chars()
-            .take_while(|c| !c.is_ascii_alphabetic())
-            .collect();
+        let cjk_prefix: String = s.chars().take_while(|c| !c.is_ascii_alphabetic()).collect();
         let cjk_prefix = cjk_prefix.trim();
         if !cjk_prefix.is_empty() {
             if let Some(region) = try_as_region(cjk_prefix) {
@@ -1301,37 +1284,115 @@ pub fn validate_nlp_config(config: &crate::NLPRulesConfig) -> Vec<String> {
     let mut errors = Vec::new();
 
     let valid_time: &[&str] = &[
-        "dawn", "sunrise", "morning", "golden hour", "golden",
-        "day", "daytime", "daylight", "afternoon", "noon",
-        "dusk", "sunset", "evening", "twilight", "civil twilight",
-        "night", "midnight", "dark", "night flight", "moonlight", "late night",
+        "dawn",
+        "sunrise",
+        "morning",
+        "golden hour",
+        "golden",
+        "day",
+        "daytime",
+        "daylight",
+        "afternoon",
+        "noon",
+        "dusk",
+        "sunset",
+        "evening",
+        "twilight",
+        "civil twilight",
+        "night",
+        "midnight",
+        "dark",
+        "night flight",
+        "moonlight",
+        "late night",
     ];
     let valid_weather: &[&str] = &[
-        "clear", "sunny", "fair", "vfr", "visual", "clear vfr", "cavok", "cavu",
-        "clear skies", "blue sky", "easy", "relax", "scenic",
-        "cloudy", "overcast", "clouds", "mvfr", "marginal", "scattered", "few clouds", "broken",
-        "storm", "thunder", "thunderstorm", "severe", "lifr", "low ifr", "challenge", "hard mode",
-        "gusty", "windy", "breezy", "turbulent", "gusts",
-        "calm", "still", "smooth", "no wind", "light winds", "glassy",
-        "snow", "blizzard", "ice", "wintry", "winter", "frozen", "snowy", "icy",
-        "rain", "showers", "wet",
-        "fog", "mist", "haze", "ifr", "instrument", "smoky",
+        "clear",
+        "sunny",
+        "fair",
+        "vfr",
+        "visual",
+        "clear vfr",
+        "cavok",
+        "cavu",
+        "clear skies",
+        "blue sky",
+        "easy",
+        "relax",
+        "scenic",
+        "cloudy",
+        "overcast",
+        "clouds",
+        "mvfr",
+        "marginal",
+        "scattered",
+        "few clouds",
+        "broken",
+        "storm",
+        "thunder",
+        "thunderstorm",
+        "severe",
+        "lifr",
+        "low ifr",
+        "challenge",
+        "hard mode",
+        "gusty",
+        "windy",
+        "breezy",
+        "turbulent",
+        "gusts",
+        "calm",
+        "still",
+        "smooth",
+        "no wind",
+        "light winds",
+        "glassy",
+        "snow",
+        "blizzard",
+        "ice",
+        "wintry",
+        "winter",
+        "frozen",
+        "snowy",
+        "icy",
+        "rain",
+        "showers",
+        "wet",
+        "fog",
+        "mist",
+        "haze",
+        "ifr",
+        "instrument",
+        "smoky",
     ];
     let valid_surface: &[&str] = &[
-        "soft", "grass", "dirt", "gravel", "strip", "unpaved",
-        "hard", "paved", "tarmac", "concrete", "asphalt",
-        "water", "seaplane", "float",
+        "soft", "grass", "dirt", "gravel", "strip", "unpaved", "hard", "paved", "tarmac",
+        "concrete", "asphalt", "water", "seaplane", "float",
     ];
     let valid_type: &[&str] = &[
-        "bush", "backcountry", "remote", "stol",
-        "regional", "commuter",
+        "bush",
+        "backcountry",
+        "remote",
+        "stol",
+        "regional",
+        "commuter",
     ];
     let valid_duration: &[&str] = &[
-        "short", "hop", "quick", "sprint",
-        "medium", "mid",
-        "long", "long range",
-        "haul", "long haul", "ultra long", "intercontinental",
-        "transatlantic", "transpacific", "transcontinental",
+        "short",
+        "hop",
+        "quick",
+        "sprint",
+        "medium",
+        "mid",
+        "long",
+        "long range",
+        "haul",
+        "long haul",
+        "ultra long",
+        "intercontinental",
+        "transatlantic",
+        "transpacific",
+        "transcontinental",
     ];
 
     fn check_category(
@@ -1349,7 +1410,10 @@ pub fn validate_nlp_config(config: &crate::NLPRulesConfig) -> Vec<String> {
             } else if !valid.contains(&rule.mapped_value.to_lowercase().trim()) {
                 errors.push(format!(
                     "{}[{}] \"{}\": \"{}\" is not a recognized value. Valid options: {}",
-                    category, i, rule.name, rule.mapped_value,
+                    category,
+                    i,
+                    rule.name,
+                    rule.mapped_value,
                     valid.join(", ")
                 ));
             }
@@ -1357,10 +1421,30 @@ pub fn validate_nlp_config(config: &crate::NLPRulesConfig) -> Vec<String> {
     }
 
     check_category(&config.time_rules, "time_rules", valid_time, &mut errors);
-    check_category(&config.weather_rules, "weather_rules", valid_weather, &mut errors);
-    check_category(&config.surface_rules, "surface_rules", valid_surface, &mut errors);
-    check_category(&config.flight_type_rules, "flight_type_rules", valid_type, &mut errors);
-    check_category(&config.duration_rules, "duration_rules", valid_duration, &mut errors);
+    check_category(
+        &config.weather_rules,
+        "weather_rules",
+        valid_weather,
+        &mut errors,
+    );
+    check_category(
+        &config.surface_rules,
+        "surface_rules",
+        valid_surface,
+        &mut errors,
+    );
+    check_category(
+        &config.flight_type_rules,
+        "flight_type_rules",
+        valid_type,
+        &mut errors,
+    );
+    check_category(
+        &config.duration_rules,
+        "duration_rules",
+        valid_duration,
+        &mut errors,
+    );
 
     // Aircraft rules: only check non-empty mapped_value
     for (i, rule) in config.aircraft_rules.iter().enumerate() {

@@ -141,11 +141,9 @@ fn calculate_score(pack: &SceneryPack) -> i32 {
         && pack.category != SceneryCategory::AirportOverlay
         && pack.category != SceneryCategory::Library
         && pack.category != SceneryCategory::GlobalBase
-    {
-        if name_lower.starts_with('y') || name_lower.starts_with('z') {
+        && (name_lower.starts_with('y') || name_lower.starts_with('z')) {
             score -= 20;
         }
-    }
 
     // Mesh Protection (Cap at 30)
     // "Any 'Mesh' in name -> cap/force <=30"

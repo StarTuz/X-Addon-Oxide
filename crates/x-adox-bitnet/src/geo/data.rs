@@ -12,6 +12,12 @@ pub struct CachedRegions {
     name_index: OnceLock<HashMap<String, usize>>,
 }
 
+impl Default for CachedRegions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CachedRegions {
     pub const fn new() -> Self {
         Self {

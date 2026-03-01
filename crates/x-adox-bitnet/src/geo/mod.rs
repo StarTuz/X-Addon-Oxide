@@ -53,6 +53,12 @@ pub struct RegionIndex {
     regions: Arc<Vec<Region>>,
 }
 
+impl Default for RegionIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RegionIndex {
     pub fn new() -> Self {
         Self {

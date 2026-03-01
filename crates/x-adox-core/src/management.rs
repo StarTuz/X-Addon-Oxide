@@ -106,11 +106,10 @@ impl ModManager {
                 .to_string_lossy()
                 .to_lowercase();
             // Only clean up subdirectories within Scripts (disabled), not the root dirs
-            if parent_name != "scripts" && parent_name != "scripts (disabled)" {
-                if parent.read_dir()?.next().is_none() {
+            if parent_name != "scripts" && parent_name != "scripts (disabled)"
+                && parent.read_dir()?.next().is_none() {
                     let _ = fs::remove_dir(parent);
                 }
-            }
         }
 
         Ok(target_path)

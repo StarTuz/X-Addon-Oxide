@@ -68,8 +68,7 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
             // Resolve full path
             let full_path = if pack_path.is_absolute() {
                 pack_path
-            } else if clean_path.starts_with("Custom Scenery/") {
-                let sub_path = &clean_path["Custom Scenery/".len()..];
+            } else if let Some(sub_path) = clean_path.strip_prefix("Custom Scenery/") {
                 scenery_root.join(sub_path)
             } else {
                 let xplane_root = scenery_root.parent().unwrap_or(scenery_root);

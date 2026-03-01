@@ -90,25 +90,119 @@ pub const CURRENT_NLP_SCHEMA_VERSION: u32 = 2;
 /// users who upgrade from v1 see pre-populated surface/type/duration rules.
 pub fn default_duration_rules() -> Vec<NLPRule> {
     vec![
-        NLPRule { name: "Long Haul".into(), keywords: vec!["long haul".into(), "ultra long".into(), "transatlantic".into(), "transpacific".into(), "transcontinental".into()], mapped_value: "Haul".into(), priority: 1, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
-        NLPRule { name: "Short Flight".into(), keywords: vec!["short".into(), "hop".into(), "quick".into()], mapped_value: "Short".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
-        NLPRule { name: "Medium Flight".into(), keywords: vec!["medium".into()], mapped_value: "Medium".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
-        NLPRule { name: "Long Flight".into(), keywords: vec!["long".into()], mapped_value: "Long".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+        NLPRule {
+            name: "Long Haul".into(),
+            keywords: vec![
+                "long haul".into(),
+                "ultra long".into(),
+                "transatlantic".into(),
+                "transpacific".into(),
+                "transcontinental".into(),
+            ],
+            mapped_value: "Haul".into(),
+            priority: 1,
+            min_distance_nm: None,
+            max_distance_nm: None,
+            speed_kts: None,
+        },
+        NLPRule {
+            name: "Short Flight".into(),
+            keywords: vec!["short".into(), "hop".into(), "quick".into()],
+            mapped_value: "Short".into(),
+            priority: 0,
+            min_distance_nm: None,
+            max_distance_nm: None,
+            speed_kts: None,
+        },
+        NLPRule {
+            name: "Medium Flight".into(),
+            keywords: vec!["medium".into()],
+            mapped_value: "Medium".into(),
+            priority: 0,
+            min_distance_nm: None,
+            max_distance_nm: None,
+            speed_kts: None,
+        },
+        NLPRule {
+            name: "Long Flight".into(),
+            keywords: vec!["long".into()],
+            mapped_value: "Long".into(),
+            priority: 0,
+            min_distance_nm: None,
+            max_distance_nm: None,
+            speed_kts: None,
+        },
     ]
 }
 
 pub fn default_surface_rules() -> Vec<NLPRule> {
     vec![
-        NLPRule { name: "Soft Surface".into(), keywords: vec!["grass".into(), "dirt".into(), "gravel".into(), "strip".into(), "unpaved".into()], mapped_value: "Soft".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
-        NLPRule { name: "Hard Surface".into(), keywords: vec!["paved".into(), "tarmac".into(), "concrete".into(), "asphalt".into()], mapped_value: "Hard".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
-        NLPRule { name: "Water".into(), keywords: vec!["water".into(), "seaplane".into(), "floatplane".into(), "amphibian".into()], mapped_value: "Water".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+        NLPRule {
+            name: "Soft Surface".into(),
+            keywords: vec![
+                "grass".into(),
+                "dirt".into(),
+                "gravel".into(),
+                "strip".into(),
+                "unpaved".into(),
+            ],
+            mapped_value: "Soft".into(),
+            priority: 0,
+            min_distance_nm: None,
+            max_distance_nm: None,
+            speed_kts: None,
+        },
+        NLPRule {
+            name: "Hard Surface".into(),
+            keywords: vec![
+                "paved".into(),
+                "tarmac".into(),
+                "concrete".into(),
+                "asphalt".into(),
+            ],
+            mapped_value: "Hard".into(),
+            priority: 0,
+            min_distance_nm: None,
+            max_distance_nm: None,
+            speed_kts: None,
+        },
+        NLPRule {
+            name: "Water".into(),
+            keywords: vec![
+                "water".into(),
+                "seaplane".into(),
+                "floatplane".into(),
+                "amphibian".into(),
+            ],
+            mapped_value: "Water".into(),
+            priority: 0,
+            min_distance_nm: None,
+            max_distance_nm: None,
+            speed_kts: None,
+        },
     ]
 }
 
 pub fn default_flight_type_rules() -> Vec<NLPRule> {
     vec![
-        NLPRule { name: "Bush Flying".into(), keywords: vec!["bush".into(), "backcountry".into()], mapped_value: "Bush".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
-        NLPRule { name: "Regional".into(), keywords: vec!["regional".into()], mapped_value: "Regional".into(), priority: 0, min_distance_nm: None, max_distance_nm: None, speed_kts: None },
+        NLPRule {
+            name: "Bush Flying".into(),
+            keywords: vec!["bush".into(), "backcountry".into()],
+            mapped_value: "Bush".into(),
+            priority: 0,
+            min_distance_nm: None,
+            max_distance_nm: None,
+            speed_kts: None,
+        },
+        NLPRule {
+            name: "Regional".into(),
+            keywords: vec!["regional".into()],
+            mapped_value: "Regional".into(),
+            priority: 0,
+            min_distance_nm: None,
+            max_distance_nm: None,
+            speed_kts: None,
+        },
     ]
 }
 
@@ -648,7 +742,7 @@ impl BitNetModel {
         for rule in &config.rules {
             for keyword in &rule.keywords {
                 // Treat keywords as partial matches (substrings)
-                patterns.push(format!(r"(?i){}", regex::escape(&keyword)));
+                patterns.push(format!(r"(?i){}", regex::escape(keyword)));
             }
         }
         if patterns.is_empty() {
@@ -1843,7 +1937,10 @@ mod tests {
                 ..PredictContext::default()
             },
         );
-        assert_eq!(score, 35, "Library packs should stay Libraries even with airport data");
+        assert_eq!(
+            score, 35,
+            "Library packs should stay Libraries even with airport data"
+        );
         assert_eq!(rule, "Libraries");
     }
 
@@ -1879,7 +1976,10 @@ mod tests {
                 ..PredictContext::default()
             },
         );
-        assert_eq!(score, 10, "Airport companion base with ICAO should stay Airports");
+        assert_eq!(
+            score, 10,
+            "Airport companion base with ICAO should stay Airports"
+        );
         assert_eq!(rule, "Airports");
     }
 

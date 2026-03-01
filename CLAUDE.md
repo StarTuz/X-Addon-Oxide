@@ -58,7 +58,7 @@ crates/
 - `lib.rs` - Path normalization, config root detection, X-Plane install registry lookup, **stable hashing** (FNV-1a)
 - `discovery.rs` - Scans Aircraft/, Custom Scenery/, plugins/, CSLs
 - `management.rs` - Enables/disables plugins and aircraft via "(Disabled)" suffix folders
-- `migration.rs` - Unified migration engine for legacy `heuristics.json` and pin data (v2.4.0+)
+- `migration.rs` - Unified migration engine for legacy `heuristics.json` and pin data (v2.4.0+; extended in 2.4.4)
 - `profiles.rs` - Profile management for switching hangar configurations (root-specific isolation)
 - `cache.rs` - Disk-backed caching for scenery bounds and metadata (mtime-based invalidation, versioned schema)
 - `archive.rs` - `UnifiedArchiveReader` for listing `.zip`, `.7z`, and `.rar` contents (metadata-only for preview)

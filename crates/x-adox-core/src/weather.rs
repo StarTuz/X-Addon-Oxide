@@ -23,6 +23,12 @@ pub struct WeatherEngine {
     cache_path: PathBuf,
 }
 
+impl Default for WeatherEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WeatherEngine {
     pub fn new() -> Self {
         let config_dir = crate::get_config_root();
@@ -108,7 +114,7 @@ impl WeatherEngine {
 
         for record in rdr.records().flatten() {
             if !headers_found {
-                if record.len() > 0 && record[0].starts_with("raw_text") {
+                if !record.is_empty() && record[0].starts_with("raw_text") {
                     for (i, field) in record.iter().enumerate() {
                         match field {
                             "raw_text" => idx_raw_text = i,
@@ -178,7 +184,7 @@ impl WeatherEngine {
 
             // Skip NOAA header comment lines & map indexes
             if !headers_found {
-                if record.len() > 0 && record[0].starts_with("raw_text") {
+                if !record.is_empty() && record[0].starts_with("raw_text") {
                     for (i, field) in record.iter().enumerate() {
                         match field {
                             "station_id" => idx_station = i,

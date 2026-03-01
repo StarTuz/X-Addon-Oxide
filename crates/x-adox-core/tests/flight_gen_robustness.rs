@@ -192,7 +192,14 @@ fn test_all_regions_flight_generation() {
         // "{name} Boeing" (old approach) doesn't parse — no "to"/"from" keyword.
         let prompt = format!("flight to {}", region.name);
 
-        match generate_flight(&packs, &[boeing.clone()], &prompt, None, None, None) {
+        match generate_flight(
+            &packs,
+            std::slice::from_ref(&boeing),
+            &prompt,
+            None,
+            None,
+            None,
+        ) {
             Ok(plan) => {
                 if let (Some(lat), Some(lon)) = (plan.destination.lat, plan.destination.lon) {
                     if !region.contains(lat, lon) {
@@ -478,7 +485,7 @@ fn test_italy_accuracy() {
     for _ in 0..10 {
         let plan = generate_flight(
             &packs,
-            &[cessna.clone()],
+            std::slice::from_ref(&cessna),
             "from random to Italy",
             None,
             None,
@@ -526,7 +533,7 @@ fn test_rome_italy_resolves_to_italy_not_usa() {
     for _ in 0..5 {
         let plan = generate_flight(
             &packs,
-            &[jet.clone()],
+            std::slice::from_ref(&jet),
             "Flight from EGMC to Rome Italy",
             None,
             None,
@@ -685,7 +692,7 @@ fn test_california_to_england_stays_in_england() {
     for _ in 0..5 {
         let plan = generate_flight(
             &packs,
-            &[jet.clone()],
+            std::slice::from_ref(&jet),
             "California to England",
             None,
             None,

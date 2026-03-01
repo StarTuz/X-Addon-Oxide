@@ -234,7 +234,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("log.txt");
 
-        LogbookParser::save_file(&file_path, &[entry.clone()]).unwrap();
+        LogbookParser::save_file(&file_path, std::slice::from_ref(&entry)).unwrap();
         let loaded = LogbookParser::parse_file(&file_path).unwrap();
 
         assert_eq!(loaded.len(), 1);

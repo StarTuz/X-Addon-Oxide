@@ -68,17 +68,17 @@ impl UnifiedArchiveReader {
 
     fn list_rar(path: &Path) -> Result<Vec<ArchiveEntry>> {
         let mut entries = Vec::new();
-        let mut open_archive = unrar::Archive::new(path)
+        let open_archive = unrar::Archive::new(path)
             .open_for_listing()
             .map_err(|e| anyhow!("Failed to open RAR: {:?}", e))?;
 
-        while let Some(header) = open_archive.next() {
+        for header in open_archive {
             let header = header.map_err(|e| anyhow!("RAR entry error: {:?}", e))?;
             let name = header.filename.to_string_lossy().to_string();
             entries.push(ArchiveEntry {
                 path: name.clone(),
                 is_dir: header.is_directory(),
-                size: header.unpacked_size as u64,
+                size: header.unpacked_size,
                 recommended: Self::is_recommended_path(&name),
             });
         }

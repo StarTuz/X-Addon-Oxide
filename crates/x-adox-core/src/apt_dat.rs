@@ -16,17 +16,14 @@ pub enum AirportType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Default)]
 pub enum SurfaceType {
     Hard,  // Asphalt, Concrete
+    #[default]
     Soft,  // Grass, Dirt, Gravel
     Water, // Water
 }
 
-impl Default for SurfaceType {
-    fn default() -> Self {
-        Self::Soft
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Airport {

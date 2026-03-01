@@ -109,11 +109,10 @@ fn test_library_txt_prevents_airport_promotion() {
     let airports = x_adox_core::scenery::discover_airports_in_pack(&pack_path);
 
     // Step 3: Structural Library Detection (runs BEFORE promotion now)
-    if category == SceneryCategory::Unknown {
-        if pack_path.join("library.txt").exists() {
+    if category == SceneryCategory::Unknown
+        && pack_path.join("library.txt").exists() {
             category = SceneryCategory::Library;
         }
-    }
 
     // Step 3b: Post-Discovery Promotion (must mirror mod.rs exactly)
     if !airports.is_empty() {

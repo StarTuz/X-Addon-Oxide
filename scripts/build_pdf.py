@@ -205,7 +205,7 @@ def build_pdf(output_path: str) -> None:
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>X-Addon-Oxide User Manual v2.4.0</title>
+  <title>X-Addon-Oxide User Manual v2.4.4</title>
   <style>
 {PROFESSIONAL_CSS}
   </style>

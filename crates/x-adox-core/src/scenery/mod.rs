@@ -630,11 +630,10 @@ impl SceneryManager {
                 // In quick mode we skip this filesystem check to avoid blocking on slow
                 // or locked paths (e.g. Windows Defender, network drives); Phase 2 deep
                 // scan will re-classify when it has full pack data.
-                if pack.category == SceneryCategory::Unknown && !quick {
-                    if pack.path.join("library.txt").exists() {
+                if pack.category == SceneryCategory::Unknown && !quick
+                    && pack.path.join("library.txt").exists() {
                         pack.category = SceneryCategory::Library;
                     }
-                }
 
                 // 3b. Post-Discovery Promotion
                 // If we FOUND actual airports, this is a Custom Airport (Score 100)
@@ -1010,8 +1009,8 @@ impl SceneryManager {
         // Remove oldest if more than 10
         if backups.len() > 10 {
             let to_remove = backups.len() - 10;
-            for i in 0..to_remove {
-                let _ = std::fs::remove_file(&backups[i].0);
+            for backup in backups.iter().take(to_remove) {
+                let _ = std::fs::remove_file(&backup.0);
             }
         }
 
@@ -1056,9 +1055,9 @@ impl SceneryManager {
                         if v1 > v2 {
                             replace = true;
                         }
-                    } else if ver.is_some() && best_ver.is_none() {
-                        replace = true;
-                    } else if ver.is_none() && best_ver.is_none() && time > best_time {
+                    } else if (ver.is_some() && best_ver.is_none())
+                        || (ver.is_none() && best_ver.is_none() && time > best_time)
+                    {
                         replace = true;
                     }
 
@@ -1117,9 +1116,9 @@ impl SceneryManager {
 
         // Catch any remaining to_disable that were skipped because their winner was a loser of another group (cascading)
         // or other edge cases.
-        for i in 0..packs.len() {
+        for (i, pack) in packs.iter().enumerate() {
             if !handled.contains(&i) {
-                new_packs.push(packs[i].clone());
+                new_packs.push(pack.clone());
             }
         }
 

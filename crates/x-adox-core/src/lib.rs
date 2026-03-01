@@ -302,7 +302,7 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
         if ty.is_dir() {
             copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
         } else {
-            fs::copy(&entry.path(), &dst.join(entry.file_name()))?;
+            fs::copy(entry.path(), dst.join(entry.file_name()))?;
         }
     }
     Ok(())

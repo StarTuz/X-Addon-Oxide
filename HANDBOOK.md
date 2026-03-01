@@ -31,7 +31,7 @@ date: "February 2026"
 <div class="cover-page">
   <img src="pictures/logo.png" width="540" height="295" alt="X-Addon-Oxide Logo" style="border:none; box-shadow:none; max-width:100%;">
   <div class="cover-subtitle">The Modern Addon Manager for X-Plane 11 & 12</div>
-  <div class="cover-version">Version 2.4.0 · User Manual</div>
+  <div class="cover-version">Version 2.4.4 · User Manual</div>
   <div class="cover-version" style="margin-top:8px; font-size:14px;">February 2026</div>
 </div>
 
@@ -179,7 +179,7 @@ sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel \
 ### DEB Package (Ubuntu / Debian)
 
 ```bash
-sudo dpkg -i x-addon-oxide_2.4.0_amd64.deb
+sudo dpkg -i x-addon-oxide_2.4.4_amd64.deb
 # Then launch from your application menu or:
 x-addon-oxide
 ```
@@ -187,7 +187,7 @@ x-addon-oxide
 ### RPM Package (Fedora / openSUSE)
 
 ```bash
-sudo rpm -i x-addon-oxide-2.4.0.x86_64.rpm
+sudo rpm -i x-addon-oxide-2.4.4.x86_64.rpm
 ```
 
 <div class="page-break"></div>
@@ -1091,4 +1091,4 @@ If reporting a bug, please include the contents of this file along with your ope
 
 ---
 
-*X-Addon-Oxide v2.4.0 · User Manual · February 2026*
+*X-Addon-Oxide v2.4.4 · User Manual · February 2026*

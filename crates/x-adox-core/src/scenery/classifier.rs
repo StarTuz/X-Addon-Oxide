@@ -29,10 +29,12 @@ impl Classifier {
             return SceneryCategory::SpecificMesh;
         }
 
-        if (name_lower.contains("mesh") && !is_orbx)
-            || (name_lower.contains("terrain") && !is_orbx)
-            || (name_lower.contains("3dgrass") && !is_orbx)
-            || (name_lower.contains("grass") && !is_orbx && !name_lower.contains("bluegrass"))
+        let is_mesh_keyword = name_lower.contains("mesh")
+            || name_lower.contains("terrain")
+            || name_lower.contains("3dgrass")
+            || (name_lower.contains("grass") && !name_lower.contains("bluegrass"));
+
+        if (is_mesh_keyword && !is_orbx)
             || name_lower.starts_with("zzz")
             || name_lower.contains("uhd")
         {
@@ -141,7 +143,7 @@ impl Classifier {
             || name_lower.contains("3dgrass")
             || name_lower.contains("grass")
             || name_lower.contains("sealane");
-        if (!is_companion && has_icao_pattern(&name))
+        if (!is_companion && has_icao_pattern(name))
             || name_lower.contains("fly2high")
             || name_lower.contains("aerosoft")
             || name_lower.contains("flytampa")
@@ -261,6 +263,7 @@ fn has_icao_pattern(name: &str) -> bool {
     // Handles KLAX, EGLL, 38WA, WA39 etc.
     use std::sync::OnceLock;
     static RE_ICAO: OnceLock<regex::Regex> = OnceLock::new();
-    let re = RE_ICAO.get_or_init(|| regex::Regex::new(r"(^|[^A-Z0-9])[A-Z0-9]{4}([^A-Z0-9]|$)").unwrap());
+    let re = RE_ICAO
+        .get_or_init(|| regex::Regex::new(r"(^|[^A-Z0-9])[A-Z0-9]{4}([^A-Z0-9]|$)").unwrap());
     re.is_match(name)
 }

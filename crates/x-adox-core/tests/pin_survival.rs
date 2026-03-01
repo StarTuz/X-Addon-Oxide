@@ -17,8 +17,8 @@ fn test_pins_survive_empty_profile_startup() {
     std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
 
     let xplane_root = dir.path().join("X-Plane 12");
-    fs::create_dir_all(&xplane_root.join("Resources")).unwrap();
-    fs::create_dir_all(&xplane_root.join("Custom Scenery")).unwrap();
+    fs::create_dir_all(xplane_root.join("Resources")).unwrap();
+    fs::create_dir_all(xplane_root.join("Custom Scenery")).unwrap();
 
     // 1. Setup heuristics.json with pins in the scoped directory
     let hash = x_adox_core::calculate_stable_hash(&xplane_root);
@@ -96,8 +96,8 @@ fn test_profile_pins_take_priority() {
     std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
 
     let xplane_root = dir.path().join("X-Plane 12");
-    fs::create_dir_all(&xplane_root.join("Resources")).unwrap();
-    fs::create_dir_all(&xplane_root.join("Custom Scenery")).unwrap();
+    fs::create_dir_all(xplane_root.join("Resources")).unwrap();
+    fs::create_dir_all(xplane_root.join("Custom Scenery")).unwrap();
 
     // 1. Setup heuristics.json with pins
     let hash = x_adox_core::calculate_stable_hash(&xplane_root);
@@ -179,8 +179,8 @@ fn test_pins_survive_profile_with_scenery_states() {
     std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
 
     let xplane_root = dir.path().join("X-Plane 12");
-    fs::create_dir_all(&xplane_root.join("Resources")).unwrap();
-    fs::create_dir_all(&xplane_root.join("Custom Scenery")).unwrap();
+    fs::create_dir_all(xplane_root.join("Resources")).unwrap();
+    fs::create_dir_all(xplane_root.join("Custom Scenery")).unwrap();
 
     // 1. Setup heuristics.json with pins
     let hash = x_adox_core::calculate_stable_hash(&xplane_root);

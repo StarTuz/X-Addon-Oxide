@@ -123,7 +123,11 @@ mod tests {
         let plan = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from EGLL to KJFK using Boeing 747", None, None, None)
+            "Flight from EGLL to KJFK using Boeing 747",
+            None,
+            None,
+            None,
+        )
         .unwrap();
         assert_eq!(plan.origin.id, "EGLL");
         assert_eq!(plan.destination.id, "KJFK");
@@ -133,7 +137,11 @@ mod tests {
         let plan_short = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from EGLL to LFPG using Cessna", None, None, None)
+            "Flight from EGLL to LFPG using Cessna",
+            None,
+            None,
+            None,
+        )
         .unwrap();
         assert_eq!(plan_short.destination.id, "LFPG");
 
@@ -142,7 +150,11 @@ mod tests {
         let plan_small = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from EGLL to EGKB using Boeing 747", None, None, None)
+            "Flight from EGLL to EGKB using Boeing 747",
+            None,
+            None,
+            None,
+        )
         .unwrap();
         assert_eq!(plan_small.destination.id, "EGKB");
 
@@ -150,7 +162,11 @@ mod tests {
         let plan_wild = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from EGLL to EGKB using Boeing 747 ignore guardrails", None, None, None)
+            "Flight from EGLL to EGKB using Boeing 747 ignore guardrails",
+            None,
+            None,
+            None,
+        )
         .unwrap();
         assert_eq!(plan_wild.destination.id, "EGKB");
 
@@ -159,7 +175,11 @@ mod tests {
         let plan_eu = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from UK to LFPG using Cessna", None, None, None)
+            "Flight from UK to LFPG using Cessna",
+            None,
+            None,
+            None,
+        )
         .unwrap();
         assert!(
             plan_eu.origin.id == "EGLL"
@@ -205,7 +225,14 @@ mod tests {
         // 1. Explicitly ask for any airport with Caravelle
         // Should NOT pick HOSP
         for _ in 0..10 {
-            let plan = generate_flight(&packs, &aircraft, "Flight using Caravelle", None, None, None);
+            let plan = generate_flight(
+                &packs,
+                &aircraft,
+                "Flight using Caravelle",
+                None,
+                None,
+                None,
+            );
             assert!(
                 plan.is_err(),
                 "Caravelle (tagless) should NOT find HOSP heliport (Fixed)"
@@ -293,7 +320,11 @@ mod tests {
         let plan = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from Los Angeles to San Francisco using Boeing 747", None, None, None)
+            "Flight from Los Angeles to San Francisco using Boeing 747",
+            None,
+            None,
+            None,
+        )
         .unwrap();
 
         assert_eq!(plan.origin.id, "KLAX");
@@ -353,7 +384,11 @@ mod tests {
             let plan = generate_flight(
                 &manager.packs,
                 &aircraft,
-                "Flight from London to KGON using Boeing 747", None, None, None)
+                "Flight from London to KGON using Boeing 747",
+                None,
+                None,
+                None,
+            )
             .unwrap();
             assert_eq!(
                 plan.origin.id, "EGLL",
@@ -367,7 +402,11 @@ mod tests {
         let plan_complex = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from London United Kingdom to KGON using Boeing 747", None, None, None)
+            "Flight from London United Kingdom to KGON using Boeing 747",
+            None,
+            None,
+            None,
+        )
         .unwrap();
         assert_eq!(plan_complex.origin.id, "EGLL");
 
@@ -376,7 +415,11 @@ mod tests {
         let plan_abbr = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from London UK to KGON using Boeing 747", None, None, None);
+            "Flight from London UK to KGON using Boeing 747",
+            None,
+            None,
+            None,
+        );
         assert!(plan_abbr.is_ok(), "Should match 'UK' to 'United Kingdom'");
     }
 
@@ -431,7 +474,11 @@ mod tests {
         let plan_uk = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from UK to KJFK using Boeing 747", None, None, None);
+            "Flight from UK to KJFK using Boeing 747",
+            None,
+            None,
+            None,
+        );
         assert!(plan_uk.is_ok(), "UK should include Northern Ireland");
         assert_eq!(plan_uk.unwrap().origin.id, "EGAA");
 
@@ -439,7 +486,11 @@ mod tests {
         let plan_gb = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from GB to KJFK using Boeing 747", None, None, None);
+            "Flight from GB to KJFK using Boeing 747",
+            None,
+            None,
+            None,
+        );
         assert!(plan_gb.is_err(), "GB should exclude Northern Ireland");
     }
 
@@ -539,7 +590,11 @@ mod tests {
             let plan = generate_flight(
                 &manager.packs,
                 &aircraft,
-                "Flight from British Isles to France using Boeing 747 ignore guardrails", None, None, None);
+                "Flight from British Isles to France using Boeing 747 ignore guardrails",
+                None,
+                None,
+                None,
+            );
             assert!(plan.is_ok(), "British Isles should match Ireland or UK");
             let origin_id = plan.unwrap().origin.id;
             assert!(
@@ -598,7 +653,11 @@ mod tests {
             let plan = generate_flight(
                 &manager.packs,
                 &aircraft,
-                "Flight from France to Germany using Cessna 172", None, None, None);
+                "Flight from France to Germany using Cessna 172",
+                None,
+                None,
+                None,
+            );
             assert!(
                 plan.is_ok(),
                 "France → Germany should find airports: {:?}",
@@ -652,7 +711,11 @@ mod tests {
             let plan = generate_flight(
                 &manager.packs,
                 &aircraft,
-                "Flight from Socal to Norcal", None, None, None);
+                "Flight from Socal to Norcal",
+                None,
+                None,
+                None,
+            );
             assert!(plan.is_ok(), "SoCal → NorCal should work: {:?}", plan.err());
             let p = plan.unwrap();
             assert_eq!(p.origin.id, "KLAX");
@@ -703,7 +766,11 @@ mod tests {
         let plan = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from Los Angeles to Seattle", None, None, None);
+            "Flight from Los Angeles to Seattle",
+            None,
+            None,
+            None,
+        );
         assert!(
             plan.is_ok(),
             "Explicit name-to-name should bypass distance filter: {:?}",
@@ -717,7 +784,11 @@ mod tests {
         let plan2 = generate_flight(
             &manager.packs,
             &aircraft,
-            "Flight from KLAX to KSEA", None, None, None);
+            "Flight from KLAX to KSEA",
+            None,
+            None,
+            None,
+        );
         assert!(
             plan2.is_ok(),
             "Explicit ICAO-to-ICAO should bypass distance filter: {:?}",
@@ -821,7 +892,11 @@ mod tests {
         let plan = generate_flight(
             &packs,
             &aircraft,
-            "Flight from Oregon to anywhere", None, None, None);
+            "Flight from Oregon to anywhere",
+            None,
+            None,
+            None,
+        );
         assert!(
             plan.is_ok(),
             "Oregon region should be recognized: {:?}",
@@ -921,8 +996,14 @@ mod tests {
             let aircraft = vec![make_test_aircraft("Test Aircraft", tags)];
             let mut found_unkn = false;
             for _ in 0..20 {
-                let plan =
-                    generate_flight(&packs, &aircraft, "Flight from UNKN to any", None, None, None);
+                let plan = generate_flight(
+                    &packs,
+                    &aircraft,
+                    "Flight from UNKN to any",
+                    None,
+                    None,
+                    None,
+                );
                 if let Ok(p) = plan {
                     if p.origin.id == "UNKN" {
                         found_unkn = true;
@@ -1104,7 +1185,14 @@ mod tests {
 
         // "to London" uses the TO_RE path → destination = NearCity("London"), origin = wildcard.
         for _ in 0..20 {
-            let plan = generate_flight(&[pack.clone()], &aircraft, "to London", None, None, None);
+            let plan = generate_flight(
+                std::slice::from_ref(&pack),
+                &aircraft,
+                "to London",
+                None,
+                None,
+                None,
+            );
             assert!(plan.is_ok(), "Should find EGLL, not fail: {:?}", plan.err());
             let p = plan.unwrap();
             assert_ne!(
@@ -1130,7 +1218,14 @@ mod tests {
     fn test_pool_merge_pack_overrides_base() {
         // Base layer has EGLL with an old name and short runway, plus LFPG as destination.
         let base = vec![
-            make_test_airport("EGLL", "Old Heathrow", 51.47, -0.45, 2000, SurfaceType::Hard),
+            make_test_airport(
+                "EGLL",
+                "Old Heathrow",
+                51.47,
+                -0.45,
+                2000,
+                SurfaceType::Hard,
+            ),
             make_test_airport("LFPG", "Paris CDG", 49.01, 2.55, 4000, SurfaceType::Hard),
         ];
 
@@ -1141,7 +1236,14 @@ mod tests {
             raw_path: None,
             status: SceneryPackType::Active,
             category: SceneryCategory::CustomAirport,
-            airports: vec![make_test_airport("EGLL", "London Heathrow", 51.48, -0.46, 4000, SurfaceType::Hard)],
+            airports: vec![make_test_airport(
+                "EGLL",
+                "London Heathrow",
+                51.48,
+                -0.46,
+                4000,
+                SurfaceType::Hard,
+            )],
             tiles: vec![],
             tags: vec![],
             descriptor: SceneryDescriptor::default(),
@@ -1149,12 +1251,22 @@ mod tests {
         };
 
         let aircraft = make_test_aircraft("B737", vec!["Jet"]);
-        let plan = generate_flight(&[pack], &[aircraft], "EGLL to LFPG", Some(&base), None, None)
-            .expect("Should generate a flight");
+        let plan = generate_flight(
+            &[pack],
+            &[aircraft],
+            "EGLL to LFPG",
+            Some(&base),
+            None,
+            None,
+        )
+        .expect("Should generate a flight");
 
         // Pack values for EGLL should have won over the base
         assert_eq!(plan.origin.id, "EGLL");
-        assert_eq!(plan.origin.name, "London Heathrow", "Pack name should override base name");
+        assert_eq!(
+            plan.origin.name, "London Heathrow",
+            "Pack name should override base name"
+        );
     }
 
     /// When the same ICAO appears in both base and pack, the longer runway always wins
@@ -1162,7 +1274,14 @@ mod tests {
     #[test]
     fn test_pool_merge_keeps_longer_runway() {
         // Base has EGLL with 4000 ft runway.
-        let base = vec![make_test_airport("EGLL", "London Heathrow", 51.47, -0.45, 4000, SurfaceType::Hard)];
+        let base = vec![make_test_airport(
+            "EGLL",
+            "London Heathrow",
+            51.47,
+            -0.45,
+            4000,
+            SurfaceType::Hard,
+        )];
 
         // Pack has EGLL with a shorter 2000 ft runway (e.g. from a different apt.dat version).
         let pack = SceneryPack {
@@ -1171,7 +1290,14 @@ mod tests {
             raw_path: None,
             status: SceneryPackType::Active,
             category: SceneryCategory::CustomAirport,
-            airports: vec![make_test_airport("EGLL", "London Heathrow", 51.47, -0.45, 2000, SurfaceType::Hard)],
+            airports: vec![make_test_airport(
+                "EGLL",
+                "London Heathrow",
+                51.47,
+                -0.45,
+                2000,
+                SurfaceType::Hard,
+            )],
             tiles: vec![],
             tags: vec![],
             descriptor: SceneryDescriptor::default(),
@@ -1185,7 +1311,14 @@ mod tests {
             raw_path: None,
             status: SceneryPackType::Active,
             category: SceneryCategory::CustomAirport,
-            airports: vec![make_test_airport("LFPG", "Paris CDG", 49.01, 2.55, 3500, SurfaceType::Hard)],
+            airports: vec![make_test_airport(
+                "LFPG",
+                "Paris CDG",
+                49.01,
+                2.55,
+                3500,
+                SurfaceType::Hard,
+            )],
             tiles: vec![],
             tags: vec![],
             descriptor: SceneryDescriptor::default(),
@@ -1198,7 +1331,7 @@ mod tests {
         for _ in 0..5 {
             let plan = generate_flight(
                 &[pack.clone(), dest_pack.clone()],
-                &[aircraft.clone()],
+                std::slice::from_ref(&aircraft),
                 "EGLL to LFPG",
                 Some(&base),
                 None,
@@ -1219,7 +1352,14 @@ mod tests {
             raw_path: None,
             status: SceneryPackType::Active,
             category: SceneryCategory::CustomAirport,
-            airports: vec![make_test_airport("EGLL", "Heathrow A", 51.47, -0.45, 3000, SurfaceType::Hard)],
+            airports: vec![make_test_airport(
+                "EGLL",
+                "Heathrow A",
+                51.47,
+                -0.45,
+                3000,
+                SurfaceType::Hard,
+            )],
             tiles: vec![],
             tags: vec![],
             descriptor: SceneryDescriptor::default(),
@@ -1261,7 +1401,14 @@ mod tests {
     #[test]
     fn test_pool_base_only_fast_path() {
         let base = vec![
-            make_test_airport("EGLL", "London Heathrow", 51.47, -0.45, 4000, SurfaceType::Hard),
+            make_test_airport(
+                "EGLL",
+                "London Heathrow",
+                51.47,
+                -0.45,
+                4000,
+                SurfaceType::Hard,
+            ),
             make_test_airport("LFPG", "Paris CDG", 49.01, 2.55, 3800, SurfaceType::Hard),
         ];
 
@@ -1286,8 +1433,22 @@ mod tests {
             status: SceneryPackType::Active,
             category: SceneryCategory::CustomAirport,
             airports: vec![
-                make_test_airport("NZQN", "Queenstown", -45.02, 168.74, 3000, SurfaceType::Hard),
-                make_test_airport("NZCH", "Christchurch", -43.49, 172.53, 4000, SurfaceType::Hard),
+                make_test_airport(
+                    "NZQN",
+                    "Queenstown",
+                    -45.02,
+                    168.74,
+                    3000,
+                    SurfaceType::Hard,
+                ),
+                make_test_airport(
+                    "NZCH",
+                    "Christchurch",
+                    -43.49,
+                    172.53,
+                    4000,
+                    SurfaceType::Hard,
+                ),
             ],
             tiles: vec![],
             tags: vec![],

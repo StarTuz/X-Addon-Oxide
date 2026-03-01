@@ -1,6 +1,6 @@
-# Handoff: Version 2.4.0+ (Scenery Tagging, Flight Gen Learning, Regenerate)
+# Handoff: Version 2.4.4+ (Scenery Tagging, Flight Gen Learning, Regenerate)
 
-**Status**: v2.4.0 features + Flight Generator learning (3.1) and Regenerate
+**Status**: v2.4.4 features + Flight Generator learning (3.1) and Regenerate
 **Major Themes**: Scenery Personalization + Aircraft Discovery + **Flight Gen Learning** + UX Refinement
 
 ## Recent Changes

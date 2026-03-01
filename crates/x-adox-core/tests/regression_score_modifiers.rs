@@ -24,7 +24,7 @@ fn make_pack(name: &str, category: SceneryCategory) -> SceneryPack {
     }
 }
 
-fn sorted_names(packs: &mut Vec<SceneryPack>) -> Vec<String> {
+fn sorted_names(packs: &mut [SceneryPack]) -> Vec<String> {
     sort_packs(packs, None, &x_adox_bitnet::PredictContext::default());
     packs.iter().map(|p| p.name.clone()).collect()
 }

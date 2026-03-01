@@ -82,7 +82,7 @@ fn test_basket_multi_move() {
     // Move A and C to index 1 (between A and B)
     // Semantically, user dropped at Gap 1 (above B)
     sm.drop_basket_at(
-        &vec!["A".to_string(), "C".to_string()],
+        &["A".to_string(), "C".to_string()],
         1,
         &mut model,
         &PredictContext::default(),
