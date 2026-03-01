@@ -1,7 +1,7 @@
 use crate::style;
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
-use rust_i18n::t;
 use iced::{Element, Length, Padding, Task};
+use rust_i18n::t;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use x_adox_bitnet::HeuristicsConfig;
@@ -222,21 +222,23 @@ impl FlightGenState {
                         });
                         // Only label confirmed weather (verified via live METAR).
                         // Unconfirmed requests (METAR unavailable) are not shown as fact.
-                        let weather_label = plan.weather.as_ref()
+                        let weather_label = plan
+                            .weather
+                            .as_ref()
                             .filter(|_| plan.weather_confirmed)
                             .map(|w| {
-                            use x_adox_bitnet::flight_prompt::WeatherKeyword;
-                            match w {
-                                WeatherKeyword::Clear => " · Clear",
-                                WeatherKeyword::Cloudy => " · Cloudy",
-                                WeatherKeyword::Storm => " · Storm",
-                                WeatherKeyword::Rain => " · Rain",
-                                WeatherKeyword::Snow => " · Snow",
-                                WeatherKeyword::Fog => " · Fog",
-                                WeatherKeyword::Gusty => " · Gusty",
-                                WeatherKeyword::Calm => " · Calm",
-                            }
-                        });
+                                use x_adox_bitnet::flight_prompt::WeatherKeyword;
+                                match w {
+                                    WeatherKeyword::Clear => " · Clear",
+                                    WeatherKeyword::Cloudy => " · Cloudy",
+                                    WeatherKeyword::Storm => " · Storm",
+                                    WeatherKeyword::Rain => " · Rain",
+                                    WeatherKeyword::Snow => " · Snow",
+                                    WeatherKeyword::Fog => " · Fog",
+                                    WeatherKeyword::Gusty => " · Gusty",
+                                    WeatherKeyword::Calm => " · Calm",
+                                }
+                            });
                         let conditions_suffix = format!(
                             "{}{}",
                             time_label.unwrap_or(""),
@@ -279,35 +281,11 @@ impl FlightGenState {
                 }
                 Task::none()
             }
-            Message::ExportFms11 => {
-                if let Some(plan) = &self.current_plan {
-                    let _text = flight_gen::export_fms_11(plan, None);
-                    // TODO: Save to file logic should happen here or via file picker
-                    // For now just simulation
-                    self.status_message = Some("Exported FMS 11 (simulated)".to_string());
-                }
-                Task::none()
-            }
-            Message::ExportFms12 => {
-                if let Some(plan) = &self.current_plan {
-                    let _ = flight_gen::export_fms_12(plan, None);
-                    self.status_message = Some("Exported FMS 12 (simulated)".to_string());
-                }
-                Task::none()
-            }
-            Message::ExportLnm => {
-                if let Some(plan) = &self.current_plan {
-                    let _ = flight_gen::export_lnmpln(plan, None);
-                    self.status_message = Some("Exported Little Navmap (simulated)".to_string());
-                }
-                Task::none()
-            }
-            Message::ExportSimbrief => {
-                if let Some(plan) = &self.current_plan {
-                    let url = flight_gen::export_simbrief(plan);
-                    // Open URL?
-                    self.status_message = Some(format!("SimBrief URL: {}", url));
-                }
+            Message::ExportFms11
+            | Message::ExportFms12
+            | Message::ExportLnm
+            | Message::ExportSimbrief => {
+                // Export dialog logic is handled by the main app wrapper in main.rs
                 Task::none()
             }
             // Handled in main (Task::run + FlightContextFetched).
@@ -467,7 +445,9 @@ impl FlightGenState {
                         t!("flight.sender_user").to_string()
                     } else {
                         t!("flight.sender_system").to_string()
-                    }).size(12).style(move |_| if msg.is_user {
+                    })
+                    .size(12)
+                    .style(move |_| if msg.is_user {
                         iced::widget::text::Style {
                             color: Some(iced::Color::from_rgb(0.6, 0.8, 1.0)), // Lighter blue for User
                         }
@@ -745,21 +725,22 @@ impl FlightGenState {
     }
 
     fn origin_tree_content<'a>(&'a self, ctx: &'a FlightContext) -> Element<'a, Message> {
-        let history_label = text(t!("flight.context.history"))
-            .size(11)
-            .style(move |_| iced::widget::text::Style {
-                color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
-            });
+        let history_label =
+            text(t!("flight.context.history"))
+                .size(11)
+                .style(move |_| iced::widget::text::Style {
+                    color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
+                });
 
         let mut history_elements = vec![];
         if ctx.origin.snippet.is_empty() {
             history_elements.push(
                 text(t!("flight.context.no_wikipedia"))
-                .size(12)
-                .color(style::palette::TEXT_SECONDARY)
-                .width(Length::Fill)
-                .into()
-             );
+                    .size(12)
+                    .color(style::palette::TEXT_SECONDARY)
+                    .width(Length::Fill)
+                    .into(),
+            );
         } else {
             // Typography upgrade: 13.5px size, 1.7 line height (approx via spacing)
             // Truncation check
@@ -824,12 +805,11 @@ impl FlightGenState {
                 .collect()
         };
 
-        let weather_label =
-            text(t!("flight.context.weather_now"))
-                .size(11)
-                .style(move |_| iced::widget::text::Style {
-                    color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
-                });
+        let weather_label = text(t!("flight.context.weather_now"))
+            .size(11)
+            .style(move |_| iced::widget::text::Style {
+                color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
+            });
         let weather_body = text(
             self.origin_weather
                 .as_deref()
@@ -856,21 +836,22 @@ impl FlightGenState {
     }
 
     fn dest_tree_content<'a>(&'a self, ctx: &'a FlightContext) -> Element<'a, Message> {
-        let history_label = text(t!("flight.context.history"))
-            .size(11)
-            .style(move |_| iced::widget::text::Style {
-                color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
-            });
+        let history_label =
+            text(t!("flight.context.history"))
+                .size(11)
+                .style(move |_| iced::widget::text::Style {
+                    color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
+                });
 
         let mut history_elements = vec![];
         if ctx.destination.snippet.is_empty() {
             history_elements.push(
                 text(t!("flight.context.no_wikipedia"))
-                .size(12)
-                .color(style::palette::TEXT_SECONDARY)
-                .width(Length::Fill)
-                .into()
-             );
+                    .size(12)
+                    .color(style::palette::TEXT_SECONDARY)
+                    .width(Length::Fill)
+                    .into(),
+            );
         } else {
             let snippet = &ctx.destination.snippet;
 
@@ -930,12 +911,11 @@ impl FlightGenState {
                 })
                 .collect()
         };
-        let weather_label =
-            text(t!("flight.context.weather_now"))
-                .size(11)
-                .style(move |_| iced::widget::text::Style {
-                    color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
-                });
+        let weather_label = text(t!("flight.context.weather_now"))
+            .size(11)
+            .style(move |_| iced::widget::text::Style {
+                color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
+            });
         let weather_body = text(
             self.dest_weather
                 .as_deref()
