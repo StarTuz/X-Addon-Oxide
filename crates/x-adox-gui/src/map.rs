@@ -124,8 +124,12 @@ impl TileManager {
                 if let Ok(bytes) = std::fs::read(&cache_path) {
                     let handle = image::Handle::from_bytes(bytes);
                     // Release tiles lock before acquiring pending — consistent ordering.
-                    { tiles_arc.lock().unwrap().put(coords, handle); }
-                    { pending_arc.lock().unwrap().remove(&coords); }
+                    {
+                        tiles_arc.lock().unwrap().put(coords, handle);
+                    }
+                    {
+                        pending_arc.lock().unwrap().remove(&coords);
+                    }
                     return;
                 }
             }
@@ -139,12 +143,12 @@ impl TileManager {
             match resp {
                 Ok(response) => {
                     let mut bytes = Vec::new();
-                    if let Ok(_) =
-                        std::io::Read::read_to_end(&mut response.into_reader(), &mut bytes)
-                    {
+                    if std::io::Read::read_to_end(&mut response.into_reader(), &mut bytes).is_ok() {
                         let handle = image::Handle::from_bytes(bytes.clone());
                         // Release tiles lock before disk I/O — avoids blocking renders.
-                        { tiles_arc.lock().unwrap().put(coords, handle); }
+                        {
+                            tiles_arc.lock().unwrap().put(coords, handle);
+                        }
 
                         // 3. Save to disk cache (outside of tiles lock)
                         if let Some(parent) = cache_path.parent() {
@@ -157,7 +161,9 @@ impl TileManager {
                     eprintln!("Failed to fetch tile {:?}: {}", coords, e);
                 }
             }
-            { pending_arc.lock().unwrap().remove(&coords); }
+            {
+                pending_arc.lock().unwrap().remove(&coords);
+            }
         });
     }
 }
@@ -959,7 +965,7 @@ where
             let lon = x_to_lon(wx, 0.0);
             let lat = y_to_lat(wy, 0.0);
 
-            if lon >= -180.0 && lon <= 180.0 && lat >= -85.0511 && lat <= 85.0511 {
+            if (-180.0..=180.0).contains(&lon) && (-85.0511..=85.0511).contains(&lat) {
                 Some((lat, lon))
             } else {
                 None
@@ -1056,8 +1062,8 @@ where
                                         if let (Some(lat), Some(lon), Some((wx, wy))) =
                                             (airport.lat, airport.lon, mouse_z0)
                                         {
-                                            let tx = lon_to_x(lon as f64, 0.0);
-                                            let ty = lat_to_y(lat as f64, 0.0);
+                                            let tx = lon_to_x(lon, 0.0);
+                                            let ty = lat_to_y(lat, 0.0);
                                             let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
 
                                             if dist_sq < (10.0 / scale).powi(2) {
@@ -1156,14 +1162,14 @@ where
                             {
                                 // Fast early exit: skip airports far from cursor
                                 let hit_radius_deg = 10.0 / scale / TILE_SIZE * 360.0;
-                                if (lon as f64 - coords.1).abs() > hit_radius_deg * 2.0
-                                    || (lat as f64 - coords.0).abs() > hit_radius_deg * 2.0
+                                if (lon - coords.1).abs() > hit_radius_deg * 2.0
+                                    || (lat - coords.0).abs() > hit_radius_deg * 2.0
                                 {
                                     continue;
                                 }
 
-                                let tx = lon_to_x(lon as f64, 0.0);
-                                let ty = lat_to_y(lat as f64, 0.0);
+                                let tx = lon_to_x(lon, 0.0);
+                                let ty = lat_to_y(lat, 0.0);
                                 let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
 
                                 // Use a 10px hit radius in screen pixels
@@ -1212,8 +1218,8 @@ where
                                         if let (Some(lat), Some(lon), Some((wx, wy))) =
                                             (airport.lat, airport.lon, mouse_z0)
                                         {
-                                            let tx = lon_to_x(lon as f64, 0.0);
-                                            let ty = lat_to_y(lat as f64, 0.0);
+                                            let tx = lon_to_x(lon, 0.0);
+                                            let ty = lat_to_y(lat, 0.0);
                                             let dist_sq = (tx - wx).powi(2) + (ty - wy).powi(2);
                                             if dist_sq < (10.0 / scale).powi(2) {
                                                 hit = true;

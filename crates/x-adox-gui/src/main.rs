@@ -298,7 +298,7 @@ enum Message {
     NLPImported(String),
 
     // Flight Generator
-    FlightGen(flight_gen_gui::Message),
+    FlightGen(Box<flight_gen_gui::Message>),
     /// Global apt.dat airports loaded in the background for flight generation.
     FlightGenBaseAirportsLoaded(Vec<x_adox_core::apt_dat::Airport>),
     /// Result of save-file export (FMS / LNM).
@@ -1234,11 +1234,11 @@ impl App {
         };
         let toolbar = row![
             button(text(t!("flight.context.fetch")).size(12))
-                .on_press(Message::FlightGen(flight_gen_gui::Message::FetchContext))
+                .on_press(Message::FlightGen(Box::new(flight_gen_gui::Message::FetchContext)))
                 .style(style::button_primary_glow)
                 .padding([6, 14]),
             button(text(copy_label).size(12))
-                .on_press(Message::FlightGen(flight_gen_gui::Message::CopyContext))
+                .on_press(Message::FlightGen(Box::new(flight_gen_gui::Message::CopyContext)))
                 .style(style::button_secondary)
                 .padding([6, 14]),
             iced::widget::horizontal_space(),
@@ -1249,7 +1249,7 @@ impl App {
         .spacing(8)
         .align_y(iced::Alignment::Center);
 
-        let content = scrollable(self.flight_gen.view_context_content(plan).map(Message::FlightGen))
+        let content = scrollable(self.flight_gen.view_context_content(plan).map(|m| Message::FlightGen(Box::new(m))))
             .height(Length::Fill);
 
         let inner = container(column![header, toolbar, content].spacing(10))
@@ -1542,13 +1542,13 @@ impl App {
                 self.map_center = new_center;
                 self.map_zoom = new_zoom;
                 self.map_initialized = true; // Mark as initialized on first manual interaction
-                return Task::none();
+                Task::none()
             }
             Message::FocusMap(lat, lon, zoom) => {
                 self.map_center = (lat, lon);
                 self.map_zoom = zoom;
                 self.map_initialized = true;
-                return Task::none();
+                Task::none()
             }
             Message::InstallProgress(p) => {
                 self.install_progress = Some(p);
@@ -1692,7 +1692,7 @@ impl App {
                 } else {
                     self.scenery_scan_progress = p;
                 }
-                return Task::none();
+                Task::none()
             }
             Message::SceneryDeepScanComplete(result) => {
                 self.deep_scan_progress = None;
@@ -1728,7 +1728,7 @@ impl App {
                         x_adox_core::scenery::validator::SceneryValidator::validate(&self.packs),
                     );
                 }
-                return Task::none();
+                Task::none()
             }
             #[cfg(target_os = "windows")]
             Message::DismissAvTip => {
@@ -2035,7 +2035,7 @@ impl App {
             Message::ToggleCompanionAutoLaunch(idx) => {
                 if let Some(app) = self.companion_apps.get_mut(idx) {
                     app.auto_launch = !app.auto_launch;
-                    let _ = self.save_app_config();
+                    self.save_app_config();
                 }
                 Task::none()
             }
@@ -2853,7 +2853,7 @@ impl App {
                             ModManager::set_bulk_scenery_enabled(&root_clone, &states)
                                 .map_err(|e| e.to_string())
                         },
-                        |r| Message::PackToggled(r),
+                        Message::PackToggled,
                     );
                 }
                 Task::none()
@@ -3158,7 +3158,7 @@ impl App {
                 self.resort_scenery();
                 self.sync_active_profile_scenery();
                 self.editing_priority = None;
-                return self.trigger_scenery_save();
+                self.trigger_scenery_save()
             }
             Message::RemovePriority(pack_name) => {
                 log::debug!("Removing priority for: {}", pack_name);
@@ -3170,7 +3170,7 @@ impl App {
                 self.resort_scenery();
                 self.sync_active_profile_scenery();
                 self.editing_priority = None;
-                return self.trigger_scenery_save();
+                self.trigger_scenery_save()
             }
             Message::CancelPriorityEdit => {
                 self.editing_priority = None;
@@ -3237,7 +3237,7 @@ impl App {
                 }
                 self.packs = Arc::new(new_packs);
                 self.sync_active_profile_scenery();
-                return self.trigger_scenery_save();
+                self.trigger_scenery_save()
             }
             Message::ClearAllPins => {
                 Arc::make_mut(&mut self.heuristics_model.config)
@@ -3248,7 +3248,7 @@ impl App {
                 self.resort_scenery();
                 self.sync_active_profile_scenery();
                 self.status = "All manual reorder pins cleared".to_string();
-                return self.trigger_scenery_save();
+                self.trigger_scenery_save()
             }
             Message::WindowResized(size) => {
                 self.window_size = size;
@@ -3766,7 +3766,7 @@ impl App {
                         // Try to find .acf to get stem name
                         let acf_stem = entries_vec
                             .iter()
-                            .find(|e| e.path().extension().map_or(false, |ext| ext == "acf"))
+                            .find(|e| e.path().extension().is_some_and(|ext| ext == "acf"))
                             .and_then(|e| {
                                 e.path()
                                     .file_stem()
@@ -3904,14 +3904,14 @@ impl App {
                     }
 
                     self.status = format!("Opening archive: {:?}...", zip_path.file_name().unwrap_or_default());
-                    return Task::perform(
+                    Task::perform(
                         async move {
                             UnifiedArchiveReader::list_contents(&zip_path)
                                 .map(|entries| (zip_path, entries))
                                 .map_err(|e| e.to_string())
                         },
                         move |res| Message::ArchiveMetadataLoaded(res, None),
-                    );
+                    )
                 } else {
                     self.status = "Install cancelled".to_string();
                     Task::none()
@@ -3921,14 +3921,14 @@ impl App {
                 if let Some(dest_path) = dest_opt {
                     self.status = format!("Opening archive (Dest: {})...", dest_path.display());
                     let dp = dest_path.clone();
-                    return Task::perform(
+                    Task::perform(
                         async move {
                             UnifiedArchiveReader::list_contents(&zip_path)
                                 .map(|entries| (zip_path, entries))
                                 .map_err(|e| e.to_string())
                         },
                         move |res| Message::ArchiveMetadataLoaded(res, Some(dp.clone())),
-                    );
+                    )
                 } else {
                     self.status = "Install cancelled (no destination selected)".to_string();
                     Task::none()
@@ -4236,7 +4236,7 @@ impl App {
                 self.status = "Heuristics reset to defaults".to_string();
                 self.resort_scenery();
                 self.sync_active_profile_scenery();
-                return self.trigger_scenery_save();
+                self.trigger_scenery_save()
             }
             Message::ClearOverrides => {
                 if let Err(e) = self.heuristics_model.clear_overrides() {
@@ -4250,7 +4250,7 @@ impl App {
                 self.status = "AutoFix overrides cleared".to_string();
                 self.resort_scenery();
                 self.sync_active_profile_scenery();
-                return self.trigger_scenery_save();
+                self.trigger_scenery_save()
             }
             Message::OpenNLPEditor => {
                 let json = serde_json::to_string_pretty(self.nlp_model.config.as_ref())
@@ -4388,10 +4388,10 @@ impl App {
                 Task::none()
             }
             Message::FlightGen(msg) => {
-                match &msg {
+                match msg.as_ref() {
                     flight_gen_gui::Message::ToggleFlightContextWindow => {
                         self.show_flight_context_window = !self.show_flight_context_window;
-                        return Task::none();
+                        Task::none()
                     }
                     flight_gen_gui::Message::RememberThisFlight => {
                         if let Some(plan) = &self.flight_gen.current_plan {
@@ -4557,7 +4557,7 @@ impl App {
                         let prefs = self.heuristics_model.config.as_ref();
                         let nlp_rules = self.nlp_model.config.as_ref();
                         let cmd = self.flight_gen.update(
-                            msg.clone(),
+                            *msg.clone(),
                             packs,
                             aircraft_list,
                             xplane_root,
@@ -4565,7 +4565,7 @@ impl App {
                             Some(nlp_rules),
                         );
                         
-                        let mut tasks = vec![cmd.map(Message::FlightGen)];
+                        let mut tasks = vec![cmd.map(|m| Message::FlightGen(Box::new(m)))];
 
                         // Auto-fetch history when "enhanced" is on and we just generated a plan with no context
                         if self.flight_gen.pending_auto_fetch && self.flight_context_fetch_enabled {
@@ -4638,7 +4638,7 @@ impl App {
                     self.xplane_root.as_deref(),
                     Some(self.heuristics_model.config.as_ref()),
                     Some(self.nlp_model.config.as_ref()),
-                ).map(Message::FlightGen)
+                ).map(|m| Message::FlightGen(Box::new(m)))
             }
             Message::ExportHeuristics => {
                 let text = self.heuristics_json.text();
@@ -4685,7 +4685,7 @@ impl App {
                 let final_path = path.canonicalize().unwrap_or(path);
                 if !self.scan_exclusions.contains(&final_path) {
                     self.scan_exclusions.push(final_path);
-                    let _ = self.save_scan_config();
+                    self.save_scan_config();
                     return Task::done(Message::Refresh);
                 }
                 Task::none()
@@ -5087,7 +5087,7 @@ impl App {
                             x_adox_core::management::ModManager::set_bulk_scenery_enabled(&root_clone, &states)
                                 .map_err(|e| e.to_string())
                         },
-                        |r| Message::PackToggled(r),
+                        Message::PackToggled,
                     );
                 }
                 Task::none()
@@ -6031,7 +6031,7 @@ impl App {
             style::palette::TEXT_PRIMARY
         };
 
-        let name = entry.path.split('/').last().unwrap_or(&entry.path);
+        let name = entry.path.split('/').next_back().unwrap_or(&entry.path);
 
         row![
             horizontal_space().width(Length::Fixed(depth as f32 * 20.0)),
@@ -6875,7 +6875,7 @@ impl App {
             Tab::Heuristics => self.view_heuristics_editor(),
             Tab::NLPEditor => self.view_nlp_editor(),
             Tab::Issues => self.view_issues(),
-            Tab::FlightGenerator => self.flight_gen.view().map(Message::FlightGen),
+            Tab::FlightGenerator => self.flight_gen.view().map(|m| Message::FlightGen(Box::new(m))),
             Tab::Utilities => self.view_utilities(),
             Tab::Settings => self.view_settings(),
         };
@@ -8120,6 +8120,7 @@ impl App {
         }
         let scenery_groups = std::sync::Arc::new(scenery_groups);
 
+        #[allow(clippy::type_complexity)]
         let list_container = scrollable(lazy(
             ((packs, selected, overrides, drag_id, hover_id), (current_search_match, bucket, scenery_view_mode, scenery_groups_expanded, scenery_groups, tag_focus, tag_input)),
             move |dep: &(
@@ -9187,7 +9188,7 @@ impl App {
                         text("X-Addon-Oxide")
                             .size(20)
                             .color(style::palette::TEXT_PRIMARY),
-                        text("Version 2.4.0")
+                        text("Version 2.4.4")
                             .size(13)
                             .color(style::palette::TEXT_SECONDARY),
                         text(t!("about.tagline"))
@@ -9484,6 +9485,7 @@ impl App {
             .into()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_scenery_card(
         pack: &SceneryPack,
         is_selected: bool,
@@ -9867,11 +9869,7 @@ impl App {
                         || (!is_plugins && !is_csls && *active_tab == Tab::Aircraft)
                         || (is_csls && *active_tab == Tab::CSLs))
                 {
-                    if let Some(ref path) = selected_path {
-                        Some(format!("Delete {} at '{}'?", label, path.display()))
-                    } else {
-                        None
-                    }
+                    selected_path.as_ref().map(|path| format!("Delete {} at '{}'?", label, path.display()))
                 } else {
                     None
                 };
@@ -10137,11 +10135,7 @@ impl App {
 
     fn view_aircraft_tree(&self) -> Element<'_, Message> {
         let confirm_text = if self.show_delete_confirm && self.active_tab == Tab::Aircraft {
-            if let Some(ref path) = self.selected_aircraft {
-                Some(format!("Delete aircraft at '{}'?", path.display()))
-            } else {
-                None
-            }
+            self.selected_aircraft.as_ref().map(|path| format!("Delete aircraft at '{}'?", path.display()))
         } else {
             None
         };
@@ -11145,7 +11139,7 @@ impl App {
         let path = &app.path;
         let parent_dir = path.parent().unwrap_or(path);
 
-        let mut command = if path.extension().map_or(false, |ext| ext == "sh") {
+        let mut command = if path.extension().is_some_and(|ext| ext == "sh") {
             let mut cmd = std::process::Command::new("sh");
             cmd.arg("-c").arg(format!("\"{}\"", path.display()));
             cmd
@@ -11560,6 +11554,7 @@ fn toggle_aircraft_variant(path: PathBuf, variant: String, enable: bool) -> Resu
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn extract_zip_task(
     root: Option<PathBuf>,
     zip_path: PathBuf,
@@ -11649,6 +11644,7 @@ fn extract_zip_task(
     Ok(top_folder)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn extract_7z_task(
     root: Option<PathBuf>,
     archive_path: PathBuf,
@@ -11744,6 +11740,7 @@ fn extract_7z_task(
     Ok(top_folder)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn extract_rar_task(
     root: Option<PathBuf>,
     archive_path: PathBuf,
@@ -11760,10 +11757,10 @@ fn extract_rar_task(
 
     let mut filenames_list = Vec::new();
     {
-        let mut open_archive = unrar::Archive::new(&archive_path)
+        let open_archive = unrar::Archive::new(&archive_path)
             .open_for_listing()
             .map_err(|e| format!("Failed to open RAR for listing: {:?}", e))?;
-        while let Some(header) = open_archive.next() {
+        for header in open_archive {
             let header = header.map_err(|e| format!("RAR entry error: {:?}", e))?;
             filenames_list.push(header.filename.to_string_lossy().to_string());
         }
@@ -11906,17 +11903,13 @@ fn get_installation_paths(
         std::fs::create_dir_all(&subfolder)
             .map_err(|e| format!("Failed to create subfolder '{}': {}", top_folder, e))?;
         subfolder
-    } else if flatten {
+    } else if flatten || has_single_root {
         base_dest.clone()
     } else {
-        if has_single_root {
-            base_dest.clone()
-        } else {
-            let subfolder = base_dest.join(&top_folder);
-            std::fs::create_dir_all(&subfolder)
-                .map_err(|e| format!("Failed to create subfolder '{}': {}", top_folder, e))?;
-            subfolder
-        }
+        let subfolder = base_dest.join(&top_folder);
+        std::fs::create_dir_all(&subfolder)
+            .map_err(|e| format!("Failed to create subfolder '{}': {}", top_folder, e))?;
+        subfolder
     };
 
     Ok(InstallationPaths {
@@ -11926,6 +11919,7 @@ fn get_installation_paths(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn install_addon(
     root: Option<PathBuf>,
     zip_path: PathBuf,
@@ -11957,6 +11951,7 @@ async fn install_addon(
     res
 }
 
+#[allow(clippy::too_many_arguments)]
 fn extract_archive_task(
     root: Option<PathBuf>,
     archive_path: PathBuf,
@@ -12031,7 +12026,7 @@ async fn load_airports_data(
 async fn pick_archive(label: &str) -> Option<PathBuf> {
     log::debug!("Opening archive picker for {}", label);
     rfd::AsyncFileDialog::new()
-        .set_title(&format!("Select {} Package (.zip, .7z)", label))
+        .set_title(format!("Select {} Package (.zip, .7z)", label))
         .add_filter("Archives", &["zip", "7z"])
         .pick_file()
         .await
@@ -12190,7 +12185,7 @@ fn export_log_issues_task(issues: Arc<Vec<x_adox_core::LogIssue>>) -> Result<Pat
         .save_file()
         .ok_or("Export cancelled".to_string())?;
 
-    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+    let is_csv = path.extension().is_some_and(|ext| ext == "csv");
 
     let mut content = String::new();
     if is_csv {
@@ -12247,15 +12242,15 @@ async fn export_scenery_task(
         .path()
         .to_path_buf();
 
-    let is_xml = path.extension().map_or(false, |ext| ext == "xml");
-    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+    let is_xml = path.extension().is_some_and(|ext| ext == "xml");
+    let is_csv = path.extension().is_some_and(|ext| ext == "csv");
 
     let file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
     let mut writer = BufWriter::new(file);
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-        writeln!(writer, "<SceneryLibrary version=\"2.4.0\">").map_err(|e| e.to_string())?;
+        writeln!(writer, "<SceneryLibrary version=\"2.4.4\">").map_err(|e| e.to_string())?;
 
         let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
         for pack in packs.iter() {
@@ -12323,7 +12318,7 @@ async fn export_scenery_task(
     } else {
         writeln!(writer, "X-Plane Scenery Library Report").map_err(|e| e.to_string())?;
         writeln!(writer, "==============================").map_err(|e| e.to_string())?;
-        writeln!(writer, "").map_err(|e| e.to_string())?;
+        writeln!(writer).map_err(|e| e.to_string())?;
 
         let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
         for pack in packs.iter() {
@@ -12345,7 +12340,7 @@ async fn export_scenery_task(
                     writeln!(writer, "      Airports: {}", apts).map_err(|e| e.to_string())?;
                 }
             }
-            writeln!(writer, "").map_err(|e| e.to_string())?;
+            writeln!(writer).map_err(|e| e.to_string())?;
         }
         writeln!(writer, "Total Scenery Packs: {}", packs.len()).map_err(|e| e.to_string())?;
     }
@@ -12354,155 +12349,153 @@ async fn export_scenery_task(
     Ok(path)
 }
 
-fn export_aircraft_task(
+async fn export_aircraft_task(
     aircraft: Arc<Vec<DiscoveredAddon>>,
     include_liveries: bool,
     expanded_format: bool,
-) -> impl std::future::Future<Output = Result<PathBuf, String>> {
-    async move {
-        let initial_location = directories::UserDirs::new()
-            .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
-            .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
-            .unwrap_or_else(|| PathBuf::from("."));
+) -> Result<PathBuf, String> {
+    let initial_location = directories::UserDirs::new()
+        .and_then(|u| u.document_dir().map(|d| d.to_path_buf()))
+        .or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
 
-        let path = rfd::AsyncFileDialog::new()
-            .add_filter("CSV File", &["csv"])
-            .add_filter("XML File", &["xml"])
-            .add_filter("Text File", &["txt"])
-            .set_file_name("x_plane_aircraft_library.csv")
-            .set_directory(&initial_location)
-            .save_file()
-            .await
-            .ok_or("Export cancelled".to_string())?
-            .path()
-            .to_path_buf();
+    let path = rfd::AsyncFileDialog::new()
+        .add_filter("CSV File", &["csv"])
+        .add_filter("XML File", &["xml"])
+        .add_filter("Text File", &["txt"])
+        .set_file_name("x_plane_aircraft_library.csv")
+        .set_directory(&initial_location)
+        .save_file()
+        .await
+        .ok_or("Export cancelled".to_string())?
+        .path()
+        .to_path_buf();
 
-        let is_xml = path.extension().map_or(false, |ext| ext == "xml");
-        let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+    let is_xml = path.extension().is_some_and(|ext| ext == "xml");
+    let is_csv = path.extension().is_some_and(|ext| ext == "csv");
 
-        let file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
-        let mut writer = BufWriter::new(file);
+    let file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut writer = BufWriter::new(file);
 
-        if is_xml {
-            writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-            writeln!(writer, "<AircraftLibrary version=\"2.4.0\">").map_err(|e| e.to_string())?;
-            for addon in aircraft.iter() {
-                if let AddonType::Aircraft {
-                    variants,
-                    livery_count,
-                    livery_names,
-                } = &addon.addon_type
-                {
-                    let category = addon.tags.iter()
-                        .find(|t| MANUFACTURERS.contains(&t.as_str()) || AIRCRAFT_CATEGORIES.contains(&t.as_str()))
-                        .map(|s| s.as_str())
-                        .unwrap_or("Uncategorized");
+    if is_xml {
+        writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
+    writeln!(writer, "<AircraftLibrary version=\"2.4.4\">").map_err(|e| e.to_string())?;
+        for addon in aircraft.iter() {
+            if let AddonType::Aircraft {
+                variants,
+                livery_count,
+                livery_names,
+            } = &addon.addon_type
+            {
+                let category = addon.tags.iter()
+                    .find(|t| MANUFACTURERS.contains(&t.as_str()) || AIRCRAFT_CATEGORIES.contains(&t.as_str()))
+                    .map(|s| s.as_str())
+                    .unwrap_or("Uncategorized");
 
-                    let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
-                    let name = html_escape::encode_text(&addon.name);
-                    let acf_filename = variants.first().map(|v| v.file_name.as_str()).unwrap_or("");
-                    let acf = html_escape::encode_text(acf_filename);
-                    let category_esc = html_escape::encode_text(category);
-                    let path_str = addon.path.display().to_string();
-                    let path_esc = html_escape::encode_text(&path_str);
+                let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+                let name = html_escape::encode_text(&addon.name);
+                let acf_filename = variants.first().map(|v| v.file_name.as_str()).unwrap_or("");
+                let acf = html_escape::encode_text(acf_filename);
+                let category_esc = html_escape::encode_text(category);
+                let path_str = addon.path.display().to_string();
+                let path_esc = html_escape::encode_text(&path_str);
 
-                    writeln!(
-                        writer,
-                        "  <Aircraft name=\"{}\" category=\"{}\" status=\"{}\">",
-                        name, category_esc, status
-                    ).map_err(|e| e.to_string())?;
-                    writeln!(writer, "    <Path>{}</Path>", path_esc).map_err(|e| e.to_string())?;
-                    writeln!(writer, "    <Tags>").map_err(|e| e.to_string())?;
-                    for tag in &addon.tags {
-                        writeln!(writer, "      <Tag>{}</Tag>", html_escape::encode_text(tag)).map_err(|e| e.to_string())?;
-                    }
-                    writeln!(writer, "    </Tags>").map_err(|e| e.to_string())?;
-                    writeln!(writer, "    <Model acf=\"{}\" liveryCount=\"{}\">", acf, livery_count).map_err(|e| e.to_string())?;
-                    if include_liveries {
-                        for livery in livery_names {
-                            writeln!(writer, "      <Livery name=\"{}\" />", html_escape::encode_text(livery)).map_err(|e| e.to_string())?;
-                        }
-                    }
-                    writeln!(writer, "    </Model>").map_err(|e| e.to_string())?;
-                    writeln!(writer, "  </Aircraft>").map_err(|e| e.to_string())?;
+                writeln!(
+                    writer,
+                    "  <Aircraft name=\"{}\" category=\"{}\" status=\"{}\">",
+                    name, category_esc, status
+                ).map_err(|e| e.to_string())?;
+                writeln!(writer, "    <Path>{}</Path>", path_esc).map_err(|e| e.to_string())?;
+                writeln!(writer, "    <Tags>").map_err(|e| e.to_string())?;
+                for tag in &addon.tags {
+                    writeln!(writer, "      <Tag>{}</Tag>", html_escape::encode_text(tag)).map_err(|e| e.to_string())?;
                 }
+                writeln!(writer, "    </Tags>").map_err(|e| e.to_string())?;
+                writeln!(writer, "    <Model acf=\"{}\" liveryCount=\"{}\">", acf, livery_count).map_err(|e| e.to_string())?;
+                if include_liveries {
+                    for livery in livery_names {
+                        writeln!(writer, "      <Livery name=\"{}\" />", html_escape::encode_text(livery)).map_err(|e| e.to_string())?;
+                    }
+                }
+                writeln!(writer, "    </Model>").map_err(|e| e.to_string())?;
+                writeln!(writer, "  </Aircraft>").map_err(|e| e.to_string())?;
             }
-            writeln!(writer, "</AircraftLibrary>").map_err(|e| e.to_string())?;
-        } else if is_csv {
-            writeln!(writer, "Manufacturer/Category,Aircraft Name,ACF File,Status,Livery Count,Liveries,Path").map_err(|e| e.to_string())?;
-            for addon in aircraft.iter() {
-                if let AddonType::Aircraft {
-                    variants,
-                    livery_count,
-                    livery_names,
-                } = &addon.addon_type
-                {
-                    let category = addon.tags.iter()
-                        .find(|t| MANUFACTURERS.contains(&t.as_str()) || AIRCRAFT_CATEGORIES.contains(&t.as_str()))
-                        .map(|s| s.as_str())
-                        .unwrap_or("Uncategorized");
+        }
+        writeln!(writer, "</AircraftLibrary>").map_err(|e| e.to_string())?;
+    } else if is_csv {
+        writeln!(writer, "Manufacturer/Category,Aircraft Name,ACF File,Status,Livery Count,Liveries,Path").map_err(|e| e.to_string())?;
+        for addon in aircraft.iter() {
+            if let AddonType::Aircraft {
+                variants,
+                livery_count,
+                livery_names,
+            } = &addon.addon_type
+            {
+                let category = addon.tags.iter()
+                    .find(|t| MANUFACTURERS.contains(&t.as_str()) || AIRCRAFT_CATEGORIES.contains(&t.as_str()))
+                    .map(|s| s.as_str())
+                    .unwrap_or("Uncategorized");
 
-                    let name = addon.name.replace('"', "\"\"");
-                    let acf_filename = variants.first().map(|v| v.file_name.as_str()).unwrap_or("");
-                    let acf = acf_filename.replace('"', "\"\"");
-                    let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
-                    let path_str = addon.path.display().to_string().replace('"', "\"\"");
+                let name = addon.name.replace('"', "\"\"");
+                let acf_filename = variants.first().map(|v| v.file_name.as_str()).unwrap_or("");
+                let acf = acf_filename.replace('"', "\"\"");
+                let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
+                let path_str = addon.path.display().to_string().replace('"', "\"\"");
 
-                    if expanded_format && !livery_names.is_empty() {
-                        for livery in livery_names {
-                            let livery_clean = livery.replace('"', "\"\"");
-                            writeln!(
-                                writer,
-                                "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"",
-                                category, name, acf, status, livery_count, livery_clean, path_str
-                            ).map_err(|e| e.to_string())?;
-                        }
-                    } else {
-                        let liveries_val = if include_liveries {
-                            livery_names.join(" | ").replace('"', "\"\"")
-                        } else {
-                            String::new()
-                        };
+                if expanded_format && !livery_names.is_empty() {
+                    for livery in livery_names {
+                        let livery_clean = livery.replace('"', "\"\"");
                         writeln!(
                             writer,
                             "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"",
-                            category, name, acf, status, livery_count, liveries_val, path_str
+                            category, name, acf, status, livery_count, livery_clean, path_str
                         ).map_err(|e| e.to_string())?;
                     }
+                } else {
+                    let liveries_val = if include_liveries {
+                        livery_names.join(" | ").replace('"', "\"\"")
+                    } else {
+                        String::new()
+                    };
+                    writeln!(
+                        writer,
+                        "\"{}\",\"{}\",\"{}\",\"{}\",{},\"{}\",\"{}\"",
+                        category, name, acf, status, livery_count, liveries_val, path_str
+                    ).map_err(|e| e.to_string())?;
                 }
             }
-        } else {
-            writeln!(writer, "X-Plane Aircraft Library Report").map_err(|e| e.to_string())?;
-            writeln!(writer, "==============================").map_err(|e| e.to_string())?;
-            writeln!(writer, "").map_err(|e| e.to_string())?;
-            for addon in aircraft.iter() {
-                if let AddonType::Aircraft {
-                    variants,
-                    livery_count,
-                    livery_names,
-                } = &addon.addon_type
-                {
-                    let acf_filename = variants.first().map(|v| v.file_name.as_str()).unwrap_or("");
-                    writeln!(writer, "Aircraft:    {}", addon.name).map_err(|e| e.to_string())?;
-                    writeln!(writer, "ACF File:    {}", acf_filename).map_err(|e| e.to_string())?;
-                    writeln!(writer, "Status:      {}", if addon.is_enabled { "Enabled" } else { "Disabled" }).map_err(|e| e.to_string())?;
-                    writeln!(writer, "Liveries:    {}", livery_count).map_err(|e| e.to_string())?;
-                    if include_liveries && !livery_names.is_empty() {
-                        write!(writer, "Livery List: ").map_err(|e| e.to_string())?;
-                        writeln!(writer, "{}", livery_names.join(", ")).map_err(|e| e.to_string())?;
-                    }
-                    writeln!(writer, "System Path: {}", addon.path.display()).map_err(|e| e.to_string())?;
-                    writeln!(writer, "------------------------------").map_err(|e| e.to_string())?;
-                }
-            }
-            writeln!(writer, "").map_err(|e| e.to_string())?;
-            writeln!(writer, "Total Aircraft Count: {}", aircraft.len()).map_err(|e| e.to_string())?;
         }
-
-        writer.flush().map_err(|e| e.to_string())?;
-
-        Ok(path)
+    } else {
+        writeln!(writer, "X-Plane Aircraft Library Report").map_err(|e| e.to_string())?;
+        writeln!(writer, "==============================").map_err(|e| e.to_string())?;
+        writeln!(writer).map_err(|e| e.to_string())?;
+        for addon in aircraft.iter() {
+            if let AddonType::Aircraft {
+                variants,
+                livery_count,
+                livery_names,
+            } = &addon.addon_type
+            {
+                let acf_filename = variants.first().map(|v| v.file_name.as_str()).unwrap_or("");
+                writeln!(writer, "Aircraft:    {}", addon.name).map_err(|e| e.to_string())?;
+                writeln!(writer, "ACF File:    {}", acf_filename).map_err(|e| e.to_string())?;
+                writeln!(writer, "Status:      {}", if addon.is_enabled { "Enabled" } else { "Disabled" }).map_err(|e| e.to_string())?;
+                writeln!(writer, "Liveries:    {}", livery_count).map_err(|e| e.to_string())?;
+                if include_liveries && !livery_names.is_empty() {
+                    write!(writer, "Livery List: ").map_err(|e| e.to_string())?;
+                    writeln!(writer, "{}", livery_names.join(", ")).map_err(|e| e.to_string())?;
+                }
+                writeln!(writer, "System Path: {}", addon.path.display()).map_err(|e| e.to_string())?;
+                writeln!(writer, "------------------------------").map_err(|e| e.to_string())?;
+            }
+        }
+        writeln!(writer).map_err(|e| e.to_string())?;
+        writeln!(writer, "Total Aircraft Count: {}", aircraft.len()).map_err(|e| e.to_string())?;
     }
+
+    writer.flush().map_err(|e| e.to_string())?;
+
+    Ok(path)
 }
 
 async fn export_plugins_task(
@@ -12525,15 +12518,15 @@ async fn export_plugins_task(
         .path()
         .to_path_buf();
 
-    let is_xml = path.extension().map_or(false, |ext| ext == "xml");
-    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+    let is_xml = path.extension().is_some_and(|ext| ext == "xml");
+    let is_csv = path.extension().is_some_and(|ext| ext == "csv");
 
     let file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
     let mut writer = BufWriter::new(file);
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-        writeln!(writer, "<PluginLibrary version=\"2.4.0\">").map_err(|e| e.to_string())?;
+        writeln!(writer, "<PluginLibrary version=\"2.4.4\">").map_err(|e| e.to_string())?;
 
         for addon in addons.iter() {
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
@@ -12592,7 +12585,7 @@ async fn export_plugins_task(
     } else {
         writeln!(writer, "X-Plane Plugin Library Report").map_err(|e| e.to_string())?;
         writeln!(writer, "==============================").map_err(|e| e.to_string())?;
-        writeln!(writer, "").map_err(|e| e.to_string())?;
+        writeln!(writer).map_err(|e| e.to_string())?;
 
         for addon in addons.iter() {
             writeln!(writer, "[{}] {}",
@@ -12608,7 +12601,7 @@ async fn export_plugins_task(
                     ).map_err(|e| e.to_string())?;
                 }
             }
-            writeln!(writer, "").map_err(|e| e.to_string())?;
+            writeln!(writer).map_err(|e| e.to_string())?;
         }
         writeln!(writer, "Total Plugins: {}", addons.len()).map_err(|e| e.to_string())?;
     }
@@ -12638,15 +12631,15 @@ async fn export_csls_task(
         .path()
         .to_path_buf();
 
-    let is_xml = path.extension().map_or(false, |ext| ext == "xml");
-    let is_csv = path.extension().map_or(false, |ext| ext == "csv");
+    let is_xml = path.extension().is_some_and(|ext| ext == "xml");
+    let is_csv = path.extension().is_some_and(|ext| ext == "csv");
 
     let file = File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
     let mut writer = BufWriter::new(file);
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-        writeln!(writer, "<CSLLibrary version=\"2.4.0\">").map_err(|e| e.to_string())?;
+        writeln!(writer, "<CSLLibrary version=\"2.4.4\">").map_err(|e| e.to_string())?;
 
         for addon in addons.iter() {
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
@@ -12684,7 +12677,7 @@ async fn export_csls_task(
     } else {
         writeln!(writer, "X-Plane CSL Package Library Report").map_err(|e| e.to_string())?;
         writeln!(writer, "==============================").map_err(|e| e.to_string())?;
-        writeln!(writer, "").map_err(|e| e.to_string())?;
+        writeln!(writer).map_err(|e| e.to_string())?;
 
         for addon in addons.iter() {
             writeln!(writer, "[{}] {}",
@@ -12692,7 +12685,7 @@ async fn export_csls_task(
                 addon.name
             ).map_err(|e| e.to_string())?;
         }
-        writeln!(writer, "").map_err(|e| e.to_string())?;
+        writeln!(writer).map_err(|e| e.to_string())?;
         writeln!(writer, "Total CSL Packages: {}", addons.len()).map_err(|e| e.to_string())?;
     }
 

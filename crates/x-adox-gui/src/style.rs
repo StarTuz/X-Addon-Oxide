@@ -145,7 +145,6 @@ pub fn button_primary(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 2.0),
                 blur_radius: 8.0,
             },
-            ..base
         },
         button::Status::Hovered => button::Style {
             background: Some(Background::Color(Color::from_rgb(0.3, 0.6, 1.0))),
@@ -159,7 +158,6 @@ pub fn button_primary(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 4.0),
                 blur_radius: 12.0,
             },
-            ..base
         },
         _ => button::Style {
             background: Some(Background::Color(palette::ACCENT_BLUE)),
@@ -194,7 +192,6 @@ pub fn button_success(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 2.0),
                 blur_radius: 8.0,
             },
-            ..base
         },
         button::Status::Hovered => button::Style {
             background: Some(Background::Color(Color::from_rgb(0.25, 0.8, 0.35))),
@@ -208,7 +205,6 @@ pub fn button_success(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 4.0),
                 blur_radius: 12.0,
             },
-            ..base
         },
         _ => button::Style {
             background: Some(Background::Color(palette::ACCENT_GREEN)),
@@ -243,7 +239,6 @@ pub fn button_danger(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 2.0),
                 blur_radius: 8.0,
             },
-            ..base
         },
         button::Status::Hovered => button::Style {
             background: Some(Background::Color(Color::from_rgb(1.0, 0.4, 0.4))),
@@ -257,7 +252,6 @@ pub fn button_danger(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 4.0),
                 blur_radius: 12.0,
             },
-            ..base
         },
         _ => button::Style {
             background: Some(Background::Color(palette::ACCENT_RED)),
@@ -293,7 +287,6 @@ pub fn button_orange(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 2.0),
                 blur_radius: 8.0,
             },
-            ..base
         },
         button::Status::Hovered => button::Style {
             background: Some(Background::Color(Color::from_rgb(1.0, 0.6, 0.2))),
@@ -307,7 +300,6 @@ pub fn button_orange(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 4.0),
                 blur_radius: 12.0,
             },
-            ..base
         },
         _ => button::Style {
             background: Some(Background::Color(palette::ACCENT_ORANGE)),
@@ -444,7 +436,6 @@ pub fn button_ai(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 2.0),
                 blur_radius: 10.0,
             },
-            ..base
         },
         button::Status::Hovered => button::Style {
             background: Some(Background::Color(Color::from_rgb(0.75, 0.45, 1.0))),
@@ -458,7 +449,6 @@ pub fn button_ai(_theme: &Theme, status: button::Status) -> button::Style {
                 offset: iced::Vector::new(0.0, 4.0),
                 blur_radius: 15.0,
             },
-            ..base
         },
         _ => button::Style {
             background: Some(Background::Color(palette::ACCENT_PURPLE)),
@@ -504,7 +494,6 @@ pub fn button_secondary(_theme: &Theme, status: button::Status) -> button::Style
                 offset: iced::Vector::new(0.0, 2.0),
                 blur_radius: 8.0,
             },
-            ..base
         },
         _ => button::Style {
             background: Some(Background::Color(palette::SURFACE)),
@@ -745,7 +734,6 @@ pub fn button_pin_ghost(_theme: &Theme, status: button::Status) -> button::Style
                 offset: iced::Vector::new(0.0, 0.0),
                 blur_radius: 10.0,
             },
-            ..base
         },
         _ => base,
     }
@@ -777,7 +765,6 @@ pub fn button_ghost_amber(_theme: &Theme, status: button::Status) -> button::Sty
                 offset: iced::Vector::new(0.0, 0.0),
                 blur_radius: 10.0,
             },
-            ..base
         },
         _ => base,
     }
@@ -809,7 +796,6 @@ pub fn button_ghost_teal(_theme: &Theme, status: button::Status) -> button::Styl
                 offset: iced::Vector::new(0.0, 0.0),
                 blur_radius: 10.0,
             },
-            ..base
         },
         _ => base,
     }
@@ -841,7 +827,6 @@ pub fn button_ghost_indigo(_theme: &Theme, status: button::Status) -> button::St
                 offset: iced::Vector::new(0.0, 0.0),
                 blur_radius: 10.0,
             },
-            ..base
         },
         _ => base,
     }

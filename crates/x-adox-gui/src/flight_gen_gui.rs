@@ -81,7 +81,7 @@ pub enum Message {
     /// Result of clipboard copy (internal use).
     CopyContextDone,
     /// Result of background flight generation.
-    FlightGenerated(Result<FlightPlan, String>),
+    FlightGenerated(Box<Result<FlightPlan, String>>),
 }
 
 impl Default for FlightGenState {
@@ -161,7 +161,7 @@ impl FlightGenState {
                         .await
                         .unwrap_or_else(|e| Err(e.to_string()))
                     },
-                    Message::FlightGenerated,
+                    |res| Message::FlightGenerated(Box::new(res)),
                 )
             }
             Message::Regenerate => {
@@ -195,14 +195,16 @@ impl FlightGenState {
                             .await
                             .unwrap_or_else(|e| Err(e.to_string()))
                         },
-                        Message::FlightGenerated,
+                        |res| Message::FlightGenerated(Box::new(res)),
                     )
                 } else {
                     Task::none()
                 }
             }
-            Message::FlightGenerated(result) => {
-                match result {
+            Message::FlightGenerated(box_res) => {
+                let res = *box_res;
+                // self.is_generating = false; // This line was commented out in the original context, keeping it that way.
+                match res {
                     Ok(mut plan) => {
                         if let Some(ctx) = load_flight_context_for_plan(
                             get_config_root().as_path(),
@@ -1411,7 +1413,7 @@ LIMIT 20
     // Track venues occupied by major clubs to hide the venue itself (deduplication)
     let mut occupied_venues = std::collections::HashSet::new();
 
-    for (_q_idx, query) in [query_direct, query_tenants].iter().enumerate() {
+    for query in [query_direct, query_tenants].iter() {
         let url = format!(
             "{}?query={}&format=json",
             WIKIDATA_SPARQL_URL.trim_end_matches('/'),
@@ -1567,14 +1569,12 @@ fn calculate_score(sitelinks: i32, type_uri: &str) -> i32 {
     let base = sitelinks as f32;
     let multiplier = if type_uri.ends_with("Q863454") {
         5.0 // Generic Pier - Huge boost
-    } else if type_uri.ends_with("Q194195") {
-        1.5 // Amusement Park (or Theme Park)
-    } else if type_uri.ends_with("Q483110") {
-        1.5 // Stadium
-    } else if type_uri.ends_with("Q476028") {
-        1.5 // Football Club
-    } else if type_uri.ends_with("Q2319498") {
-        1.5 // Landmark
+    } else if type_uri.ends_with("Q194195")
+        || type_uri.ends_with("Q483110")
+        || type_uri.ends_with("Q476028")
+        || type_uri.ends_with("Q2319498")
+    {
+        1.5 // Amusement Park, Stadium, Football Club, Landmark
     } else {
         1.0
     };
