@@ -556,7 +556,7 @@ impl FlightPrompt {
         static LOC_RE: OnceLock<Regex> = OnceLock::new();
         let loc_re = LOC_RE.get_or_init(|| {
             Regex::new(
-                r"(?:flight\s+from\s+|\bfrom\s+|^flight\s+)?(.+?)\s+\bto\b\s+(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|\s+\bvia\b|$)",
+                r"(?:flight\s+from\s+|\bfrom\s+|^flight\s+)?(.+?)\s+\bto\b\s+(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bon\b|\s+\bfor\b|\s+\bvia\b|$)",
             )
             .unwrap()
         });
@@ -603,7 +603,7 @@ impl FlightPrompt {
             // "going to X", "headed to X", "bound for X".
             static TO_RE: OnceLock<Regex> = OnceLock::new();
             let to_re = TO_RE.get_or_init(|| {
-                Regex::new(r"(?:^(?:flight|fly|flying|heading|going|headed)\s+to\s+|^to\s+|^bound\s+for\s+)(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bfor\b|\s+\bvia\b|$)")
+                Regex::new(r"(?:^(?:flight|fly|flying|heading|going|headed)\s+to\s+|^to\s+|^bound\s+for\s+)(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bon\b|\s+\bfor\b|\s+\bvia\b|$)")
                     .unwrap()
             });
             if let Some(caps) = to_re.captures(&clean_input) {
@@ -683,7 +683,8 @@ impl FlightPrompt {
             let acf_re = ACF_RE.get_or_init(|| {
                 // \bat\b added as terminator: handles "in a Cessna at night" and
                 // "使用A320在凌晨" (在 → "at" in Chinese preprocessing).
-                Regex::new(r"\b(?:using|in|with)\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bat\b|\s+\bfor\b|\s+\bfrom\b|\s+\blanding\b|\s+\barriving\b|\s+\bdeparting\b|$)")
+                // \bon\b added as connector: handles "on an MD-80".
+                Regex::new(r"\b(?:using|in|with|on)\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bat\b|\s+\bfor\b|\s+\bfrom\b|\s+\blanding\b|\s+\barriving\b|\s+\bdeparting\b|$)")
                     .unwrap()
             });
 
@@ -2066,5 +2067,50 @@ mod tests {
             Some(TimeKeyword::Night),
             "凌晨 should produce TimeKeyword::Night"
         );
+    }
+
+    #[test]
+    fn test_parse_on_an_md80() {
+        // "on an MD-80" should parse LIRF as destination and MD-80 as aircraft
+        let p = FlightPrompt::parse(
+            "Flight from EGLL to LIRF on an MD-80",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::ICAO("LIRF".to_string()))
+        );
+        match p.aircraft {
+            Some(AircraftConstraint::Tag(ref t)) => {
+                assert!(
+                    t.to_lowercase().contains("md-80") || t.to_lowercase().contains("md80"),
+                    "Aircraft tag should contain 'md-80', got {:?}",
+                    t
+                );
+            }
+            other => panic!("Expected Tag containing 'md-80', got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_fly_to_on_a_737() {
+        // "fly to Alaska on a 737" — dest-only with "on" connector
+        let p = FlightPrompt::parse("fly to Alaska on a 737", &crate::NLPRulesConfig::default());
+        assert!(
+            matches!(p.destination, Some(LocationConstraint::Region(ref r)) if r == "US:AK"),
+            "Destination should be Alaska region (US:AK), got {:?}",
+            p.destination
+        );
+        match p.aircraft {
+            Some(AircraftConstraint::Tag(ref t)) => {
+                assert!(
+                    t.contains("737"),
+                    "Aircraft tag should contain '737', got {:?}",
+                    t
+                );
+            }
+            other => panic!("Expected Tag containing '737', got {:?}", other),
+        }
     }
 }

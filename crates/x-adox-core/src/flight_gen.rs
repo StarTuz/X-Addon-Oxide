@@ -532,6 +532,13 @@ pub fn generate_flight_with_pool(
     let default_rules = DEFAULT_NLP.get_or_init(x_adox_bitnet::NLPRulesConfig::default);
     let rules = nlp_rules.unwrap_or(default_rules);
     let prompt = FlightPrompt::parse(prompt_str, rules);
+    log::info!(
+        "[flight_gen] parsed prompt: origin={:?} dest={:?} aircraft={:?} keywords={:?}",
+        prompt.origin,
+        prompt.destination,
+        prompt.aircraft,
+        prompt.keywords
+    );
     generate_flight_from_prompt(
         packs,
         aircraft_list,
@@ -593,8 +600,9 @@ pub fn generate_flight_from_prompt(
         Some(SurfaceKeyword::Water) => Some(SurfaceType::Water),
         None => None,
     };
-    log::debug!(
-        "[flight_gen] selected_aircraft='{}' tags={:?} req_surface={:?}",
+    log::info!(
+        "[flight_gen] {} suitable aircraft found, selected='{}' tags={:?} req_surface={:?}",
+        suitable_aircraft.len(),
         selected_aircraft.name,
         selected_aircraft.tags,
         req_surface
