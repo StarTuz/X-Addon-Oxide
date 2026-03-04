@@ -1,6 +1,99 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::OnceLock;
+
+static ALIAS_INDEX: OnceLock<HashMap<String, LocationConstraint>> = OnceLock::new();
+
+#[derive(Deserialize)]
+struct RawAlias {
+    #[serde(rename = "type")]
+    alias_type: String,
+    value: serde_json::Value,
+}
+
+/// Words that introduce an aircraft clause (e.g. "on an MD-80").
+const AIRCRAFT_CONNECTORS: &[&str] = &["using", "in", "with", "on", "aboard", "taking", "flying"];
+
+/// Words that terminate a location capture group.
+/// Superset of AIRCRAFT_CONNECTORS plus directional/temporal words.
+const LOCATION_TERMINATORS: &[&str] = &[
+    "using", "in", "with", "on", "aboard", "taking", "flying", "for", "via", "during", "at",
+];
+
+const WEATHER_TIME_WORDS: &[&str] = &[
+    // Weather
+    "vfr",
+    "ifr",
+    "storm",
+    "rain",
+    "snow",
+    "fog",
+    "mist",
+    "haze",
+    "clear",
+    "sunny",
+    "cloudy",
+    "overcast",
+    "gusty",
+    "windy",
+    "breezy",
+    "calm",
+    "turbulent",
+    "turbulence",
+    "stormy",
+    "thunder",
+    "thunderstorm",
+    "lightning",
+    "severe",
+    "drizzle",
+    "showers",
+    "blizzard",
+    "ice",
+    // Time
+    "night",
+    "dark",
+    "midnight",
+    "dawn",
+    "sunrise",
+    "morning",
+    "dusk",
+    "sunset",
+    "evening",
+    "twilight",
+    "day",
+    "daytime",
+    "daylight",
+    "afternoon",
+    "noon",
+    // Compound/modifier forms
+    "vfr conditions",
+    "ifr conditions",
+    "a storm",
+    "the rain",
+    "the dark",
+    "the night",
+    "heavy snow",
+    "instrument",
+    "visual",
+    "clear skies",
+    "bad weather",
+    "good weather",
+    "gusty conditions",
+    "gusty winds",
+    "windy conditions",
+    "calm conditions",
+    "stormy conditions",
+    "clear weather",
+];
+
+fn build_alternation(words: &[&str]) -> String {
+    words
+        .iter()
+        .map(|w| format!(r"\b{}\b", w))
+        .collect::<Vec<_>>()
+        .join("|")
+}
 
 fn contains_phrase(text: &str, phrase: &str) -> bool {
     // Use match_indices so we never manually advance a byte offset into a multi-byte
@@ -555,9 +648,11 @@ impl FlightPrompt {
         // Suffix terminators include "via" so "Paris via Brussels" → dest="paris".
         static LOC_RE: OnceLock<Regex> = OnceLock::new();
         let loc_re = LOC_RE.get_or_init(|| {
-            Regex::new(
-                r"(?:flight\s+from\s+|\bfrom\s+|^flight\s+)?(.+?)\s+\bto\b\s+(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bon\b|\s+\bfor\b|\s+\bvia\b|$)",
-            )
+            let terms = build_alternation(LOCATION_TERMINATORS);
+            Regex::new(&format!(
+                r"(?:flight\s+from\s+|\bfrom\s+|^flight\s+)?(.+?)\s+\bto\b\s+(.+?)(\s+(?:{})|$)",
+                terms
+            ))
             .unwrap()
         });
 
@@ -588,7 +683,12 @@ impl FlightPrompt {
                 || origin_str == "heading"
                 || origin_str == "going"
                 || origin_str == "headed"
-                || origin_str == "bound";
+                || origin_str == "bound"
+                || origin_str == "on"
+                || origin_str == "aboard"
+                || origin_str == "taking"
+                || origin_str == "at"
+                || origin_str == "during";
 
             if is_noise_origin {
                 // Treat as destination-only (same as "flight to X" / "to X" path)
@@ -603,8 +703,12 @@ impl FlightPrompt {
             // "going to X", "headed to X", "bound for X".
             static TO_RE: OnceLock<Regex> = OnceLock::new();
             let to_re = TO_RE.get_or_init(|| {
-                Regex::new(r"(?:^(?:flight|fly|flying|heading|going|headed)\s+to\s+|^to\s+|^bound\s+for\s+)(.+?)(\s+\busing\b|\s+\bin\b|\s+\bwith\b|\s+\bon\b|\s+\bfor\b|\s+\bvia\b|$)")
-                    .unwrap()
+                let terms = build_alternation(LOCATION_TERMINATORS);
+                Regex::new(&format!(
+                    r"(?:^(?:flight|fly|flying|heading|going|headed)\s+to\s+|^to\s+|^bound\s+for\s+)(.+?)(\s+(?:{})|$)",
+                    terms
+                ))
+                .unwrap()
             });
             if let Some(caps) = to_re.captures(&clean_input) {
                 let dest_str = caps[1].trim();
@@ -617,14 +721,16 @@ impl FlightPrompt {
                 if let Some(caps) = from_re.captures(&clean_input) {
                     let raw = caps[1].trim();
                     // Strip trailing keywords so "from UK for 2 hours" yields "UK"
-                    let origin_str = raw
-                        .find(" for ")
-                        .or_else(|| raw.find(" using "))
-                        .or_else(|| raw.find(" in "))
-                        .or_else(|| raw.find(" with "))
-                        .or_else(|| raw.find(" for\n")) // handle potential newlines from cleaned input
-                        .map(|i| &raw[..i])
-                        .unwrap_or(raw)
+                    let origin_str = LOCATION_TERMINATORS
+                        .iter()
+                        .fold(raw, |acc, &term| {
+                            let phrase = format!(" {} ", term);
+                            if let Some(i) = acc.find(&phrase) {
+                                &acc[..i]
+                            } else {
+                                acc
+                            }
+                        })
                         .trim();
                     if !origin_str.is_empty() {
                         prompt.origin = Some(parse_location(origin_str));
@@ -681,11 +787,12 @@ impl FlightPrompt {
         if !acf_matched {
             static ACF_RE: OnceLock<Regex> = OnceLock::new();
             let acf_re = ACF_RE.get_or_init(|| {
-                // \bat\b added as terminator: handles "in a Cessna at night" and
-                // "使用A320在凌晨" (在 → "at" in Chinese preprocessing).
-                // \bon\b added as connector: handles "on an MD-80".
-                Regex::new(r"\b(?:using|in|with|on)\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bat\b|\s+\bfor\b|\s+\bfrom\b|\s+\blanding\b|\s+\barriving\b|\s+\bdeparting\b|$)")
-                    .unwrap()
+                let connectors = build_alternation(AIRCRAFT_CONNECTORS);
+                Regex::new(&format!(
+                    r"(?:{})\b(?:\s+a|\s+an)?\s+(.+?)(\s+\bat\b|\s+\bfor\b|\s+\bfrom\b|\s+\blanding\b|\s+\barriving\b|\s+\bdeparting\b|$)",
+                    connectors
+                ))
+                .unwrap()
             });
 
             if let Some(caps) = acf_re.captures(&acf_input) {
@@ -706,45 +813,7 @@ impl FlightPrompt {
 
                 let acf_lower = acf_str.to_lowercase();
 
-                let is_weather_false_positive = matches!(
-                    acf_lower.as_str(),
-                    "vfr"
-                        | "vfr conditions"
-                        | "ifr"
-                        | "ifr conditions"
-                        | "a storm"
-                        | "storm"
-                        | "the rain"
-                        | "rain"
-                        | "the dark"
-                        | "dark"
-                        | "night"
-                        | "the night"
-                        | "snow"
-                        | "heavy snow"
-                        | "fog"
-                        | "instrument"
-                        | "visual"
-                        | "clear skies"
-                        | "bad weather"
-                        | "good weather"
-                        | "gusty"
-                        | "gusty conditions"
-                        | "gusty winds"
-                        | "windy"
-                        | "windy conditions"
-                        | "breezy"
-                        | "calm"
-                        | "calm conditions"
-                        | "turbulent"
-                        | "turbulence"
-                        | "stormy"
-                        | "stormy conditions"
-                        | "clear weather"
-                        | "sunny"
-                        | "overcast"
-                        | "cloudy"
-                );
+                let is_weather_false_positive = WEATHER_TIME_WORDS.iter().any(|&w| acf_lower == w);
 
                 if !is_weather_false_positive {
                     // Normalize common conversational variants into standardized tags
@@ -908,374 +977,41 @@ fn try_as_region(s: &str) -> Option<LocationConstraint> {
     //    This takes priority over RegionIndex to avoid stale region matches
     //    (e.g. "London" matching UK:London region instead of NearCity).
     let key = normalize_for_region_match(s);
-    // Helper to build NearCity compactly
-    let nc = |name: &str, lat: f64, lon: f64| -> Option<LocationConstraint> {
-        Some(LocationConstraint::NearCity {
-            name: name.to_string(),
-            lat,
-            lon,
-        })
-    };
+    let index = ALIAS_INDEX.get_or_init(|| {
+        let raw: HashMap<String, RawAlias> =
+            serde_json::from_str(include_str!("geo/location_aliases.json"))
+                .expect("location_aliases.json must be valid");
 
-    match key.as_str() {
-        // British Isles & UK — regions
-        "british isles" => Some(LocationConstraint::Region("BI".to_string())),
-        "ireland" | "eire" => Some(LocationConstraint::Region("IE".to_string())),
-        "uk" | "united kingdom" => Some(LocationConstraint::Region("UK".to_string())),
-        "gb" | "great britain" => Some(LocationConstraint::Region("GB".to_string())),
-        "england" => Some(LocationConstraint::Region("UK:England".to_string())),
-        "scotland" => Some(LocationConstraint::Region("UK:Scotland".to_string())),
-        "wales" => Some(LocationConstraint::Region("UK:Wales".to_string())),
-        // Europe — countries
-        "ukraine" | "ukr" => Some(LocationConstraint::Region("UA".to_string())),
-        "italy" => Some(LocationConstraint::Region("IT".to_string())),
-        "france" => Some(LocationConstraint::Region("FR".to_string())),
-        "germany" => Some(LocationConstraint::Region("DE".to_string())),
-        "spain" => Some(LocationConstraint::Region("ES".to_string())),
-        // North America — regions
-        "usa" | "us" | "united states" => Some(LocationConstraint::Region("US".to_string())),
-        "canada" => Some(LocationConstraint::Region("CA".to_string())),
-        "mexico" => Some(LocationConstraint::Region("MX".to_string())),
-        "socal" | "southern california" => Some(LocationConstraint::Region("US:SoCal".to_string())),
-        "riverside county" | "riverside" => {
-            Some(LocationConstraint::Region("US:SoCal".to_string()))
-        }
-        "norcal" | "northern california" => {
-            Some(LocationConstraint::Region("US:NorCal".to_string()))
-        }
-        "oregon" => Some(LocationConstraint::Region("US:OR".to_string())),
-        "pnw" | "pacific northwest" => Some(LocationConstraint::Region("US:OR".to_string())),
-        "alaska" => Some(LocationConstraint::Region("US:AK".to_string())),
-        "hawaii" => Some(LocationConstraint::Region("US:HI".to_string())),
-        // Geographic features
-        "alps" => Some(LocationConstraint::Region("Alps".to_string())),
-        "rockies" | "rocky mountains" => Some(LocationConstraint::Region("Rockies".to_string())),
-        "caribbean" => Some(LocationConstraint::Region("Caribbean".to_string())),
-        // Pacific Islands sub-regions
-        "micronesia" => Some(LocationConstraint::Region(
-            "PacIsles:Micronesia".to_string(),
-        )),
-        "melanesia" => Some(LocationConstraint::Region("PacIsles:Melanesia".to_string())),
-        "polynesia" | "french polynesia" | "south pacific" => {
-            Some(LocationConstraint::Region("PacIsles:Polynesia".to_string()))
-        }
-        // Africa — countries
-        "south africa" => Some(LocationConstraint::Region("ZA".to_string())),
-        "kenya" => Some(LocationConstraint::Region("KE".to_string())),
-        "egypt" => Some(LocationConstraint::Region("EG".to_string())),
-        "tanzania" => Some(LocationConstraint::Region("TZ".to_string())),
-        "ethiopia" => Some(LocationConstraint::Region("ET".to_string())),
-        "nigeria" => Some(LocationConstraint::Region("NG".to_string())),
-        "morocco" => Some(LocationConstraint::Region("MA".to_string())),
-        // South America — countries
-        "brazil" => Some(LocationConstraint::Region("BR".to_string())),
-        "argentina" => Some(LocationConstraint::Region("AR".to_string())),
-        "colombia" => Some(LocationConstraint::Region("CO".to_string())),
-        "peru" => Some(LocationConstraint::Region("PE".to_string())),
-        "chile" => Some(LocationConstraint::Region("CL".to_string())),
-        // Alternative / historical names that RegionIndex can't catch
-        "burma" => Some(LocationConstraint::Region("MM".to_string())),
-        "persia" => Some(LocationConstraint::Region("IR".to_string())),
-        // Short forms / alternate spellings
-        "czechia" | "czech republic" | "czech" => {
-            Some(LocationConstraint::Region("CZ".to_string()))
-        }
-        "lao" | "lao pdr" => Some(LocationConstraint::Region("LA".to_string())),
+        raw.into_iter()
+            .map(|(k, v)| {
+                let key = normalize_for_region_match(&k);
+                let constraint = match v.alias_type.as_str() {
+                    "Region" => LocationConstraint::Region(v.value.as_str().unwrap().to_string()),
+                    "NearCity" => {
+                        let obj = v.value.as_object().unwrap();
+                        LocationConstraint::NearCity {
+                            name: obj.get("name").unwrap().as_str().unwrap().to_string(),
+                            lat: obj.get("lat").unwrap().as_f64().unwrap(),
+                            lon: obj.get("lon").unwrap().as_f64().unwrap(),
+                        }
+                    }
+                    _ => unreachable!("invalid alias type in json"),
+                };
+                (key, constraint)
+            })
+            .collect()
+    });
 
-        // ===================== CITIES → NearCity =====================
-        // North America — US cities (many are 5-7 chars and would be mis-parsed as ICAO otherwise)
-        "new york" | "new york city" | "nyc" => nc("New York", 40.7128, -74.0060),
-        "los angeles" | "la" => nc("Los Angeles", 34.0522, -118.2437),
-        "chicago" => nc("Chicago", 41.8781, -87.6298),
-        "miami" => nc("Miami", 25.7617, -80.1918),
-        "seattle" => nc("Seattle", 47.6062, -122.3321),
-        "denver" => nc("Denver", 39.7392, -104.9903),
-        "atlanta" => nc("Atlanta", 33.7490, -84.3880),
-        "dallas" | "dallas fort worth" => nc("Dallas", 32.7767, -96.7970),
-        "san francisco" | "sf" => nc("San Francisco", 37.7749, -122.4194),
-        "boston" => nc("Boston", 42.3601, -71.0589),
-        "toronto" => nc("Toronto", 43.7000, -79.4163),
-        "vancouver" => nc("Vancouver", 49.2827, -123.1207),
-        "montreal" => nc("Montreal", 45.5017, -73.5673),
-        // Europe — cities
-        "london" | "london uk" => nc("London", 51.5074, -0.1278),
-        "rome" | "rome italy" | "rome, italy" => nc("Rome", 41.9028, 12.4964),
-        "paris" | "paris france" | "paris, france" => nc("Paris", 48.8566, 2.3522),
-        "amsterdam" => nc("Amsterdam", 52.3676, 4.9041),
-        "zurich" | "zürich" => nc("Zurich", 47.3769, 8.5417),
-        "geneva" => nc("Geneva", 46.2044, 6.1432),
-        "vienna" | "wien" => nc("Vienna", 48.2082, 16.3738),
-        "brussels" => nc("Brussels", 50.8503, 4.3517),
-        "istanbul" => nc("Istanbul", 41.0082, 28.9784),
-        "lisbon" => nc("Lisbon", 38.7223, -9.1393),
-        "porto" => nc("Porto", 41.1579, -8.6291),
-        "athens" => nc("Athens", 37.9838, 23.7275),
-        "oslo" => nc("Oslo", 59.9139, 10.7522),
-        "stockholm" => nc("Stockholm", 59.3293, 18.0686),
-        "copenhagen" => nc("Copenhagen", 55.6761, 12.5683),
-        "helsinki" => nc("Helsinki", 60.1699, 24.9384),
-        "reykjavik" => nc("Reykjavik", 64.1466, -21.9426),
-        "warsaw" => nc("Warsaw", 52.2297, 21.0122),
-        "krakow" => nc("Krakow", 50.0647, 19.9450),
-        "prague" => nc("Prague", 50.0755, 14.4378),
-        "berlin" => nc("Berlin", 52.5200, 13.4050),
-        "hamburg" => nc("Hamburg", 53.5500, 9.9937),
-        "munich" | "münchen" => nc("Munich", 48.1351, 11.5820),
-        "madrid" => nc("Madrid", 40.4168, -3.7038),
-        "barcelona" => nc("Barcelona", 41.3874, 2.1686),
-        // Africa — cities
-        "nairobi" => nc("Nairobi", -1.2921, 36.8219),
-        "mombasa" => nc("Mombasa", -4.0435, 39.6682),
-        "lamu" => nc("Lamu", -2.2717, 40.9020),
-        "malindi" => nc("Malindi", -3.2238, 40.1169),
-        "johannesburg" | "joburg" => nc("Johannesburg", -26.2041, 28.0473),
-        "cape town" => nc("Cape Town", -33.9249, 18.4241),
-        "durban" => nc("Durban", -29.8587, 31.0218),
-        "cairo" => nc("Cairo", 30.0444, 31.2357),
-        "addis ababa" | "addis" => nc("Addis Ababa", 9.0192, 38.7525),
-        "lagos" => nc("Lagos", 6.5244, 3.3792),
-        "abuja" => nc("Abuja", 9.0579, 7.4951),
-        "dar es salaam" | "dar" => nc("Dar es Salaam", -6.7924, 39.2083),
-        "zanzibar" => nc("Zanzibar", -6.1659, 39.2026),
-        "kilimanjaro" => nc("Kilimanjaro", -3.0674, 37.3556),
-        "marrakech" => nc("Marrakech", 31.6295, -7.9811),
-        "casablanca" => nc("Casablanca", 33.5731, -7.5898),
-        // Asia — cities
-        "tokyo" => nc("Tokyo", 35.6762, 139.6503),
-        "osaka" => nc("Osaka", 34.6937, 135.5023),
-        "bangkok" => nc("Bangkok", 13.7563, 100.5018),
-        "singapore" => Some(LocationConstraint::Region("SG".to_string())),
-        "hong kong" => Some(LocationConstraint::Region("HK".to_string())),
-        "taipei" => nc("Taipei", 25.0330, 121.5654),
-        "seoul" => nc("Seoul", 37.5665, 126.9780),
-        "beijing" => nc("Beijing", 39.9042, 116.4074),
-        "shanghai" => nc("Shanghai", 31.2304, 121.4737),
-        "guangzhou" => nc("Guangzhou", 23.1291, 113.2644),
-        "mumbai" => nc("Mumbai", 19.0760, 72.8777),
-        "delhi" => nc("Delhi", 28.7041, 77.1025),
-        "bangalore" => nc("Bangalore", 12.9716, 77.5946),
-        "chennai" => nc("Chennai", 13.0827, 80.2707),
-        "kolkata" => nc("Kolkata", 22.5726, 88.3639),
-        "dubai" => nc("Dubai", 25.2048, 55.2708),
-        "abu dhabi" => nc("Abu Dhabi", 24.4539, 54.3773),
-        "doha" => nc("Doha", 25.2854, 51.5310),
-        "kuwait" => Some(LocationConstraint::Region("KW".to_string())),
-        "kuwait city" => nc("Kuwait City", 29.3759, 47.9774),
-        "riyadh" => nc("Riyadh", 24.7136, 46.6753),
-        "jeddah" => nc("Jeddah", 21.4858, 39.1925),
-        "muscat" => nc("Muscat", 23.5880, 58.3829),
-        "amman" => nc("Amman", 31.9454, 35.9284),
-        "beirut" => nc("Beirut", 33.8938, 35.5018),
-        "tel aviv" => nc("Tel Aviv", 32.0853, 34.7818),
-        "jerusalem" => nc("Jerusalem", 31.7683, 35.2137),
-        "kuala lumpur" => nc("Kuala Lumpur", 3.1390, 101.6869),
-        "manila" => nc("Manila", 14.5995, 120.9842),
-        "hanoi" => nc("Hanoi", 21.0278, 105.8342),
-        "ho chi minh" | "saigon" => nc("Ho Chi Minh City", 10.8231, 106.6297),
-        "bali" => nc("Bali", -8.3405, 115.0920),
-        "jakarta" => nc("Jakarta", -6.2088, 106.8456),
-        // South America — cities
-        "rio" | "rio de janeiro" => nc("Rio de Janeiro", -22.9068, -43.1729),
-        "sao paulo" => nc("São Paulo", -23.5505, -46.6333),
-        "buenos aires" => nc("Buenos Aires", -34.6037, -58.3816),
-        "bogota" => nc("Bogota", 4.7110, -74.0721),
-        "lima" => nc("Lima", -12.0464, -77.0428),
-        "santiago" => nc("Santiago", -33.4489, -70.6693),
-        // Oceania — cities
-        "sydney" => nc("Sydney", -33.8688, 151.2093),
-        "melbourne" => nc("Melbourne", -37.8136, 144.9631),
-        "brisbane" => nc("Brisbane", -27.4698, 153.0251),
-        "perth" => nc("Perth", -31.9505, 115.8605),
-        "auckland" => nc("Auckland", -36.8485, 174.7633),
-        "wellington" => nc("Wellington", -41.2865, 174.7762),
-        "queenstown" => nc("Queenstown", -45.0312, 168.6626),
-        "christchurch" => nc("Christchurch", -43.4899, 172.5369),
-        "hobart" => nc("Hobart", -42.8821, 147.3272),
-        "darwin" => nc("Darwin", -12.4634, 130.8456),
-        "cairns" => nc("Cairns", -16.9186, 145.7781),
-        "fiji" => Some(LocationConstraint::Region("FJ".to_string())),
-        "nadi" => nc("Nadi", -17.7559, 177.4515),
-        // US — more major cities
-        "phoenix" => nc("Phoenix", 33.4484, -112.0740),
-        "houston" => nc("Houston", 29.7604, -95.3698),
-        "las vegas" => nc("Las Vegas", 36.1699, -115.1398),
-        // "washington" alone falls through to RegionIndex → US:WA (Washington State).
-        // Only explicit "washington dc" / "dc" phrases map to the capital.
-        "washington dc" | "dc" => nc("Washington DC", 38.9072, -77.0369),
-        "washington state" | "state of washington" | "wa state" => {
-            Some(LocationConstraint::Region("US:WA".to_string()))
-        }
-        "philadelphia" | "philly" => nc("Philadelphia", 39.9526, -75.1652),
-        "minneapolis" => nc("Minneapolis", 44.9778, -93.2650),
-        "detroit" => nc("Detroit", 42.3314, -83.0458),
-        "charlotte" => nc("Charlotte", 35.2271, -80.8431),
-        "portland" => nc("Portland", 45.5051, -122.6750),
-        "salt lake city" | "slc" => nc("Salt Lake City", 40.7608, -111.8910),
-        "kansas city" => nc("Kansas City", 39.0997, -94.5786),
-        "new orleans" => nc("New Orleans", 29.9511, -90.0715),
-        "orlando" => nc("Orlando", 28.5383, -81.3792),
-        "tampa" => nc("Tampa", 27.9506, -82.4572),
-        "san diego" => nc("San Diego", 32.7157, -117.1611),
-        "anchorage" => nc("Anchorage", 61.2181, -149.9003),
-        "honolulu" => nc("Honolulu", 21.3069, -157.8583),
-        // Europe — more cities
-        "frankfurt" => nc("Frankfurt", 50.1109, 8.6821),
-        "milan" | "milano" => nc("Milan", 45.4654, 9.1859),
-        "edinburgh" => nc("Edinburgh", 55.9533, -3.1883),
-        "manchester" => nc("Manchester", 53.4808, -2.2426),
-        "birmingham" => nc("Birmingham", 52.4862, -1.8904),
-        "lyon" => nc("Lyon", 45.7640, 4.8357),
-        "marseille" => nc("Marseille", 43.2965, 5.3698),
-        "nice" => nc("Nice", 43.7102, 7.2620),
-        "naples" | "napoli" => nc("Naples", 40.8518, 14.2681),
-        "florence" | "firenze" => nc("Florence", 43.7696, 11.2558),
-        "venice" | "venezia" => nc("Venice", 45.4408, 12.3155),
-        "seville" | "sevilla" => nc("Seville", 37.3891, -5.9845),
-        "valencia" => nc("Valencia", 39.4699, -0.3763),
-        "palma" | "mallorca" => nc("Palma", 39.5696, 2.6502),
-        "tenerife" => nc("Tenerife", 28.2916, -16.6291),
-        "budapest" => nc("Budapest", 47.4979, 19.0402),
-        "bucharest" => nc("Bucharest", 44.4268, 26.1025),
-        "sofia" => nc("Sofia", 42.6977, 23.3219),
-        "belgrade" => nc("Belgrade", 44.7866, 20.4489),
-        "zagreb" => nc("Zagreb", 45.8150, 15.9819),
-        "dubrovnik" => nc("Dubrovnik", 42.6507, 18.0944),
-        "split" => nc("Split", 43.5081, 16.4402),
-        "riga" => nc("Riga", 56.9460, 24.1059),
-        "tallinn" => nc("Tallinn", 59.4370, 24.7536),
-        "vilnius" => nc("Vilnius", 54.6872, 25.2797),
-        "bratislava" => nc("Bratislava", 48.1486, 17.1077),
-        "luxembourg" => Some(LocationConstraint::Region("LU".to_string())),
-        // Middle East / Africa — more cities
-        "tehran" => nc("Tehran", 35.6892, 51.3890),
-        "baghdad" => nc("Baghdad", 33.3152, 44.3661),
-        "karachi" => nc("Karachi", 24.8607, 67.0011),
-        "islamabad" => nc("Islamabad", 33.7294, 73.0931),
-        "lahore" => nc("Lahore", 31.5204, 74.3587),
-        "dhaka" => nc("Dhaka", 23.8103, 90.4125),
-        "colombo" => nc("Colombo", 6.9271, 79.8612),
-        "kathmandu" => nc("Kathmandu", 27.7172, 85.3240),
-        "yangon" | "rangoon" => nc("Yangon", 16.8661, 96.1951),
-        "accra" => nc("Accra", 5.6037, -0.1870),
-        "dakar" => nc("Dakar", 14.7167, -17.4677),
-        "tunis" => nc("Tunis", 36.8065, 10.1815),
-        "tripoli" => nc("Tripoli", 32.9034, 13.1807),
-        "khartoum" => nc("Khartoum", 15.5007, 32.5599),
-        "kampala" => nc("Kampala", 0.3476, 32.5825),
-        "kyiv" | "kiev" => nc("Kyiv", 50.4501, 30.5234),
-        "lviv" | "lwow" => nc("Lviv", 49.8397, 24.0297),
-        "odessa" | "odesa" => nc("Odessa", 46.4825, 30.7233),
-        "kharkiv" | "kharkov" => nc("Kharkiv", 49.9935, 36.2304),
-        "dnipro" | "dnipropetrovsk" => nc("Dnipro", 48.4647, 35.0462),
-        "kigali" => nc("Kigali", -1.9441, 30.0619),
-        "lusaka" => nc("Lusaka", -15.4167, 28.2833),
-        "harare" => nc("Harare", -17.8252, 31.0335),
-        "antananarivo" => nc("Antananarivo", -18.9137, 47.5361),
-        // Latin America — more cities
-        "mexico city" | "cdmx" => nc("Mexico City", 19.4326, -99.1332),
-        "guadalajara" => nc("Guadalajara", 20.6597, -103.3496),
-        "cancun" => nc("Cancun", 21.1619, -86.8515),
-        "havana" | "la habana" => nc("Havana", 23.1136, -82.3666),
-        "san juan" => nc("San Juan", 18.4655, -66.1057),
-        "nassau" => nc("Nassau", 25.0480, -77.3554),
-        "panama" => Some(LocationConstraint::Region("PA".to_string())),
-        "panama city" => nc("Panama City", 8.9936, -79.5197),
-        "san jose" => nc("San Jose", 9.9281, -84.0907),
-        "quito" => nc("Quito", -0.1807, -78.4678),
-        "caracas" => nc("Caracas", 10.4806, -66.9036),
-        "montevideo" => nc("Montevideo", -34.9011, -56.1645),
-        "asuncion" | "asunción" => nc("Asunción", -25.2867, -57.6470),
-        "la paz" => nc("La Paz", -16.5000, -68.1500),
-
-        // ===================== CHINESE CHARACTER ALIASES =====================
-        // Country / region names
-        "中国" => Some(LocationConstraint::Region("CN".to_string())),
-        "日本" => Some(LocationConstraint::Region("JP".to_string())),
-        "韩国" | "南韩" => Some(LocationConstraint::Region("KR".to_string())),
-        "泰国" => Some(LocationConstraint::Region("TH".to_string())),
-        "新加坡" => Some(LocationConstraint::Region("SG".to_string())),
-        "台湾" | "台灣" => Some(LocationConstraint::Region("TW".to_string())),
-        "印度" => Some(LocationConstraint::Region("IN".to_string())),
-        "澳大利亚" | "澳洲" => Some(LocationConstraint::Region("AU".to_string())),
-        "美国" => Some(LocationConstraint::Region("US".to_string())),
-        "英国" => Some(LocationConstraint::Region("UK".to_string())),
-        "法国" => Some(LocationConstraint::Region("FR".to_string())),
-        "德国" => Some(LocationConstraint::Region("DE".to_string())),
-        "意大利" => Some(LocationConstraint::Region("IT".to_string())),
-        "西班牙" => Some(LocationConstraint::Region("ES".to_string())),
-        "加拿大" => Some(LocationConstraint::Region("CA".to_string())),
-        "俄罗斯" => Some(LocationConstraint::Region("RU".to_string())),
-
-        // Chinese cities — existing 3 now also with character arms
-        "北京" => nc("Beijing", 39.9042, 116.4074),
-        "上海" => nc("Shanghai", 31.2304, 121.4737),
-        "广州" => nc("Guangzhou", 23.1291, 113.2644),
-
-        // Chinese cities — new 18 (Pinyin + characters)
-        "chengdu" | "成都" => nc("Chengdu", 30.5728, 104.0668),
-        "shenzhen" | "深圳" => nc("Shenzhen", 22.5431, 114.0579),
-        "wuhan" | "武汉" => nc("Wuhan", 30.5928, 114.3052),
-        "xian" | "xi'an" | "西安" => nc("Xi'an", 34.3416, 108.9398),
-        "hangzhou" | "杭州" => nc("Hangzhou", 30.2741, 120.1551),
-        "nanjing" | "南京" => nc("Nanjing", 32.0603, 118.7969),
-        "chongqing" | "重庆" => nc("Chongqing", 29.5630, 106.5516),
-        "tianjin" | "天津" => nc("Tianjin", 39.3434, 117.3616),
-        "qingdao" | "青岛" => nc("Qingdao", 36.0671, 120.3826),
-        "kunming" | "昆明" => nc("Kunming", 25.0389, 102.7183),
-        "dalian" | "大连" => nc("Dalian", 38.9140, 121.6147),
-        "harbin" | "哈尔滨" => nc("Harbin", 45.8038, 126.5350),
-        "xiamen" | "厦门" => nc("Xiamen", 24.4798, 118.0894),
-        "changsha" | "长沙" => nc("Changsha", 28.2282, 112.9388),
-        "zhengzhou" | "郑州" => nc("Zhengzhou", 34.7473, 113.6249),
-        "sanya" | "三亚" => nc("Sanya", 18.2524, 109.5120),
-        "urumqi" | "乌鲁木齐" => nc("Urumqi", 43.8256, 87.6168),
-        "lhasa" | "拉萨" => nc("Lhasa", 29.6520, 91.1721),
-
-        // Key Asian cities — Chinese character aliases for existing entries
-        "东京" => nc("Tokyo", 35.6762, 139.6503),
-        "大阪" => nc("Osaka", 34.6937, 135.5023),
-        "首尔" => nc("Seoul", 37.5665, 126.9780),
-        "台北" => nc("Taipei", 25.0330, 121.5654),
-        "曼谷" => nc("Bangkok", 13.7563, 100.5018),
-        "香港" => Some(LocationConstraint::Region("HK".to_string())),
-        "吉隆坡" => nc("Kuala Lumpur", 3.1390, 101.6869),
-        "马尼拉" => nc("Manila", 14.5995, 120.9842),
-        "河内" => nc("Hanoi", 21.0278, 105.8342),
-        "胡志明市" | "西贡" => nc("Ho Chi Minh City", 10.8231, 106.6297),
-        "雅加达" => nc("Jakarta", -6.2088, 106.8456),
-        "孟买" => nc("Mumbai", 19.0760, 72.8777),
-        "新德里" => nc("Delhi", 28.7041, 77.1025),
-
-        // Middle East cities — Chinese character aliases
-        "迪拜" => nc("Dubai", 25.2048, 55.2708),
-        "多哈" => nc("Doha", 25.2854, 51.5310),
-
-        // Oceania — Chinese character aliases
-        "悉尼" => nc("Sydney", -33.8688, 151.2093),
-        "墨尔本" => nc("Melbourne", -37.8136, 144.9631),
-
-        // European capitals — Chinese character aliases
-        "伦敦" => nc("London", 51.5074, -0.1278),
-        "巴黎" => nc("Paris", 48.8566, 2.3522),
-        "柏林" => nc("Berlin", 52.5200, 13.4050),
-        "罗马" => nc("Rome", 41.9028, 12.4964),
-        "马德里" => nc("Madrid", 40.4168, -3.7038),
-
-        // North American cities — Chinese character aliases
-        "纽约" => nc("New York", 40.7128, -74.0060),
-        "洛杉矶" => nc("Los Angeles", 34.0522, -118.2437),
-        "旧金山" => nc("San Francisco", 37.7749, -122.4194),
-        "芝加哥" => nc("Chicago", 41.8781, -87.6298),
-
-        _ => {
-            // 2. Fallback: check RegionIndex for geographic regions not in the explicit table
-            let index = crate::geo::RegionIndex::new();
-            if let Some(region) = index.search(s) {
-                return Some(LocationConstraint::Region(region.id.to_string()));
-            }
-            None
-        }
+    if let Some(constraint) = index.get(key.as_str()) {
+        return Some(constraint.clone());
     }
+
+    // 2. Fallback: check RegionIndex for geographic regions not in the explicit table
+    let index = crate::geo::RegionIndex::new();
+    if let Some(region) = index.search(s) {
+        return Some(LocationConstraint::Region(region.id.to_string()));
+    }
+    None
 }
 
 /// Validates an `NLPRulesConfig` for semantic correctness beyond JSON syntax.
@@ -2111,6 +1847,74 @@ mod tests {
                 );
             }
             other => panic!("Expected Tag containing '737', got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_new_connectors_and_terminators() {
+        // "aboard" and "at" are new
+        let p = FlightPrompt::parse(
+            "Flight aboard a 737 at dusk",
+            &crate::NLPRulesConfig::default(),
+        );
+        match &p.aircraft {
+            Some(AircraftConstraint::Tag(t)) => assert!(t.contains("737")),
+            _ => panic!("Expected 737, got {:?}", p.aircraft),
+        }
+        assert_eq!(p.keywords.time, Some(TimeKeyword::Dusk));
+
+        // "via" and "during" are new terminators
+        let p2 = FlightPrompt::parse(
+            "EGLL to Paris via London during a storm",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(
+            p2.origin,
+            Some(LocationConstraint::ICAO("EGLL".to_string()))
+        );
+        match &p2.destination {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Paris"),
+            _ => panic!("Expected NearCity(Paris), got {:?}", p2.destination),
+        }
+        assert_eq!(p2.keywords.weather, Some(WeatherKeyword::Storm));
+    }
+
+    #[test]
+    fn test_weather_as_aircraft_false_positive() {
+        // "vfr conditions" should NOT be parsed as an aircraft name
+        let p = FlightPrompt::parse("fly in vfr conditions", &crate::NLPRulesConfig::default());
+        assert_eq!(p.keywords.weather, Some(WeatherKeyword::Clear));
+        assert!(
+            p.aircraft.is_none(),
+            "Weather term should not be parsed as aircraft"
+        );
+
+        let p2 = FlightPrompt::parse("flight in a storm", &crate::NLPRulesConfig::default());
+        assert_eq!(p2.keywords.weather, Some(WeatherKeyword::Storm));
+        assert!(
+            p2.aircraft.is_none(),
+            "Storm should not be parsed as aircraft"
+        );
+    }
+
+    #[test]
+    fn test_external_aliases_from_json() {
+        // Test a few specific entries that were moved to JSON
+        let p1 = FlightPrompt::parse("Flight to british isles", &crate::NLPRulesConfig::default());
+        let p2 = FlightPrompt::parse("Flight to nyc", &crate::NLPRulesConfig::default());
+        let p3 = FlightPrompt::parse("Flight to 成都", &crate::NLPRulesConfig::default());
+
+        assert_eq!(
+            p1.destination,
+            Some(LocationConstraint::Region("BI".to_string()))
+        );
+        match &p2.destination {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "New York"),
+            _ => panic!("Expected NearCity(New York), got {:?}", p2.destination),
+        }
+        match &p3.destination {
+            Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Chengdu"),
+            _ => panic!("Expected NearCity(Chengdu), got {:?}", p3.destination),
         }
     }
 }

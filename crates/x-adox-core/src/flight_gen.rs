@@ -549,6 +549,10 @@ pub fn generate_flight_with_pool(
     )
 }
 
+fn normalize_aircraft_tag(s: &str) -> String {
+    s.to_lowercase().replace(['-', '_', ' ', '.'], "")
+}
+
 /// Core generation logic accepting a pre-parsed [FlightPrompt] struct.
 /// Use this for maximum throughput (skips regex parsing).
 pub fn generate_flight_from_prompt(
@@ -574,9 +578,11 @@ pub fn generate_flight_from_prompt(
         .filter(|a| {
             if let AddonType::Aircraft { .. } = a.addon_type {
                 if let Some(AircraftConstraint::Tag(ref tag)) = prompt.aircraft {
-                    let tag_lower = tag.to_lowercase();
-                    a.tags.iter().any(|t| t.to_lowercase().contains(&tag_lower))
-                        || a.name.to_lowercase().contains(&tag_lower)
+                    let tag_norm = normalize_aircraft_tag(tag);
+                    a.tags
+                        .iter()
+                        .any(|t| normalize_aircraft_tag(t).contains(&tag_norm))
+                        || normalize_aircraft_tag(&a.name).contains(&tag_norm)
                 } else {
                     true
                 }
@@ -587,6 +593,12 @@ pub fn generate_flight_from_prompt(
         .collect();
 
     if suitable_aircraft.is_empty() {
+        if let Some(AircraftConstraint::Tag(ref tag)) = prompt.aircraft {
+            return Err(format!(
+                "No aircraft matching '{}' found in your library. Check your installed aircraft or rephrase.",
+                tag
+            ));
+        }
         return Err("No matching aircraft found.".to_string());
     }
     let selected_aircraft = *suitable_aircraft.choose(&mut rng).unwrap();
@@ -2410,5 +2422,13 @@ mod tests {
             .points_nearby
             .iter()
             .any(|p| p.name == "Ostia Antica"));
+    }
+
+    #[test]
+    fn test_normalize_aircraft_tag() {
+        assert_eq!(normalize_aircraft_tag("MD-80"), "md80");
+        assert_eq!(normalize_aircraft_tag("Boeing 737_800"), "boeing737800");
+        assert_eq!(normalize_aircraft_tag("C172.skyhawk"), "c172skyhawk");
+        assert_eq!(normalize_aircraft_tag("MadDog 20.24"), "maddog2024");
     }
 }

@@ -1,0 +1,2574 @@
+{
+  "british isles": {
+    "type": "Region",
+    "value": "BI"
+  },
+  "ireland": {
+    "type": "Region",
+    "value": "IE"
+  },
+  "eire": {
+    "type": "Region",
+    "value": "IE"
+  },
+  "uk": {
+    "type": "Region",
+    "value": "UK"
+  },
+  "united kingdom": {
+    "type": "Region",
+    "value": "UK"
+  },
+  "gb": {
+    "type": "Region",
+    "value": "GB"
+  },
+  "great britain": {
+    "type": "Region",
+    "value": "GB"
+  },
+  "england": {
+    "type": "Region",
+    "value": "UK:England"
+  },
+  "scotland": {
+    "type": "Region",
+    "value": "UK:Scotland"
+  },
+  "wales": {
+    "type": "Region",
+    "value": "UK:Wales"
+  },
+  "ukraine": {
+    "type": "Region",
+    "value": "UA"
+  },
+  "ukr": {
+    "type": "Region",
+    "value": "UA"
+  },
+  "italy": {
+    "type": "Region",
+    "value": "IT"
+  },
+  "france": {
+    "type": "Region",
+    "value": "FR"
+  },
+  "germany": {
+    "type": "Region",
+    "value": "DE"
+  },
+  "spain": {
+    "type": "Region",
+    "value": "ES"
+  },
+  "usa": {
+    "type": "Region",
+    "value": "US"
+  },
+  "united states": {
+    "type": "Region",
+    "value": "US"
+  },
+  "canada": {
+    "type": "Region",
+    "value": "CA"
+  },
+  "mexico": {
+    "type": "Region",
+    "value": "MX"
+  },
+  "socal": {
+    "type": "Region",
+    "value": "US:SoCal"
+  },
+  "southern california": {
+    "type": "Region",
+    "value": "US:SoCal"
+  },
+  "oregon": {
+    "type": "Region",
+    "value": "US:OR"
+  },
+  "pnw": {
+    "type": "Region",
+    "value": "US:OR"
+  },
+  "pacific northwest": {
+    "type": "Region",
+    "value": "US:OR"
+  },
+  "alaska": {
+    "type": "Region",
+    "value": "US:AK"
+  },
+  "hawaii": {
+    "type": "Region",
+    "value": "US:HI"
+  },
+  "alps": {
+    "type": "Region",
+    "value": "Alps"
+  },
+  "rockies": {
+    "type": "Region",
+    "value": "Rockies"
+  },
+  "rocky mountains": {
+    "type": "Region",
+    "value": "Rockies"
+  },
+  "caribbean": {
+    "type": "Region",
+    "value": "Caribbean"
+  },
+  "melanesia": {
+    "type": "Region",
+    "value": "PacIsles:Melanesia"
+  },
+  "south africa": {
+    "type": "Region",
+    "value": "ZA"
+  },
+  "kenya": {
+    "type": "Region",
+    "value": "KE"
+  },
+  "egypt": {
+    "type": "Region",
+    "value": "EG"
+  },
+  "tanzania": {
+    "type": "Region",
+    "value": "TZ"
+  },
+  "ethiopia": {
+    "type": "Region",
+    "value": "ET"
+  },
+  "nigeria": {
+    "type": "Region",
+    "value": "NG"
+  },
+  "morocco": {
+    "type": "Region",
+    "value": "MA"
+  },
+  "brazil": {
+    "type": "Region",
+    "value": "BR"
+  },
+  "argentina": {
+    "type": "Region",
+    "value": "AR"
+  },
+  "colombia": {
+    "type": "Region",
+    "value": "CO"
+  },
+  "peru": {
+    "type": "Region",
+    "value": "PE"
+  },
+  "chile": {
+    "type": "Region",
+    "value": "CL"
+  },
+  "burma": {
+    "type": "Region",
+    "value": "MM"
+  },
+  "persia": {
+    "type": "Region",
+    "value": "IR"
+  },
+  "lao": {
+    "type": "Region",
+    "value": "LA"
+  },
+  "lao pdr": {
+    "type": "Region",
+    "value": "LA"
+  },
+  "new york": {
+    "type": "NearCity",
+    "value": {
+      "name": "New York",
+      "lat": 40.7128,
+      "lon": -74.006
+    }
+  },
+  "nyc": {
+    "type": "NearCity",
+    "value": {
+      "name": "New York",
+      "lat": 40.7128,
+      "lon": -74.006
+    }
+  },
+  "los angeles": {
+    "type": "NearCity",
+    "value": {
+      "name": "Los Angeles",
+      "lat": 34.0522,
+      "lon": -118.2437
+    }
+  },
+  "la": {
+    "type": "NearCity",
+    "value": {
+      "name": "Los Angeles",
+      "lat": 34.0522,
+      "lon": -118.2437
+    }
+  },
+  "chicago": {
+    "type": "NearCity",
+    "value": {
+      "name": "Chicago",
+      "lat": 41.8781,
+      "lon": -87.6298
+    }
+  },
+  "miami": {
+    "type": "NearCity",
+    "value": {
+      "name": "Miami",
+      "lat": 25.7617,
+      "lon": -80.1918
+    }
+  },
+  "seattle": {
+    "type": "NearCity",
+    "value": {
+      "name": "Seattle",
+      "lat": 47.6062,
+      "lon": -122.3321
+    }
+  },
+  "denver": {
+    "type": "NearCity",
+    "value": {
+      "name": "Denver",
+      "lat": 39.7392,
+      "lon": -104.9903
+    }
+  },
+  "atlanta": {
+    "type": "NearCity",
+    "value": {
+      "name": "Atlanta",
+      "lat": 33.749,
+      "lon": -84.388
+    }
+  },
+  "dallas": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dallas",
+      "lat": 32.7767,
+      "lon": -96.797
+    }
+  },
+  "dallas fort worth": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dallas",
+      "lat": 32.7767,
+      "lon": -96.797
+    }
+  },
+  "san francisco": {
+    "type": "NearCity",
+    "value": {
+      "name": "San Francisco",
+      "lat": 37.7749,
+      "lon": -122.4194
+    }
+  },
+  "sf": {
+    "type": "NearCity",
+    "value": {
+      "name": "San Francisco",
+      "lat": 37.7749,
+      "lon": -122.4194
+    }
+  },
+  "boston": {
+    "type": "NearCity",
+    "value": {
+      "name": "Boston",
+      "lat": 42.3601,
+      "lon": -71.0589
+    }
+  },
+  "toronto": {
+    "type": "NearCity",
+    "value": {
+      "name": "Toronto",
+      "lat": 43.7,
+      "lon": -79.4163
+    }
+  },
+  "vancouver": {
+    "type": "NearCity",
+    "value": {
+      "name": "Vancouver",
+      "lat": 49.2827,
+      "lon": -123.1207
+    }
+  },
+  "montreal": {
+    "type": "NearCity",
+    "value": {
+      "name": "Montreal",
+      "lat": 45.5017,
+      "lon": -73.5673
+    }
+  },
+  "london": {
+    "type": "NearCity",
+    "value": {
+      "name": "London",
+      "lat": 51.5074,
+      "lon": -0.1278
+    }
+  },
+  "london uk": {
+    "type": "NearCity",
+    "value": {
+      "name": "London",
+      "lat": 51.5074,
+      "lon": -0.1278
+    }
+  },
+  "rome": {
+    "type": "NearCity",
+    "value": {
+      "name": "Rome",
+      "lat": 41.9028,
+      "lon": 12.4964
+    }
+  },
+  "rome, italy": {
+    "type": "NearCity",
+    "value": {
+      "name": "Rome",
+      "lat": 41.9028,
+      "lon": 12.4964
+    }
+  },
+  "paris": {
+    "type": "NearCity",
+    "value": {
+      "name": "Paris",
+      "lat": 48.8566,
+      "lon": 2.3522
+    }
+  },
+  "paris, france": {
+    "type": "NearCity",
+    "value": {
+      "name": "Paris",
+      "lat": 48.8566,
+      "lon": 2.3522
+    }
+  },
+  "amsterdam": {
+    "type": "NearCity",
+    "value": {
+      "name": "Amsterdam",
+      "lat": 52.3676,
+      "lon": 4.9041
+    }
+  },
+  "zurich": {
+    "type": "NearCity",
+    "value": {
+      "name": "Zurich",
+      "lat": 47.3769,
+      "lon": 8.5417
+    }
+  },
+  "zürich": {
+    "type": "NearCity",
+    "value": {
+      "name": "Zurich",
+      "lat": 47.3769,
+      "lon": 8.5417
+    }
+  },
+  "geneva": {
+    "type": "NearCity",
+    "value": {
+      "name": "Geneva",
+      "lat": 46.2044,
+      "lon": 6.1432
+    }
+  },
+  "vienna": {
+    "type": "NearCity",
+    "value": {
+      "name": "Vienna",
+      "lat": 48.2082,
+      "lon": 16.3738
+    }
+  },
+  "wien": {
+    "type": "NearCity",
+    "value": {
+      "name": "Vienna",
+      "lat": 48.2082,
+      "lon": 16.3738
+    }
+  },
+  "brussels": {
+    "type": "NearCity",
+    "value": {
+      "name": "Brussels",
+      "lat": 50.8503,
+      "lon": 4.3517
+    }
+  },
+  "istanbul": {
+    "type": "NearCity",
+    "value": {
+      "name": "Istanbul",
+      "lat": 41.0082,
+      "lon": 28.9784
+    }
+  },
+  "lisbon": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lisbon",
+      "lat": 38.7223,
+      "lon": -9.1393
+    }
+  },
+  "porto": {
+    "type": "NearCity",
+    "value": {
+      "name": "Porto",
+      "lat": 41.1579,
+      "lon": -8.6291
+    }
+  },
+  "athens": {
+    "type": "NearCity",
+    "value": {
+      "name": "Athens",
+      "lat": 37.9838,
+      "lon": 23.7275
+    }
+  },
+  "oslo": {
+    "type": "NearCity",
+    "value": {
+      "name": "Oslo",
+      "lat": 59.9139,
+      "lon": 10.7522
+    }
+  },
+  "stockholm": {
+    "type": "NearCity",
+    "value": {
+      "name": "Stockholm",
+      "lat": 59.3293,
+      "lon": 18.0686
+    }
+  },
+  "copenhagen": {
+    "type": "NearCity",
+    "value": {
+      "name": "Copenhagen",
+      "lat": 55.6761,
+      "lon": 12.5683
+    }
+  },
+  "helsinki": {
+    "type": "NearCity",
+    "value": {
+      "name": "Helsinki",
+      "lat": 60.1699,
+      "lon": 24.9384
+    }
+  },
+  "reykjavik": {
+    "type": "NearCity",
+    "value": {
+      "name": "Reykjavik",
+      "lat": 64.1466,
+      "lon": -21.9426
+    }
+  },
+  "warsaw": {
+    "type": "NearCity",
+    "value": {
+      "name": "Warsaw",
+      "lat": 52.2297,
+      "lon": 21.0122
+    }
+  },
+  "krakow": {
+    "type": "NearCity",
+    "value": {
+      "name": "Krakow",
+      "lat": 50.0647,
+      "lon": 19.945
+    }
+  },
+  "prague": {
+    "type": "NearCity",
+    "value": {
+      "name": "Prague",
+      "lat": 50.0755,
+      "lon": 14.4378
+    }
+  },
+  "berlin": {
+    "type": "NearCity",
+    "value": {
+      "name": "Berlin",
+      "lat": 52.52,
+      "lon": 13.405
+    }
+  },
+  "hamburg": {
+    "type": "NearCity",
+    "value": {
+      "name": "Hamburg",
+      "lat": 53.55,
+      "lon": 9.9937
+    }
+  },
+  "munich": {
+    "type": "NearCity",
+    "value": {
+      "name": "Munich",
+      "lat": 48.1351,
+      "lon": 11.582
+    }
+  },
+  "münchen": {
+    "type": "NearCity",
+    "value": {
+      "name": "Munich",
+      "lat": 48.1351,
+      "lon": 11.582
+    }
+  },
+  "madrid": {
+    "type": "NearCity",
+    "value": {
+      "name": "Madrid",
+      "lat": 40.4168,
+      "lon": -3.7038
+    }
+  },
+  "barcelona": {
+    "type": "NearCity",
+    "value": {
+      "name": "Barcelona",
+      "lat": 41.3874,
+      "lon": 2.1686
+    }
+  },
+  "nairobi": {
+    "type": "NearCity",
+    "value": {
+      "name": "Nairobi",
+      "lat": -1.2921,
+      "lon": 36.8219
+    }
+  },
+  "mombasa": {
+    "type": "NearCity",
+    "value": {
+      "name": "Mombasa",
+      "lat": -4.0435,
+      "lon": 39.6682
+    }
+  },
+  "lamu": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lamu",
+      "lat": -2.2717,
+      "lon": 40.902
+    }
+  },
+  "malindi": {
+    "type": "NearCity",
+    "value": {
+      "name": "Malindi",
+      "lat": -3.2238,
+      "lon": 40.1169
+    }
+  },
+  "johannesburg": {
+    "type": "NearCity",
+    "value": {
+      "name": "Johannesburg",
+      "lat": -26.2041,
+      "lon": 28.0473
+    }
+  },
+  "joburg": {
+    "type": "NearCity",
+    "value": {
+      "name": "Johannesburg",
+      "lat": -26.2041,
+      "lon": 28.0473
+    }
+  },
+  "cape town": {
+    "type": "NearCity",
+    "value": {
+      "name": "Cape Town",
+      "lat": -33.9249,
+      "lon": 18.4241
+    }
+  },
+  "durban": {
+    "type": "NearCity",
+    "value": {
+      "name": "Durban",
+      "lat": -29.8587,
+      "lon": 31.0218
+    }
+  },
+  "cairo": {
+    "type": "NearCity",
+    "value": {
+      "name": "Cairo",
+      "lat": 30.0444,
+      "lon": 31.2357
+    }
+  },
+  "addis ababa": {
+    "type": "NearCity",
+    "value": {
+      "name": "Addis Ababa",
+      "lat": 9.0192,
+      "lon": 38.7525
+    }
+  },
+  "addis": {
+    "type": "NearCity",
+    "value": {
+      "name": "Addis Ababa",
+      "lat": 9.0192,
+      "lon": 38.7525
+    }
+  },
+  "lagos": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lagos",
+      "lat": 6.5244,
+      "lon": 3.3792
+    }
+  },
+  "abuja": {
+    "type": "NearCity",
+    "value": {
+      "name": "Abuja",
+      "lat": 9.0579,
+      "lon": 7.4951
+    }
+  },
+  "dar es salaam": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dar es Salaam",
+      "lat": -6.7924,
+      "lon": 39.2083
+    }
+  },
+  "dar": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dar es Salaam",
+      "lat": -6.7924,
+      "lon": 39.2083
+    }
+  },
+  "zanzibar": {
+    "type": "NearCity",
+    "value": {
+      "name": "Zanzibar",
+      "lat": -6.1659,
+      "lon": 39.2026
+    }
+  },
+  "kilimanjaro": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kilimanjaro",
+      "lat": -3.0674,
+      "lon": 37.3556
+    }
+  },
+  "marrakech": {
+    "type": "NearCity",
+    "value": {
+      "name": "Marrakech",
+      "lat": 31.6295,
+      "lon": -7.9811
+    }
+  },
+  "casablanca": {
+    "type": "NearCity",
+    "value": {
+      "name": "Casablanca",
+      "lat": 33.5731,
+      "lon": -7.5898
+    }
+  },
+  "tokyo": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tokyo",
+      "lat": 35.6762,
+      "lon": 139.6503
+    }
+  },
+  "osaka": {
+    "type": "NearCity",
+    "value": {
+      "name": "Osaka",
+      "lat": 34.6937,
+      "lon": 135.5023
+    }
+  },
+  "bangkok": {
+    "type": "NearCity",
+    "value": {
+      "name": "Bangkok",
+      "lat": 13.7563,
+      "lon": 100.5018
+    }
+  },
+  "singapore": {
+    "type": "Region",
+    "value": "SG"
+  },
+  "hong kong": {
+    "type": "Region",
+    "value": "HK"
+  },
+  "taipei": {
+    "type": "NearCity",
+    "value": {
+      "name": "Taipei",
+      "lat": 25.033,
+      "lon": 121.5654
+    }
+  },
+  "seoul": {
+    "type": "NearCity",
+    "value": {
+      "name": "Seoul",
+      "lat": 37.5665,
+      "lon": 126.978
+    }
+  },
+  "beijing": {
+    "type": "NearCity",
+    "value": {
+      "name": "Beijing",
+      "lat": 39.9042,
+      "lon": 116.4074
+    }
+  },
+  "shanghai": {
+    "type": "NearCity",
+    "value": {
+      "name": "Shanghai",
+      "lat": 31.2304,
+      "lon": 121.4737
+    }
+  },
+  "guangzhou": {
+    "type": "NearCity",
+    "value": {
+      "name": "Guangzhou",
+      "lat": 23.1291,
+      "lon": 113.2644
+    }
+  },
+  "mumbai": {
+    "type": "NearCity",
+    "value": {
+      "name": "Mumbai",
+      "lat": 19.076,
+      "lon": 72.8777
+    }
+  },
+  "delhi": {
+    "type": "NearCity",
+    "value": {
+      "name": "Delhi",
+      "lat": 28.7041,
+      "lon": 77.1025
+    }
+  },
+  "bangalore": {
+    "type": "NearCity",
+    "value": {
+      "name": "Bangalore",
+      "lat": 12.9716,
+      "lon": 77.5946
+    }
+  },
+  "chennai": {
+    "type": "NearCity",
+    "value": {
+      "name": "Chennai",
+      "lat": 13.0827,
+      "lon": 80.2707
+    }
+  },
+  "kolkata": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kolkata",
+      "lat": 22.5726,
+      "lon": 88.3639
+    }
+  },
+  "dubai": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dubai",
+      "lat": 25.2048,
+      "lon": 55.2708
+    }
+  },
+  "abu dhabi": {
+    "type": "NearCity",
+    "value": {
+      "name": "Abu Dhabi",
+      "lat": 24.4539,
+      "lon": 54.3773
+    }
+  },
+  "doha": {
+    "type": "NearCity",
+    "value": {
+      "name": "Doha",
+      "lat": 25.2854,
+      "lon": 51.531
+    }
+  },
+  "kuwait": {
+    "type": "Region",
+    "value": "KW"
+  },
+  "kuwait city": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kuwait City",
+      "lat": 29.3759,
+      "lon": 47.9774
+    }
+  },
+  "riyadh": {
+    "type": "NearCity",
+    "value": {
+      "name": "Riyadh",
+      "lat": 24.7136,
+      "lon": 46.6753
+    }
+  },
+  "jeddah": {
+    "type": "NearCity",
+    "value": {
+      "name": "Jeddah",
+      "lat": 21.4858,
+      "lon": 39.1925
+    }
+  },
+  "muscat": {
+    "type": "NearCity",
+    "value": {
+      "name": "Muscat",
+      "lat": 23.588,
+      "lon": 58.3829
+    }
+  },
+  "amman": {
+    "type": "NearCity",
+    "value": {
+      "name": "Amman",
+      "lat": 31.9454,
+      "lon": 35.9284
+    }
+  },
+  "beirut": {
+    "type": "NearCity",
+    "value": {
+      "name": "Beirut",
+      "lat": 33.8938,
+      "lon": 35.5018
+    }
+  },
+  "tel aviv": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tel Aviv",
+      "lat": 32.0853,
+      "lon": 34.7818
+    }
+  },
+  "jerusalem": {
+    "type": "NearCity",
+    "value": {
+      "name": "Jerusalem",
+      "lat": 31.7683,
+      "lon": 35.2137
+    }
+  },
+  "kuala lumpur": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kuala Lumpur",
+      "lat": 3.139,
+      "lon": 101.6869
+    }
+  },
+  "manila": {
+    "type": "NearCity",
+    "value": {
+      "name": "Manila",
+      "lat": 14.5995,
+      "lon": 120.9842
+    }
+  },
+  "hanoi": {
+    "type": "NearCity",
+    "value": {
+      "name": "Hanoi",
+      "lat": 21.0278,
+      "lon": 105.8342
+    }
+  },
+  "ho chi minh": {
+    "type": "NearCity",
+    "value": {
+      "name": "Ho Chi Minh City",
+      "lat": 10.8231,
+      "lon": 106.6297
+    }
+  },
+  "saigon": {
+    "type": "NearCity",
+    "value": {
+      "name": "Ho Chi Minh City",
+      "lat": 10.8231,
+      "lon": 106.6297
+    }
+  },
+  "bali": {
+    "type": "NearCity",
+    "value": {
+      "name": "Bali",
+      "lat": -8.3405,
+      "lon": 115.092
+    }
+  },
+  "jakarta": {
+    "type": "NearCity",
+    "value": {
+      "name": "Jakarta",
+      "lat": -6.2088,
+      "lon": 106.8456
+    }
+  },
+  "rio": {
+    "type": "NearCity",
+    "value": {
+      "name": "Rio de Janeiro",
+      "lat": -22.9068,
+      "lon": -43.1729
+    }
+  },
+  "rio de janeiro": {
+    "type": "NearCity",
+    "value": {
+      "name": "Rio de Janeiro",
+      "lat": -22.9068,
+      "lon": -43.1729
+    }
+  },
+  "sao paulo": {
+    "type": "NearCity",
+    "value": {
+      "name": "São Paulo",
+      "lat": -23.5505,
+      "lon": -46.6333
+    }
+  },
+  "buenos aires": {
+    "type": "NearCity",
+    "value": {
+      "name": "Buenos Aires",
+      "lat": -34.6037,
+      "lon": -58.3816
+    }
+  },
+  "bogota": {
+    "type": "NearCity",
+    "value": {
+      "name": "Bogota",
+      "lat": 4.711,
+      "lon": -74.0721
+    }
+  },
+  "lima": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lima",
+      "lat": -12.0464,
+      "lon": -77.0428
+    }
+  },
+  "santiago": {
+    "type": "NearCity",
+    "value": {
+      "name": "Santiago",
+      "lat": -33.4489,
+      "lon": -70.6693
+    }
+  },
+  "sydney": {
+    "type": "NearCity",
+    "value": {
+      "name": "Sydney",
+      "lat": -33.8688,
+      "lon": 151.2093
+    }
+  },
+  "melbourne": {
+    "type": "NearCity",
+    "value": {
+      "name": "Melbourne",
+      "lat": -37.8136,
+      "lon": 144.9631
+    }
+  },
+  "brisbane": {
+    "type": "NearCity",
+    "value": {
+      "name": "Brisbane",
+      "lat": -27.4698,
+      "lon": 153.0251
+    }
+  },
+  "perth": {
+    "type": "NearCity",
+    "value": {
+      "name": "Perth",
+      "lat": -31.9505,
+      "lon": 115.8605
+    }
+  },
+  "auckland": {
+    "type": "NearCity",
+    "value": {
+      "name": "Auckland",
+      "lat": -36.8485,
+      "lon": 174.7633
+    }
+  },
+  "wellington": {
+    "type": "NearCity",
+    "value": {
+      "name": "Wellington",
+      "lat": -41.2865,
+      "lon": 174.7762
+    }
+  },
+  "queenstown": {
+    "type": "NearCity",
+    "value": {
+      "name": "Queenstown",
+      "lat": -45.0312,
+      "lon": 168.6626
+    }
+  },
+  "christchurch": {
+    "type": "NearCity",
+    "value": {
+      "name": "Christchurch",
+      "lat": -43.4899,
+      "lon": 172.5369
+    }
+  },
+  "hobart": {
+    "type": "NearCity",
+    "value": {
+      "name": "Hobart",
+      "lat": -42.8821,
+      "lon": 147.3272
+    }
+  },
+  "darwin": {
+    "type": "NearCity",
+    "value": {
+      "name": "Darwin",
+      "lat": -12.4634,
+      "lon": 130.8456
+    }
+  },
+  "cairns": {
+    "type": "NearCity",
+    "value": {
+      "name": "Cairns",
+      "lat": -16.9186,
+      "lon": 145.7781
+    }
+  },
+  "fiji": {
+    "type": "Region",
+    "value": "FJ"
+  },
+  "nadi": {
+    "type": "NearCity",
+    "value": {
+      "name": "Nadi",
+      "lat": -17.7559,
+      "lon": 177.4515
+    }
+  },
+  "phoenix": {
+    "type": "NearCity",
+    "value": {
+      "name": "Phoenix",
+      "lat": 33.4484,
+      "lon": -112.074
+    }
+  },
+  "houston": {
+    "type": "NearCity",
+    "value": {
+      "name": "Houston",
+      "lat": 29.7604,
+      "lon": -95.3698
+    }
+  },
+  "las vegas": {
+    "type": "NearCity",
+    "value": {
+      "name": "Las Vegas",
+      "lat": 36.1699,
+      "lon": -115.1398
+    }
+  },
+  "washington dc": {
+    "type": "NearCity",
+    "value": {
+      "name": "Washington DC",
+      "lat": 38.9072,
+      "lon": -77.0369
+    }
+  },
+  "dc": {
+    "type": "NearCity",
+    "value": {
+      "name": "Washington DC",
+      "lat": 38.9072,
+      "lon": -77.0369
+    }
+  },
+  "philadelphia": {
+    "type": "NearCity",
+    "value": {
+      "name": "Philadelphia",
+      "lat": 39.9526,
+      "lon": -75.1652
+    }
+  },
+  "philly": {
+    "type": "NearCity",
+    "value": {
+      "name": "Philadelphia",
+      "lat": 39.9526,
+      "lon": -75.1652
+    }
+  },
+  "minneapolis": {
+    "type": "NearCity",
+    "value": {
+      "name": "Minneapolis",
+      "lat": 44.9778,
+      "lon": -93.265
+    }
+  },
+  "detroit": {
+    "type": "NearCity",
+    "value": {
+      "name": "Detroit",
+      "lat": 42.3314,
+      "lon": -83.0458
+    }
+  },
+  "charlotte": {
+    "type": "NearCity",
+    "value": {
+      "name": "Charlotte",
+      "lat": 35.2271,
+      "lon": -80.8431
+    }
+  },
+  "portland": {
+    "type": "NearCity",
+    "value": {
+      "name": "Portland",
+      "lat": 45.5051,
+      "lon": -122.675
+    }
+  },
+  "salt lake city": {
+    "type": "NearCity",
+    "value": {
+      "name": "Salt Lake City",
+      "lat": 40.7608,
+      "lon": -111.891
+    }
+  },
+  "slc": {
+    "type": "NearCity",
+    "value": {
+      "name": "Salt Lake City",
+      "lat": 40.7608,
+      "lon": -111.891
+    }
+  },
+  "kansas city": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kansas City",
+      "lat": 39.0997,
+      "lon": -94.5786
+    }
+  },
+  "new orleans": {
+    "type": "NearCity",
+    "value": {
+      "name": "New Orleans",
+      "lat": 29.9511,
+      "lon": -90.0715
+    }
+  },
+  "orlando": {
+    "type": "NearCity",
+    "value": {
+      "name": "Orlando",
+      "lat": 28.5383,
+      "lon": -81.3792
+    }
+  },
+  "tampa": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tampa",
+      "lat": 27.9506,
+      "lon": -82.4572
+    }
+  },
+  "san diego": {
+    "type": "NearCity",
+    "value": {
+      "name": "San Diego",
+      "lat": 32.7157,
+      "lon": -117.1611
+    }
+  },
+  "anchorage": {
+    "type": "NearCity",
+    "value": {
+      "name": "Anchorage",
+      "lat": 61.2181,
+      "lon": -149.9003
+    }
+  },
+  "honolulu": {
+    "type": "NearCity",
+    "value": {
+      "name": "Honolulu",
+      "lat": 21.3069,
+      "lon": -157.8583
+    }
+  },
+  "frankfurt": {
+    "type": "NearCity",
+    "value": {
+      "name": "Frankfurt",
+      "lat": 50.1109,
+      "lon": 8.6821
+    }
+  },
+  "milan": {
+    "type": "NearCity",
+    "value": {
+      "name": "Milan",
+      "lat": 45.4654,
+      "lon": 9.1859
+    }
+  },
+  "milano": {
+    "type": "NearCity",
+    "value": {
+      "name": "Milan",
+      "lat": 45.4654,
+      "lon": 9.1859
+    }
+  },
+  "edinburgh": {
+    "type": "NearCity",
+    "value": {
+      "name": "Edinburgh",
+      "lat": 55.9533,
+      "lon": -3.1883
+    }
+  },
+  "manchester": {
+    "type": "NearCity",
+    "value": {
+      "name": "Manchester",
+      "lat": 53.4808,
+      "lon": -2.2426
+    }
+  },
+  "birmingham": {
+    "type": "NearCity",
+    "value": {
+      "name": "Birmingham",
+      "lat": 52.4862,
+      "lon": -1.8904
+    }
+  },
+  "lyon": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lyon",
+      "lat": 45.764,
+      "lon": 4.8357
+    }
+  },
+  "marseille": {
+    "type": "NearCity",
+    "value": {
+      "name": "Marseille",
+      "lat": 43.2965,
+      "lon": 5.3698
+    }
+  },
+  "nice": {
+    "type": "NearCity",
+    "value": {
+      "name": "Nice",
+      "lat": 43.7102,
+      "lon": 7.262
+    }
+  },
+  "naples": {
+    "type": "NearCity",
+    "value": {
+      "name": "Naples",
+      "lat": 40.8518,
+      "lon": 14.2681
+    }
+  },
+  "napoli": {
+    "type": "NearCity",
+    "value": {
+      "name": "Naples",
+      "lat": 40.8518,
+      "lon": 14.2681
+    }
+  },
+  "florence": {
+    "type": "NearCity",
+    "value": {
+      "name": "Florence",
+      "lat": 43.7696,
+      "lon": 11.2558
+    }
+  },
+  "firenze": {
+    "type": "NearCity",
+    "value": {
+      "name": "Florence",
+      "lat": 43.7696,
+      "lon": 11.2558
+    }
+  },
+  "venice": {
+    "type": "NearCity",
+    "value": {
+      "name": "Venice",
+      "lat": 45.4408,
+      "lon": 12.3155
+    }
+  },
+  "venezia": {
+    "type": "NearCity",
+    "value": {
+      "name": "Venice",
+      "lat": 45.4408,
+      "lon": 12.3155
+    }
+  },
+  "seville": {
+    "type": "NearCity",
+    "value": {
+      "name": "Seville",
+      "lat": 37.3891,
+      "lon": -5.9845
+    }
+  },
+  "sevilla": {
+    "type": "NearCity",
+    "value": {
+      "name": "Seville",
+      "lat": 37.3891,
+      "lon": -5.9845
+    }
+  },
+  "valencia": {
+    "type": "NearCity",
+    "value": {
+      "name": "Valencia",
+      "lat": 39.4699,
+      "lon": -0.3763
+    }
+  },
+  "palma": {
+    "type": "NearCity",
+    "value": {
+      "name": "Palma",
+      "lat": 39.5696,
+      "lon": 2.6502
+    }
+  },
+  "mallorca": {
+    "type": "NearCity",
+    "value": {
+      "name": "Palma",
+      "lat": 39.5696,
+      "lon": 2.6502
+    }
+  },
+  "tenerife": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tenerife",
+      "lat": 28.2916,
+      "lon": -16.6291
+    }
+  },
+  "budapest": {
+    "type": "NearCity",
+    "value": {
+      "name": "Budapest",
+      "lat": 47.4979,
+      "lon": 19.0402
+    }
+  },
+  "bucharest": {
+    "type": "NearCity",
+    "value": {
+      "name": "Bucharest",
+      "lat": 44.4268,
+      "lon": 26.1025
+    }
+  },
+  "sofia": {
+    "type": "NearCity",
+    "value": {
+      "name": "Sofia",
+      "lat": 42.6977,
+      "lon": 23.3219
+    }
+  },
+  "belgrade": {
+    "type": "NearCity",
+    "value": {
+      "name": "Belgrade",
+      "lat": 44.7866,
+      "lon": 20.4489
+    }
+  },
+  "zagreb": {
+    "type": "NearCity",
+    "value": {
+      "name": "Zagreb",
+      "lat": 45.815,
+      "lon": 15.9819
+    }
+  },
+  "dubrovnik": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dubrovnik",
+      "lat": 42.6507,
+      "lon": 18.0944
+    }
+  },
+  "split": {
+    "type": "NearCity",
+    "value": {
+      "name": "Split",
+      "lat": 43.5081,
+      "lon": 16.4402
+    }
+  },
+  "riga": {
+    "type": "NearCity",
+    "value": {
+      "name": "Riga",
+      "lat": 56.946,
+      "lon": 24.1059
+    }
+  },
+  "tallinn": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tallinn",
+      "lat": 59.437,
+      "lon": 24.7536
+    }
+  },
+  "vilnius": {
+    "type": "NearCity",
+    "value": {
+      "name": "Vilnius",
+      "lat": 54.6872,
+      "lon": 25.2797
+    }
+  },
+  "bratislava": {
+    "type": "NearCity",
+    "value": {
+      "name": "Bratislava",
+      "lat": 48.1486,
+      "lon": 17.1077
+    }
+  },
+  "luxembourg": {
+    "type": "Region",
+    "value": "LU"
+  },
+  "tehran": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tehran",
+      "lat": 35.6892,
+      "lon": 51.389
+    }
+  },
+  "baghdad": {
+    "type": "NearCity",
+    "value": {
+      "name": "Baghdad",
+      "lat": 33.3152,
+      "lon": 44.3661
+    }
+  },
+  "karachi": {
+    "type": "NearCity",
+    "value": {
+      "name": "Karachi",
+      "lat": 24.8607,
+      "lon": 67.0011
+    }
+  },
+  "islamabad": {
+    "type": "NearCity",
+    "value": {
+      "name": "Islamabad",
+      "lat": 33.7294,
+      "lon": 73.0931
+    }
+  },
+  "lahore": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lahore",
+      "lat": 31.5204,
+      "lon": 74.3587
+    }
+  },
+  "dhaka": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dhaka",
+      "lat": 23.8103,
+      "lon": 90.4125
+    }
+  },
+  "colombo": {
+    "type": "NearCity",
+    "value": {
+      "name": "Colombo",
+      "lat": 6.9271,
+      "lon": 79.8612
+    }
+  },
+  "kathmandu": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kathmandu",
+      "lat": 27.7172,
+      "lon": 85.324
+    }
+  },
+  "yangon": {
+    "type": "NearCity",
+    "value": {
+      "name": "Yangon",
+      "lat": 16.8661,
+      "lon": 96.1951
+    }
+  },
+  "rangoon": {
+    "type": "NearCity",
+    "value": {
+      "name": "Yangon",
+      "lat": 16.8661,
+      "lon": 96.1951
+    }
+  },
+  "accra": {
+    "type": "NearCity",
+    "value": {
+      "name": "Accra",
+      "lat": 5.6037,
+      "lon": -0.187
+    }
+  },
+  "dakar": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dakar",
+      "lat": 14.7167,
+      "lon": -17.4677
+    }
+  },
+  "tunis": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tunis",
+      "lat": 36.8065,
+      "lon": 10.1815
+    }
+  },
+  "tripoli": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tripoli",
+      "lat": 32.9034,
+      "lon": 13.1807
+    }
+  },
+  "khartoum": {
+    "type": "NearCity",
+    "value": {
+      "name": "Khartoum",
+      "lat": 15.5007,
+      "lon": 32.5599
+    }
+  },
+  "kampala": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kampala",
+      "lat": 0.3476,
+      "lon": 32.5825
+    }
+  },
+  "kyiv": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kyiv",
+      "lat": 50.4501,
+      "lon": 30.5234
+    }
+  },
+  "kiev": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kyiv",
+      "lat": 50.4501,
+      "lon": 30.5234
+    }
+  },
+  "lviv": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lviv",
+      "lat": 49.8397,
+      "lon": 24.0297
+    }
+  },
+  "lwow": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lviv",
+      "lat": 49.8397,
+      "lon": 24.0297
+    }
+  },
+  "odessa": {
+    "type": "NearCity",
+    "value": {
+      "name": "Odessa",
+      "lat": 46.4825,
+      "lon": 30.7233
+    }
+  },
+  "odesa": {
+    "type": "NearCity",
+    "value": {
+      "name": "Odessa",
+      "lat": 46.4825,
+      "lon": 30.7233
+    }
+  },
+  "kharkiv": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kharkiv",
+      "lat": 49.9935,
+      "lon": 36.2304
+    }
+  },
+  "kharkov": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kharkiv",
+      "lat": 49.9935,
+      "lon": 36.2304
+    }
+  },
+  "dnipro": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dnipro",
+      "lat": 48.4647,
+      "lon": 35.0462
+    }
+  },
+  "dnipropetrovsk": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dnipro",
+      "lat": 48.4647,
+      "lon": 35.0462
+    }
+  },
+  "kigali": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kigali",
+      "lat": -1.9441,
+      "lon": 30.0619
+    }
+  },
+  "lusaka": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lusaka",
+      "lat": -15.4167,
+      "lon": 28.2833
+    }
+  },
+  "harare": {
+    "type": "NearCity",
+    "value": {
+      "name": "Harare",
+      "lat": -17.8252,
+      "lon": 31.0335
+    }
+  },
+  "antananarivo": {
+    "type": "NearCity",
+    "value": {
+      "name": "Antananarivo",
+      "lat": -18.9137,
+      "lon": 47.5361
+    }
+  },
+  "mexico city": {
+    "type": "NearCity",
+    "value": {
+      "name": "Mexico City",
+      "lat": 19.4326,
+      "lon": -99.1332
+    }
+  },
+  "cdmx": {
+    "type": "NearCity",
+    "value": {
+      "name": "Mexico City",
+      "lat": 19.4326,
+      "lon": -99.1332
+    }
+  },
+  "guadalajara": {
+    "type": "NearCity",
+    "value": {
+      "name": "Guadalajara",
+      "lat": 20.6597,
+      "lon": -103.3496
+    }
+  },
+  "cancun": {
+    "type": "NearCity",
+    "value": {
+      "name": "Cancun",
+      "lat": 21.1619,
+      "lon": -86.8515
+    }
+  },
+  "havana": {
+    "type": "NearCity",
+    "value": {
+      "name": "Havana",
+      "lat": 23.1136,
+      "lon": -82.3666
+    }
+  },
+  "la habana": {
+    "type": "NearCity",
+    "value": {
+      "name": "Havana",
+      "lat": 23.1136,
+      "lon": -82.3666
+    }
+  },
+  "san juan": {
+    "type": "NearCity",
+    "value": {
+      "name": "San Juan",
+      "lat": 18.4655,
+      "lon": -66.1057
+    }
+  },
+  "nassau": {
+    "type": "NearCity",
+    "value": {
+      "name": "Nassau",
+      "lat": 25.048,
+      "lon": -77.3554
+    }
+  },
+  "panama": {
+    "type": "Region",
+    "value": "PA"
+  },
+  "panama city": {
+    "type": "NearCity",
+    "value": {
+      "name": "Panama City",
+      "lat": 8.9936,
+      "lon": -79.5197
+    }
+  },
+  "san jose": {
+    "type": "NearCity",
+    "value": {
+      "name": "San Jose",
+      "lat": 9.9281,
+      "lon": -84.0907
+    }
+  },
+  "quito": {
+    "type": "NearCity",
+    "value": {
+      "name": "Quito",
+      "lat": -0.1807,
+      "lon": -78.4678
+    }
+  },
+  "caracas": {
+    "type": "NearCity",
+    "value": {
+      "name": "Caracas",
+      "lat": 10.4806,
+      "lon": -66.9036
+    }
+  },
+  "montevideo": {
+    "type": "NearCity",
+    "value": {
+      "name": "Montevideo",
+      "lat": -34.9011,
+      "lon": -56.1645
+    }
+  },
+  "asuncion": {
+    "type": "NearCity",
+    "value": {
+      "name": "Asunción",
+      "lat": -25.2867,
+      "lon": -57.647
+    }
+  },
+  "asunción": {
+    "type": "NearCity",
+    "value": {
+      "name": "Asunción",
+      "lat": -25.2867,
+      "lon": -57.647
+    }
+  },
+  "la paz": {
+    "type": "NearCity",
+    "value": {
+      "name": "La Paz",
+      "lat": -16.5,
+      "lon": -68.15
+    }
+  },
+  "中国": {
+    "type": "Region",
+    "value": "CN"
+  },
+  "日本": {
+    "type": "Region",
+    "value": "JP"
+  },
+  "韩国": {
+    "type": "Region",
+    "value": "KR"
+  },
+  "南韩": {
+    "type": "Region",
+    "value": "KR"
+  },
+  "泰国": {
+    "type": "Region",
+    "value": "TH"
+  },
+  "新加坡": {
+    "type": "Region",
+    "value": "SG"
+  },
+  "台湾": {
+    "type": "Region",
+    "value": "TW"
+  },
+  "台灣": {
+    "type": "Region",
+    "value": "TW"
+  },
+  "印度": {
+    "type": "Region",
+    "value": "IN"
+  },
+  "澳大利亚": {
+    "type": "Region",
+    "value": "AU"
+  },
+  "澳洲": {
+    "type": "Region",
+    "value": "AU"
+  },
+  "美国": {
+    "type": "Region",
+    "value": "US"
+  },
+  "英国": {
+    "type": "Region",
+    "value": "UK"
+  },
+  "法国": {
+    "type": "Region",
+    "value": "FR"
+  },
+  "德国": {
+    "type": "Region",
+    "value": "DE"
+  },
+  "意大利": {
+    "type": "Region",
+    "value": "IT"
+  },
+  "西班牙": {
+    "type": "Region",
+    "value": "ES"
+  },
+  "加拿大": {
+    "type": "Region",
+    "value": "CA"
+  },
+  "俄罗斯": {
+    "type": "Region",
+    "value": "RU"
+  },
+  "北京": {
+    "type": "NearCity",
+    "value": {
+      "name": "Beijing",
+      "lat": 39.9042,
+      "lon": 116.4074
+    }
+  },
+  "上海": {
+    "type": "NearCity",
+    "value": {
+      "name": "Shanghai",
+      "lat": 31.2304,
+      "lon": 121.4737
+    }
+  },
+  "广州": {
+    "type": "NearCity",
+    "value": {
+      "name": "Guangzhou",
+      "lat": 23.1291,
+      "lon": 113.2644
+    }
+  },
+  "chengdu": {
+    "type": "NearCity",
+    "value": {
+      "name": "Chengdu",
+      "lat": 30.5728,
+      "lon": 104.0668
+    }
+  },
+  "成都": {
+    "type": "NearCity",
+    "value": {
+      "name": "Chengdu",
+      "lat": 30.5728,
+      "lon": 104.0668
+    }
+  },
+  "shenzhen": {
+    "type": "NearCity",
+    "value": {
+      "name": "Shenzhen",
+      "lat": 22.5431,
+      "lon": 114.0579
+    }
+  },
+  "深圳": {
+    "type": "NearCity",
+    "value": {
+      "name": "Shenzhen",
+      "lat": 22.5431,
+      "lon": 114.0579
+    }
+  },
+  "wuhan": {
+    "type": "NearCity",
+    "value": {
+      "name": "Wuhan",
+      "lat": 30.5928,
+      "lon": 114.3052
+    }
+  },
+  "武汉": {
+    "type": "NearCity",
+    "value": {
+      "name": "Wuhan",
+      "lat": 30.5928,
+      "lon": 114.3052
+    }
+  },
+  "xian": {
+    "type": "NearCity",
+    "value": {
+      "name": "Xi'an",
+      "lat": 34.3416,
+      "lon": 108.9398
+    }
+  },
+  "西安": {
+    "type": "NearCity",
+    "value": {
+      "name": "Xi'an",
+      "lat": 34.3416,
+      "lon": 108.9398
+    }
+  },
+  "hangzhou": {
+    "type": "NearCity",
+    "value": {
+      "name": "Hangzhou",
+      "lat": 30.2741,
+      "lon": 120.1551
+    }
+  },
+  "杭州": {
+    "type": "NearCity",
+    "value": {
+      "name": "Hangzhou",
+      "lat": 30.2741,
+      "lon": 120.1551
+    }
+  },
+  "nanjing": {
+    "type": "NearCity",
+    "value": {
+      "name": "Nanjing",
+      "lat": 32.0603,
+      "lon": 118.7969
+    }
+  },
+  "南京": {
+    "type": "NearCity",
+    "value": {
+      "name": "Nanjing",
+      "lat": 32.0603,
+      "lon": 118.7969
+    }
+  },
+  "chongqing": {
+    "type": "NearCity",
+    "value": {
+      "name": "Chongqing",
+      "lat": 29.563,
+      "lon": 106.5516
+    }
+  },
+  "重庆": {
+    "type": "NearCity",
+    "value": {
+      "name": "Chongqing",
+      "lat": 29.563,
+      "lon": 106.5516
+    }
+  },
+  "tianjin": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tianjin",
+      "lat": 39.3434,
+      "lon": 117.3616
+    }
+  },
+  "天津": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tianjin",
+      "lat": 39.3434,
+      "lon": 117.3616
+    }
+  },
+  "qingdao": {
+    "type": "NearCity",
+    "value": {
+      "name": "Qingdao",
+      "lat": 36.0671,
+      "lon": 120.3826
+    }
+  },
+  "青岛": {
+    "type": "NearCity",
+    "value": {
+      "name": "Qingdao",
+      "lat": 36.0671,
+      "lon": 120.3826
+    }
+  },
+  "kunming": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kunming",
+      "lat": 25.0389,
+      "lon": 102.7183
+    }
+  },
+  "昆明": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kunming",
+      "lat": 25.0389,
+      "lon": 102.7183
+    }
+  },
+  "dalian": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dalian",
+      "lat": 38.914,
+      "lon": 121.6147
+    }
+  },
+  "大连": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dalian",
+      "lat": 38.914,
+      "lon": 121.6147
+    }
+  },
+  "harbin": {
+    "type": "NearCity",
+    "value": {
+      "name": "Harbin",
+      "lat": 45.8038,
+      "lon": 126.535
+    }
+  },
+  "哈尔滨": {
+    "type": "NearCity",
+    "value": {
+      "name": "Harbin",
+      "lat": 45.8038,
+      "lon": 126.535
+    }
+  },
+  "xiamen": {
+    "type": "NearCity",
+    "value": {
+      "name": "Xiamen",
+      "lat": 24.4798,
+      "lon": 118.0894
+    }
+  },
+  "厦门": {
+    "type": "NearCity",
+    "value": {
+      "name": "Xiamen",
+      "lat": 24.4798,
+      "lon": 118.0894
+    }
+  },
+  "changsha": {
+    "type": "NearCity",
+    "value": {
+      "name": "Changsha",
+      "lat": 28.2282,
+      "lon": 112.9388
+    }
+  },
+  "长沙": {
+    "type": "NearCity",
+    "value": {
+      "name": "Changsha",
+      "lat": 28.2282,
+      "lon": 112.9388
+    }
+  },
+  "zhengzhou": {
+    "type": "NearCity",
+    "value": {
+      "name": "Zhengzhou",
+      "lat": 34.7473,
+      "lon": 113.6249
+    }
+  },
+  "郑州": {
+    "type": "NearCity",
+    "value": {
+      "name": "Zhengzhou",
+      "lat": 34.7473,
+      "lon": 113.6249
+    }
+  },
+  "sanya": {
+    "type": "NearCity",
+    "value": {
+      "name": "Sanya",
+      "lat": 18.2524,
+      "lon": 109.512
+    }
+  },
+  "三亚": {
+    "type": "NearCity",
+    "value": {
+      "name": "Sanya",
+      "lat": 18.2524,
+      "lon": 109.512
+    }
+  },
+  "urumqi": {
+    "type": "NearCity",
+    "value": {
+      "name": "Urumqi",
+      "lat": 43.8256,
+      "lon": 87.6168
+    }
+  },
+  "乌鲁木齐": {
+    "type": "NearCity",
+    "value": {
+      "name": "Urumqi",
+      "lat": 43.8256,
+      "lon": 87.6168
+    }
+  },
+  "lhasa": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lhasa",
+      "lat": 29.652,
+      "lon": 91.1721
+    }
+  },
+  "拉萨": {
+    "type": "NearCity",
+    "value": {
+      "name": "Lhasa",
+      "lat": 29.652,
+      "lon": 91.1721
+    }
+  },
+  "东京": {
+    "type": "NearCity",
+    "value": {
+      "name": "Tokyo",
+      "lat": 35.6762,
+      "lon": 139.6503
+    }
+  },
+  "大阪": {
+    "type": "NearCity",
+    "value": {
+      "name": "Osaka",
+      "lat": 34.6937,
+      "lon": 135.5023
+    }
+  },
+  "首尔": {
+    "type": "NearCity",
+    "value": {
+      "name": "Seoul",
+      "lat": 37.5665,
+      "lon": 126.978
+    }
+  },
+  "台北": {
+    "type": "NearCity",
+    "value": {
+      "name": "Taipei",
+      "lat": 25.033,
+      "lon": 121.5654
+    }
+  },
+  "曼谷": {
+    "type": "NearCity",
+    "value": {
+      "name": "Bangkok",
+      "lat": 13.7563,
+      "lon": 100.5018
+    }
+  },
+  "香港": {
+    "type": "Region",
+    "value": "HK"
+  },
+  "吉隆坡": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kuala Lumpur",
+      "lat": 3.139,
+      "lon": 101.6869
+    }
+  },
+  "马尼拉": {
+    "type": "NearCity",
+    "value": {
+      "name": "Manila",
+      "lat": 14.5995,
+      "lon": 120.9842
+    }
+  },
+  "河内": {
+    "type": "NearCity",
+    "value": {
+      "name": "Hanoi",
+      "lat": 21.0278,
+      "lon": 105.8342
+    }
+  },
+  "胡志明市": {
+    "type": "NearCity",
+    "value": {
+      "name": "Ho Chi Minh City",
+      "lat": 10.8231,
+      "lon": 106.6297
+    }
+  },
+  "西贡": {
+    "type": "NearCity",
+    "value": {
+      "name": "Ho Chi Minh City",
+      "lat": 10.8231,
+      "lon": 106.6297
+    }
+  },
+  "雅加达": {
+    "type": "NearCity",
+    "value": {
+      "name": "Jakarta",
+      "lat": -6.2088,
+      "lon": 106.8456
+    }
+  },
+  "孟买": {
+    "type": "NearCity",
+    "value": {
+      "name": "Mumbai",
+      "lat": 19.076,
+      "lon": 72.8777
+    }
+  },
+  "新德里": {
+    "type": "NearCity",
+    "value": {
+      "name": "Delhi",
+      "lat": 28.7041,
+      "lon": 77.1025
+    }
+  },
+  "迪拜": {
+    "type": "NearCity",
+    "value": {
+      "name": "Dubai",
+      "lat": 25.2048,
+      "lon": 55.2708
+    }
+  },
+  "多哈": {
+    "type": "NearCity",
+    "value": {
+      "name": "Doha",
+      "lat": 25.2854,
+      "lon": 51.531
+    }
+  },
+  "悉尼": {
+    "type": "NearCity",
+    "value": {
+      "name": "Sydney",
+      "lat": -33.8688,
+      "lon": 151.2093
+    }
+  },
+  "墨尔本": {
+    "type": "NearCity",
+    "value": {
+      "name": "Melbourne",
+      "lat": -37.8136,
+      "lon": 144.9631
+    }
+  },
+  "伦敦": {
+    "type": "NearCity",
+    "value": {
+      "name": "London",
+      "lat": 51.5074,
+      "lon": -0.1278
+    }
+  },
+  "巴黎": {
+    "type": "NearCity",
+    "value": {
+      "name": "Paris",
+      "lat": 48.8566,
+      "lon": 2.3522
+    }
+  },
+  "柏林": {
+    "type": "NearCity",
+    "value": {
+      "name": "Berlin",
+      "lat": 52.52,
+      "lon": 13.405
+    }
+  },
+  "罗马": {
+    "type": "NearCity",
+    "value": {
+      "name": "Rome",
+      "lat": 41.9028,
+      "lon": 12.4964
+    }
+  },
+  "马德里": {
+    "type": "NearCity",
+    "value": {
+      "name": "Madrid",
+      "lat": 40.4168,
+      "lon": -3.7038
+    }
+  },
+  "纽约": {
+    "type": "NearCity",
+    "value": {
+      "name": "New York",
+      "lat": 40.7128,
+      "lon": -74.006
+    }
+  },
+  "洛杉矶": {
+    "type": "NearCity",
+    "value": {
+      "name": "Los Angeles",
+      "lat": 34.0522,
+      "lon": -118.2437
+    }
+  },
+  "旧金山": {
+    "type": "NearCity",
+    "value": {
+      "name": "San Francisco",
+      "lat": 37.7749,
+      "lon": -122.4194
+    }
+  },
+  "芝加哥": {
+    "type": "NearCity",
+    "value": {
+      "name": "Chicago",
+      "lat": 41.8781,
+      "lon": -87.6298
+    }
+  },
+  "norcal": {
+    "type": "Region",
+    "value": "US:NorCal"
+  },
+  "northern california": {
+    "type": "Region",
+    "value": "US:NorCal"
+  },
+  "riverside": {
+    "type": "Region",
+    "value": "US:SoCal"
+  },
+  "riverside county": {
+    "type": "Region",
+    "value": "US:SoCal"
+  },
+  "washington state": {
+    "type": "Region",
+    "value": "US:WA"
+  },
+  "state of washington": {
+    "type": "Region",
+    "value": "US:WA"
+  },
+  "wa state": {
+    "type": "Region",
+    "value": "US:WA"
+  },
+  "new york city": {
+    "type": "NearCity",
+    "value": {
+      "name": "New York",
+      "lat": 40.7128,
+      "lon": -74.006
+    }
+  }
+}
