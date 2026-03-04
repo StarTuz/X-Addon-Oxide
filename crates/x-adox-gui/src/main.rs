@@ -1314,6 +1314,7 @@ impl App {
     fn check_loading_complete(&mut self) {
         if self.loading_state.is_loading && self.loading_state.is_fully_loaded() {
             self.loading_state.is_loading = false;
+            self.map_initialized = true;
             self.status = "X-Plane Ready".to_string();
         }
     }
@@ -5537,7 +5538,6 @@ impl App {
             || self.active_resize_edge.is_some()
             || self.active_context_resize_edge.is_some()
             || self.tile_manager.has_pending()
-            || !self.map_initialized
         {
             time::every(std::time::Duration::from_millis(16)).map(Message::Tick)
         } else {
