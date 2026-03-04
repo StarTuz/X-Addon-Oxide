@@ -31,7 +31,7 @@ date: "February 2026"
 <div class="cover-page">
   <img src="pictures/logo.png" width="540" height="295" alt="X-Addon-Oxide Logo" style="border:none; box-shadow:none; max-width:100%;">
   <div class="cover-subtitle">The Modern Addon Manager for X-Plane 11 & 12</div>
-  <div class="cover-version">Version 2.4.4 · User Manual</div>
+  <div class="cover-version">Version 2.4.5 · User Manual</div>
   <div class="cover-version" style="margin-top:8px; font-size:14px;">February 2026</div>
 </div>
 
@@ -168,10 +168,13 @@ sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel \
 
 1. Download `X-Addon-Oxide-x86_64.AppImage` from the Releases page.
 2. Make it executable:
+
    ```bash
    chmod +x X-Addon-Oxide-x86_64.AppImage
    ```
+
 3. Run it:
+
    ```bash
    ./X-Addon-Oxide-x86_64.AppImage
    ```
@@ -179,7 +182,7 @@ sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel \
 ### DEB Package (Ubuntu / Debian)
 
 ```bash
-sudo dpkg -i x-addon-oxide_2.4.4_amd64.deb
+sudo dpkg -i x-addon-oxide_2.4.5_amd64.deb
 # Then launch from your application menu or:
 x-addon-oxide
 ```
@@ -187,7 +190,7 @@ x-addon-oxide
 ### RPM Package (Fedora / openSUSE)
 
 ```bash
-sudo rpm -i x-addon-oxide-2.4.4.x86_64.rpm
+sudo rpm -i x-addon-oxide-2.4.5.x86_64.rpm
 ```
 
 <div class="page-break"></div>
@@ -391,8 +394,8 @@ If an aircraft includes a `manuals/` folder with PDF files, a **Book** icon (�
 
 <img src="pictures/aircraftmanual3.png" alt="Aircraft manuals folder showing ToLiss A330 Tutorial, Simulation Manual, and Aircraft Manual">
 
-* Clicking the icon opens the PDF directly in your system's default viewer.
-* If multiple PDFs are found, the `manuals/` folder opens instead so you can choose.
+- Clicking the icon opens the PDF directly in your system's default viewer.
+- If multiple PDFs are found, the `manuals/` folder opens instead so you can choose.
 
 <div class="page-break"></div>
 
@@ -472,8 +475,8 @@ Click **Smart Sort** to let the BitNet engine automatically order your entire li
 <img src="pictures/smartsort.png" alt="Smart Sort Simulation Report showing All checks passed and resulting order preview">
 
 The report shows:
-* A **pass / fail** status with a list of any detected ordering issues.
-* A preview of the **Top 15 packs** in the resulting order.
+- A **pass / fail** status with a list of any detected ordering issues.
+- A preview of the **Top 15 packs** in the resulting order.
 
 Click **Apply Changes** to write the new order, or **Cancel** to discard.
 
@@ -541,9 +544,9 @@ Once you have at least one item in the basket, the **Show Basket (n)** button ap
 <img src="pictures/basket1.png" alt="Basket panel open with one item showing Auto-pin toggle and Clear button">
 
 The basket panel slides in from the right. It shows all selected packs with:
-* **Auto-pin** toggle — automatically pins each pack after a basket operation.
-* **Clear** — empties the basket.
-* Individual remove buttons per item.
+- **Auto-pin** toggle — automatically pins each pack after a basket operation.
+- **Clear** — empties the basket.
+- Individual remove buttons per item.
 
 ### Bulk Operations
 
@@ -656,9 +659,9 @@ The interactive map at the bottom of the screen visualises your entire installed
 
 ## Zoom and Pan
 
-* **Scroll wheel** — zoom in/out.
-* **Click-drag** — pan the map.
-* At higher zoom levels, OpenStreetMap base tiles load to show roads and terrain context.
+- **Scroll wheel** — zoom in/out.
+- **Click-drag** — pan the map.
+- At higher zoom levels, OpenStreetMap base tiles load to show roads and terrain context.
 
 <img src="pictures/worldmapzoomedsweden.png" alt="Map zoomed into Sweden showing detailed airport locations and filter panel open">
 
@@ -703,10 +706,10 @@ The **Plugins** tab lists everything in `Resources/plugins/`. Use the checkbox o
 
 If you use **FlyWithLua**, X-Addon-Oxide discovers every `.lua` script inside its `Scripts/` and `Scripts (disabled)/` sub-folders and shows them as expandable children under the FlyWithLua row.
 
-* Click **▶** on the FlyWithLua row to expand the script list.
-* The badge (e.g. `2/12`) shows how many scripts are currently enabled out of total found.
-* Check or uncheck individual scripts — enabled scripts live in `Scripts/`, disabled ones move to `Scripts (disabled)/`.
-* The plugin itself is unaffected; only the individual script files are toggled.
+- Click **▶** on the FlyWithLua row to expand the script list.
+- The badge (e.g. `2/12`) shows how many scripts are currently enabled out of total found.
+- Check or uncheck individual scripts — enabled scripts live in `Scripts/`, disabled ones move to `Scripts (disabled)/`.
+- The plugin itself is unaffected; only the individual script files are toggled.
 
 <div class="tip">
 <strong>Tip:</strong> Keep development scripts (test utilities, debug tools) in FlyWithLua but disable them for normal flying. Re-enable them in seconds when you need them.
@@ -827,10 +830,10 @@ Click **History & Context** to open the Flight Context panel.
 <img src="pictures/historycontextdeparture.png" alt="History and Context panel showing airport background article, Remember this flight and Prefer this origin buttons">
 
 The panel shows:
-* A **Wikipedia summary** for the origin airport and surrounding area (fetched live or from local cache).
-* Points of interest within range.
-* **Remember this flight** — persists this origin/destination pair as a preference. Future prompts for the same region are more likely to pick these airports.
-* **Prefer this origin / destination** — marks the individual airport for higher priority in random selection.
+- A **Wikipedia summary** for the origin airport and surrounding area (fetched live or from local cache).
+- Points of interest within range.
+- **Remember this flight** — persists this origin/destination pair as a preference. Future prompts for the same region are more likely to pick these airports.
+- **Prefer this origin / destination** — marks the individual airport for higher priority in random selection.
 
 <img src="pictures/historycontextmtr.png" alt="Context panel showing METAR data for the departure airport">
 
@@ -886,9 +889,9 @@ Launch your essential flight tools without switching windows.
 
 ### Launching
 
-* Select an app from the **Select App…** dropdown.
-* Optionally check **Launch with X-Plane** to start it automatically when you click the main **Launch** button.
-* Click **Launch** to start the app immediately.
+- Select an app from the **Select App…** dropdown.
+- Optionally check **Launch with X-Plane** to start it automatically when you click the main **Launch** button.
+- Click **Launch** to start the app immediately.
 
 ### Launch X-Plane with Arguments
 
@@ -912,9 +915,9 @@ The Logbook section reads your X-Plane `Pilot.txt` file and presents all flights
 
 ### Features
 
-* **Search & Filter** — filter by tail number, aircraft type, airport ICAO, or date range.
-* **Delete entries** — select one or multiple rows and delete them. A `.bak` backup is created automatically before any changes are written.
-* **Show Route** — click any entry to plot the flight path on the world map.
+- **Search & Filter** — filter by tail number, aircraft type, airport ICAO, or date range.
+- **Delete entries** — select one or multiple rows and delete them. A `.bak` backup is created automatically before any changes are written.
+- **Show Route** — click any entry to plot the flight path on the world map.
 
 <img src="pictures/logbookshowroute.png" alt="Logbook with a flight selected and its route shown as a line on the world map">
 
@@ -1073,9 +1076,9 @@ If you edited `scenery_packs.ini` in a text editor while X-Addon-Oxide was open,
 
 ### Flight Generator Produces No Results
 
-* Ensure you have a working internet connection (required for METAR weather filtering).
-* If your prompt includes very specific weather (e.g. `snow`) in a region where it is currently summer, try a broader prompt or remove the weather constraint.
-* For seaplane prompts, ensure you have seaplane-base scenery installed or results will fall back to the global seed airports.
+- Ensure you have a working internet connection (required for METAR weather filtering).
+- If your prompt includes very specific weather (e.g. `snow`) in a region where it is currently summer, try a broader prompt or remove the weather constraint.
+- For seaplane prompts, ensure you have seaplane-base scenery installed or results will fall back to the global seed airports.
 
 ### Log Files
 
@@ -1091,4 +1094,4 @@ If reporting a bug, please include the contents of this file along with your ope
 
 ---
 
-*X-Addon-Oxide v2.4.4 · User Manual · February 2026*
+*X-Addon-Oxide v2.4.5 · User Manual · March 2026*

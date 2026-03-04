@@ -25,6 +25,8 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 
 ## Feature Highlights
 
+- **New for 2.4.5**:
+  - **Performance Fix (GUI Idle CPU)**: Resolved a major performance regression where the GUI would consume 20-30% CPU even when idle. The 16ms animation timer now correctly suspends when no active loading, dragging, or map interactions are in progress.
 - **New for 2.4.4**:
   - **Archive Preview Mode & Robust Installation**: All `.zip`, `.7z`, and `.rar` archive installations now trigger an interactive preview modal. Support for **selective extraction**, **flattening** (stripping redundant top-level folders), and **wrapping** (forcing subfolder creation).
   - **Unified Script Redirection**: Detailed redirection logic for **FlyWithLua** and **XPPython3** is now consistent across all archive formats, ensuring scripts always land in the correct simulator directory.
@@ -83,6 +85,11 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 - **Developer Friendly**: Hot-swap addons while the sim is running (plugin dependent) for rapid testing.
 
 ## Release Notes
+
+### v2.4.5
+
+- **Performance Fix (GUI Idle CPU)**: Resolved a major performance regression where the GUI would consume 20-30% CPU even when idle. Fixed the perpetual 16ms animation timer in the subscription guard.
+- **Map Initialization**: Auto-initialize map zoom after scenery loading completes, eliminating the need for a background timer to wait for the first map render.
 
 ### v2.4.4
 
