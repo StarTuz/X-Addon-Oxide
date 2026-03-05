@@ -2214,5 +2214,179 @@
       "lat": -21.2028,
       "lon": -159.8028
     }
+  ],
+  "Dolomites": [
+    {
+      "id": "LIPB",
+      "name": "Bolzano",
+      "lat": 46.4602,
+      "lon": 11.3264
+    },
+    {
+      "id": "LOWI",
+      "name": "Innsbruck",
+      "lat": 47.26,
+      "lon": 11.344
+    }
+  ],
+  "ScottishHighlands": [
+    {
+      "id": "EGPE",
+      "name": "Inverness",
+      "lat": 57.5425,
+      "lon": -4.0475
+    },
+    {
+      "id": "EGPD",
+      "name": "Aberdeen Dyce",
+      "lat": 57.2019,
+      "lon": -2.1978
+    },
+    {
+      "id": "EGPC",
+      "name": "Wick John O Groats",
+      "lat": 58.4589,
+      "lon": -3.0931
+    }
+  ],
+  "NorwegianFjords": [
+    {
+      "id": "ENBR",
+      "name": "Bergen Flesland",
+      "lat": 60.2934,
+      "lon": 5.2181
+    },
+    {
+      "id": "ENSG",
+      "name": "Sogndal Haukaasen",
+      "lat": 61.1561,
+      "lon": 7.1378
+    },
+    {
+      "id": "ENAL",
+      "name": "Alesund Vigra",
+      "lat": 62.5625,
+      "lon": 6.1197
+    }
+  ],
+  "Appalachians": [
+    {
+      "id": "KAVL",
+      "name": "Asheville Regional",
+      "lat": 35.4362,
+      "lon": -82.5418
+    },
+    {
+      "id": "KROA",
+      "name": "Roanoke Blacksburg Regional",
+      "lat": 37.3255,
+      "lon": -79.9754
+    },
+    {
+      "id": "KBFD",
+      "name": "Bradford Regional",
+      "lat": 41.8031,
+      "lon": -78.6401
+    }
+  ],
+  "Cascades": [
+    {
+      "id": "KEAT",
+      "name": "Wenatchee Pangborn Memorial",
+      "lat": 47.3988,
+      "lon": -120.2066
+    },
+    {
+      "id": "KRDM",
+      "name": "Redmond Roberts Field",
+      "lat": 44.2541,
+      "lon": -121.1497
+    },
+    {
+      "id": "KSEA",
+      "name": "Seattle Tacoma International",
+      "lat": 47.4502,
+      "lon": -122.3088
+    }
+  ],
+  "Sahara": [
+    {
+      "id": "GMMX",
+      "name": "Marrakech Menara",
+      "lat": 31.6086,
+      "lon": -8.0363
+    },
+    {
+      "id": "DAAT",
+      "name": "Aguenar Tamanrasset",
+      "lat": 22.8115,
+      "lon": 5.4511
+    },
+    {
+      "id": "HLLS",
+      "name": "Sabha",
+      "lat": 26.994,
+      "lon": 14.472
+    }
+  ],
+  "AustralianOutback": [
+    {
+      "id": "YBAS",
+      "name": "Alice Springs",
+      "lat": -23.8068,
+      "lon": 133.9021
+    },
+    {
+      "id": "YCIN",
+      "name": "Coober Pedy",
+      "lat": -29.0,
+      "lon": 134.7225
+    },
+    {
+      "id": "YBSV",
+      "name": "Birdsville",
+      "lat": -25.8975,
+      "lon": 139.3492
+    }
+  ],
+  "NZSouthernAlps": [
+    {
+      "id": "NZQN",
+      "name": "Queenstown",
+      "lat": -45.0211,
+      "lon": 168.7392
+    },
+    {
+      "id": "NZCH",
+      "name": "Christchurch International",
+      "lat": -43.4894,
+      "lon": 172.532
+    },
+    {
+      "id": "NZDN",
+      "name": "Dunedin International",
+      "lat": -45.9281,
+      "lon": 170.198
+    }
+  ],
+  "TibetanPlateau": [
+    {
+      "id": "ZULS",
+      "name": "Lhasa Gonggar",
+      "lat": 29.2978,
+      "lon": 90.9119
+    },
+    {
+      "id": "ZUBD",
+      "name": "Bangda Chamdo",
+      "lat": 30.5536,
+      "lon": 97.1083
+    },
+    {
+      "id": "ZULH",
+      "name": "Maqin Dawu",
+      "lat": 34.4206,
+      "lon": 100.3014
+    }
   ]
 }

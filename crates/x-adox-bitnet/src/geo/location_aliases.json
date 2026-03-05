@@ -1307,16 +1307,16 @@
     "type": "NearCity",
     "value": {
       "name": "Anchorage",
-      "lat": 61.2181,
-      "lon": -149.9003
+      "lat": 61.22,
+      "lon": -149.9
     }
   },
   "honolulu": {
     "type": "NearCity",
     "value": {
       "name": "Honolulu",
-      "lat": 21.3069,
-      "lon": -157.8583
+      "lat": 21.31,
+      "lon": -157.86
     }
   },
   "frankfurt": {
@@ -2787,22 +2787,6 @@
       "lon": -74.07
     }
   },
-  "honolulu": {
-    "type": "NearCity",
-    "value": {
-      "name": "Honolulu",
-      "lat": 21.31,
-      "lon": -157.86
-    }
-  },
-  "anchorage": {
-    "type": "NearCity",
-    "value": {
-      "name": "Anchorage",
-      "lat": 61.22,
-      "lon": -149.9
-    }
-  },
   "moscow": {
     "type": "NearCity",
     "value": {
@@ -2818,5 +2802,181 @@
       "lat": 59.93,
       "lon": 30.32
     }
+  },
+  "the alps": {
+    "type": "Region",
+    "value": "Alps"
+  },
+  "the rockies": {
+    "type": "Region",
+    "value": "Rockies"
+  },
+  "andes": {
+    "type": "Region",
+    "value": "Andes"
+  },
+  "the andes": {
+    "type": "Region",
+    "value": "Andes"
+  },
+  "andean": {
+    "type": "Region",
+    "value": "Andes"
+  },
+  "amazon": {
+    "type": "Region",
+    "value": "Amazon"
+  },
+  "amazon rainforest": {
+    "type": "Region",
+    "value": "Amazon"
+  },
+  "atlas mountains": {
+    "type": "Region",
+    "value": "Atlas"
+  },
+  "atlas": {
+    "type": "Region",
+    "value": "Atlas"
+  },
+  "himalayas": {
+    "type": "Region",
+    "value": "Himalayas"
+  },
+  "the himalayas": {
+    "type": "Region",
+    "value": "Himalayas"
+  },
+  "himalayan": {
+    "type": "Region",
+    "value": "Himalayas"
+  },
+  "mediterranean": {
+    "type": "Region",
+    "value": "Mediterranean"
+  },
+  "med": {
+    "type": "Region",
+    "value": "Mediterranean"
+  },
+  "patagonia": {
+    "type": "Region",
+    "value": "Patagonia"
+  },
+  "pyrenees": {
+    "type": "Region",
+    "value": "Pyrenees"
+  },
+  "the pyrenees": {
+    "type": "Region",
+    "value": "Pyrenees"
+  },
+  "pacific islands": {
+    "type": "Region",
+    "value": "PacIsles"
+  },
+  "pacific isles": {
+    "type": "Region",
+    "value": "PacIsles"
+  },
+  "dolomites": {
+    "type": "Region",
+    "value": "Dolomites"
+  },
+  "the dolomites": {
+    "type": "Region",
+    "value": "Dolomites"
+  },
+  "scottish highlands": {
+    "type": "Region",
+    "value": "ScottishHighlands"
+  },
+  "the highlands": {
+    "type": "Region",
+    "value": "ScottishHighlands"
+  },
+  "highlands": {
+    "type": "Region",
+    "value": "ScottishHighlands"
+  },
+  "norwegian fjords": {
+    "type": "Region",
+    "value": "NorwegianFjords"
+  },
+  "the fjords": {
+    "type": "Region",
+    "value": "NorwegianFjords"
+  },
+  "fjords": {
+    "type": "Region",
+    "value": "NorwegianFjords"
+  },
+  "appalachians": {
+    "type": "Region",
+    "value": "Appalachians"
+  },
+  "appalachian mountains": {
+    "type": "Region",
+    "value": "Appalachians"
+  },
+  "appalachian": {
+    "type": "Region",
+    "value": "Appalachians"
+  },
+  "cascades": {
+    "type": "Region",
+    "value": "Cascades"
+  },
+  "cascade range": {
+    "type": "Region",
+    "value": "Cascades"
+  },
+  "cascade mountains": {
+    "type": "Region",
+    "value": "Cascades"
+  },
+  "sahara": {
+    "type": "Region",
+    "value": "Sahara"
+  },
+  "sahara desert": {
+    "type": "Region",
+    "value": "Sahara"
+  },
+  "australian outback": {
+    "type": "Region",
+    "value": "AustralianOutback"
+  },
+  "outback": {
+    "type": "Region",
+    "value": "AustralianOutback"
+  },
+  "southern alps": {
+    "type": "Region",
+    "value": "NZSouthernAlps"
+  },
+  "nz southern alps": {
+    "type": "Region",
+    "value": "NZSouthernAlps"
+  },
+  "tibetan plateau": {
+    "type": "Region",
+    "value": "TibetanPlateau"
+  },
+  "tibet": {
+    "type": "Region",
+    "value": "TibetanPlateau"
+  },
+  "mountains": {
+    "type": "Region",
+    "value": "Alps"
+  },
+  "the mountains": {
+    "type": "Region",
+    "value": "Alps"
+  },
+  "mountain region": {
+    "type": "Region",
+    "value": "Alps"
   }
 }

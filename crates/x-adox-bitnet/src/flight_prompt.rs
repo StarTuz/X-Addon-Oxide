@@ -126,6 +126,49 @@ const WEATHER_TIME_WORDS: &[&str] = &[
     "clear weather",
 ];
 
+/// Geographic feature words that, when captured by the aircraft regex, indicate the
+/// text is a destination clause rather than an aircraft name.
+/// E.g. "flying in the mountains" → destination, not aircraft="mountains".
+/// Uses word-level matching (split_whitespace) to avoid partial-word false positives
+/// like "hill" matching inside "churchill".
+const GEOGRAPHIC_FEATURE_WORDS: &[&str] = &[
+    "mountain",
+    "mountains",
+    "highlands",
+    "highland",
+    "hills",
+    "hill",
+    "fjord",
+    "fjords",
+    "valley",
+    "valleys",
+    "desert",
+    "jungle",
+    "rainforest",
+    "forest",
+    "coast",
+    "coastal",
+    "coastline",
+    "plateau",
+    "plains",
+    "prairie",
+    "savanna",
+    "savannah",
+    "steppe",
+    "tundra",
+    "glacier",
+    "glaciers",
+    "volcanic",
+    "volcano",
+    "canyon",
+    "canyons",
+    "outback",
+    "wilderness",
+    "archipelago",
+    "islands",
+    "isles",
+];
+
 fn build_alternation(words: &[&str]) -> String {
     words
         .iter()
@@ -751,6 +794,80 @@ impl FlightPrompt {
             }
         }
 
+        // 2c. Pre-extract distance constraints from the full clean_input BEFORE step 3
+        // strips location text.  Distance text embedded in dest_str (e.g. "a destination
+        // within 70km or 90nm") is consumed by the LOC_RE strip and invisible to step 7.
+        // Running here ensures those constraints are captured; step 7 is a no-op override
+        // when the text is already gone.
+        //
+        // Unit aliases supported: nm, nmi, km, kilometer(s), kilometre(s), mi, miles,
+        // nautical miles.  "within N unit or M unit" takes the larger (most permissive) bound.
+        {
+            const U: &str = r"(?:nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?)";
+            static PRE_DIST_OR_RE: OnceLock<Regex> = OnceLock::new();
+            let pre_dist_or_re = PRE_DIST_OR_RE.get_or_init(|| {
+                Regex::new(&format!(
+                    r"(?i)(?:within|under|less than|max(?:imum)?)\s+(\d+(?:\.\d+)?)\s*({})\s+or\s+(\d+(?:\.\d+)?)\s*({})",
+                    U, U
+                ))
+                .unwrap()
+            });
+            static PRE_DIST_BETWEEN_RE: OnceLock<Regex> = OnceLock::new();
+            let pre_dist_between_re = PRE_DIST_BETWEEN_RE.get_or_init(|| {
+                Regex::new(&format!(
+                    r"(?i)between\s+(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)\s*({})",
+                    U
+                ))
+                .unwrap()
+            });
+            static PRE_DIST_WITHIN_RE: OnceLock<Regex> = OnceLock::new();
+            let pre_dist_within_re = PRE_DIST_WITHIN_RE.get_or_init(|| {
+                Regex::new(&format!(
+                    r"(?i)(?:within|under|less than|max(?:imum)?)\s+(\d+(?:\.\d+)?)\s*({})",
+                    U
+                ))
+                .unwrap()
+            });
+            static PRE_DIST_ATLEAST_RE: OnceLock<Regex> = OnceLock::new();
+            let pre_dist_atleast_re = PRE_DIST_ATLEAST_RE.get_or_init(|| {
+                Regex::new(&format!(
+                    r"(?i)(?:at least|over|more than|min(?:imum)?)\s+(\d+(?:\.\d+)?)\s*({})",
+                    U
+                ))
+                .unwrap()
+            });
+            static PRE_DIST_BARE_RE: OnceLock<Regex> = OnceLock::new();
+            let pre_dist_bare_re = PRE_DIST_BARE_RE.get_or_init(|| {
+                Regex::new(&format!(r"(?i)\b(\d+(?:\.\d+)?)\s*({})\b", U)).unwrap()
+            });
+
+            if let Some(caps) = pre_dist_or_re.captures(&clean_input) {
+                if let (Ok(a), Ok(b)) = (caps[1].parse::<f64>(), caps[3].parse::<f64>()) {
+                    prompt.user_max_dist_nm =
+                        Some(to_nm_unit(a, &caps[2]).max(to_nm_unit(b, &caps[4])));
+                }
+            } else if let Some(caps) = pre_dist_between_re.captures(&clean_input) {
+                if let (Ok(a), Ok(b)) = (caps[1].parse::<f64>(), caps[2].parse::<f64>()) {
+                    prompt.user_min_dist_nm = Some(to_nm_unit(a, &caps[3]));
+                    prompt.user_max_dist_nm = Some(to_nm_unit(b, &caps[3]));
+                }
+            } else if let Some(caps) = pre_dist_within_re.captures(&clean_input) {
+                if let Ok(v) = caps[1].parse::<f64>() {
+                    prompt.user_max_dist_nm = Some(to_nm_unit(v, &caps[2]));
+                }
+            } else if let Some(caps) = pre_dist_atleast_re.captures(&clean_input) {
+                if let Ok(v) = caps[1].parse::<f64>() {
+                    prompt.user_min_dist_nm = Some(to_nm_unit(v, &caps[2]));
+                }
+            } else if let Some(caps) = pre_dist_bare_re.captures(&clean_input) {
+                if let Ok(v) = caps[1].parse::<f64>() {
+                    let nm = to_nm_unit(v, &caps[2]);
+                    prompt.user_min_dist_nm = Some((nm * 0.7).max(2.0));
+                    prompt.user_max_dist_nm = Some(nm * 1.3);
+                }
+            }
+        }
+
         // 3. Parse Origin and Destination
         // Patterns: "from X to Y", "flight from X to Y", "X to Y"
         // Suffix terminators include "via" so "Paris via Brussels" → dest="paris".
@@ -798,12 +915,37 @@ impl FlightPrompt {
                 || origin_str == "at"
                 || origin_str == "during";
 
+            // Resolve destination: strip embedded distance text, check for noise-only strings,
+            // then strip descriptor noise so the underlying location can be resolved.
+            // E.g. "a destination within 70km or 90nm" → Any
+            //      "any airport in France within 500nm"  → Region("FR")
+            //      "paris within 500nm"                  → NearCity("Paris")
+            let dest_no_dist = strip_distance_text(dest_str);
+            let dest_loc = if is_noise_dest(dest_str) {
+                LocationConstraint::Any
+            } else {
+                let dest_clean = clean_location_noise(&dest_no_dist);
+                if !dest_clean.is_empty() {
+                    parse_location(&dest_clean)
+                } else {
+                    parse_location(dest_str)
+                }
+            };
+
             if is_noise_origin {
                 // Treat as destination-only (same as "flight to X" / "to X" path)
-                prompt.destination = Some(parse_location(dest_str));
+                prompt.destination = Some(dest_loc);
             } else {
-                prompt.origin = Some(parse_location(origin_str));
-                prompt.destination = Some(parse_location(dest_str));
+                // Strip descriptor noise from origin too (e.g. "high altitude departure airport
+                // in Europe" → "europe").
+                let origin_clean = clean_location_noise(origin_str);
+                let origin_loc = if !origin_clean.is_empty() {
+                    parse_location(&origin_clean)
+                } else {
+                    parse_location(origin_str)
+                };
+                prompt.origin = Some(origin_loc);
+                prompt.destination = Some(dest_loc);
             }
             // Remove the matched location text so its words (e.g. "South" in "South Korea")
             // don't trigger keywords later (like cardinal directions).
@@ -951,7 +1093,23 @@ impl FlightPrompt {
 
                 let is_weather_false_positive = WEATHER_TIME_WORDS.iter().any(|&w| acf_lower == w);
 
-                if !is_weather_false_positive {
+                // Check if the captured text is a geographic feature (destination clue, not aircraft).
+                // Use word-level matching to avoid partial matches (e.g. "hill" inside "churchill").
+                let is_geo_false_positive = acf_lower
+                    .split_whitespace()
+                    .any(|word| GEOGRAPHIC_FEATURE_WORDS.contains(&word));
+
+                if is_geo_false_positive {
+                    // The aircraft connector introduced a geographic destination clause.
+                    // Redirect to destination parsing (e.g. "in the mountains in europe" → EU).
+                    if prompt.destination.is_none() {
+                        let cleaned = clean_location_noise(&acf_str);
+                        let loc_str = if cleaned.is_empty() { &acf_str } else { &cleaned };
+                        if !is_noise_dest(loc_str) {
+                            prompt.destination = Some(parse_location(loc_str));
+                        }
+                    }
+                } else if !is_weather_false_positive {
                     if !acf_str.is_empty() {
                         let acf_upper = acf_str.to_uppercase();
                         // 3. Detect ICAO Aircraft Type Codes (e.g. C172, B738, F16)
@@ -1132,27 +1290,28 @@ impl FlightPrompt {
             prompt.direction_bearing = bearing;
         }
 
-        // 7. Parse Distance Range
-        // Patterns: "between N and M nm/km/mi", "within N nm/km/mi", "at least N nm/km/mi"
+        // 7. Parse Distance Range (also handles leftovers after step 2c pre-extraction).
+        // Unit aliases: nm, nmi, km, kilometer(s), kilometre(s), mi, miles, nautical miles.
+        // "within N or M unit" takes the larger (more permissive) bound.
+        static DIST_OR_RE: OnceLock<Regex> = OnceLock::new();
+        let dist_or_re = DIST_OR_RE.get_or_init(|| {
+            Regex::new(r"(?i)(?:within|under|less than|max(?:imum)?)\s+(\d+(?:\.\d+)?)\s*(nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?)\s+or\s+(\d+(?:\.\d+)?)\s*(nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?)").unwrap()
+        });
         static DIST_BETWEEN_RE: OnceLock<Regex> = OnceLock::new();
         let dist_between_re = DIST_BETWEEN_RE.get_or_init(|| {
-            Regex::new(r"(?i)between\s+(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)\s*(nm|km|mi(?:les?)?|nautical miles?)").unwrap()
+            Regex::new(r"(?i)between\s+(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)\s*(nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?)").unwrap()
         });
         static DIST_WITHIN_RE: OnceLock<Regex> = OnceLock::new();
         let dist_within_re = DIST_WITHIN_RE.get_or_init(|| {
-            Regex::new(r"(?i)(?:within|under|less than|max(?:imum)?)\s+(\d+(?:\.\d+)?)\s*(nm|km|mi(?:les?)?|nautical miles?)").unwrap()
+            Regex::new(r"(?i)(?:within|under|less than|max(?:imum)?)\s+(\d+(?:\.\d+)?)\s*(nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?)").unwrap()
         });
         static DIST_ATLEAST_RE: OnceLock<Regex> = OnceLock::new();
         let dist_atleast_re = DIST_ATLEAST_RE.get_or_init(|| {
-            Regex::new(r"(?i)(?:at least|over|more than|min(?:imum)?)\s+(\d+(?:\.\d+)?)\s*(nm|km|mi(?:les?)?|nautical miles?)").unwrap()
+            Regex::new(r"(?i)(?:at least|over|more than|min(?:imum)?)\s+(\d+(?:\.\d+)?)\s*(nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?)").unwrap()
         });
 
         fn to_nm(val: f64, unit: &str) -> f64 {
-            match unit.to_lowercase().as_str() {
-                u if u.starts_with("km") => val / 1.852,
-                u if u.starts_with("mi") => val / 1.151,
-                _ => val, // nm or "nautical miles"
-            }
+            to_nm_unit(val, unit)
         }
 
         // Bare number+unit with no qualifier: "70nm", "200km", "50 NM".
@@ -1160,10 +1319,15 @@ impl FlightPrompt {
         // has room to find airports (e.g. "70nm" → 49–91nm).
         static DIST_BARE_RE: OnceLock<Regex> = OnceLock::new();
         let dist_bare_re = DIST_BARE_RE.get_or_init(|| {
-            Regex::new(r"(?i)\b(\d+(?:\.\d+)?)\s*(nm|km|mi(?:les?)?|nautical miles?)\b").unwrap()
+            Regex::new(r"(?i)\b(\d+(?:\.\d+)?)\s*(nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?)\b").unwrap()
         });
 
-        if let Some(caps) = dist_between_re.captures(&clean_input) {
+        if let Some(caps) = dist_or_re.captures(&clean_input) {
+            if let (Ok(a), Ok(b)) = (caps[1].parse::<f64>(), caps[3].parse::<f64>()) {
+                prompt.user_max_dist_nm =
+                    Some(to_nm(a, &caps[2]).max(to_nm(b, &caps[4])));
+            }
+        } else if let Some(caps) = dist_between_re.captures(&clean_input) {
             if let (Ok(a), Ok(b)) = (caps[1].parse::<f64>(), caps[2].parse::<f64>()) {
                 let unit = &caps[3];
                 prompt.user_min_dist_nm = Some(to_nm(a, unit));
@@ -1187,6 +1351,120 @@ impl FlightPrompt {
 
         prompt
     }
+}
+
+/// Converts a distance value to nautical miles given the unit string captured by a distance regex.
+fn to_nm_unit(val: f64, unit: &str) -> f64 {
+    let u = unit.to_lowercase();
+    if u.starts_with("km") || u.starts_with("kilo") {
+        val / 1.852
+    } else if u.starts_with("mi") {
+        val / 1.151
+    } else {
+        val // nm, nmi, nautical miles
+    }
+}
+
+/// Strips common airport-descriptor phrases from a location string so the underlying
+/// geographic name can be resolved.  E.g. "high altitude departure airport in Europe" → "europe".
+/// Returns a lowercase string; `parse_location` handles case-insensitive matching.
+fn clean_location_noise(s: &str) -> String {
+    let lower = s.to_lowercase();
+
+    // Strategy 1: extract the geographic name that follows "in/at/near".
+    // E.g. "high altitude departure airport in Europe" → "europe"
+    //      "any airport near Tokyo"                   → "tokyo"
+    // Word boundaries prevent matching "in" inside words like "international".
+    static PREP_RE: OnceLock<Regex> = OnceLock::new();
+    let prep_re = PREP_RE.get_or_init(|| Regex::new(r"(?i)\b(?:in|at|near)\s+(.+)$").unwrap());
+    if let Some(caps) = prep_re.captures(&lower) {
+        let loc = caps[1].trim();
+        if !loc.is_empty() {
+            return loc.to_string();
+        }
+    }
+
+    // Strategy 2: strip well-defined compound descriptors + standalone airport-type words.
+    // Only phrases that are very unlikely to appear in actual geographic names.
+    // NOTE: Do NOT strip single words like "mountain", "coastal", "regional" etc.
+    // as substring replacement would corrupt place names (e.g. "mountains" → "s").
+    const COMPOUND_NOISE: &[&str] = &[
+        "high-altitude airport",
+        "low-altitude airport",
+        "high altitude airport",
+        "low altitude airport",
+        "international airport",
+        "domestic airport",
+        "regional airport",
+        "local airport",
+        "departure airport",
+        "arrival airport",
+        "destination airport",
+        "origin airport",
+        "high-altitude",
+        "low-altitude",
+        "high altitude",
+        "low altitude",
+        "departure",
+        "arrival",
+    ];
+    const STANDALONE: &[&str] = &["airport", "airfield", "airstrip", "aerodrome"];
+
+    let mut r = lower;
+    for w in COMPOUND_NOISE {
+        r = r.replace(*w, " ");
+    }
+    for w in STANDALONE {
+        r = r.replace(*w, " ");
+    }
+    // Collapse whitespace and strip leading prepositions/articles.
+    let r = r.split_whitespace().collect::<Vec<_>>().join(" ");
+    let r = r.as_str();
+    let r = r
+        .strip_prefix("in ")
+        .or_else(|| r.strip_prefix("at "))
+        .or_else(|| r.strip_prefix("near "))
+        .or_else(|| r.strip_prefix("the "))
+        .or_else(|| r.strip_prefix("a "))
+        .or_else(|| r.strip_prefix("an "))
+        .unwrap_or(r);
+    r.trim().to_string()
+}
+
+/// Strips distance constraint phrases from `s` and returns the cleaned string.
+/// E.g. "paris within 500nm" → "paris", "europe within 70km or 90nm" → "europe".
+fn strip_distance_text(s: &str) -> String {
+    static DIST_STRIP_RE: OnceLock<Regex> = OnceLock::new();
+    let re = DIST_STRIP_RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)\s*(?:between\s+\d+(?:\.\d+)?\s+and\s+\d+(?:\.\d+)?\s*(?:nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?)|(?:within|under|less than|max(?:imum)?|at least|over|more than)\s+\d+(?:\.\d+)?\s*(?:nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?)(?:\s+or\s+\d+(?:\.\d+)?\s*(?:nmi|nm|km|kilomet(?:re|er)s?|mi(?:les?)?|nautical miles?))?)",
+        )
+        .unwrap()
+    });
+    re.replace_all(s, "").trim().to_string()
+}
+
+/// Returns true if `s`, after stripping any embedded distance constraint text,
+/// is a noise destination like "a destination", "anywhere", "any airport", etc.
+fn is_noise_dest(s: &str) -> bool {
+    let stripped = strip_distance_text(s);
+    matches!(
+        stripped.trim().to_lowercase().as_str(),
+        "" | "a destination"
+            | "any destination"
+            | "some destination"
+            | "a location"
+            | "any location"
+            | "any airport"
+            | "somewhere"
+            | "anywhere"
+            | "any place"
+            | "anyplace"
+            | "a"
+            | "any"
+            | "the"
+            | "destination"
+    )
 }
 
 fn parse_location(s: &str) -> LocationConstraint {
@@ -2334,5 +2612,106 @@ mod tests {
             Some(LocationConstraint::NearCity { name, .. }) => assert_eq!(name, "Chengdu"),
             _ => panic!("Expected NearCity(Chengdu), got {:?}", p3.destination),
         }
+    }
+
+    #[test]
+    fn test_parse_km_and_nmi_units() {
+        let cfg = crate::NLPRulesConfig::default();
+
+        // "kilometers" alias
+        let p = FlightPrompt::parse("within 100 kilometers", &cfg);
+        let max = p.user_max_dist_nm.expect("within 100 kilometers should set max");
+        assert!((max - 53.99).abs() < 0.5, "100km ≈ 53.99nm, got {max}");
+
+        // "kilometre" (British spelling)
+        let p2 = FlightPrompt::parse("within 200 kilometres", &cfg);
+        let max2 = p2.user_max_dist_nm.expect("within 200 kilometres should set max");
+        assert!((max2 - 107.99).abs() < 0.5, "200km ≈ 107.99nm, got {max2}");
+
+        // "nmi" alias
+        let p3 = FlightPrompt::parse("within 50 nmi", &cfg);
+        let max3 = p3.user_max_dist_nm.expect("within 50 nmi should set max");
+        assert!((max3 - 50.0).abs() < 0.1, "50nmi = 50nm, got {max3}");
+
+        // "at least N km"
+        let p4 = FlightPrompt::parse("at least 300 km", &cfg);
+        let min4 = p4.user_min_dist_nm.expect("at least 300km should set min");
+        assert!((min4 - 161.99).abs() < 0.5, "300km ≈ 162nm, got {min4}");
+    }
+
+    #[test]
+    fn test_parse_dual_unit_distance() {
+        let cfg = crate::NLPRulesConfig::default();
+
+        // "within 70KM or 90NM" — take the larger bound (90nm)
+        let p = FlightPrompt::parse("flight to Germany within 70km or 90nm", &cfg);
+        let max = p.user_max_dist_nm.expect("dual-unit should set max");
+        // 70km = 37.8nm; 90nm = 90nm → max should be 90nm
+        assert!((max - 90.0).abs() < 0.5, "should take larger bound 90nm, got {max}");
+
+        // "within 200nm or 100km" — 200nm > 100km(54nm) → take 200nm
+        let p2 = FlightPrompt::parse("within 200nm or 100km", &cfg);
+        let max2 = p2.user_max_dist_nm.expect("dual-unit should set max");
+        assert!((max2 - 200.0).abs() < 0.5, "should take 200nm, got {max2}");
+    }
+
+    #[test]
+    fn test_parse_noise_destination() {
+        let cfg = crate::NLPRulesConfig::default();
+
+        // "a destination" → Any
+        let p = FlightPrompt::parse("from EGLL to a destination", &cfg);
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
+        assert_eq!(p.destination, Some(LocationConstraint::Any));
+
+        // "a destination within 70km or 90nm" → Any + distance constraint
+        let p2 = FlightPrompt::parse("from EGLL to a destination within 70km or 90nm", &cfg);
+        assert_eq!(p2.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
+        assert_eq!(p2.destination, Some(LocationConstraint::Any));
+        let max2 = p2.user_max_dist_nm.expect("distance should be set");
+        assert!((max2 - 90.0).abs() < 0.5, "should take larger bound 90nm, got {max2}");
+
+        // "anywhere" → Any
+        let p3 = FlightPrompt::parse("from KSFO to anywhere", &cfg);
+        assert_eq!(p3.destination, Some(LocationConstraint::Any));
+    }
+
+    #[test]
+    fn test_parse_location_descriptor_noise() {
+        let cfg = crate::NLPRulesConfig::default();
+
+        // "high altitude departure airport in Europe" → origin should resolve to Europe
+        let p = FlightPrompt::parse(
+            "high altitude departure airport in Europe to a destination within 70km or 90nm",
+            &cfg,
+        );
+        assert!(
+            matches!(&p.origin, Some(LocationConstraint::Region(r)) if r == "EU"),
+            "origin should be EU region, got {:?}",
+            p.origin
+        );
+        assert_eq!(p.destination, Some(LocationConstraint::Any));
+        let max = p.user_max_dist_nm.expect("distance should be set");
+        assert!((max - 90.0).abs() < 0.5, "max dist should be 90nm (larger bound), got {max}");
+
+        // "international airport in France" as origin
+        let p2 = FlightPrompt::parse("from international airport in France to EGLL", &cfg);
+        assert!(
+            matches!(&p2.origin, Some(LocationConstraint::Region(r)) if r == "FR"),
+            "origin should be FR region, got {:?}",
+            p2.origin
+        );
+        assert_eq!(p2.destination, Some(LocationConstraint::ICAO("EGLL".to_string())));
+
+        // Distance embedded in dest_str, but actual location is Paris
+        let p3 = FlightPrompt::parse("from EGLL to paris within 500nm", &cfg);
+        assert_eq!(p3.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
+        assert!(
+            matches!(&p3.destination, Some(LocationConstraint::NearCity { name, .. }) if name == "Paris"),
+            "dest should be NearCity(Paris), got {:?}",
+            p3.destination
+        );
+        let max3 = p3.user_max_dist_nm.expect("500nm should be set");
+        assert!((max3 - 500.0).abs() < 0.5, "max should be 500nm, got {max3}");
     }
 }

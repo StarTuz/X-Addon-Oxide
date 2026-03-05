@@ -752,3 +752,86 @@ fn test_nairobi_to_lamu() {
         plan.destination.id
     );
 }
+
+/// Verifies that geographic feature words in aircraft position ("in/using/with the mountains")
+/// are NOT parsed as aircraft names but instead redirect to destination parsing.
+///
+/// Regression for: "Fligh in the mountains in europe" → error "No aircraft matching
+/// 'the mountains in europe' found" (the geo feature was captured by ACF_RE).
+#[test]
+fn test_geographic_feature_words_not_parsed_as_aircraft() {
+    let cfg = x_adox_bitnet::NLPRulesConfig::default();
+
+    // Core regression: "in the mountains in europe" must not produce an aircraft tag
+    let p = FlightPrompt::parse("flight in the mountains in europe", &cfg);
+    assert!(
+        p.aircraft.is_none(),
+        "\"mountains\" should not be parsed as aircraft, got: {:?}",
+        p.aircraft
+    );
+    // Should resolve to a destination region (Europe or sub-region)
+    assert!(
+        p.destination.is_some(),
+        "\"mountains in europe\" should produce a destination, got None"
+    );
+
+    // Other geographic feature words
+    for phrase in &[
+        "fly to the highlands",
+        "flight over the fjords",
+        "trip to the desert",
+        "flying in the jungle",
+        "flight to the outback",
+    ] {
+        let p = FlightPrompt::parse(phrase, &cfg);
+        assert!(
+            p.aircraft.is_none(),
+            "Phrase {:?} should not parse geographic feature as aircraft, got: {:?}",
+            phrase,
+            p.aircraft
+        );
+    }
+}
+
+/// Verifies that new geographic region aliases resolve to the correct LocationConstraint.
+#[test]
+fn test_new_geographic_region_aliases() {
+    let cfg = x_adox_bitnet::NLPRulesConfig::default();
+
+    let cases: &[(&str, LocationConstraint)] = &[
+        ("flight to the dolomites", LocationConstraint::Region("Dolomites".to_string())),
+        ("fly to the scottish highlands", LocationConstraint::Region("ScottishHighlands".to_string())),
+        ("flight to the highlands", LocationConstraint::Region("ScottishHighlands".to_string())),
+        ("flight to the norwegian fjords", LocationConstraint::Region("NorwegianFjords".to_string())),
+        ("fly to the fjords", LocationConstraint::Region("NorwegianFjords".to_string())),
+        ("flight to the appalachians", LocationConstraint::Region("Appalachians".to_string())),
+        ("flight to the cascades", LocationConstraint::Region("Cascades".to_string())),
+        ("fly to the sahara", LocationConstraint::Region("Sahara".to_string())),
+        ("flight to the outback", LocationConstraint::Region("AustralianOutback".to_string())),
+        ("flight to the australian outback", LocationConstraint::Region("AustralianOutback".to_string())),
+        ("fly to the tibetan plateau", LocationConstraint::Region("TibetanPlateau".to_string())),
+        ("flight to tibet", LocationConstraint::Region("TibetanPlateau".to_string())),
+        ("flight to the himalayas", LocationConstraint::Region("Himalayas".to_string())),
+        ("fly to the andes", LocationConstraint::Region("Andes".to_string())),
+        ("flight to the pyrenees", LocationConstraint::Region("Pyrenees".to_string())),
+        ("flight to patagonia", LocationConstraint::Region("Patagonia".to_string())),
+    ];
+
+    let mut failures = Vec::new();
+    for (prompt, expected) in cases {
+        let p = FlightPrompt::parse(prompt, &cfg);
+        if p.destination.as_ref() != Some(expected) {
+            failures.push(format!(
+                "  {:45} => expected {:?}, got {:?}",
+                prompt, expected, p.destination
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{} geographic alias(es) failed NLP parsing:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}

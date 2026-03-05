@@ -2049,5 +2049,122 @@
       }
     ],
     "parent_id": "PacIsles"
+  },
+  {
+    "id": "Dolomites",
+    "name": "Dolomites",
+    "bounds": [
+      {
+        "min_lat": 46.0,
+        "max_lat": 47.3,
+        "min_lon": 10.5,
+        "max_lon": 12.5
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "ScottishHighlands",
+    "name": "Scottish Highlands",
+    "bounds": [
+      {
+        "min_lat": 56.5,
+        "max_lat": 58.7,
+        "min_lon": -6.0,
+        "max_lon": -2.0
+      }
+    ],
+    "parent_id": "BI"
+  },
+  {
+    "id": "NorwegianFjords",
+    "name": "Norwegian Fjords",
+    "bounds": [
+      {
+        "min_lat": 59.0,
+        "max_lat": 63.5,
+        "min_lon": 4.0,
+        "max_lon": 9.5
+      }
+    ],
+    "parent_id": "EU"
+  },
+  {
+    "id": "Appalachians",
+    "name": "Appalachian Mountains",
+    "bounds": [
+      {
+        "min_lat": 33.0,
+        "max_lat": 47.5,
+        "min_lon": -84.0,
+        "max_lon": -72.0
+      }
+    ],
+    "parent_id": "NA"
+  },
+  {
+    "id": "Cascades",
+    "name": "Cascade Range",
+    "bounds": [
+      {
+        "min_lat": 42.0,
+        "max_lat": 49.0,
+        "min_lon": -122.5,
+        "max_lon": -118.5
+      }
+    ],
+    "parent_id": "NA"
+  },
+  {
+    "id": "Sahara",
+    "name": "Sahara Desert",
+    "bounds": [
+      {
+        "min_lat": 15.0,
+        "max_lat": 35.0,
+        "min_lon": -17.0,
+        "max_lon": 40.0
+      }
+    ],
+    "parent_id": "AF"
+  },
+  {
+    "id": "AustralianOutback",
+    "name": "Australian Outback",
+    "bounds": [
+      {
+        "min_lat": -30.0,
+        "max_lat": -20.0,
+        "min_lon": 128.0,
+        "max_lon": 140.0
+      }
+    ],
+    "parent_id": "OC"
+  },
+  {
+    "id": "NZSouthernAlps",
+    "name": "New Zealand Southern Alps",
+    "bounds": [
+      {
+        "min_lat": -46.0,
+        "max_lat": -40.5,
+        "min_lon": 168.0,
+        "max_lon": 173.0
+      }
+    ],
+    "parent_id": "OC"
+  },
+  {
+    "id": "TibetanPlateau",
+    "name": "Tibetan Plateau",
+    "bounds": [
+      {
+        "min_lat": 28.0,
+        "max_lat": 36.0,
+        "min_lon": 78.0,
+        "max_lon": 102.0
+      }
+    ],
+    "parent_id": "AS"
   }
 ]
