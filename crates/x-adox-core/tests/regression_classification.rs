@@ -109,10 +109,9 @@ fn test_library_txt_prevents_airport_promotion() {
     let airports = x_adox_core::scenery::discover_airports_in_pack(&pack_path);
 
     // Step 3: Structural Library Detection (runs BEFORE promotion now)
-    if category == SceneryCategory::Unknown
-        && pack_path.join("library.txt").exists() {
-            category = SceneryCategory::Library;
-        }
+    if category == SceneryCategory::Unknown && pack_path.join("library.txt").exists() {
+        category = SceneryCategory::Library;
+    }
 
     // Step 3b: Post-Discovery Promotion (must mirror mod.rs exactly)
     if !airports.is_empty() {
@@ -288,7 +287,10 @@ fn test_sji_airports_and_alphanumeric_icao() {
     let cases = [
         ("SJI Allan Island Airstrip", SceneryCategory::CustomAirport),
         ("SJI Crow Valley, WA39", SceneryCategory::CustomAirport),
-        ("SJI Blakeley Island, 38WA, D", SceneryCategory::CustomAirport),
+        (
+            "SJI Blakeley Island, 38WA, D",
+            SceneryCategory::CustomAirport,
+        ),
         ("SJI Center Island, 78WA, D", SceneryCategory::CustomAirport),
     ];
 
@@ -305,8 +307,10 @@ fn test_sji_airports_and_alphanumeric_icao() {
 
 #[test]
 fn test_reconcile_preserves_discovery_data() {
-    use x_adox_core::scenery::{SceneryManager, SceneryPack, SceneryPackType, SceneryCategory, SceneryDescriptor};
     use std::path::PathBuf;
+    use x_adox_core::scenery::{
+        SceneryCategory, SceneryDescriptor, SceneryManager, SceneryPack, SceneryPackType,
+    };
 
     // GUI state with deep-scan data
     let gui_pack = SceneryPack {
@@ -325,6 +329,12 @@ fn test_reconcile_preserves_discovery_data() {
             proj_y: None,
             max_runway_length: None,
             surface_type: None,
+            elevation_ft: None,
+            frequencies: Vec::new(),
+            city: None,
+            country: None,
+            max_runway_width: None,
+            has_lighting: false,
         }],
         tiles: vec![(40, -70)],
         tags: vec!["custom".to_string()],
@@ -412,8 +422,14 @@ fn test_bitnet_helicopter_pack_promoted_to_airports() {
         &PathBuf::from("Custom Scenery/01_MontanaHelicopterDestinations_XP12_Ortho4XP130"),
         &ctx,
     );
-    assert_eq!(score, 10, "Helicopter pack score should be 10 (Airports tier)");
-    assert_eq!(rule, "Airports", "Helicopter pack should be promoted to 'Airports'");
+    assert_eq!(
+        score, 10,
+        "Helicopter pack score should be 10 (Airports tier)"
+    );
+    assert_eq!(
+        rule, "Airports",
+        "Helicopter pack should be promoted to 'Airports'"
+    );
 }
 
 #[test]
@@ -528,4 +544,3 @@ fn test_bitnet_library_not_promoted_by_discovered_airports() {
     assert_eq!(score, 35);
     assert_eq!(rule, "Libraries");
 }
-

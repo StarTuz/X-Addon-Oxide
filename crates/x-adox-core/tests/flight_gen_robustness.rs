@@ -19,6 +19,12 @@ fn create_mock_airport(id: &str, lat: f64, lon: f64, len: u32, surf: SurfaceType
         proj_y: None,
         max_runway_length: Some(len),
         surface_type: Some(surf),
+        elevation_ft: None,
+        frequencies: Vec::new(),
+        city: None,
+        country: None,
+        max_runway_width: None,
+        has_lighting: false,
     }
 }
 
@@ -47,6 +53,12 @@ fn create_mock_aircraft(name: &str, tags: Vec<&str>) -> DiscoveredAddon {
                 name: format!("{} Standard", name),
                 file_name: format!("{}.acf", name),
                 is_enabled: true,
+                icao_type: None,
+                num_engines: None,
+                min_rwy_len: None,
+                rwy_req_pave: None,
+                vne_kts: None,
+                mtow_kg: None,
             }],
             livery_count: 1,
             livery_names: vec!["Default".to_string()],

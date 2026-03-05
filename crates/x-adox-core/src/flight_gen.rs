@@ -449,6 +449,8 @@ pub struct FlightPlan {
     pub destination: Airport,
     pub aircraft: DiscoveredAddon,
     pub distance_nm: u32,
+    pub bearing: f32,
+    pub warnings: Vec<String>,
     pub duration_minutes: u32,
     pub route_description: String,
     /// When origin was resolved from a region (e.g. "from Kenya"), the region id for UI/prefs.
@@ -493,6 +495,18 @@ fn estimate_speed(a: &DiscoveredAddon, prompt: &FlightPrompt) -> u32 {
     {
         100
     } else {
+        // Gap 4: Cruise Speed Estimation
+        // If we have Vne, use it as a baseline (Vne is usually ~1.2x - 1.5x cruise).
+        // For a safe estimate, we'll take Vne * 0.75 for non-jets.
+        if let AddonType::Aircraft { variants, .. } = &a.addon_type {
+            if let Some(performance) = variants.first() {
+                if let Some(vne) = performance.vne_kts {
+                    if vne > 0 {
+                        return (vne as f32 * 0.75).round() as u32;
+                    }
+                }
+            }
+        }
         120
     }
 }
@@ -576,27 +590,86 @@ pub fn generate_flight_from_prompt(
     let suitable_aircraft: Vec<&DiscoveredAddon> = aircraft_list
         .iter()
         .filter(|a| {
-            if let AddonType::Aircraft { .. } = a.addon_type {
-                if let Some(AircraftConstraint::Tag(ref tag)) = prompt.aircraft {
-                    let tag_norm = normalize_aircraft_tag(tag);
-                    a.tags
-                        .iter()
-                        .any(|t| normalize_aircraft_tag(t).contains(&tag_norm))
-                        || normalize_aircraft_tag(&a.name).contains(&tag_norm)
+            if let AddonType::Aircraft { variants, .. } = &a.addon_type {
+                // We use the first variant for performance matching
+                let performance = variants.first();
+
+                // Check AircraftConstraint (Tag or ICAO)
+                let aircraft_match = match &prompt.aircraft {
+                    Some(AircraftConstraint::Tag(tag)) => {
+                        let tag_norm = normalize_aircraft_tag(tag);
+                        a.tags
+                            .iter()
+                            .any(|t| normalize_aircraft_tag(t).contains(&tag_norm))
+                            || normalize_aircraft_tag(&a.name).contains(&tag_norm)
+                    }
+                    Some(AircraftConstraint::ICAO(icao)) => {
+                        // Try exact ICAO type from ACF file first; fall back to name/tag
+                        // matching for aircraft whose ACF doesn't have _ICAO set.
+                        let by_icao = performance
+                            .and_then(|p| p.icao_type.as_ref())
+                            .map_or(false, |it| it.eq_ignore_ascii_case(icao));
+                        if by_icao {
+                            true
+                        } else {
+                            let icao_lower = icao.to_lowercase();
+                            a.tags
+                                .iter()
+                                .any(|t| normalize_aircraft_tag(t).contains(&icao_lower))
+                                || normalize_aircraft_tag(&a.name).contains(&icao_lower)
+                        }
+                    }
+                    None | Some(AircraftConstraint::Any) => true,
+                };
+
+                // Gap 3: Number of Engines Matching
+                let engine_match = if let Some(req_engines) = prompt.num_engines {
+                    performance
+                        .and_then(|p| p.num_engines)
+                        .map_or(false, |ne| ne == req_engines)
                 } else {
                     true
-                }
+                };
+
+                aircraft_match && engine_match
             } else {
                 false
             }
         })
         .collect();
 
+    // Apply aircraft exclusion list from heuristics
+    let suitable_aircraft: Vec<&DiscoveredAddon> = if let Some(prefs) = prefs {
+        suitable_aircraft
+            .into_iter()
+            .filter(|a| {
+                let name_lower = a.name.to_lowercase();
+                !prefs
+                    .flight_aircraft_exclude
+                    .iter()
+                    .any(|ex| name_lower.contains(&ex.to_lowercase()))
+            })
+            .collect()
+    } else {
+        suitable_aircraft
+    };
+
     if suitable_aircraft.is_empty() {
         if let Some(AircraftConstraint::Tag(ref tag)) = prompt.aircraft {
+            let sample_names: Vec<&str> = aircraft_list
+                .iter()
+                .filter(|a| matches!(a.addon_type, AddonType::Aircraft { .. }))
+                .take(5)
+                .map(|a| a.name.as_str())
+                .collect();
+            let hint = if sample_names.is_empty() {
+                "No aircraft detected in your library.".to_string()
+            } else {
+                format!("Your library includes: {}", sample_names.join(", "))
+            };
             return Err(format!(
-                "No aircraft matching '{}' found in your library. Check your installed aircraft or rephrase.",
-                tag
+                "No aircraft matching '{}' found in your library. {}\nTip: Check the Edit Dictionary for custom aircraft aliases.",
+                tag, hint
             ));
         }
         return Err("No matching aircraft found.".to_string());
@@ -971,20 +1044,23 @@ pub fn generate_flight_from_prompt(
         } else if prompt.ignore_guardrails {
             (0.0, 20000.0)
         } else if prompt.aircraft_min_dist.is_some() || prompt.aircraft_max_dist.is_some() {
-            // Aircraft rule supplied a soft distance envelope.
-            // Keyword duration (short/long/haul) takes priority (handled above);
-            // this only applies when no duration keyword was given.
             let lo = prompt.aircraft_min_dist.unwrap_or(10.0);
             let hi = prompt.aircraft_max_dist.unwrap_or(8000.0);
             (lo, hi)
         } else {
-            // No keyword constraint: wide-open random discovery.
-            // Keywords (short/medium/long/haul) and duration_minutes are the
-            // intended controls — aircraft type no longer sets distance limits.
-            // 8000nm covers most intercontinental routes (LA→UK ~5400nm, NY→Tokyo ~6760nm).
-            // Ultra-long-haul (LA→Australia ~9400nm) requires "long haul" keyword.
             (10.0, 8000.0)
         };
+
+        // Override with user-specified distance range if provided
+        let user_min = prompt.user_min_dist_nm.unwrap_or(min_dist);
+        let user_max = prompt.user_max_dist_nm.unwrap_or(max_dist);
+        let eff_min = user_min.max(min_dist); // Strictest of both
+        let eff_max = if prompt.user_max_dist_nm.is_some() {
+            user_max
+        } else {
+            max_dist
+        };
+        let (min_dist, max_dist) = (eff_min, eff_max);
 
         // Explicit Endpoint Check (Relax distance logic when both ends are "point" constraints)
         // ICAO and NearCity are point types (user named a specific place), so we relax range.
@@ -1132,10 +1208,20 @@ pub fn generate_flight_from_prompt(
         let valid_dests: Vec<&Airport> = candidate_dests
             .into_iter()
             .filter(|dest| {
-                // Exclude same airport as origin (by pointer or ICAO — needed when
-                // origin/dest come from different seed-fallback Vec<Airport> allocations).
+                // Exclude same airport as origin
                 if std::ptr::eq(dest, origin) || dest.id.eq_ignore_ascii_case(&origin.id) {
                     return false;
+                }
+
+                // Apply cardinal direction filter
+                if let Some((min_b, max_b)) = prompt.direction_bearing {
+                    if let (Some(olat), Some(olon), Some(dlat), Some(dlon)) =
+                        (origin.lat, origin.lon, dest.lat, dest.lon)
+                    {
+                        if !bearing_in_range(olat, olon, dlat, dlon, min_b, max_b) {
+                            return false;
+                        }
+                    }
                 }
                 if let Some((lat1, lon1, dlat_lim, dlon_lim)) = spatial_bounds {
                     if let (Some(lat2), Some(lon2)) = (dest.lat, dest.lon) {
@@ -1228,6 +1314,79 @@ pub fn generate_flight_from_prompt(
                 destination.lat.unwrap(),
                 destination.lon.unwrap(),
             );
+            let bearing = calculate_bearing_deg(
+                origin.lat.unwrap(),
+                origin.lon.unwrap(),
+                destination.lat.unwrap(),
+                destination.lon.unwrap(),
+            );
+
+            let mut warnings = Vec::new();
+
+            // Runway Sanity Check (Item 5)
+            if let AddonType::Aircraft { variants, .. } = &selected_aircraft.addon_type {
+                // Find matching variant if possible, else use first
+                let variant = variants
+                    .iter()
+                    .find(|v| {
+                        prompt
+                            .aircraft
+                            .as_ref()
+                            .map_or(false, |ac| v.name.contains(&ac.to_string()))
+                    })
+                    .or(variants.first());
+
+                if let Some(v) = variant {
+                    if let Some(min_len) = v.min_rwy_len {
+                        if let Some(apt_len) = destination.max_runway_length {
+                            if (apt_len as u32) < min_len {
+                                warnings.push(format!(
+                                    "Destination runway ({} ft) may be too short for this aircraft (requires {} ft).",
+                                    apt_len, min_len
+                                ));
+                            }
+                        }
+                    }
+                    if let Some(req_pave) = v.rwy_req_pave {
+                        // 2=paved (Hard), 1=gravel (Soft), 0=any
+                        if let Some(surf) = &destination.surface_type {
+                            let incompatible = match req_pave {
+                                2 => *surf == SurfaceType::Soft || *surf == SurfaceType::Water,
+                                1 => *surf == SurfaceType::Water,
+                                _ => false,
+                            };
+                            if incompatible {
+                                warnings.push(format!(
+                                    "Destination surface ({:?}) may be incompatible with this aircraft.",
+                                    surf
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Elevation Sanity Check (Gap 1)
+            if let Some(elev) = destination.elevation_ft {
+                if elev > 12000 {
+                    warnings.push(format!(
+                        "Destination {} is at {elev} ft — verify aircraft high-altitude performance.",
+                        destination.id
+                    ));
+                } else if elev > 8000 {
+                    let is_piston = selected_aircraft.tags.iter().any(|t| {
+                        let lower = t.to_lowercase();
+                        lower.contains("piston") || lower.contains("prop")
+                    });
+                    if is_piston {
+                        warnings.push(format!(
+                            "Destination {} is at {elev} ft — piston aircraft may have reduced performance.",
+                            destination.id
+                        ));
+                    }
+                }
+            }
+
             let origin_region_id = prompt.origin.as_ref().and_then(|o| {
                 if let LocationConstraint::Region(r) = o {
                     Some(r.clone())
@@ -1247,6 +1406,8 @@ pub fn generate_flight_from_prompt(
                 destination: destination.clone(),
                 aircraft: selected_aircraft.clone(),
                 distance_nm: dist as u32,
+                bearing: bearing as f32,
+                warnings,
                 duration_minutes: (dist / (speed_kts as f64) * 60.0) as u32,
                 route_description: if prompt.ignore_guardrails {
                     "(Guardrails Ignored)".to_string()
@@ -1280,7 +1441,11 @@ pub fn generate_flight_from_prompt(
         "[flight_gen] No destination found after {} origin attempts",
         max_attempts
     );
-    Err("No suitable destination found.".to_string())
+    let mut msg = "No suitable destination found.".to_string();
+    if prompt.direction_bearing.is_some() {
+        msg.push_str(" Try removing the directional constraint (e.g. \"north\") or broadening the distance range.");
+    }
+    Err(msg)
 }
 
 // Type-compatibility and keyword surface check.
@@ -1304,6 +1469,39 @@ fn check_safety_constraints(
             }
         }
     }
+
+    // Gap 5: Runway Requirements (MTOW/Min Rwy Len)
+    if let AddonType::Aircraft { variants, .. } = &aircraft.addon_type {
+        if let Some(v) = variants.first() {
+            // Min runway length check
+            if let (Some(min_len), Some(apt_len)) = (v.min_rwy_len, apt.max_runway_length) {
+                if (apt_len as u32) < min_len {
+                    log::warn!(
+                        "[flight_gen] Airport {} runway length {}ft is less than required {}ft for {}",
+                        apt.id, apt_len, min_len, aircraft.name
+                    );
+                    // Downgraded to warning: continue
+                }
+            }
+            // Runway surface compatibility check
+            if let (Some(req_pave), Some(surf)) = (v.rwy_req_pave, &apt.surface_type) {
+                // 2=paved (Hard), 1=gravel/grass (Soft), 0=any
+                let incompatible = match req_pave {
+                    2 => *surf == SurfaceType::Soft || *surf == SurfaceType::Water,
+                    1 => *surf == SurfaceType::Water,
+                    _ => false,
+                };
+                if incompatible {
+                    log::warn!(
+                        "[flight_gen] Airport {} surface type {:?} may be incompatible with {} (req_pave={})",
+                        apt.id, surf, aircraft.name, req_pave
+                    );
+                    // Downgraded to warning: continue
+                }
+            }
+        }
+    }
+
     // Keyword surface preference (grass/paved/water keywords, or bush → soft)
     if let Some(req_surf) = req_surface {
         match req_surf {
@@ -1663,6 +1861,12 @@ fn seed_airport(id: &str, name: &str, lat: f64, lon: f64) -> Airport {
         proj_y: None,
         max_runway_length: Some(2000),
         surface_type: Some(SurfaceType::Hard),
+        elevation_ft: None,
+        frequencies: Vec::new(),
+        city: None,
+        country: None,
+        max_runway_width: None,
+        has_lighting: false,
     }
 }
 
@@ -1735,6 +1939,32 @@ fn haversine_nm(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
         + lat1.to_radians().cos() * lat2.to_radians().cos() * (d_lon / 2.0).sin().powi(2);
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
     r_nm * c
+}
+
+fn calculate_bearing_deg(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let lat1r = lat1.to_radians();
+    let lat2r = lat2.to_radians();
+    let d_lon = (lon2 - lon1).to_radians();
+    let y = d_lon.sin() * lat2r.cos();
+    let x = lat1r.cos() * lat2r.sin() - lat1r.sin() * lat2r.cos() * d_lon.cos();
+    (y.atan2(x).to_degrees() + 360.0) % 360.0
+}
+
+/// Returns true if the bearing from (lat1, lon1) to (lat2, lon2) falls
+/// within [min_bearing, max_bearing] (wrapping across 360°).
+fn bearing_in_range(lat1: f64, lon1: f64, lat2: f64, lon2: f64, min_b: f64, max_b: f64) -> bool {
+    let d_lon = (lon2 - lon1).to_radians();
+    let lat1r = lat1.to_radians();
+    let lat2r = lat2.to_radians();
+    let x = d_lon.sin() * lat2r.cos();
+    let y = lat1r.cos() * lat2r.sin() - lat1r.sin() * lat2r.cos() * d_lon.cos();
+    let bearing = (x.atan2(y).to_degrees() + 360.0) % 360.0;
+    if min_b <= max_b {
+        bearing >= min_b && bearing <= max_b
+    } else {
+        // Wraps around 360° (e.g. north: 315..45)
+        bearing >= min_b || bearing <= max_b
+    }
 }
 
 // Exporters
@@ -2168,18 +2398,24 @@ mod tests {
         use crate::apt_dat::{Airport, AirportType};
         // With coords: use them
         let apt = Airport {
-            id: "EGMC".to_string(),
-            name: "Southend".to_string(),
+            id: "TEST".to_string(),
+            name: "Test Airport".to_string(),
+            lat: Some(30.0),
+            lon: Some(30.0),
             airport_type: AirportType::Land,
-            lat: Some(51.57),
-            lon: Some(0.69),
             proj_x: None,
             proj_y: None,
             max_runway_length: None,
             surface_type: None,
+            elevation_ft: None,
+            frequencies: Vec::new(),
+            city: None,
+            country: None,
+            max_runway_width: None,
+            has_lighting: false,
         };
         let c = airport_coords_for_poi_fetch(&apt);
-        assert_eq!(c, Some((51.57, 0.69)));
+        assert_eq!(c, Some((30.0, 30.0)));
         // No coords but known ICAO: fallback
         let apt_no_coords = Airport {
             id: "EGMC".to_string(),
@@ -2191,6 +2427,12 @@ mod tests {
             proj_y: None,
             max_runway_length: None,
             surface_type: None,
+            elevation_ft: None,
+            frequencies: Vec::new(),
+            city: None,
+            country: None,
+            max_runway_width: None,
+            has_lighting: false,
         };
         let c2 = airport_coords_for_poi_fetch(&apt_no_coords);
         assert_eq!(c2, Some((51.5703, 0.6933)));
@@ -2206,6 +2448,12 @@ mod tests {
             proj_y: None,
             max_runway_length: None,
             surface_type: None,
+            elevation_ft: None,
+            frequencies: Vec::new(),
+            city: None,
+            country: None,
+            max_runway_width: None,
+            has_lighting: false,
         };
         assert!(airport_coords_for_poi_fetch(&apt_unknown).is_none());
     }
@@ -2239,6 +2487,12 @@ mod tests {
             proj_y: None,
             max_runway_length: Some(2000),
             surface_type: Some(SurfaceType::Hard),
+            elevation_ft: Some(607), // Added elevation_ft
+            frequencies: Vec::new(), // Added frequencies
+            city: None,              // Added city
+            country: None,           // Added country
+            max_runway_width: None,  // Added max_runway_width
+            has_lighting: true,      // Added has_lighting
         }
     }
 
@@ -2315,6 +2569,8 @@ mod tests {
             destination: create_test_airport("LIRF", 41.80, 12.24),
             aircraft: a320,
             distance_nm: 753,
+            bearing: 0.0,
+            warnings: Vec::new(),
             duration_minutes: 100,
             route_description: "Direct".to_string(),
             origin_region_id: Some("UK:London".to_string()),

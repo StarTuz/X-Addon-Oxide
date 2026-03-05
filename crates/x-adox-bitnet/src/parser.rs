@@ -43,7 +43,13 @@ pub struct AcfData {
     pub description: String,
     pub author: String,
     pub studio: String,
+    pub icao_type: Option<String>,
     pub prop_type: Option<PropType>,
+    pub num_engines: Option<u8>,
+    pub min_rwy_len: Option<u32>,
+    pub rwy_req_pave: Option<u8>,
+    pub vne_kts: Option<u32>,
+    pub mtow_kg: Option<u32>,
 }
 
 /// Scans the directory for a .acf file and parses it.
@@ -79,6 +85,7 @@ pub fn parse_acf(path: &Path) -> Result<AcfData> {
     let file = File::open(path).with_context(|| format!("Failed to open ACF file: {:?}", path))?;
     let reader = BufReader::new(file);
     let mut data = AcfData::default();
+    let mut engine_indices = std::collections::HashSet::new();
 
     for line in reader.lines() {
         let line = line?;
@@ -86,44 +93,46 @@ pub fn parse_acf(path: &Path) -> Result<AcfData> {
 
         // Check for engine type with or without "acf/" prefix
         // Matches: "P acf/_engn/0/_type" OR "P _engn/0/_type"
-        if trimmed.ends_with("_engn/0/_type") || trimmed.contains("_engn/0/_type ") {
+        if trimmed.contains("_engn/")
+            && (trimmed.ends_with("/_type") || trimmed.contains("/_type "))
+        {
+            // Extract engine index for counting
+            if let Some(idx_str) = trimmed
+                .split("_engn/")
+                .nth(1)
+                .and_then(|s| s.split('/').next())
+            {
+                if let Ok(idx) = idx_str.parse::<u8>() {
+                    engine_indices.insert(idx);
+                }
+            }
+
             // Extract value part
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
             if let Some(val_str) = parts.last() {
-                println!(
-                    "[ACF Parser] Found engine type line: '{}' -> value: '{}'",
-                    trimmed, val_str
-                );
-
-                // Try parsing as integer first
-                if let Ok(val) = val_str.parse::<i32>() {
-                    let prop_type = PropType::from(val);
+                // We only care about index 0 for the primary engine type classification
+                if trimmed.contains("_engn/0/_type") {
                     println!(
-                        "[ACF Parser] Parsed int engine type: {:?} (val: {})",
-                        prop_type, val
+                        "[ACF Parser] Found primary engine type line: '{}' -> value: '{}'",
+                        trimmed, val_str
                     );
-                    data.prop_type = Some(prop_type);
-                } else {
-                    // Try parsing as string keyword (legacy/alt format)
-                    let prop_type = match *val_str {
-                        "JET" | "JET_1SPOOL" | "JET_2SPOOL" => Some(PropType::LoBypassJet), // Map all jets to valid enum
-                        "PROP" | "RCP_CRB" | "RCP_INJ" => Some(PropType::RecipCarb), // Map pistons to Prop
-                        "TURB" | "TRB_FRE" | "TRB_FIX" => Some(PropType::FreeTurbine), // Map turboprops
-                        "ELE" => Some(PropType::Electric),
-                        _ => None,
-                    };
 
-                    if let Some(pt) = prop_type {
-                        println!(
-                            "[ACF Parser] Parsed string engine type: {:?} (val: {})",
-                            pt, val_str
-                        );
-                        data.prop_type = Some(pt);
+                    // Try parsing as integer first
+                    if let Ok(val) = val_str.parse::<i32>() {
+                        let prop_type = PropType::from(val);
+                        data.prop_type = Some(prop_type);
                     } else {
-                        println!(
-                            "[ACF Parser] FAILED to parse engine type from: '{}'",
-                            val_str
-                        );
+                        // Try parsing as string keyword (legacy/alt format)
+                        let prop_type = match *val_str {
+                            "JET" | "JET_1SPOOL" | "JET_2SPOOL" => Some(PropType::LoBypassJet),
+                            "PROP" | "RCP_CRB" | "RCP_INJ" => Some(PropType::RecipCarb),
+                            "TURB" | "TRB_FRE" | "TRB_FIX" => Some(PropType::FreeTurbine),
+                            "ELE" => Some(PropType::Electric),
+                            _ => None,
+                        };
+                        if let Some(pt) = prop_type {
+                            data.prop_type = Some(pt);
+                        }
                     }
                 }
             }
@@ -142,7 +151,38 @@ pub fn parse_acf(path: &Path) -> Result<AcfData> {
                 .trim_start_matches("P acf/_studio")
                 .trim()
                 .to_string();
+        } else if trimmed.starts_with("P acf/_ICAO") {
+            data.icao_type = Some(trimmed.trim_start_matches("P acf/_ICAO").trim().to_string());
+        } else if trimmed.starts_with("P acf/_min_rwy_len") {
+            if let Some(val_str) = trimmed.split_whitespace().last() {
+                if let Ok(val) = val_str.parse::<f32>() {
+                    data.min_rwy_len = Some(val.round() as u32);
+                }
+            }
+        } else if trimmed.starts_with("P acf/_rwy_req_pave") {
+            if let Some(val_str) = trimmed.split_whitespace().last() {
+                if let Ok(val) = val_str.parse::<u8>() {
+                    data.rwy_req_pave = Some(val);
+                }
+            }
+        } else if trimmed.starts_with("P acf/_Vne_kts") || trimmed.starts_with("P acf/_Vne ") {
+            if let Some(val_str) = trimmed.split_whitespace().last() {
+                if let Ok(val) = val_str.parse::<f32>() {
+                    data.vne_kts = Some(val.round() as u32);
+                }
+            }
+        } else if trimmed.starts_with("P acf/_cgY_def_m_tot") || trimmed.starts_with("P acf/_m_max")
+        {
+            if let Some(val_str) = trimmed.split_whitespace().last() {
+                if let Ok(val) = val_str.parse::<f32>() {
+                    data.mtow_kg = Some(val.round() as u32);
+                }
+            }
         }
+    }
+
+    if !engine_indices.is_empty() {
+        data.num_engines = Some(engine_indices.len() as u8);
     }
 
     Ok(data)

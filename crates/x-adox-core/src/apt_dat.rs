@@ -15,15 +15,13 @@ pub enum AirportType {
     Heliport,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, Default)]
 pub enum SurfaceType {
-    Hard,  // Asphalt, Concrete
+    Hard, // Asphalt, Concrete
     #[default]
-    Soft,  // Grass, Dirt, Gravel
+    Soft, // Grass, Dirt, Gravel
     Water, // Water
 }
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Airport {
@@ -34,8 +32,21 @@ pub struct Airport {
     pub lon: Option<f64>,
     pub proj_x: Option<f32>,            // Normalized Mercator X (0.0 to 1.0)
     pub proj_y: Option<f32>,            // Normalized Mercator Y (0.0 to 1.0)
-    pub max_runway_length: Option<u32>, // in meters
+    pub max_runway_length: Option<u32>, // in feet
     pub surface_type: Option<SurfaceType>,
+    pub elevation_ft: Option<i32>,
+    pub frequencies: Vec<AirportFrequency>,
+    pub city: Option<String>,
+    pub country: Option<String>,
+    pub max_runway_width: Option<u32>, // in feet
+    pub has_lighting: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AirportFrequency {
+    pub freq_type: String,
+    pub frequency_mhz: f64,
+    pub name: String,
 }
 
 impl std::hash::Hash for Airport {
@@ -142,6 +153,11 @@ impl AptDatParser {
                     }
                     break;
                 }
+                "50" | "51" | "52" | "53" | "54" | "55" | "56" => {
+                    if let Some(ref mut builder) = current_airport {
+                        parse_frequency(line, builder);
+                    }
+                }
                 _ => {}
             }
         }
@@ -160,6 +176,12 @@ struct AirportBuilder {
     datum_lon: Option<f64>,
     max_rwy_len: f64,
     primary_surface: SurfaceType,
+    elevation_ft: Option<i32>,
+    frequencies: Vec<AirportFrequency>,
+    city: Option<String>,
+    country: Option<String>,
+    max_rwy_width: f64,
+    has_lighting: bool,
 }
 
 impl AirportBuilder {
@@ -212,6 +234,16 @@ impl AirportBuilder {
             } else {
                 None
             },
+            elevation_ft: self.elevation_ft,
+            frequencies: self.frequencies,
+            city: self.city,
+            country: self.country,
+            max_runway_width: if self.max_rwy_width > 0.0 {
+                Some(self.max_rwy_width as u32)
+            } else {
+                None
+            },
+            has_lighting: self.has_lighting,
         }
     }
 }
@@ -222,6 +254,7 @@ fn parse_airport_header(line: &str, apt_type: AirportType) -> Option<AirportBuil
         return None;
     }
 
+    let elevation_ft = parts.get(1).and_then(|s| s.parse::<i32>().ok());
     let id = parts[4].to_string();
     let name = parts[5..].join(" ");
 
@@ -235,6 +268,12 @@ fn parse_airport_header(line: &str, apt_type: AirportType) -> Option<AirportBuil
         datum_lon: None,
         max_rwy_len: 0.0,
         primary_surface: SurfaceType::Soft,
+        elevation_ft,
+        frequencies: Vec::new(),
+        city: None,
+        country: None,
+        max_rwy_width: 0.0,
+        has_lighting: false,
     })
 }
 
@@ -253,9 +292,43 @@ fn parse_metadata(line: &str, builder: &mut AirportBuilder) {
                     builder.datum_lon = Some(lon);
                 }
             }
+            "city" | "city_name" => {
+                builder.city = Some(parts.collect::<Vec<_>>().join(" "));
+            }
+            "country" | "country_name" => {
+                builder.country = Some(parts.collect::<Vec<_>>().join(" "));
+            }
             _ => {}
         }
     }
+}
+
+fn parse_frequency(line: &str, builder: &mut AirportBuilder) {
+    let mut parts = line.split_whitespace();
+    let code = parts.next().unwrap_or("");
+    let freq_mhz = parts
+        .next()
+        .and_then(|s| s.parse::<f64>().ok())
+        .map(|f| f / 100.0)
+        .unwrap_or(0.0);
+    let name = parts.collect::<Vec<_>>().join(" ");
+
+    let freq_type = match code {
+        "50" => "ATIS",
+        "51" => "Unicom",
+        "52" => "Clearance",
+        "53" => "Ground",
+        "54" => "Tower",
+        "55" => "Approach",
+        "56" => "Departure",
+        _ => "Unknown",
+    };
+
+    builder.frequencies.push(AirportFrequency {
+        freq_type: freq_type.to_string(),
+        frequency_mhz: freq_mhz,
+        name,
+    });
 }
 
 fn parse_runway(line: &str, builder: &mut AirportBuilder) {
@@ -263,7 +336,9 @@ fn parse_runway(line: &str, builder: &mut AirportBuilder) {
 
     // 100 width surface ...
     parts.next(); // 100
-    let _width = parts.next();
+    let width_s = parts.next().unwrap_or("0");
+    let width = width_s.parse::<f64>().unwrap_or(0.0);
+
     let surface_code = parts.next().unwrap_or("1"); // Default to asphalt if missing
 
     // Map surface code
@@ -311,12 +386,34 @@ fn parse_runway(line: &str, builder: &mut AirportBuilder) {
         }
     }
 
-    // Calculate length
-    let length = haversine_dist(lat1, lon1, lat2, lon2);
-    if length > builder.max_rwy_len {
-        builder.max_rwy_len = length;
+    // Calculate length (haversine_dist returns meters, convert to feet)
+    let length_m = haversine_dist(lat1, lon1, lat2, lon2);
+    let length_ft = length_m * 3.28084;
+
+    if length_ft > builder.max_rwy_len {
+        builder.max_rwy_len = length_ft;
         // If this is the longest runway, assume its surface is the airport's primary surface
         builder.primary_surface = surface;
+        // Width is already parsed in feet from the header (it's meters in apt.dat, so convert it)
+        builder.max_rwy_width = width * 3.28084;
+    }
+
+    // Check lighting (Index 9 is center lights)
+    // 0:none, 1:center, 2:edge ...
+    // Actually, simple check: if any of the lighting fields (VASI, REIL) are non-zero.
+    // In apt.dat 100:
+    // parts 5: center lights, 6: edge lights, 10: rwy1_vasi, 15: rwy2_vasi
+    // Let's just say if it has a center or edge light.
+    // We already consumed 3 parts (code, width, surface).
+    // Shoulder (3), Smooth (4), Center Lights (5), Edge Lights (6)
+    // Actually parts indices in split_whitespace():
+    // 0:100, 1:width, 2:surface, 3:shoulder, 4:smooth, 5:center_lights, 6:edge_lights
+    // We consumed 100, width, surface.
+    let mut lighting_parts = line.split_whitespace().skip(5);
+    if let (Some(center), Some(edge)) = (lighting_parts.next(), lighting_parts.next()) {
+        if center != "0" || edge != "0" {
+            builder.has_lighting = true;
+        }
     }
 }
 
@@ -412,10 +509,10 @@ I
 
         // Runway 09/27 length check
         // Coords: (42.358, -71.018) to (42.365, -70.991)
-        // Distance roughly 2.3km = 2300m
+        // Distance roughly 2.3km = ~7546ft
         assert!(kbos.max_runway_length.is_some());
         let len = kbos.max_runway_length.unwrap();
-        assert!(len > 2000 && len < 4000);
+        assert!(len > 7000 && len < 8500, "expected ~7546ft, got {len}ft");
         assert_eq!(kbos.surface_type, Some(SurfaceType::Hard));
 
         let h123 = &airports[2];

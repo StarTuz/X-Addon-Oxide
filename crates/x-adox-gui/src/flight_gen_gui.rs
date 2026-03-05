@@ -246,7 +246,7 @@ impl FlightGenState {
                             time_label.unwrap_or(""),
                             weather_label.unwrap_or("")
                         );
-                        let response = format!(
+                        let mut response = format!(
                             "Generated Flight{conditions_suffix}:\nOrigin: {} ({})\nDestination: {} ({})\nAircraft: {}\nDistance: {} nm\nDuration: {} mins",
                             plan.origin.id, plan.origin.name,
                             plan.destination.id, plan.destination.name,
@@ -254,6 +254,12 @@ impl FlightGenState {
                             plan.distance_nm,
                             plan.duration_minutes
                         );
+                        if !plan.warnings.is_empty() {
+                            response.push_str("\n\nAdvisory:");
+                            for w in &plan.warnings {
+                                response.push_str(&format!("\n  {}", w));
+                            }
+                        }
                         self.history.push(ChatMessage {
                             text: response,
                             is_user: false,

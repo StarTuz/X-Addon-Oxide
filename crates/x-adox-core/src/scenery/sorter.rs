@@ -33,7 +33,7 @@ pub fn sort_packs(
     context: &x_adox_bitnet::PredictContext,
 ) {
     // CRITICAL: Sorting must be stable and deterministic.
-    // To prevent section fragmentation in scenery_packs.ini, we MUST use the 
+    // To prevent section fragmentation in scenery_packs.ini, we MUST use the
     // matched rule name as a secondary tie-breaker after the priority score.
     packs.sort_by(|a, b| {
         // Calculate scores - use BitNet model if provided, otherwise fall back to category scores
@@ -71,7 +71,9 @@ pub fn sort_packs(
         match primary {
             std::cmp::Ordering::Equal => {
                 // Pinned packs keep their exact position; do not reorder relative to others.
-                if _name_a == x_adox_bitnet::PINNED_RULE_NAME || _name_b == x_adox_bitnet::PINNED_RULE_NAME {
+                if _name_a == x_adox_bitnet::PINNED_RULE_NAME
+                    || _name_b == x_adox_bitnet::PINNED_RULE_NAME
+                {
                     return std::cmp::Ordering::Equal;
                 }
                 // Secondary Sort Rules: Group by Rule Name to prevent INI fragmentation
@@ -141,9 +143,10 @@ fn calculate_score(pack: &SceneryPack) -> i32 {
         && pack.category != SceneryCategory::AirportOverlay
         && pack.category != SceneryCategory::Library
         && pack.category != SceneryCategory::GlobalBase
-        && (name_lower.starts_with('y') || name_lower.starts_with('z')) {
-            score -= 20;
-        }
+        && (name_lower.starts_with('y') || name_lower.starts_with('z'))
+    {
+        score -= 20;
+    }
 
     // Mesh Protection (Cap at 30)
     // "Any 'Mesh' in name -> cap/force <=30"
@@ -327,15 +330,21 @@ mod tests {
 
         // Simulate discovery finding 1 airport in the first pack
         packs[0].airports.push(crate::apt_dat::Airport {
-            id: "YCKN".to_string(),
-            name: "Cooktown".to_string(),
+            id: "EGLL".to_string(),
+            name: "London Heathrow".to_string(),
             airport_type: crate::apt_dat::AirportType::Land,
-            lat: Some(0.0),
-            lon: Some(0.0),
+            lat: Some(51.47),
+            lon: Some(-0.45),
             proj_x: None,
             proj_y: None,
-            max_runway_length: None,
-            surface_type: None,
+            max_runway_length: Some(3902),
+            surface_type: Some(crate::apt_dat::SurfaceType::Hard),
+            elevation_ft: None,
+            frequencies: Vec::new(),
+            city: None,
+            country: None,
+            max_runway_width: None,
+            has_lighting: false,
         });
 
         // Simulate the "Post-Discovery Promotion" logic from SceneryManager::load
@@ -434,7 +443,11 @@ mod tests {
         ];
         let model = x_adox_bitnet::BitNetModel::default();
 
-        sort_packs(&mut packs, Some(&model), &x_adox_bitnet::PredictContext::default());
+        sort_packs(
+            &mut packs,
+            Some(&model),
+            &x_adox_bitnet::PredictContext::default(),
+        );
 
         assert_eq!(packs[0].name, "FlyTampa_Amsterdam_1_overlays");
         assert_eq!(packs[1].name, "FlyTampa_Amsterdam_2_default_overlays");

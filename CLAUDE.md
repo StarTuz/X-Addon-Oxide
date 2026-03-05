@@ -56,7 +56,7 @@ crates/
 ### x-adox-core Key Modules
 
 - `lib.rs` - Path normalization, config root detection, X-Plane install registry lookup, **stable hashing** (FNV-1a)
-- `discovery.rs` - Scans Aircraft/, Custom Scenery/, plugins/, CSLs
+- `discovery.rs` - Scans Aircraft/, Custom Scenery/, plugins/, CSLs. During aircraft discovery, calls `bitnet::parser::parse_acf()` to extract ACF metadata (`icao_type`, `num_engines`, `min_rwy_len`, `vne_kts`, `mtow_kg`) from each `.acf` file and stores it on the `DiscoveredAddon`.
 - `management.rs` - Enables/disables plugins and aircraft via "(Disabled)" suffix folders
 - `migration.rs` - Unified migration engine for legacy `heuristics.json` and pin data (v2.4.0+; extended in 2.4.4)
 - `profiles.rs` - Profile management for switching hangar configurations (root-specific isolation)
@@ -66,10 +66,11 @@ crates/
 - `apt_dat.rs` - Parser for X-Plane `apt.dat` airport data files (runways, coordinates, ICAO codes, datum row 1302)
 - `groups.rs` - User-defined tag/group management for scenery packs (persisted per-config)
 - `flight_gen.rs` - Flight plan generation: airport matching, route building, failure logging, multi-format export. `AirportPool` is the public type for pre-indexed airport sets; use `generate_flight_with_pool()` for repeated generation without re-scanning. Bundled data assets (`flight_context_bundle.json`, `flight_context_pois_overlay.json`, `icao_to_wikipedia.csv`) are embedded via `include_bytes!` and loaded by `get_bundled_flight_context()`, `get_poi_overlay()`, `get_icao_to_wikipedia()`.
-  - **Guardrail design**: Only two hard constraints — helipad/seaplane-base type matching (helicopter ↔ heliport, floatplane ↔ seaplane base), and keyword-driven surface preference. Keywords `grass`/`unpaved` → Soft, `tarmac`/`asphalt` → Hard, `water`/`seaplane`/`floatplane` → Water (seaplane bases only). Runway length and aircraft-type distance limits are intentionally absent — users control range via keywords (`short`/`quick`, `long haul`, `2 hour flight`) and can swap aircraft after export. Default distance when no keyword given: 10–5000nm.
+  - **Guardrail design**: Only two hard constraints — helipad/seaplane-base type matching (helicopter ↔ heliport, floatplane ↔ seaplane base), and keyword-driven surface preference. Keywords `grass`/`unpaved` → Soft, `tarmac`/`asphalt` → Hard, `water`/`seaplane`/`floatplane` → Water (seaplane bases only). Runway length and aircraft-type distance limits are intentionally absent — users control range via keywords (`short`/`quick`, `long haul`, `2 hour flight`) and can swap aircraft after export. Default distance when no keyword given: 10–8000nm.
   - **`endpoints_explicit`**: Distance constraints are relaxed (2nm–20000nm) only when both endpoints are _point_ types (ICAO or NearCity). Region-to-Region pairs keep normal constraints so random picks stay geographically sensible.
   - **Seed airports**: Stored in `data/seed_airports.json` (embedded JSON), loaded once via `OnceLock`. Used as fallback when no pack airports cover a region/city. `seeds_for_constraint()` helper centralises the fallback lookup for both origin and destination.
   - **`FlightPlan`** has `time: Option<TimeKeyword>` and `weather: Option<WeatherKeyword>` fields (parsed from NLP input). These are display/export hints — they do not filter airports. `calculate_solar_time()` derives `TimeKeyword` from longitude + UTC.
+  - **`FlightPrompt` NLP fields**: `direction_bearing: Option<(f64, f64)>` — cardinal direction constraint parsed from "fly north", "heading northeast", Chinese compass words (东北/西南/etc.); `user_min_dist_nm`/`user_max_dist_nm` — explicit distance overrides from "between 100 and 200 nm", "within 50 nm", "at least 300 nm" (km/mi also accepted). These override the default 10–8000nm range when set.
 - `weather.rs` - `WeatherEngine` fetches real-time METAR data and maps observed conditions to `WeatherKeyword` (Storm, Rain, Cloudy, Clear, etc.). Called by `generate_flight_from_prompt()` when the prompt contains a weather or time keyword. Results used for flight context display in the GUI.
 - `data/` - Embedded binary assets: `flight_context_bundle.json` (63 airport history snippets), `flight_context_pois_overlay.json` (curated POIs for EGLL/LIRF), `icao_to_wikipedia.csv` (ICAO→Wikipedia title map for ~16k airports), `seed_airports.json` (~139 region keys including geographic features — Alps, Himalayas, PacIsles sub-regions etc. — fallback airports for flight gen)
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
@@ -85,7 +86,8 @@ Rules-based heuristics engine (not ML despite the name) that:
 
 - Scores scenery packs (0-100) for smart sorting with 16 `SceneryCategory` variants (defined in `scenery/mod.rs`, includes virtual `Group`)
 - Classifies aircraft by engine type and category using regex pattern matching
-- Parses natural language flight prompts via `flight_prompt.rs` / `parser.rs` (e.g., "London to Paris in a 737")
+- Parses `.acf` binary files via `parser::parse_acf()` → `AcfData` struct (`icao_type`, `num_engines`, `min_rwy_len`, `vne_kts`, `mtow_kg`); called by `discovery.rs` at aircraft scan time
+- Parses natural language flight prompts via `flight_prompt.rs` / `parser.rs` (e.g., "London to Paris in a 737", "fly northeast within 300 nm")
 - Supports manual priority overrides (sticky sort / pins)
 - **Flight preferences** (schema v11): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; used by flight gen to prefer airports/remember last flight for region-based prompts
 - Lower score = higher priority (inverted from category scores)

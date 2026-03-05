@@ -59,6 +59,22 @@
     "type": "Region",
     "value": "DE"
   },
+  "japan": {
+    "type": "Region",
+    "value": "JP"
+  },
+  "china": {
+    "type": "Region",
+    "value": "CN"
+  },
+  "south korea": {
+    "type": "Region",
+    "value": "KR"
+  },
+  "korea": {
+    "type": "Region",
+    "value": "KR"
+  },
   "spain": {
     "type": "Region",
     "value": "ES"
@@ -2569,6 +2585,238 @@
       "name": "New York",
       "lat": 40.7128,
       "lon": -74.006
+    }
+  },
+  "india": {
+    "type": "Region",
+    "value": "IN"
+  },
+  "thailand": {
+    "type": "Region",
+    "value": "TH"
+  },
+  "vietnam": {
+    "type": "Region",
+    "value": "VN"
+  },
+  "indonesia": {
+    "type": "Region",
+    "value": "ID"
+  },
+  "australia": {
+    "type": "Region",
+    "value": "AU"
+  },
+  "aussie": {
+    "type": "Region",
+    "value": "AU"
+  },
+  "new zealand": {
+    "type": "Region",
+    "value": "NZ"
+  },
+  "kiwi": {
+    "type": "Region",
+    "value": "NZ"
+  },
+  "philippines": {
+    "type": "Region",
+    "value": "PH"
+  },
+  "taiwan": {
+    "type": "Region",
+    "value": "TW"
+  },
+  "russia": {
+    "type": "Region",
+    "value": "RU"
+  },
+  "turkey": {
+    "type": "Region",
+    "value": "TR"
+  },
+  "türkiye": {
+    "type": "Region",
+    "value": "TR"
+  },
+  "portugal": {
+    "type": "Region",
+    "value": "PT"
+  },
+  "netherlands": {
+    "type": "Region",
+    "value": "NL"
+  },
+  "holland": {
+    "type": "Region",
+    "value": "NL"
+  },
+  "belgium": {
+    "type": "Region",
+    "value": "BE"
+  },
+  "switzerland": {
+    "type": "Region",
+    "value": "CH"
+  },
+  "swiss": {
+    "type": "Region",
+    "value": "CH"
+  },
+  "austria": {
+    "type": "Region",
+    "value": "AT"
+  },
+  "greece": {
+    "type": "Region",
+    "value": "GR"
+  },
+  "norway": {
+    "type": "Region",
+    "value": "NO"
+  },
+  "sweden": {
+    "type": "Region",
+    "value": "SE"
+  },
+  "finland": {
+    "type": "Region",
+    "value": "FI"
+  },
+  "denmark": {
+    "type": "Region",
+    "value": "DK"
+  },
+  "iceland": {
+    "type": "Region",
+    "value": "IS"
+  },
+  "poland": {
+    "type": "Region",
+    "value": "PL"
+  },
+  "czech republic": {
+    "type": "Region",
+    "value": "CZ"
+  },
+  "czechia": {
+    "type": "Region",
+    "value": "CZ"
+  },
+  "pakistan": {
+    "type": "Region",
+    "value": "PK"
+  },
+  "bangladesh": {
+    "type": "Region",
+    "value": "BD"
+  },
+  "mongolia": {
+    "type": "Region",
+    "value": "MN"
+  },
+  "nepal": {
+    "type": "Region",
+    "value": "NP"
+  },
+  "sri lanka": {
+    "type": "Region",
+    "value": "LK"
+  },
+  "ceylon": {
+    "type": "Region",
+    "value": "LK"
+  },
+  "cambodia": {
+    "type": "Region",
+    "value": "KH"
+  },
+  "saudi arabia": {
+    "type": "Region",
+    "value": "SAU"
+  },
+  "ksa": {
+    "type": "Region",
+    "value": "SAU"
+  },
+  "uae": {
+    "type": "Region",
+    "value": "UAE"
+  },
+  "emirates": {
+    "type": "Region",
+    "value": "UAE"
+  },
+  "qatar": {
+    "type": "Region",
+    "value": "QA"
+  },
+  "israel": {
+    "type": "Region",
+    "value": "IL"
+  },
+  "iraq": {
+    "type": "Region",
+    "value": "IQ"
+  },
+  "jordan": {
+    "type": "Region",
+    "value": "JO"
+  },
+  "ho chi minh city": {
+    "type": "NearCity",
+    "value": {
+      "name": "Ho Chi Minh City",
+      "lat": 10.82,
+      "lon": 106.63
+    }
+  },
+  "kl": {
+    "type": "NearCity",
+    "value": {
+      "name": "Kuala Lumpur",
+      "lat": 3.14,
+      "lon": 101.69
+    }
+  },
+  "bogotá": {
+    "type": "NearCity",
+    "value": {
+      "name": "Bogota",
+      "lat": 4.71,
+      "lon": -74.07
+    }
+  },
+  "honolulu": {
+    "type": "NearCity",
+    "value": {
+      "name": "Honolulu",
+      "lat": 21.31,
+      "lon": -157.86
+    }
+  },
+  "anchorage": {
+    "type": "NearCity",
+    "value": {
+      "name": "Anchorage",
+      "lat": 61.22,
+      "lon": -149.9
+    }
+  },
+  "moscow": {
+    "type": "NearCity",
+    "value": {
+      "name": "Moscow",
+      "lat": 55.76,
+      "lon": 37.62
+    }
+  },
+  "st petersburg": {
+    "type": "NearCity",
+    "value": {
+      "name": "St Petersburg",
+      "lat": 59.93,
+      "lon": 30.32
     }
   }
 }

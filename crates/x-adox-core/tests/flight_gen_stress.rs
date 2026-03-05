@@ -26,6 +26,12 @@ fn apt(id: &str, name: &str, lat: f64, lon: f64, len: u32, surf: SurfaceType) ->
         proj_y: None,
         max_runway_length: Some(len),
         surface_type: Some(surf),
+        elevation_ft: None,
+        frequencies: Vec::new(),
+        city: None,
+        country: None,
+        max_runway_width: None,
+        has_lighting: false,
     }
 }
 
@@ -40,6 +46,12 @@ fn heli(id: &str, name: &str, lat: f64, lon: f64) -> Airport {
         proj_y: None,
         max_runway_length: None,
         surface_type: Some(SurfaceType::Hard),
+        elevation_ft: None,
+        frequencies: Vec::new(),
+        city: None,
+        country: None,
+        max_runway_width: None,
+        has_lighting: false,
     }
 }
 
@@ -54,6 +66,12 @@ fn seaplane(id: &str, name: &str, lat: f64, lon: f64) -> Airport {
         proj_y: None,
         max_runway_length: Some(0),
         surface_type: Some(SurfaceType::Water),
+        elevation_ft: None,
+        frequencies: Vec::new(),
+        city: None,
+        country: None,
+        max_runway_width: None,
+        has_lighting: false,
     }
 }
 
@@ -69,6 +87,12 @@ fn apt_no_rwy(id: &str, name: &str, lat: f64, lon: f64) -> Airport {
         proj_y: None,
         max_runway_length: None,
         surface_type: None,
+        elevation_ft: None,
+        frequencies: Vec::new(),
+        city: None,
+        country: None,
+        max_runway_width: None,
+        has_lighting: false,
     }
 }
 
@@ -81,6 +105,12 @@ fn acft(name: &str, tags: &[&str]) -> DiscoveredAddon {
                 name: format!("{} Standard", name),
                 file_name: format!("{}.acf", name),
                 is_enabled: true,
+                icao_type: None,
+                num_engines: None,
+                min_rwy_len: None,
+                rwy_req_pave: None,
+                vne_kts: None,
+                mtow_kg: None,
             }],
             livery_count: 1,
             livery_names: vec!["Default".to_string()],

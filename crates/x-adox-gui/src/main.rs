@@ -448,6 +448,9 @@ enum Message {
     ExportCSLList,
     ToggleExportIncludeLiveries(bool),
     ToggleExportExpandedFormat(bool),
+    AddAircraftExclusion(String),
+    RemoveAircraftExclusion(String),
+    AircraftExclusionInputChanged(String),
     ToggleBucketItem(String),
     ClearBucket,
     BulkToggledSelectedBasket,
@@ -466,8 +469,8 @@ enum Message {
     FlightContextWindowDragStart,
     FlightContextWindowDragged(Point),
     FlightContextWindowDragEnd,
-    FlightContextResizeStart(ResizeEdge),
     FlightContextResized(Point),
+    FlightContextResizeStart(ResizeEdge),
     FlightContextResizeEnd,
     ModifiersChanged(keyboard::Modifiers),
 
@@ -748,7 +751,7 @@ struct App {
     fallback_military: image::Handle,
     fallback_helicopter: image::Handle,
     logo_handle: image::Handle,
-
+    aircraft_exclusion_input: String,
     // Smart View State
     smart_view_expanded: std::collections::BTreeSet<String>,
     scenery_view_mode: SceneryViewMode,
@@ -991,10 +994,11 @@ impl App {
             profile_manager: root.as_ref().map(|r| ProfileManager::new(r)),
             profiles: ProfileCollection::default(),
             new_profile_name: String::new(),
+            rename_profile_name: String::new(),
             show_profile_dialog: false,
             show_rename_dialog: false,
-            rename_profile_name: String::new(),
             show_launch_help: false,
+            aircraft_exclusion_input: String::new(),
 
             // Phase 3
             new_tag_input: String::new(),
@@ -5014,6 +5018,29 @@ impl App {
                 self.keyboard_modifiers = modifiers;
                 Task::none()
             }
+            Message::AddAircraftExclusion(name) => {
+                if !name.trim().is_empty() {
+                    let mut config = self.heuristics_model.config.as_ref().clone();
+                    if !config.flight_aircraft_exclude.contains(&name) {
+                        config.flight_aircraft_exclude.push(name);
+                        self.heuristics_model.update_config(config);
+                        let _ = self.heuristics_model.save();
+                    }
+                    self.aircraft_exclusion_input.clear();
+                }
+                Task::none()
+            }
+            Message::RemoveAircraftExclusion(name) => {
+                let mut config = self.heuristics_model.config.as_ref().clone();
+                config.flight_aircraft_exclude.retain(|x| x != &name);
+                self.heuristics_model.update_config(config);
+                let _ = self.heuristics_model.save();
+                Task::none()
+            }
+            Message::AircraftExclusionInputChanged(input) => {
+                self.aircraft_exclusion_input = input;
+                Task::none()
+            }
             Message::ToggleBucketItem(name) => {
                 if self.keyboard_modifiers.shift() {
                     // Range selection logic
@@ -8860,9 +8887,17 @@ impl App {
 
         container(
             column![
-                text("NLP Dictionary (JSON Editor)")
-                    .size(20)
-                    .width(Length::Fill),
+                row![
+                    button(text(rust_i18n::t!("btn.back")).size(12))
+                        .on_press(Message::SwitchTab(Tab::FlightGenerator))
+                        .style(style::button_secondary)
+                        .padding([5, 10]),
+                    text("NLP Dictionary (JSON Editor)")
+                        .size(20)
+                        .width(Length::Fill),
+                ]
+                .spacing(20)
+                .align_y(iced::Alignment::Center),
                 text("Customize aircraft names, time, weather, surface, flight type, and duration mappings. Click \"Valid Values Reference\" for field documentation.")
                     .size(14)
                     .color(Color::from_rgb(0.6, 0.6, 0.6)),
@@ -8989,20 +9024,74 @@ impl App {
         // 2b. Airport History & Trivia (Option B: bundled first, optional enhanced from Wikipedia)
         let flight_context_section: Element<'_, Message> = container(
             column![
-                text(rust_i18n::t!("settings.flight_context_title")).size(18),
-                text(t!("settings.flight_context_desc"))
+                text(rust_i18n::t!("settings.flight_context_title").to_string()).size(18),
+                text(rust_i18n::t!("settings.flight_context_desc").to_string())
                     .size(12)
                     .color(style::palette::TEXT_SECONDARY),
                 checkbox(
-                    rust_i18n::t!("settings.enable_wikipedia"),
+                    rust_i18n::t!("settings.enable_wikipedia").to_string(),
                     self.flight_context_fetch_enabled,
                 )
                 .on_toggle(Message::ToggleFlightContextFetch)
                 .size(18)
                 .text_size(14),
-                text(t!("settings.wikipedia_desc"))
+                text(rust_i18n::t!("settings.wikipedia_desc").to_string())
                     .size(12)
                     .color(style::palette::TEXT_SECONDARY),
+            ]
+            .spacing(10),
+        )
+        .padding(20)
+        .style(style::container_card)
+        .width(Length::Fill)
+        .into();
+
+        // 2c. Aircraft Exclusion Section (Flight Generator)
+        let aircraft_exclusion_section: Element<'_, Message> = container(
+            column![
+                text(rust_i18n::t!("settings.aircraft_exclusion_title").to_string()).size(18),
+                text(rust_i18n::t!("settings.aircraft_exclusion_desc").to_string())
+                    .size(12)
+                    .color(style::palette::TEXT_SECONDARY),
+                row![
+                    text_input(
+                        rust_i18n::t!("settings.aircraft_exclusion_placeholder").as_ref(),
+                        &self.aircraft_exclusion_input
+                    )
+                    .on_input(Message::AircraftExclusionInputChanged)
+                    .on_submit(Message::AddAircraftExclusion(self.aircraft_exclusion_input.clone()))
+                    .padding(10)
+                    .width(Length::Fill),
+                    button(text(rust_i18n::t!("btn.add").to_string()).size(14))
+                        .on_press(Message::AddAircraftExclusion(self.aircraft_exclusion_input.clone()))
+                        .style(style::button_primary)
+                        .padding([10, 20]),
+                ]
+                .spacing(10)
+                .align_y(iced::Alignment::Center),
+                column(
+                    self.heuristics_model.config.flight_aircraft_exclude
+                        .iter()
+                        .map(|ex| {
+                            let name = ex.clone();
+                            container(
+                                row![
+                                    text(ex.as_str()).width(Length::Fill),
+                                    button(svg(self.icon_trash.clone()).width(Length::Fixed(16.0)))
+                                        .on_press(Message::RemoveAircraftExclusion(name))
+                                        .style(style::button_danger)
+                                        .padding(5)
+                                ]
+                                .align_y(iced::Alignment::Center)
+                                .spacing(10)
+                            )
+                            .padding(8)
+                            .style(style::container_card)
+                            .into()
+                        })
+                        .collect::<Vec<_>>()
+                )
+                .spacing(5)
             ]
             .spacing(10),
         )
@@ -9150,6 +9239,7 @@ impl App {
                 backup_section,
                 export_settings,
                 flight_context_section,
+                aircraft_exclusion_section,
 
                 iced::widget::horizontal_rule(1.0),
 
@@ -11407,6 +11497,12 @@ fn build_merged_aircraft_tree(
                 name: variant_name,
                 file_name: entry_name_str.clone(),
                 is_enabled: is_acf,
+                icao_type: None,
+                num_engines: None,
+                min_rwy_len: None,
+                rwy_req_pave: None,
+                vne_kts: None,
+                mtow_kg: None,
             };
 
             if let Some(existing_variants) = &mut node_variants {

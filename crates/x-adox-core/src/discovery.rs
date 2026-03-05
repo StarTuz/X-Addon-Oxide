@@ -22,6 +22,12 @@ pub struct AcfVariant {
     pub name: String,
     pub file_name: String,
     pub is_enabled: bool,
+    pub icao_type: Option<String>,
+    pub num_engines: Option<u8>,
+    pub min_rwy_len: Option<u32>,
+    pub rwy_req_pave: Option<u8>,
+    pub vne_kts: Option<u32>,
+    pub mtow_kg: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
@@ -146,10 +152,19 @@ impl DiscoveryManager {
                                     .to_string()
                             };
 
+                            let acf_path = entry.path();
+                            let acf_data = x_adox_bitnet::parser::parse_acf(acf_path).ok();
+
                             let variant = AcfVariant {
                                 name: variant_name,
                                 file_name: file_name.clone(),
                                 is_enabled: is_acf,
+                                icao_type: acf_data.as_ref().and_then(|d| d.icao_type.clone()),
+                                num_engines: acf_data.as_ref().and_then(|d| d.num_engines),
+                                min_rwy_len: acf_data.as_ref().and_then(|d| d.min_rwy_len),
+                                rwy_req_pave: acf_data.as_ref().and_then(|d| d.rwy_req_pave),
+                                vne_kts: acf_data.as_ref().and_then(|d| d.vne_kts),
+                                mtow_kg: acf_data.as_ref().and_then(|d| d.mtow_kg),
                             };
 
                             if let Some(existing) = folder_results

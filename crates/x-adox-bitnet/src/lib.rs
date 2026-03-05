@@ -223,13 +223,17 @@ pub struct HeuristicsConfig {
     /// Last successful flight (origin/dest regions + ICAOs) for "Remember this flight".
     #[serde(default)]
     pub flight_last_success: Option<FlightLastSuccess>,
+    /// Aircraft names excluded from flight generation (e.g. default X-Plane aircraft).
+    /// Matched by substring against addon name (case-insensitive).
+    #[serde(default)]
+    pub flight_aircraft_exclude: Vec<String>,
     /// Schema version for migration. Increment when breaking changes are made.
     #[serde(default)]
     pub schema_version: u32,
 }
 
 /// When a user's file has a lower version, migration logic is applied on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 13;
+pub const CURRENT_SCHEMA_VERSION: u32 = 14;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
@@ -430,6 +434,7 @@ impl Default for HeuristicsConfig {
             flight_origin_prefs: std::collections::BTreeMap::new(),
             flight_dest_prefs: std::collections::BTreeMap::new(),
             flight_last_success: None,
+            flight_aircraft_exclude: Vec::new(),
             schema_version: CURRENT_SCHEMA_VERSION,
         }
     }
@@ -710,6 +715,11 @@ impl BitNetModel {
                             );
                         }
                     }
+                }
+
+                // v13→v14: Add flight_aircraft_exclude field. New field uses #[serde(default)].
+                if config.schema_version <= 13 {
+                    log::info!("[BitNet] v13→v14: Added flight_aircraft_exclude field");
                 }
 
                 config.schema_version = CURRENT_SCHEMA_VERSION;

@@ -1437,6 +1437,8 @@ mod tests {
     use std::io::Write;
     use tempfile::tempdir;
 
+    use crate::apt_dat::{AirportType, SurfaceType};
+
     #[test]
     fn test_centroid_calculation() {
         let mut pack = SceneryPack {
@@ -1447,37 +1449,55 @@ mod tests {
             category: SceneryCategory::CustomAirport,
             airports: vec![
                 Airport {
-                    id: "A1".into(),
-                    name: "Airport 1".into(),
-                    lat: Some(10.0),
-                    lon: Some(20.0),
-                    airport_type: crate::apt_dat::AirportType::Land,
+                    id: "LOWI".to_string(),
+                    name: "Innsbruck".to_string(),
+                    airport_type: AirportType::Land,
+                    lat: Some(47.260278),
+                    lon: Some(11.343889),
                     proj_x: None,
                     proj_y: None,
-                    max_runway_length: None,
-                    surface_type: None,
+                    max_runway_length: Some(2000),
+                    surface_type: Some(SurfaceType::Hard),
+                    elevation_ft: None,
+                    frequencies: Vec::new(),
+                    city: None,
+                    country: None,
+                    max_runway_width: None,
+                    has_lighting: false,
                 },
                 Airport {
-                    id: "A2".into(),
-                    name: "Airport 2".into(),
-                    lat: Some(20.0),
-                    lon: Some(30.0),
-                    airport_type: crate::apt_dat::AirportType::Land,
+                    id: "LSZH".to_string(),
+                    name: "Zurich".to_string(),
+                    airport_type: AirportType::Land,
+                    lat: Some(47.4582),
+                    lon: Some(8.5555),
                     proj_x: None,
                     proj_y: None,
-                    max_runway_length: None,
-                    surface_type: None,
+                    max_runway_length: Some(3000),
+                    surface_type: Some(SurfaceType::Hard),
+                    elevation_ft: None,
+                    frequencies: Vec::new(),
+                    city: None,
+                    country: None,
+                    max_runway_width: None,
+                    has_lighting: false,
                 },
                 Airport {
-                    id: "A3".into(),
-                    name: "Empty".into(),
-                    lat: None,
-                    lon: None,
-                    airport_type: crate::apt_dat::AirportType::Land,
+                    id: "LIML".to_string(),
+                    name: "Linate".to_string(),
+                    airport_type: AirportType::Land,
+                    lat: Some(45.4451),
+                    lon: Some(9.2767),
                     proj_x: None,
                     proj_y: None,
-                    max_runway_length: None,
-                    surface_type: None,
+                    max_runway_length: Some(2400),
+                    surface_type: Some(SurfaceType::Hard),
+                    elevation_ft: None,
+                    frequencies: Vec::new(),
+                    city: None,
+                    country: None,
+                    max_runway_width: None,
+                    has_lighting: false,
                 },
             ],
             tiles: vec![(40, 50), (41, 51)],
@@ -1486,10 +1506,11 @@ mod tests {
             region: None,
         };
 
-        // Should favor airports: (10 + 20) / 2 = 15, (20 + 30) / 2 = 25
+        // Centroid of LOWI(47.260278, 11.343889) + LSZH(47.4582, 8.5555) + LIML(45.4451, 9.2767)
+        // avg lat ≈ 46.7212, avg lon ≈ 9.7254
         let center = pack.get_centroid().unwrap();
-        assert!((center.0 - 15.0).abs() < 0.001);
-        assert!((center.1 - 25.0).abs() < 0.001);
+        assert!((center.0 - 46.7212).abs() < 0.01, "lat centroid was {}", center.0);
+        assert!((center.1 - 9.7254).abs() < 0.01, "lon centroid was {}", center.1);
 
         // Remove airports, should use tiles
         pack.airports.clear();

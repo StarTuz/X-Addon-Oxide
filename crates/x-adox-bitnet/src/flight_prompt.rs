@@ -13,12 +13,51 @@ struct RawAlias {
 }
 
 /// Words that introduce an aircraft clause (e.g. "on an MD-80").
-const AIRCRAFT_CONNECTORS: &[&str] = &["using", "in", "with", "on", "aboard", "taking", "flying"];
+const AIRCRAFT_CONNECTORS: &[&str] = &[
+    "using",
+    "in",
+    "with",
+    "on",
+    "aboard",
+    "taking",
+    "flying",
+    "piloting",
+    "operating",
+];
 
 /// Words that terminate a location capture group.
 /// Superset of AIRCRAFT_CONNECTORS plus directional/temporal words.
 const LOCATION_TERMINATORS: &[&str] = &[
-    "using", "in", "with", "on", "aboard", "taking", "flying", "for", "via", "during", "at",
+    "using",
+    "in",
+    "with",
+    "on",
+    "aboard",
+    "taking",
+    "flying",
+    "piloting",
+    "operating",
+    "for",
+    "via",
+    "during",
+    "at",
+    "about",
+    "around",
+    "between",
+    // Directional verbs — prevent "from F70 heading south" from eating the direction
+    "heading",
+    "going",
+    "headed",
+    "bound",
+    // -bound compound words — "from EGLL northbound" must stop before "northbound"
+    "northbound",
+    "southbound",
+    "eastbound",
+    "westbound",
+    "northeastbound",
+    "southeastbound",
+    "southwestbound",
+    "northwestbound",
 ];
 
 const WEATHER_TIME_WORDS: &[&str] = &[
@@ -128,6 +167,18 @@ pub struct FlightPrompt {
     /// Cruise speed override from a matched aircraft rule (kts). Overrides heuristic estimate.
     #[serde(default)]
     pub aircraft_speed_kts: Option<u32>,
+    /// Optional bearing constraint from origin (degrees). E.g. "north" → (315, 45).
+    #[serde(default)]
+    pub direction_bearing: Option<(f64, f64)>,
+    /// User-specified minimum distance (nm). E.g. "between 100 and 200 nm" → 100.
+    #[serde(default)]
+    pub user_min_dist_nm: Option<f64>,
+    /// User-specified maximum distance (nm). E.g. "within 50 nm" → 50.
+    #[serde(default)]
+    pub user_max_dist_nm: Option<f64>,
+    /// Exact engine count constraint. E.g. "twin engine" -> 2.
+    #[serde(default)]
+    pub num_engines: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -196,8 +247,19 @@ pub enum LocationConstraint {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AircraftConstraint {
-    Tag(String), // Matches tags like "jet", "cessna", "heavy"
+    Tag(String),  // Matches tags like "jet", "cessna", "heavy"
+    ICAO(String), // Matches ICAO aircraft types like "C172", "B788"
     Any,
+}
+
+impl std::fmt::Display for AircraftConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AircraftConstraint::Tag(tag) => write!(f, "{}", tag),
+            AircraftConstraint::ICAO(icao) => write!(f, "ICAO:{}", icao),
+            AircraftConstraint::Any => write!(f, "Any"),
+        }
+    }
 }
 
 /// Returns true if `s` contains any CJK Unified Ideographs (U+4E00–U+9FFF).
@@ -217,6 +279,14 @@ fn preprocess_chinese(input: &str) -> String {
 
     // ── Directional markers ──────────────────────────────────────────────────
     // Apply longer/more-specific phrases first to avoid partial-match collisions.
+    s = s.replace("东北", "northeast");
+    s = s.replace("西北", "northwest");
+    s = s.replace("东南", "southeast");
+    s = s.replace("西南", "southwest");
+    s = s.replace("向北", "north");
+    s = s.replace("向南", "south");
+    s = s.replace("向东", "east");
+    s = s.replace("向西", "west");
     s = s.replace("飞往", " to ");
     s = s.replace("飞去", " to ");
     s = s.replace("飞向", " to ");
@@ -643,6 +713,44 @@ impl FlightPrompt {
             }
         }
 
+        // 2b. Parse "direction of LOCATION" → origin=LOCATION, direction=bearing.
+        // e.g. "fly north of EGMC", "northeast of London".
+        // Must run before step 3 so the location is consumed and not double-parsed.
+        static DIR_OF_RE: OnceLock<Regex> = OnceLock::new();
+        let dir_of_re = DIR_OF_RE.get_or_init(|| {
+            Regex::new(r"(?i)\b(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([a-zA-Z0-9][a-zA-Z0-9\s,]{0,30}?)(?:\s+(to|using|in|with|on|aboard|taking|flying|for|via|at|about)(?:\s|$)|$)").unwrap()
+        });
+        if prompt.origin.is_none() {
+            if let Some(caps) = dir_of_re.captures(&clean_input) {
+                let dir_word = caps[1].to_lowercase();
+                let loc_str = caps[2].trim();
+                let bearing = match dir_word.as_str() {
+                    "north" => Some((315.0, 45.0)),
+                    "northeast" => Some((22.5, 67.5)),
+                    "east" => Some((45.0, 135.0)),
+                    "southeast" => Some((112.5, 157.5)),
+                    "south" => Some((135.0, 225.0)),
+                    "southwest" => Some((202.5, 247.5)),
+                    "west" => Some((225.0, 315.0)),
+                    "northwest" => Some((292.5, 337.5)),
+                    _ => None,
+                };
+                if bearing.is_some() {
+                    prompt.direction_bearing = bearing;
+                    prompt.origin = Some(parse_location(loc_str));
+                    // Remove the matched portion; if a terminator keyword (e.g. "to") was
+                    // consumed as group 3, put it back so step 3 can parse "to Paris" etc.
+                    let terminator = caps.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();
+                    let full_match = caps[0].trim().to_string();
+                    clean_input = clean_input.replacen(&full_match, "", 1);
+                    clean_input = clean_input.trim().to_string();
+                    if !terminator.is_empty() {
+                        clean_input = format!("{} {}", terminator.trim(), clean_input);
+                    }
+                }
+            }
+        }
+
         // 3. Parse Origin and Destination
         // Patterns: "from X to Y", "flight from X to Y", "X to Y"
         // Suffix terminators include "via" so "Paris via Brussels" → dest="paris".
@@ -697,6 +805,17 @@ impl FlightPrompt {
                 prompt.origin = Some(parse_location(origin_str));
                 prompt.destination = Some(parse_location(dest_str));
             }
+            // Remove the matched location text so its words (e.g. "South" in "South Korea")
+            // don't trigger keywords later (like cardinal directions).
+            // We preserve the terminator (caps[3]) because it may also be an aircraft connector
+            // (e.g. "on" in "EGLL to LIRF on an MD-80").
+            if let Some(m) = caps.get(3) {
+                // Only strip from the start of the full match to the start of the terminator.
+                let strip = &clean_input[caps.get(0).unwrap().start()..m.start()];
+                clean_input = clean_input.replacen(strip, " ", 1);
+            } else {
+                clean_input = clean_input.replace(&caps[0], " ");
+            }
         } else {
             // Fallback: Check for destination-only prompt.
             // Handles: "to X", "flight to X", "fly to X", "heading to X",
@@ -713,6 +832,8 @@ impl FlightPrompt {
             if let Some(caps) = to_re.captures(&clean_input) {
                 let dest_str = caps[1].trim();
                 prompt.destination = Some(parse_location(dest_str));
+                // Remove the matched location structure
+                clean_input = clean_input.replace(&caps[0], " ");
             } else {
                 // Fallback: "from X" without "to Y" (e.g. "2 hour flight from UK") — constrain origin only
                 static FROM_RE: OnceLock<Regex> = OnceLock::new();
@@ -720,13 +841,18 @@ impl FlightPrompt {
                     FROM_RE.get_or_init(|| Regex::new(r"\bfrom\b\s+([a-zA-Z0-9\s,]+)").unwrap());
                 if let Some(caps) = from_re.captures(&clean_input) {
                     let raw = caps[1].trim();
-                    // Strip trailing keywords so "from UK for 2 hours" yields "UK"
+                    // Strip trailing keywords so "from UK for 2 hours" → "UK",
+                    // "from KSFO southbound" → "ksfo" (terminator may be at end of string,
+                    // so check both " term " in middle and " term" at end).
                     let origin_str = LOCATION_TERMINATORS
                         .iter()
                         .fold(raw, |acc, &term| {
-                            let phrase = format!(" {} ", term);
-                            if let Some(i) = acc.find(&phrase) {
+                            let phrase_mid = format!(" {} ", term);
+                            let phrase_end = format!(" {}", term);
+                            if let Some(i) = acc.find(&phrase_mid) {
                                 &acc[..i]
+                            } else if acc.ends_with(&phrase_end) {
+                                &acc[..acc.len() - phrase_end.len()]
                             } else {
                                 acc
                             }
@@ -734,6 +860,16 @@ impl FlightPrompt {
                         .trim();
                     if !origin_str.is_empty() {
                         prompt.origin = Some(parse_location(origin_str));
+                        // Only strip "from {origin_str}" — NOT the full greedy caps[0].
+                        // If a terminator cut the raw capture short (e.g. "f70 heading south"
+                        // → origin_str="f70"), the remainder ("heading south") must stay in
+                        // clean_input so direction/keyword parsing still fires.
+                        if origin_str == raw {
+                            clean_input = clean_input.replace(&caps[0], " ");
+                        } else {
+                            let to_remove = format!("from {}", origin_str);
+                            clean_input = clean_input.replacen(&to_remove, " ", 1);
+                        }
                     }
                 }
 
@@ -816,77 +952,123 @@ impl FlightPrompt {
                 let is_weather_false_positive = WEATHER_TIME_WORDS.iter().any(|&w| acf_lower == w);
 
                 if !is_weather_false_positive {
-                    // Normalize common conversational variants into standardized tags
-                    // matching the BitNet classifier's taxonomy.
-                    if acf_lower.contains("airliner")
-                        || acf_lower.contains("commercial")
-                        || acf_lower.contains("passenger")
-                        || acf_lower.contains("heavy")
-                        || (acf_lower.contains("jet") && !acf_lower.contains("biz"))
-                    {
-                        acf_str = "Airliner".to_string();
-                    } else if acf_lower.contains("biz jet")
-                        || acf_lower.contains("bizjet")
-                        || acf_lower.contains("business")
-                        || acf_lower.contains("corporate")
-                        || acf_lower.contains("private jet")
-                    {
-                        acf_str = "Business Jet".to_string();
-                    } else if acf_lower == "ga"
-                        || acf_lower.contains("general aviation")
-                        || acf_lower.contains("small plane")
-                        || acf_lower.contains("light aircraft")
-                        || acf_lower.contains("propeller")
-                        || acf_lower.contains("piston")
-                        || acf_lower.contains("civilian")
-                        || acf_lower.contains("puddle")
-                        || acf_lower.contains("tail")
-                        || acf_lower.contains("float")
-                        || acf_lower.contains("sea")
-                    {
-                        acf_str = "General Aviation".to_string();
-                    } else if acf_lower.contains("glass")
-                        || acf_lower.contains("g1000")
-                        || acf_lower.contains("modern panel")
-                    {
-                        acf_str = "G1000".to_string();
-                    } else if acf_lower.contains("steam") || acf_lower.contains("analog") {
-                        acf_str = "Analog".to_string();
-                    } else if acf_lower.contains("warbird")
-                        || acf_lower.contains("wwii")
-                        || acf_lower.contains("fighter")
-                        || acf_lower.contains("military")
-                        || acf_lower.contains("combat")
-                        || acf_lower.contains("bomber")
-                    {
-                        acf_str = "Military".to_string();
-                    } else if acf_lower.contains("cargo")
-                        || acf_lower.contains("freight")
-                        || acf_lower.contains("transport")
-                    {
-                        acf_str = "Cargo".to_string();
-                    } else if acf_lower.contains("heli")
-                        || acf_lower.contains("chopper")
-                        || acf_lower.contains("rotor")
-                    {
-                        acf_str = "Helicopter".to_string();
-                    } else if acf_lower.contains("glider") || acf_lower.contains("sailplane") {
-                        acf_str = "Glider".to_string();
-                    } else if acf_lower.contains("turboprop")
-                        || acf_lower.contains("turbo prop")
-                        || acf_lower.contains("twin engine")
-                        || acf_lower.contains("twin-engine")
-                        || acf_lower.contains("single engine")
-                        || acf_lower.contains("single-engine")
-                    {
-                        acf_str = "General Aviation".to_string();
-                    }
-
                     if !acf_str.is_empty() {
-                        prompt.aircraft = Some(AircraftConstraint::Tag(acf_str));
+                        let acf_upper = acf_str.to_uppercase();
+                        // 3. Detect ICAO Aircraft Type Codes (e.g. C172, B738, F16)
+                        // Typically 2-4 chars, alphanumeric, starts with a letter.
+                        if (acf_upper.len() >= 2 && acf_upper.len() <= 4)
+                            && acf_upper
+                                .chars()
+                                .next()
+                                .map_or(false, |c| c.is_ascii_alphabetic())
+                            && acf_upper.chars().all(|c| c.is_ascii_alphanumeric())
+                            && !acf_lower.contains("jet")
+                            && !acf_lower.contains("prop")
+                            && !acf_lower.contains("heli")
+                        {
+                            prompt.aircraft = Some(AircraftConstraint::ICAO(acf_upper));
+                        } else {
+                            // Normalize common conversational variants into standardized tags
+                            // matching the BitNet classifier's taxonomy.
+                            if acf_lower.contains("airliner")
+                                || acf_lower.contains("commercial")
+                                || acf_lower.contains("passenger")
+                                || acf_lower.contains("heavy")
+                                || (acf_lower.contains("jet") && !acf_lower.contains("biz"))
+                            {
+                                acf_str = "Airliner".to_string();
+                            } else if acf_lower.contains("biz jet")
+                                || acf_lower.contains("bizjet")
+                                || acf_lower.contains("business")
+                                || acf_lower.contains("corporate")
+                                || acf_lower.contains("private jet")
+                            {
+                                acf_str = "Business Jet".to_string();
+                            } else if acf_lower == "ga"
+                                || acf_lower.contains("general aviation")
+                                || acf_lower.contains("small plane")
+                                || acf_lower.contains("light aircraft")
+                                || acf_lower.contains("propeller")
+                                || acf_lower.contains("piston")
+                                || acf_lower.contains("civilian")
+                                || acf_lower.contains("puddle")
+                                || acf_lower.contains("tail")
+                                || acf_lower.contains("float")
+                                || acf_lower.contains("sea")
+                            {
+                                acf_str = "General Aviation".to_string();
+                            } else if acf_lower.contains("glass")
+                                || acf_lower.contains("g1000")
+                                || acf_lower.contains("modern panel")
+                            {
+                                acf_str = "G1000".to_string();
+                            } else if acf_lower.contains("steam") || acf_lower.contains("analog") {
+                                acf_str = "Analog".to_string();
+                            } else if acf_lower.contains("warbird")
+                                || acf_lower.contains("wwii")
+                                || acf_lower.contains("fighter")
+                                || acf_lower.contains("military")
+                                || acf_lower.contains("combat")
+                                || acf_lower.contains("bomber")
+                            {
+                                acf_str = "Military".to_string();
+                            } else if acf_lower.contains("cargo")
+                                || acf_lower.contains("freight")
+                                || acf_lower.contains("transport")
+                            {
+                                acf_str = "Cargo".to_string();
+                            } else if acf_lower.contains("heli")
+                                || acf_lower.contains("chopper")
+                                || acf_lower.contains("rotor")
+                            {
+                                acf_str = "Helicopter".to_string();
+                            } else if acf_lower.contains("glider")
+                                || acf_lower.contains("sailplane")
+                            {
+                                acf_str = "Glider".to_string();
+                            } else if acf_lower.contains("turboprop")
+                                || acf_lower.contains("turbo prop")
+                                || acf_lower.contains("twin engine")
+                                || acf_lower.contains("twin-engine")
+                                || acf_lower.contains("single engine")
+                                || acf_lower.contains("single-engine")
+                            {
+                                acf_str = "General Aviation".to_string();
+                            }
+
+                            if !acf_str.is_empty() {
+                                prompt.aircraft = Some(AircraftConstraint::Tag(acf_str));
+                            }
+                        }
                     }
                 }
             }
+        }
+
+        // 3. Parse Engine Count (Global Search)
+        if acf_input.contains("single engine") || acf_input.contains("single-engine") {
+            prompt.num_engines = Some(1);
+        } else if acf_input.contains("twin engine")
+            || acf_input.contains("twin-engine")
+            || acf_input.contains("twin jet")
+            || acf_input.contains("twin-jet")
+            || acf_input.contains("bi-jet")
+        {
+            prompt.num_engines = Some(2);
+        } else if acf_input.contains("tri engine")
+            || acf_input.contains("tri-engine")
+            || acf_input.contains("tri jet")
+            || acf_input.contains("tri-jet")
+            || acf_input.contains("three engine")
+        {
+            prompt.num_engines = Some(3);
+        } else if acf_input.contains("quad engine")
+            || acf_input.contains("quad-engine")
+            || acf_input.contains("quad jet")
+            || acf_input.contains("quad-jet")
+            || acf_input.contains("four engine")
+        {
+            prompt.num_engines = Some(4);
         }
 
         // 5. Parse Explicit Duration (Overrides keyword if present)
@@ -918,6 +1100,88 @@ impl FlightPrompt {
                     _ => val,
                 };
                 prompt.duration_minutes = Some(minutes);
+            }
+        }
+
+        // 6. Parse Cardinal Direction
+        // Patterns: "north", "northeast", "heading east", "fly south"
+        static DIR_RE: OnceLock<Regex> = OnceLock::new();
+        let dir_re = DIR_RE.get_or_init(|| {
+            // Prefixes: heading/fly/flying/go/head + optional "to the"/"towards the"
+            // Suffixes: bare word, -bound (northbound), -ward/-wards (northward/northwards)
+            Regex::new(r"\b(?:heading\s+|fly(?:ing)?\s+|go(?:ing)?\s+|head(?:ing)?\s+)?(?:towards?\s+the\s+|to\s+the\s+)?(north(?:east|west)?(?:bound|wards?)?|south(?:east|west)?(?:bound|wards?)?|east(?:bound|wards?)?|west(?:bound|wards?)?)\b").unwrap()
+        });
+        if let Some(caps) = dir_re.captures(&clean_input) {
+            // Strip -bound / -ward / -wards suffixes to normalise "northbound" → "north"
+            let raw_dir = caps[1].to_lowercase();
+            let dir = raw_dir
+                .trim_end_matches("wards")
+                .trim_end_matches("ward")
+                .trim_end_matches("bound");
+            let bearing = match dir {
+                "north" => Some((315.0, 45.0)),
+                "northeast" => Some((22.5, 67.5)),
+                "east" => Some((45.0, 135.0)),
+                "southeast" => Some((112.5, 157.5)),
+                "south" => Some((135.0, 225.0)),
+                "southwest" => Some((202.5, 247.5)),
+                "west" => Some((225.0, 315.0)),
+                "northwest" => Some((292.5, 337.5)),
+                _ => None,
+            };
+            prompt.direction_bearing = bearing;
+        }
+
+        // 7. Parse Distance Range
+        // Patterns: "between N and M nm/km/mi", "within N nm/km/mi", "at least N nm/km/mi"
+        static DIST_BETWEEN_RE: OnceLock<Regex> = OnceLock::new();
+        let dist_between_re = DIST_BETWEEN_RE.get_or_init(|| {
+            Regex::new(r"(?i)between\s+(\d+(?:\.\d+)?)\s+and\s+(\d+(?:\.\d+)?)\s*(nm|km|mi(?:les?)?|nautical miles?)").unwrap()
+        });
+        static DIST_WITHIN_RE: OnceLock<Regex> = OnceLock::new();
+        let dist_within_re = DIST_WITHIN_RE.get_or_init(|| {
+            Regex::new(r"(?i)(?:within|under|less than|max(?:imum)?)\s+(\d+(?:\.\d+)?)\s*(nm|km|mi(?:les?)?|nautical miles?)").unwrap()
+        });
+        static DIST_ATLEAST_RE: OnceLock<Regex> = OnceLock::new();
+        let dist_atleast_re = DIST_ATLEAST_RE.get_or_init(|| {
+            Regex::new(r"(?i)(?:at least|over|more than|min(?:imum)?)\s+(\d+(?:\.\d+)?)\s*(nm|km|mi(?:les?)?|nautical miles?)").unwrap()
+        });
+
+        fn to_nm(val: f64, unit: &str) -> f64 {
+            match unit.to_lowercase().as_str() {
+                u if u.starts_with("km") => val / 1.852,
+                u if u.starts_with("mi") => val / 1.151,
+                _ => val, // nm or "nautical miles"
+            }
+        }
+
+        // Bare number+unit with no qualifier: "70nm", "200km", "50 NM".
+        // Treat as approximate target distance — set a ±30% window so the generator
+        // has room to find airports (e.g. "70nm" → 49–91nm).
+        static DIST_BARE_RE: OnceLock<Regex> = OnceLock::new();
+        let dist_bare_re = DIST_BARE_RE.get_or_init(|| {
+            Regex::new(r"(?i)\b(\d+(?:\.\d+)?)\s*(nm|km|mi(?:les?)?|nautical miles?)\b").unwrap()
+        });
+
+        if let Some(caps) = dist_between_re.captures(&clean_input) {
+            if let (Ok(a), Ok(b)) = (caps[1].parse::<f64>(), caps[2].parse::<f64>()) {
+                let unit = &caps[3];
+                prompt.user_min_dist_nm = Some(to_nm(a, unit));
+                prompt.user_max_dist_nm = Some(to_nm(b, unit));
+            }
+        } else if let Some(caps) = dist_within_re.captures(&clean_input) {
+            if let Ok(v) = caps[1].parse::<f64>() {
+                prompt.user_max_dist_nm = Some(to_nm(v, &caps[2]));
+            }
+        } else if let Some(caps) = dist_atleast_re.captures(&clean_input) {
+            if let Ok(v) = caps[1].parse::<f64>() {
+                prompt.user_min_dist_nm = Some(to_nm(v, &caps[2]));
+            }
+        } else if let Some(caps) = dist_bare_re.captures(&clean_input) {
+            if let Ok(v) = caps[1].parse::<f64>() {
+                let nm = to_nm(v, &caps[2]);
+                prompt.user_min_dist_nm = Some((nm * 0.7).max(2.0));
+                prompt.user_max_dist_nm = Some(nm * 1.3);
             }
         }
 
@@ -955,6 +1219,14 @@ fn parse_location(s: &str) -> LocationConstraint {
         // that flight_gen's name-scoring can match them by ICAO id.
         LocationConstraint::ICAO(s.to_uppercase())
     } else {
+        // Fallback: if the string contains spaces, the location regex may have
+        // captured trailing aircraft/keyword text (e.g. "lirf md80").
+        // Try the first whitespace-delimited token as an ICAO code.
+        if let Some(first) = s.split_whitespace().next() {
+            if first.len() == 4 && first.chars().all(|c| c.is_ascii_alphanumeric()) {
+                return LocationConstraint::ICAO(first.to_uppercase());
+            }
+        }
         LocationConstraint::AirportName(s.to_string())
     }
 }
@@ -1761,7 +2033,12 @@ mod tests {
                 "Aircraft tag should contain 'a320', got {:?}",
                 t
             ),
-            other => panic!("Aircraft should be Tag containing a320, got {:?}", other),
+            Some(AircraftConstraint::ICAO(t)) => assert!(
+                t.to_uppercase().contains("A320"),
+                "Aircraft ICAO should contain 'A320', got {:?}",
+                t
+            ),
+            other => panic!("Aircraft should be Tag or ICAO containing a320, got {:?}", other),
         }
     }
 
@@ -1777,20 +2054,147 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_bare_distance() {
+        let cfg = crate::NLPRulesConfig::default();
+
+        // Bare "70NM" → ±30% window (49–91nm)
+        let p = FlightPrompt::parse("flight from EGMC heading south 70NM", &cfg);
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGMC".to_string())));
+        assert!(p.direction_bearing.is_some(), "south bearing should be set");
+        let min = p.user_min_dist_nm.expect("min dist should be set");
+        let max = p.user_max_dist_nm.expect("max dist should be set");
+        assert!((min - 49.0).abs() < 1.0, "min ~49nm, got {min}");
+        assert!((max - 91.0).abs() < 1.0, "max ~91nm, got {max}");
+
+        // Bare km → converted
+        let p2 = FlightPrompt::parse("fly east 100km", &cfg);
+        let min2 = p2.user_min_dist_nm.expect("min dist km");
+        let max2 = p2.user_max_dist_nm.expect("max dist km");
+        // 100km = 53.99nm; ±30% → ~37.8nm–70.2nm
+        assert!(min2 > 35.0 && min2 < 40.0, "min ~37.8nm, got {min2}");
+        assert!(max2 > 68.0 && max2 < 73.0, "max ~70.2nm, got {max2}");
+
+        // Qualified patterns are not affected by bare fallback
+        let p3 = FlightPrompt::parse("within 50nm", &cfg);
+        assert_eq!(p3.user_min_dist_nm, None);
+        assert!((p3.user_max_dist_nm.unwrap() - 50.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_parse_direction_variants() {
+        let cfg = crate::NLPRulesConfig::default();
+
+        // -bound
+        let p = FlightPrompt::parse("northbound from EGLL", &cfg);
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!((min_b - 315.0).abs() < 0.1 && (max_b - 45.0).abs() < 0.1, "northbound → north");
+
+        let p = FlightPrompt::parse("from KSFO southbound", &cfg);
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("KSFO".to_string())));
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!((min_b - 135.0).abs() < 0.1 && (max_b - 225.0).abs() < 0.1, "southbound → south");
+
+        let p = FlightPrompt::parse("eastbound from KJFK", &cfg);
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("KJFK".to_string())));
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!((min_b - 45.0).abs() < 0.1 && (max_b - 135.0).abs() < 0.1, "eastbound → east");
+
+        // -ward/-wards
+        let p = FlightPrompt::parse("fly northward from EGLL", &cfg);
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!((min_b - 315.0).abs() < 0.1 && (max_b - 45.0).abs() < 0.1, "northward → north");
+
+        let p = FlightPrompt::parse("westwards from LIRF", &cfg);
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!((min_b - 225.0).abs() < 0.1 && (max_b - 315.0).abs() < 0.1, "westwards → west");
+
+        // "towards the"
+        let p = FlightPrompt::parse("flying towards the south", &cfg);
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!((min_b - 135.0).abs() < 0.1 && (max_b - 225.0).abs() < 0.1, "towards the south");
+
+        // "flying" as prefix
+        let p = FlightPrompt::parse("flying east from EGLL", &cfg);
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!((min_b - 45.0).abs() < 0.1 && (max_b - 135.0).abs() < 0.1, "flying east");
+    }
+
+    #[test]
+    fn test_parse_from_x_heading_direction() {
+        // "flight from F70 heading south" — origin must be F70, bearing must be south.
+        // Bug: "heading" was not a LOCATION_TERMINATOR so origin_str was "f70 heading south",
+        // and the full from_re match consumed "heading south" before direction parsing ran.
+        let p = FlightPrompt::parse("flight from F70 heading south", &crate::NLPRulesConfig::default());
+        assert!(
+            matches!(&p.origin, Some(LocationConstraint::AirportName(n)) if n.to_uppercase() == "F70"),
+            "origin should be AirportName(F70), got {:?}", p.origin
+        );
+        assert!(p.direction_bearing.is_some(), "bearing should be set");
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!(
+            (min_b - 135.0).abs() < 0.1 && (max_b - 225.0).abs() < 0.1,
+            "south bearing expected, got ({min_b}, {max_b})"
+        );
+
+        // "from EGLL going east" — similar pattern
+        let p2 = FlightPrompt::parse("from EGLL going east", &crate::NLPRulesConfig::default());
+        assert_eq!(p2.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
+        assert!(p2.direction_bearing.is_some(), "bearing should be set");
+        let (min_b, max_b) = p2.direction_bearing.unwrap();
+        assert!((min_b - 45.0).abs() < 0.1 && (max_b - 135.0).abs() < 0.1, "east bearing expected");
+    }
+
+    #[test]
+    fn test_parse_direction_of_location() {
+        // "fly north of EGMC" → origin=EGMC, direction=north
+        let p = FlightPrompt::parse("fly north of EGMC", &crate::NLPRulesConfig::default());
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGMC".to_string())));
+        assert!(p.direction_bearing.is_some(), "should have direction bearing");
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!((min_b - 315.0).abs() < 0.1 && (max_b - 45.0).abs() < 0.1, "north bearing expected");
+
+        // "northeast of London" → origin=NearCity(London), direction=northeast
+        let p2 = FlightPrompt::parse("northeast of London", &crate::NLPRulesConfig::default());
+        assert!(
+            matches!(&p2.origin, Some(LocationConstraint::NearCity { name, .. }) if name == "London"),
+            "origin should be NearCity(London), got {:?}", p2.origin
+        );
+        let (min_b, max_b) = p2.direction_bearing.unwrap();
+        assert!((min_b - 22.5).abs() < 0.1 && (max_b - 67.5).abs() < 0.1, "northeast bearing expected");
+
+        // "north of EGMC to Paris" → origin=EGMC, dest=Paris (NearCity), direction=north
+        let p3 = FlightPrompt::parse("north of EGMC to Paris", &crate::NLPRulesConfig::default());
+        assert_eq!(p3.origin, Some(LocationConstraint::ICAO("EGMC".to_string())));
+        assert!(
+            matches!(&p3.destination, Some(LocationConstraint::NearCity { name, .. }) if name == "Paris"),
+            "dest should be NearCity(Paris), got {:?}", p3.destination
+        );
+        assert!(p3.direction_bearing.is_some(), "should have direction bearing");
+    }
+
+    #[test]
     fn test_parse_chinese_aircraft_tag_clean() {
         // "使用A320在凌晨" — the "在" particle and "凌晨" (→ "night") must NOT bleed into
         // the aircraft tag; tag should be exactly "a320".
         let p = FlightPrompt::parse("使用A320在凌晨", &crate::NLPRulesConfig::default());
         match &p.aircraft {
             Some(AircraftConstraint::Tag(t)) => {
-                let lower = t.to_lowercase();
                 assert!(
-                    lower == "a320",
+                    t.to_lowercase() == "a320",
                     "Aircraft tag should be 'a320', got {:?}",
                     t
                 );
             }
-            other => panic!("Expected Tag(a320), got {:?}", other),
+            Some(AircraftConstraint::ICAO(t)) => {
+                assert!(
+                    t.to_uppercase() == "A320",
+                    "Aircraft ICAO should be 'A320', got {:?}",
+                    t
+                );
+            }
+            other => panic!("Expected Tag(a320) or ICAO(A320), got {:?}", other),
         }
     }
 
@@ -1827,6 +2231,20 @@ mod tests {
             }
             other => panic!("Expected Tag containing 'md-80', got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_parse_lirf_md80_no_connector() {
+        // "LIRF MD80" without a connector word should still parse LIRF as dest.
+        let p = FlightPrompt::parse(
+            "Flight from EGLL to LIRF MD80",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(p.origin, Some(LocationConstraint::ICAO("EGLL".to_string())));
+        assert_eq!(
+            p.destination,
+            Some(LocationConstraint::ICAO("LIRF".to_string()))
+        );
     }
 
     #[test]
