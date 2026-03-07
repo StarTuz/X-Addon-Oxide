@@ -2113,6 +2113,98 @@ pub fn export_lnmpln(plan: &FlightPlan, xplane_root: Option<&std::path::Path>) -
 
 /// Derives a SimBrief ICAO aircraft type from addon name and tags (e.g. A320, B738, C172).
 fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> String {
+    fn contains_any(haystack: &str, needles: &[&str]) -> bool {
+        needles.iter().any(|needle| haystack.contains(needle))
+    }
+
+    fn simbrief_type_from_name(name: &str) -> Option<&'static str> {
+        let name_upper = name.to_uppercase();
+
+        // Exact subtype rules must run before family fallbacks so that
+        // "737-700" resolves to B737 instead of the generic 737 fallback B738.
+        const EXACT_SUBTYPE_RULES: &[(&[&str], &str)] = &[
+            (&["A320"], "A320"),
+            (&["A321"], "A321"),
+            (&["A319"], "A319"),
+            (&["A318"], "A318"),
+            (&["A330"], "A333"),
+            (&["A340"], "A346"),
+            (&["A350"], "A359"),
+            (&["A380"], "A388"),
+            (&["737-800", "737 800"], "B738"),
+            (&["737-900", "737 900"], "B739"),
+            (&["737-700", "737 700"], "B737"),
+            (&["MD-11F", "MD11F"], "MD1F"),
+            (&["MD-11", "MD11"], "MD11"),
+            (&["MD-82", "MD82"], "MD82"),
+            (&["MD-88", "MD88"], "MD88"),
+            (&["A300"], "A306"),
+            (&["A310"], "A310"),
+            (&["717"], "B712"),
+            (&["727"], "B722"),
+            (&["CRJ-200", "CRJ 200", "CRJ200"], "CRJ2"),
+            (&["CRJ-700", "CRJ 700", "CRJ700"], "CRJ7"),
+            (&["CRJ-900", "CRJ 900", "CRJ900"], "CRJ9"),
+            (&["E-170", "E170", "EMBRAER 170"], "E170"),
+            (&["E-175", "E175", "EMBRAER 175"], "E175"),
+            (&["E-190", "E190", "EMBRAER 190"], "E190"),
+            (&["E-195", "E195", "EMBRAER 195"], "E195"),
+            (&["ERJ-135", "ERJ 135", "ERJ135"], "E135"),
+            (&["ERJ-140", "ERJ 140", "ERJ140"], "E140"),
+            (&["ERJ-145", "ERJ 145", "ERJ145"], "E145"),
+            (&["Q400", "DH8D"], "DH8D"),
+            (&["ATR 72", "ATR-72", "ATR72"], "AT72"),
+            (&["ATR 42", "ATR-42", "ATR42"], "AT42"),
+            (&["CHALLENGER 650", "CL650", "CL-650"], "CL60"),
+            (&["CITATION X", "C750"], "C750"),
+            (&["CITATION MUSTANG", "C510"], "C510"),
+            (&["TBM900", "TBM-9", "TBM"], "TBM9"),
+            (&["CONCORDE", "CONC"], "CONC"),
+            (&["B350", "350I"], "B350"),
+            (&["BARON", "BE58"], "BE58"),
+            (&["SR22", "CIRRUS"], "SR22"),
+            (&["CESSNA 172", "C172"], "C172"),
+            (&["CESSNA 208", "CARAVAN"], "C208"),
+            (&["C152", "CESSNA 152"], "C152"),
+            (&["PA-28", "PIPER ARCHER", "PIPER CHEROKEE"], "P28A"),
+        ];
+
+        for (patterns, code) in EXACT_SUBTYPE_RULES {
+            if contains_any(&name_upper, patterns) {
+                return Some(*code);
+            }
+        }
+
+        // Family fallbacks are intentionally explicit. If an addon name only tells
+        // us the aircraft family, pick a documented default instead of silently
+        // falling through to an unrelated type like C172.
+        const FAMILY_FALLBACK_RULES: &[(&[&str], &str)] = &[
+            (&["A32X", "AIRBUS NARROWBODY"], "A320"),
+            (&["737", "BOEING 737"], "B738"),
+            (&["747", "JUMBO JET"], "B748"),
+            (&["757"], "B752"),
+            (&["767"], "B763"),
+            (&["777"], "B77W"),
+            (&["787", "DREAMLINER"], "B788"),
+            (&["MD-80", "MD80", "SUPER 80", "MADDOG"], "MD82"),
+            (&["CRJ", "BOMBARDIER REGIONAL JET"], "CRJ9"),
+            (&["E-JET", "EJET", "EMBRAER JET"], "E190"),
+            (&["ERJ", "EMBRAER REGIONAL JET"], "E145"),
+            (&["ATR"], "AT72"),
+            (&["DASH 8", "DASH-8"], "DH8D"),
+            (&["CHALLENGER"], "CL60"),
+            (&["KING AIR"], "B350"),
+        ];
+
+        for (patterns, code) in FAMILY_FALLBACK_RULES {
+            if contains_any(&name_upper, patterns) {
+                return Some(*code);
+            }
+        }
+
+        None
+    }
+
     // 1. Tags: look for a 4-char ICAO-like code (letter + 3 alphanumeric)
     for t in &aircraft.tags {
         let t = t.trim().to_uppercase();
@@ -2126,223 +2218,10 @@ fn simbrief_aircraft_type(aircraft: &crate::discovery::DiscoveredAddon) -> Strin
             return t;
         }
     }
-    // 2. Name: common patterns (ToLiss A320, Boeing 737-800, Cessna 172, etc.)
-    let name_upper = aircraft.name.to_uppercase();
-    let name_lower = aircraft.name.to_lowercase();
-    // Airbus A3xx
-    if name_upper.contains("A320") || name_lower.contains("a320") {
-        return "A320".to_string();
-    }
-    if name_upper.contains("A321") || name_lower.contains("a321") {
-        return "A321".to_string();
-    }
-    if name_upper.contains("A319") || name_lower.contains("a319") {
-        return "A319".to_string();
-    }
-    if name_upper.contains("A318") || name_lower.contains("a318") {
-        return "A318".to_string();
-    }
-    if name_upper.contains("A330") || name_lower.contains("a330") {
-        return "A333".to_string();
-    }
-    if name_upper.contains("A340") || name_lower.contains("a340") {
-        return "A346".to_string();
-    }
-    if name_upper.contains("A350") || name_lower.contains("a350") {
-        return "A359".to_string();
-    }
-    if name_upper.contains("A380") || name_lower.contains("a380") {
-        return "A388".to_string();
-    }
-    // Boeing 7xx
-    if name_upper.contains("737-800")
-        || name_upper.contains("737 800")
-        || name_lower.contains("737-800")
-    {
-        return "B738".to_string();
-    }
-    if name_upper.contains("737-900") || name_upper.contains("737 900") {
-        return "B739".to_string();
-    }
-    if name_upper.contains("737-700") || name_upper.contains("737 700") {
-        return "B737".to_string();
-    }
-    if name_upper.contains("747") || name_lower.contains("747") {
-        return "B748".to_string();
-    }
-    if name_upper.contains("757") || name_lower.contains("757") {
-        return "B752".to_string();
-    }
-    if name_upper.contains("767") || name_lower.contains("767") {
-        return "B763".to_string();
-    }
-    if name_upper.contains("777") || name_lower.contains("777") {
-        return "B77W".to_string();
-    }
-    if name_upper.contains("787") || name_lower.contains("787") {
-        return "B788".to_string();
-    }
-    // McDonnell Douglas
-    if name_upper.contains("MD-11F") || name_upper.contains("MD11F") {
-        return "MD1F".to_string();
-    }
-    if name_upper.contains("MD-11") || name_upper.contains("MD11") {
-        return "MD11".to_string();
-    }
-    if name_upper.contains("MD-82") || name_upper.contains("MD82") {
-        return "MD82".to_string();
-    }
-    if name_upper.contains("MD-80") || name_upper.contains("MD80") {
-        return "MD82".to_string(); // MD82 is generally a safe default for MD80 series in simbrief
-    }
-    if name_upper.contains("MD-88") || name_upper.contains("MD88") {
-        return "MD88".to_string();
-    }
-    // Airbus Other
-    if name_upper.contains("A300") || name_lower.contains("a300") {
-        return "A306".to_string();
-    }
-    if name_upper.contains("A310") || name_lower.contains("a310") {
-        return "A310".to_string();
-    }
-    // Boeing Other
-    if name_upper.contains("717") || name_lower.contains("717") {
-        return "B712".to_string();
-    }
-    if name_upper.contains("727") || name_lower.contains("727") {
-        return "B722".to_string();
-    }
-    // Regional Jets (CRJ / ERJ / E-Jets)
-    if name_upper.contains("CRJ-200")
-        || name_upper.contains("CRJ 200")
-        || name_upper.contains("CRJ200")
-    {
-        return "CRJ2".to_string();
-    }
-    if name_upper.contains("CRJ-700")
-        || name_upper.contains("CRJ 700")
-        || name_upper.contains("CRJ700")
-    {
-        return "CRJ7".to_string();
-    }
-    if name_upper.contains("CRJ-900")
-        || name_upper.contains("CRJ 900")
-        || name_upper.contains("CRJ900")
-    {
-        return "CRJ9".to_string();
-    }
-    if name_upper.contains("E170")
-        || name_upper.contains("E-170")
-        || name_upper.contains("EMBRAER 170")
-    {
-        return "E170".to_string();
-    }
-    if name_upper.contains("E175")
-        || name_upper.contains("E-175")
-        || name_upper.contains("EMBRAER 175")
-    {
-        return "E175".to_string();
-    }
-    if name_upper.contains("E190")
-        || name_upper.contains("E-190")
-        || name_upper.contains("EMBRAER 190")
-    {
-        return "E190".to_string();
-    }
-    if name_upper.contains("E195")
-        || name_upper.contains("E-195")
-        || name_upper.contains("EMBRAER 195")
-    {
-        return "E195".to_string();
-    }
-    if name_upper.contains("ERJ-135")
-        || name_upper.contains("ERJ 135")
-        || name_upper.contains("ERJ135")
-    {
-        return "E135".to_string();
-    }
-    if name_upper.contains("ERJ-140")
-        || name_upper.contains("ERJ 140")
-        || name_upper.contains("ERJ140")
-    {
-        return "E140".to_string();
-    }
-    if name_upper.contains("ERJ-145")
-        || name_upper.contains("ERJ 145")
-        || name_upper.contains("ERJ145")
-    {
-        return "E145".to_string();
-    }
-    // Regional Turboprops
-    if name_upper.contains("Q400") || name_upper.contains("DASH 8") || name_upper.contains("DH8D") {
-        return "DH8D".to_string();
-    }
-    if name_upper.contains("ATR 72")
-        || name_upper.contains("ATR-72")
-        || name_upper.contains("ATR72")
-    {
-        return "AT72".to_string();
-    }
-    if name_upper.contains("ATR 42")
-        || name_upper.contains("ATR-42")
-        || name_upper.contains("ATR42")
-    {
-        return "AT42".to_string();
-    }
-    // Business Jets / High End
-    if name_upper.contains("CHALLENGER 650")
-        || name_upper.contains("CL650")
-        || name_upper.contains("CL-650")
-    {
-        return "CL60".to_string();
-    }
-    if name_upper.contains("CHALLENGER") || name_upper.contains("CL6") {
-        return "CL60".to_string();
-    }
-    if name_upper.contains("CITATION X") || name_upper.contains("C750") {
-        return "C750".to_string();
-    }
-    if name_upper.contains("CITATION MUSTANG") || name_upper.contains("C510") {
-        return "C510".to_string();
-    }
-    if name_upper.contains("TBM") || name_upper.contains("TBM900") || name_upper.contains("TBM-9") {
-        return "TBM9".to_string();
-    }
-    if name_upper.contains("CONCORDE") || name_upper.contains("CONC") {
-        return "CONC".to_string();
-    }
-    // GA Twins / High Performance
-    if name_upper.contains("KING AIR") || name_upper.contains("B350") || name_upper.contains("350I")
-    {
-        return "B350".to_string();
-    }
-    if name_upper.contains("BARON") || name_upper.contains("BE58") {
-        return "BE58".to_string();
-    }
-    if name_upper.contains("SR22") || name_upper.contains("CIRRUS") {
-        return "SR22".to_string();
-    }
-    // Cessna / GA Basic
-    if name_lower.contains("cessna 172")
-        || name_lower.contains("c172")
-        || name_upper.contains("C172")
-    {
-        return "C172".to_string();
-    }
-    if name_lower.contains("cessna 208") || name_lower.contains("caravan") {
-        return "C208".to_string();
-    }
-    if name_upper.contains("C152") || name_lower.contains("cessna 152") {
-        return "C152".to_string();
-    }
-    if name_upper.contains("PA-28")
-        || name_upper.contains("PIPER ARCHER")
-        || name_upper.contains("PIPER CHEROKEE")
-    {
-        return "P28A".to_string();
-    }
-    // Default when nothing matches
-    "C172".to_string()
+    // 2. Name: exact subtype rules first, family fallbacks second.
+    simbrief_type_from_name(&aircraft.name)
+        .unwrap_or("C172")
+        .to_string()
 }
 
 /// Builds SimBrief dispatch URL. Uses `orig` (not `dep`) and `dest` per SimBrief API; aircraft type derived from name/tags.
@@ -2601,6 +2480,72 @@ mod tests {
             "SimBrief does not use dep= parameter: {}",
             url
         );
+    }
+
+    #[test]
+    fn test_simbrief_md80_family_fallback() {
+        let md80 = make_addon("Rotate MD-80", vec!["Airliner", "Jet"]);
+        let plan = FlightPlan {
+            origin: create_test_airport("EGLL", 51.47, -0.45),
+            destination: create_test_airport("LIRF", 41.80, 12.24),
+            aircraft: md80,
+            distance_nm: 753,
+            bearing: 0.0,
+            warnings: Vec::new(),
+            duration_minutes: 100,
+            route_description: "Direct".to_string(),
+            origin_region_id: None,
+            dest_region_id: None,
+            context: None,
+            time: None,
+            weather: None,
+            weather_confirmed: false,
+        };
+        let url = export_simbrief(&plan);
+        assert!(
+            url.contains("type=MD82"),
+            "Generic MD-80 family names should fall back to MD82 for SimBrief: {}",
+            url
+        );
+    }
+
+    #[test]
+    fn test_simbrief_family_fallback_policy() {
+        let cases = [
+            ("PMDG Boeing 737 Collection", "B738"),
+            ("Classic Jumbo Jet Pack", "B748"),
+            ("Rotate MadDog X", "MD82"),
+            ("Bombardier CRJ Family", "CRJ9"),
+            ("Embraer E-Jet Collection", "E190"),
+            ("ATR Regional Fleet", "AT72"),
+            ("Dash-8 Legacy Pack", "DH8D"),
+        ];
+
+        for (name, expected) in cases {
+            assert_eq!(
+                simbrief_aircraft_type(&make_addon(name, vec!["Airliner", "Jet"])),
+                expected,
+                "family fallback mismatch for {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_simbrief_exact_subtype_beats_family_fallback() {
+        let cases = [
+            ("PMDG 737-700", "B737"),
+            ("Rotate MD-88", "MD88"),
+            ("Aerosoft CRJ-700", "CRJ7"),
+            ("ATR 42 Regional", "AT42"),
+        ];
+
+        for (name, expected) in cases {
+            assert_eq!(
+                simbrief_aircraft_type(&make_addon(name, vec!["Airliner", "Jet"])),
+                expected,
+                "exact subtype should win for {name}"
+            );
+        }
     }
 
     #[test]

@@ -63,14 +63,14 @@ settings.language: "语言"
 
 # Flight Generator
 flight.title: "航班生成器"
-flight.placeholder: "请描述您的飞行..."
+flight.placeholder: "描述您的出发点，或您想要的大致飞行类型..."
 flight.send: "发送"
 flight.regenerate: "重新生成"
 flight.remember: "记住此次飞行"
 flight.prefer_origin: "偏好此出发地"
 flight.prefer_dest: "偏好此目的地"
 flight.history_context: "历史与情境"
-flight.welcome: "欢迎使用航班生成器。输入您的飞行请求！例如：「从EGLL到LFPG，使用塞斯纳」"
+flight.welcome: "欢迎使用航班生成器。这个功能主要用于在您想获得一个实用航线点子时提供建议，并不打算替代完整的航线规划。可以试试「EGLL 到西班牙」、「从伦敦飞到西班牙的随机机场」、「给我一个暴风雨傍晚的随机出发点」或「从 EGLL 往北大约 100 海里」，然后再导出到 Little Navmap 或 SimBrief 继续微调。"
 flight.sender_system: "系统"
 flight.sender_user: "用户"
 

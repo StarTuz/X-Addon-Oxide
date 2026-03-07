@@ -1,8 +1,10 @@
 # X-Addon-Oxide
 
-The **Next-Gen** addon manager for [X-Plane Flight Simulator](http://www.x-plane.com).
+The addon manager for [X-Plane Flight Simulator](http://www.x-plane.com) that treats your sim library like a real working hangar, not a file dump.
 
-X-Addon-Oxide is a free, open-source tool that brings modern design and AI intelligence to your flight sim hangar. Unlike traditional managers that simply list files, we provide a rich, visual experience with a non-destructive philosophy—organizing your library without risking your installation.
+X-Addon-Oxide is a free, open-source desktop app for organizing scenery, aircraft, plugins, CSLs, and utility workflows across X-Plane 11 and 12. Its focus is practical: keep large addon libraries readable, sortable, and safe to manage without breaking your simulator layout.
+
+Instead of acting like a bare file browser, X-Addon-Oxide gives you visual structure, health checks, map context, profile switching, archive-first installation, and an offline heuristic layer that helps classify and organize what you already own. The result is less time wrestling with folders and `scenery_packs.ini`, and more time actually flying.
 
 ## Why X-Addon-Oxide?
 
@@ -23,68 +25,56 @@ X-Addon-Oxide is a free, open-source tool that brings modern design and AI intel
 | **Premium Animated Splash** | ✅ | ❌ |
 | **Modern Dark GUI** | ✅ | ❌ |
 
-## Feature Highlights
+## What It Does
 
-- **New for 2.4.5**:
-  - **Performance Fix (GUI Idle CPU)**: Resolved a major performance regression where the GUI would consume 20-30% CPU even when idle. The 16ms animation timer now correctly suspends when no active loading, dragging, or map interactions are in progress.
-- **New for 2.4.4**:
-  - **Archive Preview Mode & Robust Installation**: All `.zip`, `.7z`, and `.rar` archive installations now trigger an interactive preview modal. Support for **selective extraction**, **flattening** (stripping redundant top-level folders), and **wrapping** (forcing subfolder creation).
-  - **Unified Script Redirection**: Detailed redirection logic for **FlyWithLua** and **XPPython3** is now consistent across all archive formats, ensuring scripts always land in the correct simulator directory.
-  - **Destination Transparency**: The "Final Destination" path is now displayed in the preview modal for user verification before installation.
-- **New for 2.4.3** (previous release):
-  - **Rust 1.81+ Stability Fix**: Eliminated a scenery-sort panic triggered on Rust 1.81+ when the SimHeaven tiebreaker comparator returned non-transitive results. The `sort_by` comparator now satisfies total ordering in all SimHeaven / non-SimHeaven mixed comparisons. Also backports the `iced_graphics 0.14` `total_cmp()` fix for the renderer damage-grouping path (`damage.rs`) to prevent NaN-induced panics on the tiny_skia fallback renderer. Thanks to [@mmaechtel](https://github.com/mmaechtel) for both fixes.
-- **New for 2.4.1**:
-  - **Chinese (zh-CN) Flight Generator NLP**: Type flight prompts in Simplified Chinese — 「从北京到上海短途飞行下雨天使用A320在凌晨」 is parsed correctly into origin, destination, duration, weather, aircraft, and time keywords. Includes 80+ city/country aliases (18 new Chinese cities), full weather vocabulary (暴雨→storm, 大雨/小雨→rain, 凌晨→night, etc.), aircraft type hints (直升机, 波音, 空客), and grammatical particle stripping.
-  - **Internationalized Flight Generator Chat UI**: The System/User chat labels and welcome message now respect the selected language — switch to Chinese in Settings and the entire Flight Generator interface follows immediately.
-  - **Aircraft Tag Parser Fix**: The NLP aircraft capture regex now uses a `\bat\b` terminator, fixing prompts like "A320 at night" or "A320在凌晨" to correctly extract just the aircraft model rather than the trailing context.
-- **New for 2.4.0**:
-  - **Flight Generator — Weather & Time NLP**: Describe your flight in plain English including weather and time of day. "Stormy morning flight from EGLL to LFPG in a 737" will filter airports by live METAR conditions and pick a realistic departure time automatically. Supports storm, rain, snow, fog, clear, gusty, and calm weather; dawn, morning, noon, afternoon, evening, and night time slots.
-  - **Seaplane & Water Routing**: Dedicated water surface keyword detection — "floatplane", "seaplane", or "amphibian" routes exclusively to seaplane bases, no hardcoded pack filters.
-  - **FlyWithLua Script Management**: Enable and disable individual Lua scripts within FlyWithLua without touching the plugin itself. Scripts toggle between `Scripts/` and `Scripts (disabled)/` with a single click; a live enabled/total badge shows state at a glance.
-  - **Performance Optimizations**: Airport pool now uses `HashMap` with pre-sized capacity (faster flight generation). Scenery cache writes compact JSON instead of pretty-printed (smaller disk footprint). Region index lookups are O(1) via a pre-built `HashMap` index (was O(n) linear scan).
-  - **Brand Identity**: New X-Addon-Oxide wordmark logo integrated into the header toolbar, splash screen, and Settings About section.
-  - **Professional User Manual**: Full PDF handbook ([X-Addon-Oxide-User-Manual.pdf](X-Addon-Oxide-User-Manual.pdf)) shipping alongside the app for offline reference.
-  - **AppImage in CI**: Linux releases now ship a portable `.AppImage` as the primary download in addition to a plain binary tarball — no installation required on any Linux distribution.
-- **New for 2.3.1**:
-  - **Refined Log Analysis Export**: Export missing resource reports as CSV or TXT with selective checkboxes and a 'Select All / Deselect All' toggle.
-  - **Strict Scenery Adherence**: The app now strictly follows your `scenery_packs.ini` and stops auto-adding unmanaged folders found on disk, giving you total control over your library.
-  - **7z Archive Support**: Install Aircraft, Scenery, and Plugins directly from `.7z` files in addition to `.zip`.
-- **New for 2.2.6**:
-  - **Scenery Health Scores**: Diagnostic engine that analyzes metadata and folder structure to ensure your scenery is healthy. High scores (90-100%) indicate stable installations.
-  - **Premium Loading Experience**: A completely overhauled splash screen with smooth pulsing animations and shimmer effects.
-  - **Enhanced Logbook**: Not just a viewer—now includes robust filtering (Tail #, Aircraft Type, Circular flights, Duration) and character-perfect deletion that maintains strict X-Plane 12 formatting.
-  - **Dynamic CSL Detection**: Automatically scans all installed plugins for CSL packages, supporting IVAO, xPilot, and more without hardcoded paths.
-  - **Persistent Settings**: Your Map Filter selections (Health Scores, Global Airports, Ortho Coverage, etc.) are now saved and restored across sessions.
-  - **Direct Launcher**: Launch X-Plane directly with custom arguments and support for multiple installations.
-  - **Companion Apps**: Launch tools like Little Navmap directly from the manager.
-- **Logbook Support**: Select a previous flight to visualize its magenta path on the global map. Now with bulk cleanup tools.
+- **Manages your library without destructive file handling**: Toggle scenery, aircraft, plugins, CSLs, and scripts while keeping your X-Plane installation readable and recoverable.
+- **Installs addons directly from archives**: Open `.zip`, `.7z`, and `.rar` packages, preview their contents, flatten bad folder nesting, wrap missing top-level folders, and confirm the final destination before extraction.
+- **Understands scenery order and addon health**: Detects ordering problems, shadowed mesh, weak classifications, and structural issues that lead to broken airports or slow loads.
+- **Gives you a visual overview of your sim**: Browse your library on an interactive world map, inspect profiles, and track what is installed where.
+- **Helps with flight ideas, not just file management**: The flight generator is designed to suggest plausible routes from rough prompts like `EGLL to Spain`, `north from EGLL around 100nm`, or `stormy evening flight in a turboprop`, whether you already know your departure, want a random departure, want a random destination, or just want a good starting point before refining in Little Navmap, SimBrief, FMS export, or your own planning workflow.
+- **Keeps useful sim-adjacent tools in one place**: FlyWithLua script toggling, companion app launching, logbook utilities, and profile-specific preferences are built into the main app instead of scattered across separate tools.
+
+## Recent Highlights
+
+- **Flight generator improvements**: Better natural-language parsing for direction, distance, weather, time of day, Chinese input, aircraft matching, and airport context.
+- **Archive preview and safer installs**: Selective extraction, flatten/wrap controls, and clearer destination handling across `.zip`, `.7z`, and `.rar`.
+- **Lower-friction script management**: Fine-grained FlyWithLua script enable/disable without turning off the entire plugin.
+- **Performance and stability work**: Faster airport lookups, lighter cache output, reduced idle CPU usage, and fixes for Rust 1.81+ sorting edge cases.
+- **Cross-platform packaging**: Native Windows installers, macOS bundles/DMGs, Linux AppImage releases, and a full offline handbook.
 
 ### 🚀 Core Management
 
-- **Non-Destructive Workflow**: Enable or disable Scenery, Aircraft, and Plugins with a single click. We never move your files destructively; we manage logical links to keep your simulator safe.
-- **Direct Zip & Multi-Format Install**: Install Aircraft, Scenery, and Plugins directly from `.zip`, `.7z`, or `.rar` archives.
-- **Archive Preview Mode**: Preview and selectively extract contents from addons before they touch your sim. Includes **Flatten** and **Wrap in Folder** options to fix common nesting issues.
-- **Shadow Mesh Detection**: Automatically identifies redundant mesh scenery that destroys load times, helping you optimize performance.
-- **Profiles**: Create and switch between different hangar configurations (e.g., "IFR Online", "VFR Scenery Heavy") instantly.
-- **Companion App Launcher**: Manage and launch external tools like SimBrief, Navigraph, or VATSIM clients directly from the Plugins tab.
-- **Flight Generator**: Natural-language flight plans (e.g. "Stormy evening from London to Paris in a 737") with live METAR weather filtering, time-of-day preferences, seaplane/water routing, **Regenerate** for a new outcome, and BitNet learning ("Remember this flight", "Prefer this origin/destination").
-- **FlyWithLua Scripts**: Per-script enable/disable for FlyWithLua without disabling the whole plugin — ideal for managing large script libraries.
-- **Logbook & Utilities**: Automatically synced pilot logbook and live aircraft tracking in the Utilities tab.
+- **Scenery, aircraft, plugins, and CSL control**: Enable, disable, organize, and inspect your library from one place.
+- **Archive-first installation**: Install directly from downloads instead of manually sorting folders before every addon.
+- **Profile switching**: Maintain different simulator setups for IFR, VFR, online flying, ortho-heavy regions, or test environments.
+- **Scenery diagnostics**: Catch ordering problems, bad classifications, and mesh conflicts before they show up in-sim.
+- **Plugin-side utilities**: Launch companion apps, manage FlyWithLua scripts, and keep common sim support tasks nearby.
+- **Flight suggestion workflow**: Generate route ideas from natural language, including random departures or destinations, regenerate alternatives, then export to FMS, Little Navmap, or SimBrief.
+- **Logbook tools**: Inspect, filter, map, and clean logbook entries without losing X-Plane formatting.
 
 ### 🧠 AI & Visuals
 
-- **AI Smart View**: Powered by our **offline** local **BitNet** heuristic model, your aircraft are automatically categorized (Airliner, Military, GA, Helicopter) without manual tagging. **0% Network Usage, 100% Privacy.** Now with cached grouping for instant switching.
-- **World Map**: Visualize your entire scenery library on an interactive global map. See exactly where your coverage is.
-- **Buttery Smooth UI**: Decoupled rendering and optimized parsers ensure the interface remains responsive even with thousands of scenery packs and aircraft.
-- **Premium Experience**: A sleek, hardware-accelerated interface with dark mode, neon accents, smooth animations, and the X-Addon-Oxide wordmark logo in the header. Features an **Animated Splash Screen** with shimmering progress indicators.
-- **Diagnostic Intelligence**: Built-in health checks that alert you to missing metadata or improper scenery classifications. See [HEALTH_SCORE.md](HEALTH_SCORE.md) for details.
+- **Offline BitNet categorization**: Aircraft and scenery can be grouped intelligently without sending your library to a service.
+- **Interactive map view**: See your scenery footprint globally instead of reading folders in isolation.
+- **Diagnostics with context**: Health scores, validation messages, and classification hints explain what looks wrong and why.
+- **Fast desktop UI**: Built to stay responsive even with large libraries, heavy scenery collections, and thousands of discovered items.
+- **Polished presentation**: Animated loading, localized UI, icon handling, and a more modern desktop feel than typical sim managers.
 
 ### 📦 Deployment
 
-- **Native Support**: We provide proper installers for **Windows** (MSI/EXE), **macOS** (DMG), and **Linux** (AppImage). No dependencies to hunt down.
-- **Developer Friendly**: Hot-swap addons while the sim is running (plugin dependent) for rapid testing.
+- **Native distribution**: Windows installers, macOS app bundles/DMGs, and Linux AppImage releases are all supported.
+- **Portable where it matters**: Linux AppImage builds work without distro-specific setup.
+- **Useful for tinkerers too**: Rapid addon iteration and profile testing make it practical for scenery authors, plugin users, and heavy library curators.
 
 ## Release Notes
+
+### v2.4.6
+
+- **Flight Generator — Direction & Distance NLP**: Added support for directional prompts such as `north`, `southwest`, `northbound`, and `towards the east`, plus bare distance phrases like `100km`, `70nm`, and mixed-unit ranges.
+- **Flight Generator — Better Aircraft Matching**: Improved fuzzy aircraft detection so prompts are more tolerant of common shorthand, connectors, and model phrasing. This includes fixes for phrases like `on a 737` and better handling of aircraft names near destination text.
+- **Flight Generator — Geographic Prompt Expansion**: Added broader geographic feature and alias support so rough prompts based on cities, regions, and location names resolve more reliably.
+- **Flight Generator — Runway Metadata Awareness**: Airport and aircraft metadata now carries runway length and surface requirements more consistently, allowing the generator to surface better warnings without over-rejecting route ideas.
+- **NLP Robustness & Data Cleanup**: Externalized more location alias data, reduced aircraft false-positives, and tightened parser behavior around ambiguous prompt fragments.
 
 ### v2.4.5
 

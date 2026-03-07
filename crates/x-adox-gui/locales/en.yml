@@ -63,14 +63,14 @@ settings.language: "Language"
 
 # Flight Generator
 flight.title: "Flight Generator"
-flight.placeholder: "Ask for a flight..."
+flight.placeholder: "Describe where you want to start or the kind of trip you want..."
 flight.send: "Send"
 flight.regenerate: "Regenerate"
 flight.remember: "Remember this flight"
 flight.prefer_origin: "Prefer this origin"
 flight.prefer_dest: "Prefer this destination"
 flight.history_context: "History & Context"
-flight.welcome: "Welcome to the Flight Generator. Ask for a flight! e.g., 'Flight from EGLL to LFPG using Cessna'"
+flight.welcome: "Welcome to the Flight Generator. This tool is mainly for coming up with route ideas when you want a useful suggestion, not for full flight planning. Try prompts like 'EGLL to Spain', 'from London to a random airport in Spain', 'pick a random departure for a stormy evening flight', or 'north from EGLL around 100nm', then export to Little Navmap or SimBrief and fine-tune from there."
 flight.sender_system: "System"
 flight.sender_user: "User"
 
