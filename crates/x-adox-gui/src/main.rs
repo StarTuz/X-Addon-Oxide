@@ -9278,7 +9278,7 @@ impl App {
                         text("X-Addon-Oxide")
                             .size(20)
                             .color(style::palette::TEXT_PRIMARY),
-                        text("Version 2.4.6")
+                        text("Version 2.4.7")
                             .size(13)
                             .color(style::palette::TEXT_SECONDARY),
                         text(t!("about.tagline"))
@@ -12346,7 +12346,7 @@ async fn export_scenery_task(
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-        writeln!(writer, "<SceneryLibrary version=\"2.4.6\">").map_err(|e| e.to_string())?;
+        writeln!(writer, "<SceneryLibrary version=\"2.4.7\">").map_err(|e| e.to_string())?;
 
         let mut regions: std::collections::BTreeMap<String, Vec<&SceneryPack>> = std::collections::BTreeMap::new();
         for pack in packs.iter() {
@@ -12475,7 +12475,7 @@ async fn export_aircraft_task(
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-    writeln!(writer, "<AircraftLibrary version=\"2.4.6\">").map_err(|e| e.to_string())?;
+    writeln!(writer, "<AircraftLibrary version=\"2.4.7\">").map_err(|e| e.to_string())?;
         for addon in aircraft.iter() {
             if let AddonType::Aircraft {
                 variants,
@@ -12622,7 +12622,7 @@ async fn export_plugins_task(
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-        writeln!(writer, "<PluginLibrary version=\"2.4.6\">").map_err(|e| e.to_string())?;
+        writeln!(writer, "<PluginLibrary version=\"2.4.7\">").map_err(|e| e.to_string())?;
 
         for addon in addons.iter() {
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };
@@ -12735,7 +12735,7 @@ async fn export_csls_task(
 
     if is_xml {
         writeln!(writer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").map_err(|e| e.to_string())?;
-        writeln!(writer, "<CSLLibrary version=\"2.4.6\">").map_err(|e| e.to_string())?;
+        writeln!(writer, "<CSLLibrary version=\"2.4.7\">").map_err(|e| e.to_string())?;
 
         for addon in addons.iter() {
             let status = if addon.is_enabled { "Enabled" } else { "Disabled" };

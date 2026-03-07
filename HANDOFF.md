@@ -1,6 +1,6 @@
-# Handoff: Version 2.4.5+ (Performance Fix, Scenery Tagging, Flight Gen Learning)
+# Handoff: Version 2.4.7+ (Performance Fix, Scenery Tagging, Flight Gen Learning)
 
-**Status**: v2.4.4 features + Flight Generator learning (3.1) and Regenerate
+**Status**: Current through v2.4.7; core notes below still describe the feature work introduced across the 2.4.4-2.4.7 cycle.
 **Major Themes**: Scenery Personalization + Aircraft Discovery + **Flight Gen Learning** + UX Refinement
 
 ## Recent Changes

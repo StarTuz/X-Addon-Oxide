@@ -68,7 +68,7 @@ Instead of acting like a bare file browser, X-Addon-Oxide gives you visual struc
 
 ## Release Notes
 
-### v2.4.6
+### v2.4.7
 
 - **Flight Generator — Direction & Distance NLP**: Added support for directional prompts such as `north`, `southwest`, `northbound`, and `towards the east`, plus bare distance phrases like `100km`, `70nm`, and mixed-unit ranges.
 - **Flight Generator — Better Aircraft Matching**: Improved fuzzy aircraft detection so prompts are more tolerant of common shorthand, connectors, and model phrasing. This includes fixes for phrases like `on a 737` and better handling of aircraft names near destination text.

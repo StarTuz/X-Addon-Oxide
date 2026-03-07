@@ -1,7 +1,7 @@
 ---
 title: "X-Addon-Oxide User Manual"
 author: "StarTuz"
-date: "February 2026"
+date: "March 2026"
 ---
 
 <style>
@@ -31,8 +31,8 @@ date: "February 2026"
 <div class="cover-page">
   <img src="pictures/logo.png" width="540" height="295" alt="X-Addon-Oxide Logo" style="border:none; box-shadow:none; max-width:100%;">
   <div class="cover-subtitle">The Modern Addon Manager for X-Plane 11 & 12</div>
-  <div class="cover-version">Version 2.4.5 · User Manual</div>
-  <div class="cover-version" style="margin-top:8px; font-size:14px;">February 2026</div>
+  <div class="cover-version">Version 2.4.7 · User Manual</div>
+  <div class="cover-version" style="margin-top:8px; font-size:14px;">March 2026</div>
 </div>
 
 ---
@@ -72,8 +72,8 @@ date: "February 2026"
 | **Scenery Basket** | Temporary selection tool for bulk enable/disable/reorder operations |
 | **Interactive Map** | World map showing your exact scenery coverage, health scores, and airport inspector |
 | **Profiles** | Switch between multiple addon configurations (e.g. Summer, Winter, VATSIM) instantly |
-| **Aircraft Installer** | Drag a zip archive in; it extracts to the right folder with a progress bar |
-| **Flight Generator** | Natural-language flight plans with live METAR weather, time-of-day filtering, and four export formats |
+| **Archive Installer** | Install aircraft, scenery, and plugins directly from `.zip`, `.7z`, and `.rar` with preview, flatten, and wrap controls |
+| **Flight Generator** | Natural-language route ideas with weather/time filtering, direction and distance prompts, and export handoff to FMS, Little Navmap, or SimBrief |
 | **FlyWithLua Scripts** | Enable/disable individual Lua scripts without touching plugin files |
 | **Issues Dashboard** | Scans `Log.txt` for missing assets, DSF errors, and scenery order violations |
 | **Companion Apps** | Launch SimBrief, Navigraph, Little NavMap, vPilot, and more from one place |
@@ -112,7 +112,7 @@ date: "February 2026"
 
 | Requirement | Details |
 |---|---|
-| Operating System | Any modern 64-bit distro (glibc ≥ 2.31) |
+| Operating System | Any modern 64-bit distro (AppImage / tarball currently target glibc ≥ 2.35) |
 | Display | X11 or Wayland |
 | Required libraries | `alsa-lib`, `fontconfig`, `wayland`, `libX11`, `libxkbcommon`, `dbus`, `gtk3` |
 
@@ -179,18 +179,12 @@ sudo zypper install alsa-devel fontconfig-devel wayland-devel libX11-devel \
    ./X-Addon-Oxide-x86_64.AppImage
    ```
 
-### DEB Package (Ubuntu / Debian)
+### Binary Tarball
 
 ```bash
-sudo dpkg -i x-addon-oxide_2.4.5_amd64.deb
-# Then launch from your application menu or:
-x-addon-oxide
-```
-
-### RPM Package (Fedora / openSUSE)
-
-```bash
-sudo rpm -i x-addon-oxide-2.4.5.x86_64.rpm
+tar -xzf X-Addon-Oxide-v2.4.7-linux-x86_64.tar.gz
+cd X-Addon-Oxide-v2.4.7-linux-x86_64
+./x-adox-gui
 ```
 
 <div class="page-break"></div>
@@ -263,7 +257,7 @@ The top toolbar is present on every tab and provides quick access to the most co
 | Scenery | Scenery order, smart sort, basket, tagging, export |
 | Plugins | Plugin and FlyWithLua script management |
 | CSLs | Online traffic model libraries |
-| Flight Gen | Natural-language flight plan generator |
+| Flight Gen | Natural-language route idea generator and export handoff |
 | Utilities | Companion Apps and Pilot Logbook |
 | Issues | X-Plane Log.txt error analyser |
 | Settings | App-wide configuration |
@@ -725,7 +719,7 @@ For online flying (VATSIM / IVAO), CSL (Common Shape Library) packages provide t
 
 # Flight Generator
 
-The **Flight Gen** tab generates complete flight plans from natural-language text prompts. It uses a global airport database (~38,000 airports) and — when an internet connection is available — live METAR data from NOAA for real-time weather filtering.
+The **Flight Gen** tab generates route ideas from natural-language text prompts. It works well when you know one end of the trip, want a random departure or destination, or just want a plausible suggestion to refine in your usual planning tools. It uses a global airport database (~38,000 airports) and, when needed, live METAR data from NOAA for real-time weather filtering.
 
 <img src="pictures/flightgeneration1.png" alt="Flight Generator tab showing prompt input and global airport database count">
 
@@ -739,6 +733,8 @@ One hour flight at dawn
 Bush flight in Alaska with a floatplane
 Flight from KLAX to KSFO with an Airbus
 Storm flight in Europe for 2 hours
+North from EGLL around 100nm
+Pick a random departure for a stormy evening turboprop flight
 ```
 
 The engine extracts the following from your text:
@@ -753,6 +749,11 @@ The engine extracts the following from your text:
 | **Weather** | `storm`, `clear`, `fog`, `snow`, `gusty`, `calm`, `rain` |
 | **Surface** | `grass`, `gravel`, `water` / `seaplane` / `floatplane`, `paved` |
 | **Flight type** | `bush`, `backcountry`, `regional` |
+| **Direction / distance** | `north`, `southwest`, `100km`, `70nm`, `within 150nm` |
+
+<div class="tip">
+<strong>Best use case:</strong> Treat Flight Generator as a fast route-idea tool. Generate something plausible, then export it to X-Plane FMS, Little Navmap, or SimBrief if you want to brief and refine it further.
+</div>
 
 ### Time-of-Day Filtering
 
@@ -787,7 +788,7 @@ After generation, four export buttons appear below the result:
 | **FMS 11** | X-Plane 11 `.fms` | X-Plane 11 built-in FMS, G1000 |
 | **FMS 12** | X-Plane 12 `.fms` | X-Plane 12 FMS, Toliss, Zibo 737, IXEG |
 | **LNM** | Little NavMap `.lnmpln` | Little NavMap for route planning and briefing |
-| **SimBrief** | Opens SimBrief website | Full OFP dispatch briefing |
+| **SimBrief** | Opens SimBrief website | OFP briefing and further planning refinement |
 
 ### FMS 12 — Step-by-Step
 
@@ -1076,8 +1077,9 @@ If you edited `scenery_packs.ini` in a text editor while X-Addon-Oxide was open,
 
 ### Flight Generator Produces No Results
 
-- Ensure you have a working internet connection (required for METAR weather filtering).
+- If your prompt asks for live weather, ensure you have a working internet connection so METAR filtering can run.
 - If your prompt includes very specific weather (e.g. `snow`) in a region where it is currently summer, try a broader prompt or remove the weather constraint.
+- If your prompt includes a tight direction or distance filter, broaden it and try **Regenerate**.
 - For seaplane prompts, ensure you have seaplane-base scenery installed or results will fall back to the global seed airports.
 
 ### Log Files
@@ -1094,4 +1096,4 @@ If reporting a bug, please include the contents of this file along with your ope
 
 ---
 
-*X-Addon-Oxide v2.4.5 · User Manual · March 2026*
+*X-Addon-Oxide v2.4.7 · User Manual · March 2026*
