@@ -1,6 +1,6 @@
 # X-Addon-Oxide
 
-The addon manager for [X-Plane Flight Simulator](http://www.x-plane.com) that treats your sim library like a real working hangar, not a file dump.
+The addon manager for [X-Plane Flight Simulator](http://www.x-plane.com) that treats your sim library like a real working hangar.
 
 X-Addon-Oxide is a free, open-source desktop app for organizing scenery, aircraft, plugins, CSLs, and utility workflows across X-Plane 11 and 12. Its focus is practical: keep large addon libraries readable, sortable, and safe to manage without breaking your simulator layout.
 
