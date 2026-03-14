@@ -8,22 +8,21 @@ Instead of acting like a bare file browser, X-Addon-Oxide gives you visual struc
 
 ## Why X-Addon-Oxide?
 
-| Feature | X-Addon-Oxide | Standard Managers |
+| Feature | X-Addon-Oxide 
 | :--- | :---: | :---: |
-| **Native Installers** (.exe, .dmg, AppImage) | ✅ | ⚠️ (Varies) |
-| **Direct Zip Installation** | ✅ | ✅ |
-| **Non-Destructive Toggling** | ✅ | ✅ |
-| **Profile Management** | ✅ | ⚠️ (Varies) |
-| **AI Auto-Categorization** (BitNet) | ✅ | ❌ |
-| **Scenery Health Diagnostics** | ✅ | ❌ |
-| **Interactive World Map** | ✅ | ❌ |
-| **Shadow Mesh Detection** | ✅ | ❌ |
-| **Natural Language Flight Planning** | ✅ | ❌ |
-| **FlyWithLua Script Management** | ✅ | ❌ |
-| **Companion App Launcher** | ✅ | ❌ |
-| **Automatic Logbook Sync** | ✅ | ❌ |
-| **Premium Animated Splash** | ✅ | ❌ |
-| **Modern Dark GUI** | ✅ | ❌ |
+| **Native Installers** (.exe, .dmg, AppImage) 
+| **Direct Zip Installation**
+| **Non-Destructive Toggling**
+| **Profile Management** 
+| **AI Auto-Categorization** (BitNet)
+| **Scenery Health Diagnostics** 
+| **Interactive World Map** 
+| **Shadow Mesh Detection**
+| **Natural Language Flight Planning** 
+| **FlyWithLua Script Management** |
+| **Automatic Logbook Sync** 
+| **Premium Animated Splash** 
+| **Modern Dark GUI** 
 
 ## What It Does
 
