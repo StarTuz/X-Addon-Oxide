@@ -1,274 +1,38 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2020 Austin Goudge
 // Copyright (c) 2026 StarTuz
 
 use crate::scenery::SceneryCategory;
 use std::path::Path;
+use x_adox_bitnet::{BitNetModel, PredictContext};
 
 pub struct Classifier;
 
 impl Classifier {
-    // Fast native check
-    pub fn classify_heuristic(_path: &Path, name: &str) -> SceneryCategory {
-        let name_lower = name.to_lowercase();
-
-        // 1. Mesh/Foundation (Level 11 - Score 30)
-        // Exception: Orbx packs and companion packs with ICAO codes are
-        // airport-specific meshes, not standalone terrain.
-        let is_orbx = name_lower.starts_with("orbx_");
-        let has_companion_keyword = name_lower.contains("mesh")
-            || name_lower.contains("terrain")
-            || name_lower.contains("3dgrass")
-            || name_lower.contains("grass");
-        let is_icao_companion = has_companion_keyword && has_icao_pattern(name);
-
-        // Airport-specific companion packs (EGLL_MESH, PAKT_Terrain, EGLL_3Dgrass)
-        // are SpecificMesh — they coexist with other companion packs for the same
-        // airport and must not trigger mesh shadowing warnings.
-        if is_icao_companion && !is_orbx {
-            return SceneryCategory::SpecificMesh;
-        }
-
-        let is_mesh_keyword = name_lower.contains("mesh")
-            || name_lower.contains("terrain")
-            || name_lower.contains("3dgrass")
-            || (name_lower.contains("grass") && !name_lower.contains("bluegrass"));
-
-        if (is_mesh_keyword && !is_orbx)
-            || name_lower.starts_with("zzz")
-            || name_lower.contains("uhd")
-        {
-            return SceneryCategory::Mesh;
-        }
-
-        // 2. Libraries (Level 8 - Score 65)
-        // Consolidated block: SAM, MisterX, CDB, 3D_people, Birds_Library etc.
-        // MUST be checked before brand brand matches.
-        if name_lower.contains("library")
-            || name_lower.contains("lib")
-            || name_lower.contains("zdp")
-            || name_lower.contains("3d_people")
-            || name_lower.contains("aa_sam")
-            || name_lower.contains("sam_library")
-            || name_lower.contains("misterx")
-            || name_lower.contains("opensceneryx")
-            || name_lower.contains("worldjetways")
-            || name_lower.contains("world-models")
-            || name_lower.contains("sea_life")
-            || name_lower.contains("ruscenery")
-            || name_lower.contains("seasons_manager")
-        {
-            return SceneryCategory::Library;
-        }
-
-        // 3. Global Airports (Level 3 - Score 90)
-        if name_lower.contains("global_airports")
-            || name_lower.contains("global scenery/global airports")
-            || name_lower == "global airports"
-            || name_lower.contains("*global_airports*")
-        {
-            return SceneryCategory::GlobalAirport;
-        }
-
-        // 4. Orbx TrueEarth Customs/Airports (Level 2 - Score 95)
-        if name_lower.starts_with("orbx_a_") {
-            return SceneryCategory::OrbxAirport;
-        }
-
-        // 5. City/Landmark Overlays (Level 4 - Score 88)
-        if name_lower.contains("x-plane landmarks") {
-            return SceneryCategory::Landmark;
-        }
-
-        // 6. Regional Detail Layers (Level 5 - Score 85)
-        if name_lower.contains("simheaven_x-world")
-            || (name_lower.starts_with("orbx_b_") || name_lower.starts_with("orbx_c_"))
-                && name_lower.contains("overlay")
-        {
-            return SceneryCategory::RegionalOverlay;
-        }
-
-        // 6b. Orbx B/C Mesh companions (airport-specific meshes, not generic terrain)
-        if (name_lower.starts_with("orbx_b_") || name_lower.starts_with("orbx_c_"))
-            && name_lower.contains("mesh")
-        {
-            return SceneryCategory::SpecificMesh;
-        }
-
-        // 7. Regional Fluff (Level 6 - Score 80)
-        // Low-impact terrain enhancements that don't require overlay priority
-        if name_lower.contains("forests")
-            || name_lower.contains("network")
-            || name_lower.contains("birds")
-            || name_lower.contains("seagulls")
-            || name_lower.contains("sealanes")
-            || name_lower.contains("global_forests_v2")
-            || name_lower.contains("vfr-objects")
-            || name_lower.contains("vfr_objects")
-            || name_lower.contains("shoreline")
-        {
-            return SceneryCategory::RegionalFluff;
-        }
-
-        // 8. AutoOrtho Corrections (Level 8 - Score 70)
-        if name_lower.contains("yautoortho_overlays") {
-            return SceneryCategory::AutoOrthoOverlay;
-        }
-
-        // 8b. XPME packages (must come before generic overlay check)
-        // "XPME_South_America" etc. = OrthoBase
-        // "XPME_Overlays" = RegionalOverlay (NOT airport-specific)
-        if name_lower.starts_with("xpme") {
-            if name_lower.contains("overlay") {
-                return SceneryCategory::RegionalOverlay;
-            }
-            return SceneryCategory::OrthoBase;
-        }
-
-        // 9. Airport-Specific Enhancements & Overlays (Level 7 - Score 75)
-        // Grouping Y KTEX Overlay and other specific enhancements here.
-        if name_lower.contains("overlay")
-            || name_lower.contains("followme")
-            || name_lower.contains("groundservice")
-            || name_lower.contains("airportvehicles")
-            || name_lower.contains("aep")
-            || (name_lower.starts_with("y") && name_lower.contains("overlay"))
-            || name_lower.contains("static")
-        {
-            return SceneryCategory::AirportOverlay;
-        }
-
-
-
-        // 10. Custom Airports (Level 1 - Score 100)
-        // Add DarkBlue, and verify it's not a generic overlay/library already caught.
-        // Companion packs (mesh/terrain/grass) with ICAO codes are NOT airports.
-        let is_companion = name_lower.contains("mesh")
-            || name_lower.contains("terrain")
-            || name_lower.contains("3dgrass")
-            || name_lower.contains("grass")
-            || name_lower.contains("sealane");
-        if (!is_companion && has_icao_pattern(name))
-            || name_lower.contains("fly2high")
-            || name_lower.contains("aerosoft")
-            || name_lower.contains("flytampa")
-            || name_lower.contains("nimbus")
-            || name_lower.contains("justsim")
-            || name_lower.contains("skyline")
-            || name_lower.contains("boundless")
-            || name_lower.contains("axonos")
-            || name_lower.contains("taimodels")
-            || name_lower.contains("x-scenery")
-            || name_lower.contains("darkblue")
-            || name_lower.contains("panc---anchorage")
-            || name_lower.contains("airport")
-            || name_lower.contains("airfield")
-            || name_lower.contains("airstrip")
-            || name_lower.contains("hydrobase")
-            || name_lower.contains("heliport")
-            || name_lower.contains("helicopter")
-        {
-            return SceneryCategory::CustomAirport;
-        }
-
-        // 11. Global Base Scenery (Level 9 - Score 60)
-        // Demo Areas, X-Plane 12 Global Scenery
-        if name_lower.contains("demo areas") || name_lower.contains("global scenery") {
-            return SceneryCategory::GlobalBase;
-        }
-
-        // 12. Ortho/Photo Base (Level 10 - Score 55)
-        if (name_lower.contains("orbx_c_") || name_lower.contains("orbx_d_"))
-            && name_lower.contains("ortho")
-            || name_lower.contains("z_ao_")
-            || name_lower.contains("z_autoortho")
-            || name_lower.contains("ortho4xp")
-            || name_lower.starts_with("xpme") // Map Enhancement base packages
-            || name_lower.starts_with("z_")
-            || name_lower.starts_with("y_")
-        {
-            return SceneryCategory::OrthoBase;
-        }
-
-        SceneryCategory::Unknown
-    }
-
-    /// Post-discovery "healing" for packs that couldn't be categorized by name alone.
-    /// Uses structural metadata (SceneryDescriptor) to identify archetypes.
-    pub fn heal_classification(
-        category: SceneryCategory,
-        has_airports: bool,
-        has_tiles: bool,
-        descriptor: &crate::scenery::SceneryDescriptor,
+    /// Integrated classification using BitNet. 
+    /// This is the primary entry point for all scenery classification.
+    pub fn classify(
+        name: &str,
+        path: &Path,
+        context: &PredictContext,
+        model: &BitNetModel,
     ) -> SceneryCategory {
-        // Protected categories that should NEVER be overridden by structural analysis.
-        // These were already classified correctly by name heuristics.
-        let is_protected = matches!(
-            category,
-            SceneryCategory::OrbxAirport
-                | SceneryCategory::RegionalOverlay
-                | SceneryCategory::RegionalFluff
-                | SceneryCategory::Landmark
-                | SceneryCategory::GlobalAirport
-                | SceneryCategory::AirportOverlay
-                | SceneryCategory::AutoOrthoOverlay
-                | SceneryCategory::Library
-                | SceneryCategory::CustomAirport
-        );
-
-        // If already classified correctly, don't override
-        if is_protected {
-            return category;
-        }
-
-        // 1. Urban Enhancement Heuristic (City Scenery)
-        // ONLY for Unknown packs: If it looks like a city, promote to Landmark.
-        if category == SceneryCategory::Unknown
-            && (descriptor.object_count > 50 || descriptor.facade_count > 20)
-            && !has_airports
-        {
-            return SceneryCategory::Landmark;
-        }
-
-        // 2. Airport Specific Enhancements
-        // If the DSF explicitly contains airport properties, it's an AirportOverlay.
-        if descriptor.has_airport_properties && !has_airports {
-            return SceneryCategory::AirportOverlay;
-        }
-
-        // 3. Structural Ortho/Mesh Detection
-        if has_tiles && !has_airports {
-            // If it has polygons but NO objects/facades/forests, it's almost certainly an Ortho base.
-            if descriptor.polygon_count > 1000
-                && descriptor.object_count == 0
-                && descriptor.facade_count == 0
-            {
-                return SceneryCategory::OrthoBase;
-            }
-
-            // Defaults to Mesh for safety if it looks like foundation data.
-            if category == SceneryCategory::OrthoBase {
-                SceneryCategory::OrthoBase
-            } else if category == SceneryCategory::Unknown {
-                SceneryCategory::Mesh
-            } else {
-                category
-            }
-        } else {
-            category
-        }
+        let (_, category, _) = model.predict_with_rule_name(name, path, context);
+        category
     }
-}
 
-// Helper: matches 4-letter ICAO codes (e.g., KLAX, EGLL) roughly
-// Must be simplistic to rely on string matching as requested.
-fn has_icao_pattern(name: &str) -> bool {
-    // Basic heuristics: 4 characters (alphanumeric), possibly surrounded by [_- ]
-    // Must contain at least one letter and at least one digit OR be all letters.
-    // Handles KLAX, EGLL, 38WA, WA39 etc.
-    use std::sync::OnceLock;
-    static RE_ICAO: OnceLock<regex::Regex> = OnceLock::new();
-    let re = RE_ICAO
-        .get_or_init(|| regex::Regex::new(r"(^|[^A-Z0-9])[A-Z0-9]{4}([^A-Z0-9]|$)").unwrap());
-    re.is_match(name)
+    /// Legacy fallback classification if no model is available.
+    /// Uses a default BitNet model which contains all standard heuristics.
+    pub fn classify_default(name: &str, context: &PredictContext) -> SceneryCategory {
+        let model = BitNetModel::default();
+        let (_, category, _) = model.predict_with_rule_name(name, Path::new(name), context);
+        category
+    }
+
+    /// Optimized "name-only" heuristic for fast UI checks.
+    pub fn classify_by_name_only(name: &str) -> SceneryCategory {
+        let model = BitNetModel::default();
+        let context = PredictContext::default();
+        let (_, category, _) = model.predict_with_rule_name(name, Path::new(name), &context);
+        category
+    }
 }

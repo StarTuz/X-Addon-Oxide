@@ -183,9 +183,9 @@ fn test_critical_scenery_ordering_pairs() {
     let dummy_path = Path::new("/dummy/path");
 
     for (high_prio_name, low_prio_name, description) in critical_pairs {
-        let (score_high, rule_high) =
+        let (score_high, _, rule_high) =
             model.predict_with_rule_name(high_prio_name, dummy_path, &context);
-        let (score_low, rule_low) =
+        let (score_low, _, rule_low) =
             model.predict_with_rule_name(low_prio_name, dummy_path, &context);
 
         println!(
@@ -237,7 +237,7 @@ fn test_vfr_objects_not_healed_to_mesh() {
     ];
 
     for name in &vfr_cases {
-        let (score, rule) = model.predict_with_rule_name(name, dummy_path, &context);
+        let (score, _, rule) = model.predict_with_rule_name(name, dummy_path, &context);
         assert_ne!(
             rule, "Mesh/Terrain (Healed)",
             "'{}' should NOT fall to Mesh/Terrain (Healed), got score {} ({})",
@@ -263,7 +263,7 @@ fn test_orbx_b_mesh_scored_above_mesh_tier() {
     let dummy_path = Path::new("/dummy/path");
     let context = PredictContext::default();
 
-    let (score, rule) =
+    let (score, _, rule) =
         model.predict_with_rule_name("Orbx_B_EGLC_LondonCity_Mesh", dummy_path, &context);
     assert_ne!(
         rule, "Mesh/Foundation",
@@ -294,37 +294,37 @@ fn test_orbx_a_location_specific_above_regional() {
     // --- Location-specific packs (score 11) ---
 
     // Airport with clean ICAO
-    let (score, rule) =
+    let (score, _, rule) =
         model.predict_with_rule_name("Orbx_A_EGLC_LondonCity", dummy_path, &context);
     assert_eq!(score, 11, "EGLC should score 11");
     assert_eq!(rule, "Orbx A Airport");
 
     // Airport with version-suffixed ICAO (YBBNv2)
-    let (score, rule) =
+    let (score, _, rule) =
         model.predict_with_rule_name("Orbx_A_YBBNv2_Brisbane", dummy_path, &context);
     assert_eq!(score, 11, "YBBN Brisbane should score 11");
     assert_eq!(rule, "Orbx A Airport");
 
     // City landmarks pack (no ICAO, no TrueEarth)
-    let (score, rule) =
+    let (score, _, rule) =
         model.predict_with_rule_name("Orbx_A_Brisbane_Landmarks", dummy_path, &context);
     assert_eq!(score, 11, "Brisbane Landmarks should score 11");
     assert_eq!(rule, "Orbx A Landmarks");
 
     // --- Regional TrueEarth packs (score 12) ---
 
-    let (score, rule) =
+    let (score, _, rule) =
         model.predict_with_rule_name("Orbx_A_GB_South_TrueEarth_Custom", dummy_path, &context);
     assert_eq!(score, 12, "GB South TrueEarth should score 12");
     assert_eq!(rule, "Orbx A Custom");
 
-    let (score, rule) =
+    let (score, _, rule) =
         model.predict_with_rule_name("Orbx_A_GB_South_TrueEarth_Airports", dummy_path, &context);
     assert_eq!(score, 12, "GB South TrueEarth Airports should score 12");
     assert_eq!(rule, "Orbx A Custom");
 
     // US pack with _TE_ abbreviation
-    let (score, rule) =
+    let (score, _, rule) =
         model.predict_with_rule_name("Orbx_A_US_NorCal_TE_Custom", dummy_path, &context);
     assert_eq!(score, 12, "US NorCal TE should score 12");
     assert_eq!(rule, "Orbx A Custom");
@@ -346,14 +346,14 @@ fn test_global_airports_guard_uses_rule_name_not_score() {
     let mut model = BitNetModel::new().unwrap();
     model.update_config(HeuristicsConfig::default());
 
-    let (ga_score, ga_rule) = model.predict_with_rule_name("Global Airports", dummy_path, &context);
+    let (ga_score, _, ga_rule) = model.predict_with_rule_name("Global Airports", dummy_path, &context);
     assert_eq!(ga_score, 13, "Global Airports must keep its score (13)");
     assert_eq!(
         ga_rule, "Global Airports",
         "Rule name must be 'Global Airports'"
     );
 
-    let (egll_score, egll_rule) =
+    let (egll_score, _, egll_rule) =
         model.predict_with_rule_name("EGLL_LONDON_TAIMODELS", dummy_path, &context);
     assert_eq!(
         egll_score, 10,
@@ -375,14 +375,14 @@ fn test_global_airports_guard_uses_rule_name_not_score() {
     }
     model.update_config(old_config);
 
-    let (ga_score, ga_rule) = model.predict_with_rule_name("Global Airports", dummy_path, &context);
+    let (ga_score, _, ga_rule) = model.predict_with_rule_name("Global Airports", dummy_path, &context);
     assert_eq!(ga_score, 20, "Global Airports must keep its old score (20)");
     assert_eq!(
         ga_rule, "Global Airports",
         "Rule name must remain 'Global Airports'"
     );
 
-    let (egll_score, egll_rule) =
+    let (egll_score, _, egll_rule) =
         model.predict_with_rule_name("EGLL_LONDON_TAIMODELS", dummy_path, &context);
     assert_eq!(
         egll_score, 10,
@@ -435,6 +435,8 @@ fn test_every_bitnet_rule_has_at_least_one_match() {
         "Orbx_D_GB_North_Mesh",
         // Exclusion
         "My_Exclusion_Zone",
+        "FollowMe_Cars",
+        "Ground_Handling_Pack",
         // Base
         "z_autoortho",
         "XPME_South_America",
@@ -443,7 +445,7 @@ fn test_every_bitnet_rule_has_at_least_one_match() {
     // Collect which rules were matched
     let mut matched_rules = std::collections::HashSet::new();
     for name in &corpus {
-        let (_, rule) = model.predict_with_rule_name(name, dummy_path, &ctx);
+        let (_, _, rule) = model.predict_with_rule_name(name, dummy_path, &ctx);
         matched_rules.insert(rule);
     }
 

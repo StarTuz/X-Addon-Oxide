@@ -9,15 +9,21 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+pub mod category;
 pub mod flight_prompt;
 pub mod geo;
 pub mod parser;
+
+pub use category::SceneryCategory;
 
 #[derive(Debug, Clone, Default)]
 pub struct PredictContext {
     pub region_focus: Option<String>,
     pub has_airports: bool,
     pub has_tiles: bool,
+    pub object_count: usize,
+    pub facade_count: usize,
+    pub has_airport_properties: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Hash)]
@@ -25,6 +31,8 @@ pub struct Rule {
     pub name: String,
     pub keywords: Vec<String>,
     pub score: u8,
+    #[serde(default)]
+    pub category: SceneryCategory,
     #[serde(default)]
     pub is_exclusion: bool,
 }
@@ -257,6 +265,7 @@ impl Default for HeuristicsConfig {
                     name: "Orbx A Custom".to_string(),
                     keywords: vec!["orbx_a".to_string()],
                     score: 12, // Top priority
+                    category: SceneryCategory::OrbxAirport,
                     is_exclusion: false,
                 },
                 // --- Tier 2: Official Scenery & Overlays ---
@@ -264,6 +273,7 @@ impl Default for HeuristicsConfig {
                     name: "Official Landmarks".to_string(),
                     keywords: vec!["x-plane landmarks".to_string()],
                     score: 14, // Above all overlays
+                    category: SceneryCategory::Landmark,
                     is_exclusion: false,
                 },
                 // --- Tier 3: High Priority Overlays (Cities, Landmarks) ---
@@ -275,6 +285,7 @@ impl Default for HeuristicsConfig {
                         "roissy".to_string(),
                     ],
                     score: 10, // Must override Global Airports (13)
+                    category: SceneryCategory::CustomAirport,
                     is_exclusion: false,
                 },
                 Rule {
@@ -286,20 +297,31 @@ impl Default for HeuristicsConfig {
                         "new york".to_string(),
                         "enhanced".to_string(),
                         "detailed".to_string(),
+                        "detailed".to_string(),
                     ],
                     score: 16,
+                    category: SceneryCategory::Landmark,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Landmarks".to_string(),
                     keywords: vec!["landmarks".to_string(), "landmark".to_string()],
                     score: 16,
+                    category: SceneryCategory::Landmark,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Orbx B / TrueEarth Overlay".to_string(),
                     keywords: vec!["orbx_b".to_string(), "trueearth_overlay".to_string()],
                     score: 18, // Above SimHeaven (20) for regional dominance
+                    category: SceneryCategory::RegionalOverlay,
+                    is_exclusion: false,
+                },
+                Rule {
+                    name: "Airport Utilities".to_string(),
+                    keywords: vec!["followme".to_string(), "ground_handling".to_string()],
+                    score: 25, // Below SimHeaven (20), above Ortho (50)
+                    category: SceneryCategory::AirportOverlay,
                     is_exclusion: false,
                 },
                 // --- Tier 4: Regional & World Scenery ---
@@ -311,12 +333,14 @@ impl Default for HeuristicsConfig {
                         "w2xp".to_string(),
                     ],
                     score: 20, // MUST be BELOW Global Airports (13) in INI load order
+                    category: SceneryCategory::RegionalOverlay,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Global Forests".to_string(),
                     keywords: vec!["global_forests".to_string()],
                     score: 22, // Below SimHeaven (20)
+                    category: SceneryCategory::RegionalFluff,
                     is_exclusion: false,
                 },
                 // --- Tier 5: The Pivot (Global Airports) ---
@@ -324,6 +348,7 @@ impl Default for HeuristicsConfig {
                     name: "Global Airports".to_string(),
                     keywords: vec!["global airports".to_string(), "global_airports".to_string()],
                     score: 13, // High Priority: Above Landmarks (14) and SimHeaven (20)
+                    category: SceneryCategory::GlobalAirport,
                     is_exclusion: false,
                 },
                 // --- Tier 6: Generic Libraries & Fluff ---
@@ -337,6 +362,7 @@ impl Default for HeuristicsConfig {
                         "sealanes".to_string(),
                     ],
                     score: 30, // Regional fluff tier, matches fallback_score
+                    category: SceneryCategory::RegionalFluff,
                     is_exclusion: false,
                 },
                 Rule {
@@ -349,6 +375,7 @@ impl Default for HeuristicsConfig {
                         "seagulls".to_string(),
                     ],
                     score: 34, // With Libraries, above Ortho overlays
+                    category: SceneryCategory::RegionalFluff,
                     is_exclusion: false,
                 },
                 Rule {
@@ -370,6 +397,7 @@ impl Default for HeuristicsConfig {
                         "seasons_manager".to_string(),
                     ],
                     score: 35,
+                    category: SceneryCategory::Library,
                     is_exclusion: false,
                 },
                 // --- Tier 6: AutoOrtho & Photo Overlays ---
@@ -377,12 +405,14 @@ impl Default for HeuristicsConfig {
                     name: "AutoOrtho Overlays".to_string(),
                     keywords: vec!["yautoortho".to_string(), "y_autoortho".to_string()],
                     score: 48, // Between Libraries (45) and Ortho (50)
+                    category: SceneryCategory::AutoOrthoOverlay,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Orbx TrueEarth Orthos".to_string(),
                     keywords: vec!["orbx_c_".to_string(), "orthos".to_string()],
                     score: 58, // Match standard ortho priority
+                    category: SceneryCategory::OrthoBase,
                     is_exclusion: false,
                 },
                 Rule {
@@ -394,6 +424,7 @@ impl Default for HeuristicsConfig {
                         "zortho".to_string(),
                     ],
                     score: 58, // Below all overlays, above Mesh (60)
+                    category: SceneryCategory::OrthoBase,
                     is_exclusion: false,
                 },
                 // --- Tier 7: Mesh & Foundations ---
@@ -401,30 +432,35 @@ impl Default for HeuristicsConfig {
                     name: "Mesh/Foundation".to_string(),
                     keywords: vec!["mesh".to_string(), "zzz".to_string()],
                     score: 60,
+                    category: SceneryCategory::Mesh,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Orbx D / Mesh".to_string(),
                     keywords: vec!["orbx_d_".to_string(), "orbx_e_".to_string()],
                     score: 60, // Standard Mesh priority
+                    category: SceneryCategory::Mesh,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Exclusion Logic (Overlay/Mesh Tweaks)".to_string(),
                     keywords: vec!["exclude".to_string(), "exclusion".to_string()],
                     score: 61,
+                    category: SceneryCategory::Unknown,
                     is_exclusion: true,
                 },
                 Rule {
                     name: "AutoOrtho Base".to_string(),
                     keywords: vec!["z_autoortho".to_string(), "z_ao_".to_string()],
                     score: 95,
+                    category: SceneryCategory::OrthoBase,
                     is_exclusion: false,
                 },
                 Rule {
                     name: "Map Enhancement Base".to_string(),
                     keywords: vec!["xpme".to_string()],
                     score: 95, // Bottom of stack (same as AutoOrtho Base); XPME FAQ requires lowest priority
+                    category: SceneryCategory::OrthoBase,
                     is_exclusion: false,
                 },
             ],
@@ -449,12 +485,11 @@ pub struct BitNetModel {
 
 impl Default for BitNetModel {
     fn default() -> Self {
-        let config_path = Self::get_config_path();
-        let config = Self::load_config(&config_path).unwrap_or_default();
+        let config = HeuristicsConfig::default();
         let regex_set = Self::build_regex_set(&config);
         Self {
             config: Arc::new(config),
-            config_path,
+            config_path: Self::get_config_path(),
             regex_set,
         }
     }
@@ -843,17 +878,17 @@ impl BitNetModel {
         self.predict_with_rule_name(name, path, context).0
     }
 
-    /// Returns the score and the name of the matched rule (for dynamic section headers).
+    /// Returns the score, category, and the name of the matched rule (for dynamic section headers).
     /// If no rule matched, returns one of the fallback category names.
     pub fn predict_with_rule_name(
         &self,
         name: &str,
         _path: &Path,
         context: &PredictContext,
-    ) -> (u8, String) {
+    ) -> (u8, SceneryCategory, String) {
         // 1. Check for manual overrides first (Sticky Sort)
         if let Some(&score) = self.config.overrides.get(name) {
-            return (score, PINNED_RULE_NAME.to_string());
+            return (score, SceneryCategory::Unknown, PINNED_RULE_NAME.to_string());
         }
 
         let name_lower = name.to_lowercase();
@@ -897,10 +932,10 @@ impl BitNetModel {
             if (name_lower.starts_with("orbx_b_") || name_lower.starts_with("orbx_c_"))
                 && name_lower.contains("mesh")
             {
-                return (50, "SpecificMesh".to_string());
+                return (50, SceneryCategory::SpecificMesh, "SpecificMesh".to_string());
             }
             // Other companion packs (airport-specific terrain/mesh) go to SpecificMesh tier
-            return (50, "SpecificMesh".to_string());
+            return (50, SceneryCategory::SpecificMesh, "SpecificMesh".to_string());
         }
 
         // Detection for common airport patterns
@@ -927,24 +962,27 @@ impl BitNetModel {
         let is_airport = has_airport_keyword || has_icao;
 
         let mut matched_rule_name: Option<String> = None;
+        let mut matched_rule_category: Option<SceneryCategory> = None;
         let mut score = None;
 
         if let Some(set) = &self.regex_set {
             if set.is_match(&name_lower) {
                 let matches = set.matches(&name_lower);
                 let mut current_idx = 0;
-                for rule in &self.config.rules {
+                for (idx, rule) in self.config.rules.iter().enumerate() {
                     let end_idx = current_idx + rule.keywords.len();
                     if (current_idx..end_idx).any(|i| matches.matched(i)) {
                         if rule.is_exclusion {
                             if !is_airport {
                                 score = Some(rule.score);
                                 matched_rule_name = Some(rule.name.clone());
+                                matched_rule_category = Some(rule.category);
                                 break;
                             }
                         } else {
                             score = Some(rule.score);
                             matched_rule_name = Some(rule.name.clone());
+                            matched_rule_category = Some(rule.category);
                             break;
                         }
                     }
@@ -960,11 +998,13 @@ impl BitNetModel {
                         if !is_airport {
                             score = Some(rule.score);
                             matched_rule_name = Some(rule.name.clone());
+                            matched_rule_category = Some(rule.category);
                             break;
                         }
                     } else {
                         score = Some(rule.score);
                         matched_rule_name = Some(rule.name.clone());
+                        matched_rule_category = Some(rule.category);
                         break;
                     }
                 }
@@ -984,9 +1024,11 @@ impl BitNetModel {
                 if is_landmark_pack {
                     score = Some(11);
                     matched_rule_name = Some("Orbx A Landmarks".to_string());
+                    matched_rule_category = Some(SceneryCategory::Landmark);
                 } else if !is_trueearth {
                     score = Some(11);
                     matched_rule_name = Some("Orbx A Airport".to_string());
+                    matched_rule_category = Some(SceneryCategory::OrbxAirport);
                 }
             }
         }
@@ -995,10 +1037,18 @@ impl BitNetModel {
         // bottom of the stack by the generic "xpme" keyword in Map Enhancement
         // Base. The base rule is only for XPME Base ortho packages
         // (XPME_South_America, XPME_Europe, etc.).
+        if name_lower.contains("xpme") || name_lower.contains("x-plane_map_enhancement") {
+            if name_lower.contains("overlay") {
+                return (12, SceneryCategory::RegionalOverlay, "Airport Overlays".to_string());
+            } else {
+                return (95, SceneryCategory::OrthoBase, "Map Enhancement Base".to_string());
+            }
+        }
         if let Some(ref rule_name) = matched_rule_name {
             if rule_name == "Map Enhancement Base" && name_lower.contains("overlay") {
                 score = Some(12);
                 matched_rule_name = Some("Airport Overlays".to_string());
+                matched_rule_category = Some(SceneryCategory::AirportOverlay);
             }
         }
 
@@ -1018,37 +1068,31 @@ impl BitNetModel {
                 if s > 14 && (s < 50 || has_airport_keyword) && !is_global_airports {
                     score = Some(10);
                     matched_rule_name = Some("Airports".to_string());
+                    matched_rule_category = Some(SceneryCategory::CustomAirport);
                 }
             }
         }
 
-        let (final_score, rule_name) = if let Some(s) = score {
+        let (mut final_score, mut final_category, rule_name) = if let Some(s) = score {
             (
                 s,
+                matched_rule_category.unwrap_or(SceneryCategory::Unknown),
                 matched_rule_name.unwrap_or_else(|| "Unknown".to_string()),
             )
         } else if is_airport && !name_lower.contains("overlay") {
-            (10, "Airports".to_string())
+            (10, SceneryCategory::CustomAirport, "Airports".to_string())
         } else if context.has_airports
             && !name_lower.contains("overlay")
             && !name_lower.contains("library")
             && !name_lower.contains("landmark")
-            // Ambiguous "base" packs can contain incidental airport data;
-            // require explicit airport evidence before promoting them.
             && (!name_lower.contains("base") || has_icao || has_airport_keyword)
         {
-            // Healing: Discovery found airports even if name didn't match
-            (10, "Airports".to_string())
+            (10, SceneryCategory::CustomAirport, "Airports".to_string())
         } else if name_lower.contains("overlay") || name_lower.contains("static") {
-            // Generic Overlay detection (matched names like "KTUL Overlay" or "Static Objects")
-            // Score 12: High Priority Overlay - MUST be above Global Airports (13)
-            // for exclusions to work (e.g. FlyTampa)
-            (12, "Airport Overlays".to_string())
+            (12, SceneryCategory::AirportOverlay, "Airport Overlays".to_string())
         } else if name_lower.starts_with('z') || name_lower.starts_with('y') {
-            (50, "Y/Z Prefix Scenery".to_string())
+            (50, SceneryCategory::Mesh, "Y/Z Prefix Scenery".to_string())
         } else if context.has_tiles && !context.has_airports {
-            // Healing: Discovery found tiles (likely mesh/ortho) but no airports.
-            // MUST whitelist high-priority overlay keywords to prevent them from sinking to Mesh.
             let is_protected_overlay = name_lower.contains("simheaven")
                 || name_lower.contains("x-world")
                 || name_lower.contains("autoortho")
@@ -1056,35 +1100,69 @@ impl BitNetModel {
                 || name_lower.contains("birds")
                 || name_lower.contains("library")
                 || name_lower.contains("overlay")
-                || name_lower.contains("static")
-                || name_lower.contains("orbx_a")
-                || name_lower.contains("orbx_b")
-                || name_lower.contains("vfr")
-                || name_lower.contains("shoreline")
-                || name_lower.contains("sealanes");
+                || name_lower.contains("static");
 
             if is_protected_overlay {
-                // If protected, keep it as "Other Scenery" instead of sinking it to Mesh.
-                (self.config.fallback_score, "Other Scenery".to_string())
+                (
+                    self.config.fallback_score,
+                    SceneryCategory::RegionalOverlay,
+                    "Other Scenery".to_string(),
+                )
             } else {
-                (60, "Mesh/Terrain (Healed)".to_string())
+                (60, SceneryCategory::Mesh, "Mesh/Terrain (Healed)".to_string())
             }
         } else {
-            (self.config.fallback_score, "Other Scenery".to_string())
+            (
+                self.config.fallback_score,
+                SceneryCategory::LowImpactOverlay,
+                "Other Scenery".to_string(),
+            )
         };
+
+        // --- Structural Healing (Option B: Pure BitNet) ---
+        // If the category is still Unknown or a broad fallback, use structural signals
+        // to refine it.
+        if matches!(
+            final_category,
+            SceneryCategory::Unknown
+                | SceneryCategory::LowImpactOverlay
+                | SceneryCategory::Mesh
+                | SceneryCategory::RegionalFluff
+        ) && !matches!(
+            final_category,
+            SceneryCategory::RegionalOverlay | SceneryCategory::AutoOrthoOverlay
+        ) {
+            // 1. Urban Enhancement (City Scenery)
+            if (context.object_count > 50 || context.facade_count > 20) && !context.has_airports {
+                final_category = SceneryCategory::Landmark;
+                final_score = 16;
+            }
+            // 2. Airport Specific Enhancements (Structural signal)
+            else if context.has_airport_properties && !context.has_airports {
+                final_category = SceneryCategory::AirportOverlay;
+                final_score = 14;
+            }
+            // 3. Foundation Detection
+            else if context.has_tiles && !context.has_airports {
+                // If it looks like a base ortho (lots of polys, no objects)
+                if context.object_count == 0 && context.facade_count == 0 {
+                    final_category = SceneryCategory::OrthoBase;
+                    final_score = 55;
+                } else {
+                    final_category = SceneryCategory::Mesh;
+                    final_score = 60;
+                }
+            }
+        }
 
         // Pro Mode: Region Biasing
-        let final_score = if let Some(focus) = &context.region_focus {
+        if let Some(focus) = &context.region_focus {
             if name_lower.contains(&focus.to_lowercase()) {
-                final_score.saturating_sub(1)
-            } else {
-                final_score
+                final_score = final_score.saturating_sub(1);
             }
-        } else {
-            final_score
-        };
+        }
 
-        (final_score, rule_name)
+        (final_score, final_category, rule_name)
     }
 
     /// Predicts aircraft tags based on name and path.
@@ -1925,7 +2003,7 @@ mod tests {
     #[test]
     fn test_predict_riga_not_promoted_to_airport() {
         let model = BitNetModel::default();
-        let (score, rule) = model.predict_with_rule_name(
+        let (score, _category, rule) = model.predict_with_rule_name(
             "Riga Latvija",
             Path::new("test"),
             &PredictContext {
@@ -1940,7 +2018,7 @@ mod tests {
     #[test]
     fn test_predict_orbx_a_landmarks_stays_landmarks() {
         let model = BitNetModel::default();
-        let (score, rule) = model.predict_with_rule_name(
+        let (score, _category, rule) = model.predict_with_rule_name(
             "Orbx_A_Brisbane_Landmarks",
             Path::new("test"),
             &PredictContext::default(),
@@ -1955,7 +2033,7 @@ mod tests {
     #[test]
     fn test_predict_library_not_promoted_by_discovered_airports() {
         let model = BitNetModel::default();
-        let (score, rule) = model.predict_with_rule_name(
+        let (score, _category, rule) = model.predict_with_rule_name(
             "Orbx_XP12_Library",
             Path::new("test"),
             &PredictContext {
@@ -1973,7 +2051,7 @@ mod tests {
     #[test]
     fn test_predict_ambiguous_base_not_promoted_without_airport_signal() {
         let model = BitNetModel::default();
-        let (score, rule) = model.predict_with_rule_name(
+        let (score, _category, rule) = model.predict_with_rule_name(
             "Example_Regional_Base_Pack",
             Path::new("test"),
             &PredictContext {
@@ -1983,18 +2061,18 @@ mod tests {
         );
         assert_ne!(
             score, 10,
-            "Ambiguous base pack should not be promoted to Airports tier"
+            "Ambiguous base_pack should not be promoted to Airports tier"
         );
         assert_ne!(
             rule, "Airports",
-            "Ambiguous base pack should not be labeled as Airports"
+            "Ambiguous base_pack should not be labeled as Airports"
         );
     }
 
     #[test]
     fn test_predict_airport_base_with_icao_still_promoted() {
         let model = BitNetModel::default();
-        let (score, rule) = model.predict_with_rule_name(
+        let (score, _category, rule) = model.predict_with_rule_name(
             "Skyline Simulations KAST Astoria Base",
             Path::new("test"),
             &PredictContext {

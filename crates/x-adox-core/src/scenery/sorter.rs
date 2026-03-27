@@ -2,29 +2,8 @@
 // Copyright (c) 2020 Austin Goudge
 // Copyright (c) 2026 StarTuz
 
-use crate::scenery::{SceneryCategory, SceneryPack};
+use crate::scenery::SceneryPack;
 
-impl SceneryCategory {
-    // Higher value = Higher priority (loads first/top)
-    pub fn score(&self) -> i32 {
-        match self {
-            SceneryCategory::CustomAirport => 100,
-            SceneryCategory::OrbxAirport => 95,
-            SceneryCategory::Landmark => 95,
-            SceneryCategory::GlobalAirport => 90,
-            SceneryCategory::Library => 85,
-            SceneryCategory::AirportOverlay => 80,
-            SceneryCategory::RegionalOverlay => 75,
-            SceneryCategory::RegionalFluff => 70,
-            SceneryCategory::AutoOrthoOverlay => 65,
-            SceneryCategory::GlobalBase => 60,
-            SceneryCategory::OrthoBase => 50,
-            SceneryCategory::Mesh | SceneryCategory::SpecificMesh => 30,
-            SceneryCategory::Unknown => 0,
-            _ => 0,
-        }
-    }
-}
 
 // Custom sort implementation
 pub fn sort_packs(
@@ -38,46 +17,36 @@ pub fn sort_packs(
 
     // Pre-calculate all sort metadata once per pack to avoid redundant calls
     // to BitNet/Classifier and to allow for single-pass logging of contradictions.
-    let mut sort_data: Vec<(usize, i32, String, bool)> = packs
+    let mut sort_data: Vec<(usize, i32, String)> = packs
         .iter()
         .enumerate()
         .map(|(idx, p)| {
-            let (score, rule, lower_is_better) = if let Some(m) = model {
-                let mut ctx = context.clone();
-                ctx.has_airports = !p.airports.is_empty();
-                ctx.has_tiles = !p.tiles.is_empty();
-                let (s, r) = m.predict_with_rule_name(&p.name, &p.path, &ctx);
+            let mut ctx = context.clone();
+            ctx.has_airports = !p.airports.is_empty();
+            ctx.has_tiles = !p.tiles.is_empty();
+            ctx.object_count = p.descriptor.object_count;
+            ctx.facade_count = p.descriptor.facade_count;
+            ctx.has_airport_properties = p.descriptor.has_airport_properties;
 
-                // Option C: Cross-system contradiction detection (Safety Net)
-                if !p.category.is_compatible_with_score(s as u8) {
-                    let healed = p.category.heal_score(s as u8);
-                    log::warn!(
-                        "Contradiction: pack '{}' is {:?} but BitNet scored it {} (rule '{}'). Healing score to {}.",
-                        p.name, p.category, s, r, healed
-                    );
-                    (healed as i32, r, true)
-                } else {
-                    (s as i32, r, true)
-                }
+            let (score, _category, rule) = if let Some(m) = model {
+                m.predict_with_rule_name(&p.name, &p.path, &ctx)
             } else {
-                (calculate_score(p), String::new(), false)
+                // Fallback to default model heuristics if no external model provided
+                let m = x_adox_bitnet::BitNetModel::default();
+                m.predict_with_rule_name(&p.name, &p.path, &ctx)
             };
 
-            (idx, score, rule, lower_is_better)
+            (idx, score as i32, rule)
         })
         .collect();
 
     // Perform the actual sort using the pre-calculated data
-    sort_data.sort_by(|&(idx_a, score_a, ref rule_a, lib_a), &(idx_b, score_b, ref rule_b, _)| {
+    sort_data.sort_by(|&(idx_a, score_a, ref rule_a), &(idx_b, score_b, ref rule_b)| {
         let a = &packs[idx_a];
         let b = &packs[idx_b];
 
-        // Primary sort by score
-        let primary = if lib_a {
-            score_a.cmp(&score_b) // ASCENDING for BitNet (lower = top)
-        } else {
-            score_b.cmp(&score_a) // DESCENDING for category (higher = top)
-        };
+        // Primary sort by BitNet score (ASCENDING: lower = top)
+        let primary = score_a.cmp(&score_b);
 
         match primary {
             std::cmp::Ordering::Equal => {
@@ -133,7 +102,7 @@ pub fn sort_packs(
     // Reorder the original vector based on the sorted indices
     let sorted_packs: Vec<SceneryPack> = sort_data
         .into_iter()
-        .map(|(idx, _, _, _)| packs[idx].clone())
+        .map(|(idx, _, _)| packs[idx].clone())
         .collect();
 
     for (i, p) in sorted_packs.into_iter().enumerate() {
@@ -141,39 +110,6 @@ pub fn sort_packs(
     }
 }
 
-fn calculate_score(pack: &SceneryPack) -> i32 {
-    let mut score = pack.category.score();
-    let name_lower = pack.name.to_lowercase();
-
-    // VFR Boost check (+5)
-    // "If name contains '_vfr' or 'VFR' -> +5 points"
-    // EXCEPTION: SimHeaven packs manage their own VFR layer (Layer 1) internally.
-    // Boosting them breaks the Continent grouping (splits Layer 1 from others).
-    if (name_lower.contains("_vfr") || name_lower.contains("vfr"))
-        && extract_simheaven_info(&pack.name).is_none()
-    {
-        score += 5;
-    }
-
-    // y/z Prefix Penalty (-20)
-    // "Exception: Airport matches (CustomAirport OR AirportOverlay) OR System blocks (Library, GlobalBase) ignore this"
-    if pack.category != SceneryCategory::CustomAirport
-        && pack.category != SceneryCategory::AirportOverlay
-        && pack.category != SceneryCategory::Library
-        && pack.category != SceneryCategory::GlobalBase
-        && (name_lower.starts_with('y') || name_lower.starts_with('z'))
-    {
-        score -= 20;
-    }
-
-    // Mesh Protection (Cap at 30)
-    // "Any 'Mesh' in name -> cap/force <=30"
-    if name_lower.contains("mesh") {
-        score = 30; // Force exact 30 per spec
-    }
-
-    score
-}
 
 fn extract_simheaven_info(name: &str) -> Option<(String, f32)> {
     let lower = name.to_lowercase();
@@ -278,8 +214,13 @@ mod tests {
             region: None,
         };
         // Re-classify using the same heuristic as the manager
+        let context = x_adox_bitnet::PredictContext {
+            has_airports: !pack.airports.is_empty(),
+            has_tiles: !pack.tiles.is_empty(),
+            ..Default::default()
+        };
         pack.category =
-            crate::scenery::classifier::Classifier::classify_heuristic(&pack.path, &pack.name);
+            crate::scenery::classifier::Classifier::classify(&pack.name, &pack.path, &context, &x_adox_bitnet::BitNetModel::default());
         pack
     }
 
@@ -410,47 +351,41 @@ mod tests {
     #[test]
     fn test_healed_mesh_whitelist() {
         use crate::scenery::classifier::Classifier;
+        let model = x_adox_bitnet::BitNetModel::default();
 
         // 1. SimHeaven (Protected)
+        // Even with tiles and no airports, it should stay RegionalOverlay
         let simheaven = "simHeaven_X-World_Europe-7-forests";
-        let cat = Classifier::classify_heuristic(&PathBuf::from(simheaven), simheaven);
+        let context = x_adox_bitnet::PredictContext {
+            has_tiles: true,
+            has_airports: false,
+            ..Default::default()
+        };
+        let cat = Classifier::classify(simheaven, &PathBuf::from(simheaven), &context, &model);
         assert_eq!(cat, SceneryCategory::RegionalOverlay);
 
-        // Healing should NOT change it even with tiles and no airports
-        let healed = Classifier::heal_classification(
-            cat,
-            false,
-            true,
-            &crate::scenery::SceneryDescriptor::default(),
-        );
-        assert_eq!(healed, SceneryCategory::RegionalOverlay);
-
         // 2. Random unknown pack with tiles and no airports (Unprotected)
+        // This SHOULD be healed to Mesh
         let unknown = "Random_Pack";
-        let cat_unk = Classifier::classify_heuristic(&PathBuf::from(unknown), unknown);
-        assert_eq!(cat_unk, SceneryCategory::Unknown);
-
-        // Healing SHOULD turn it into Mesh
-        let healed_unk = Classifier::heal_classification(
-            cat_unk,
-            false,
-            true,
-            &crate::scenery::SceneryDescriptor::default(),
-        );
-        assert_eq!(healed_unk, SceneryCategory::Mesh);
+        let context_unk = x_adox_bitnet::PredictContext {
+            has_tiles: true,
+            has_airports: false,
+            object_count: 10,
+            ..Default::default()
+        };
+        let cat_unk = Classifier::classify(unknown, &PathBuf::from(unknown), &context_unk, &model);
+        assert_eq!(cat_unk, SceneryCategory::Mesh);
 
         // 3. AutoOrtho (Protected)
+        // Should stay AutoOrtho Overlay
         let ao = "yAutoOrtho_Overlays";
-        let cat_ao = Classifier::classify_heuristic(&PathBuf::from(ao), ao);
+        let context_ao = x_adox_bitnet::PredictContext {
+            has_tiles: true,
+            has_airports: false,
+            ..Default::default()
+        };
+        let cat_ao = Classifier::classify(ao, &PathBuf::from(ao), &context_ao, &model);
         assert_eq!(cat_ao, SceneryCategory::AutoOrthoOverlay);
-
-        let healed_ao = Classifier::heal_classification(
-            cat_ao,
-            false,
-            true,
-            &crate::scenery::SceneryDescriptor::default(),
-        );
-        assert_eq!(healed_ao, SceneryCategory::AutoOrthoOverlay);
     }
 
     #[test]
@@ -481,12 +416,12 @@ mod tests {
         ];
         let model = x_adox_bitnet::BitNetModel::default();
         let ctx = x_adox_bitnet::PredictContext::default();
-        let (s1, r1) = model.predict_with_rule_name(
+        let (s1, _, r1) = model.predict_with_rule_name(
             "FlyTampa_Amsterdam_1_overlays",
             &std::path::PathBuf::from("FlyTampa_Amsterdam_1_overlays"),
             &ctx,
         );
-        let (s2, r2) = model.predict_with_rule_name(
+        let (s2, _, r2) = model.predict_with_rule_name(
             "FlyTampa_Amsterdam_2_default_overlays",
             &std::path::PathBuf::from("FlyTampa_Amsterdam_2_default_overlays"),
             &ctx,

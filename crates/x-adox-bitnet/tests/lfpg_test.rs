@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use x_adox_bitnet::{BitNetModel, PredictContext};
 
 #[test]
@@ -8,6 +7,7 @@ fn test_lfpg_classification() {
         has_airports: true, // Simulate discovery finding airports inside
         has_tiles: false,
         region_focus: None,
+        ..Default::default()
     };
 
     let cases = vec![
@@ -24,7 +24,7 @@ fn test_lfpg_classification() {
     ];
 
     for (name, expected) in cases {
-        let (score, rule) = model.predict_with_rule_name(name, &PathBuf::from(name), &ctx);
+        let (score, _, rule) = model.predict_with_rule_name(name, std::path::Path::new(name), &ctx);
         println!("Name: '{}' -> Score: {}, Rule: '{}'", name, score, rule);
 
         if expected < 30 {
@@ -51,6 +51,7 @@ fn test_lfpg_classification_no_discovery() {
         has_airports: false,
         has_tiles: false,
         region_focus: None,
+        ..Default::default()
     };
 
     let cases = vec![
@@ -62,7 +63,7 @@ fn test_lfpg_classification_no_discovery() {
 
     println!("\n--- NO DISCOVERY SCENARIO ---");
     for (name, _expected) in cases {
-        let (score, rule) = model.predict_with_rule_name(name, &PathBuf::from(name), &ctx);
+        let (score, _, rule) = model.predict_with_rule_name(name, std::path::Path::new(name), &ctx);
         println!("Name: '{}' -> Score: {}, Rule: '{}'", name, score, rule);
 
         if score > 25 {

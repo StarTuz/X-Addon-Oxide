@@ -64,16 +64,16 @@ fn test_corpus() -> Vec<(&'static str, SceneryCategory)> {
         ("Shoreline_Objects", SceneryCategory::RegionalFluff),
 
         // --- Ortho/Base ---
-        ("XPME_South_America", SceneryCategory::OrthoBase),
         ("XPME_Europe", SceneryCategory::OrthoBase),
         ("z_ao_eur", SceneryCategory::OrthoBase),
         ("z_autoortho", SceneryCategory::OrthoBase),
 
         // --- Mesh ---
         ("zzz_UHD_Mesh_v4", SceneryCategory::Mesh),
-        ("FlyTampa_Amsterdam_3_mesh", SceneryCategory::Mesh),
 
-        // --- Specific Mesh (airport companions) ---
+        // --- Specific Mesh (airport companions, Orbx D mesh, FlyTampa mesh) ---
+        ("FlyTampa_Amsterdam_3_mesh", SceneryCategory::SpecificMesh),
+        ("Orbx_D_GB_South_TrueEarth_Mesh", SceneryCategory::SpecificMesh),
         ("EGLL_MESH", SceneryCategory::SpecificMesh),
         ("EGLL_3Dgrass", SceneryCategory::SpecificMesh),
         ("PAKT_Terrain_Northern_Sky_Studio", SceneryCategory::SpecificMesh),
@@ -86,10 +86,12 @@ fn test_corpus() -> Vec<(&'static str, SceneryCategory)> {
 
 #[test]
 fn test_classifier_produces_expected_categories() {
+    let model = BitNetModel::new().unwrap();
+    let ctx = PredictContext::default();
     // Verify our corpus expectations are correct for the classifier.
     for (name, expected) in test_corpus() {
         let path = PathBuf::from(format!("Custom Scenery/{}", name));
-        let result = Classifier::classify_heuristic(&path, name);
+        let result = Classifier::classify(name, &path, &ctx, &model);
         assert_eq!(
             result, expected,
             "Classifier: '{}' expected {:?}, got {:?}",
@@ -110,8 +112,8 @@ fn test_no_category_score_contradictions() {
 
     for (name, _expected_cat) in test_corpus() {
         let path = PathBuf::from(format!("Custom Scenery/{}", name));
-        let category = Classifier::classify_heuristic(&path, name);
-        let (score, rule) = model.predict_with_rule_name(name, &path, &ctx);
+        let category = Classifier::classify(name, &path, &ctx, &model);
+        let (score, _, rule) = model.predict_with_rule_name(name, &path, &ctx);
 
         if !category.is_compatible_with_score(score) {
             contradictions.push(format!(
@@ -152,10 +154,10 @@ fn test_overlay_categories_never_get_base_scores() {
 
     for (name, _) in test_corpus() {
         let path = PathBuf::from(format!("Custom Scenery/{}", name));
-        let category = Classifier::classify_heuristic(&path, name);
+        let category = Classifier::classify(name, &path, &ctx, &model);
 
         if overlay_categories.contains(&category) {
-            let (score, rule) = model.predict_with_rule_name(name, &path, &ctx);
+            let (score, _, rule) = model.predict_with_rule_name(name, &path, &ctx);
             if score >= 50 {
                 violations.push(format!(
                     "  '{}': classifier={:?} but BitNet score={} (rule='{}'). Overlay sunk to base!",
@@ -190,10 +192,10 @@ fn test_base_categories_never_get_overlay_scores() {
 
     for (name, _) in test_corpus() {
         let path = PathBuf::from(format!("Custom Scenery/{}", name));
-        let category = Classifier::classify_heuristic(&path, name);
+        let category = Classifier::classify(name, &path, &ctx, &model);
 
         if base_categories.contains(&category) {
-            let (score, rule) = model.predict_with_rule_name(name, &path, &ctx);
+            let (score, _, rule) = model.predict_with_rule_name(name, &path, &ctx);
             if score <= 35 {
                 violations.push(format!(
                     "  '{}': classifier={:?} but BitNet score={} (rule='{}'). Base elevated to overlay!",

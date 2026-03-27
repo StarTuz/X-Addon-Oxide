@@ -22,141 +22,7 @@ pub enum SceneryPackType {
     DuplicateHidden, // To be written as a comment with a special note
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, Hash)]
-pub enum SceneryCategory {
-    #[default]
-    Unknown, // Fallback
-    CustomAirport,    // Level 1: Score 100
-    OrbxAirport,      // Level 2: Score 95
-    GlobalAirport,    // Level 3: Score 90
-    Landmark,         // Level 4: Score 88
-    RegionalOverlay,  // Level 5: Score 85
-    RegionalFluff,    // Level 7/8 in new scale? No wait, spec says 80.
-    AirportOverlay,   // Level 6: Score 75
-    LowImpactOverlay, // Level 7: Score 70
-    AutoOrthoOverlay, // Level 8: Score 70 -> Wait spec is 70? No, AutoOrtho Overlay is 70 in user request?
-    // User request:
-    // Level 7: Dynamic/low-impact (Score 70)
-    // Level 8: AutoOrtho overlay (Score 65 in main text, wait let me check artifact)
-    // Artifact says: AutoOrthoOverlay (70). Level 7 LowImpact is 70.
-    // Spec says:
-    // "Level 8: AutoOrtho corrections/overlays (score ~65)"
-    // "Level 7: Dynamic/low-impact overlays (score ~70)"
-    // So LowImpact > AutoOrtho.
-    Library, // Level 11: Score 65??
-    // User request spec says: "Level 11: Libraries (score ~50 — lowest)"
-    // Wait, recent update says:
-    // "65: Libraries ... 55: Ortho/Photo Base ... 30: Mesh"
-    // So Library is 65.
-    // Ortho is 55.
-    // Mesh is 30.
-    // Let's stick to the Plan's values which were derived from the final user prompt.
-    // Plan:
-    // RegionalFluff (80)
-    // AirportOverlay (75)
-    // AutoOrthoOverlay (70) -> Wait, user said 70 for AutoOrtho in one place?
-    // Let's re-read user prompt "Version 5.0":
-    // "70: AutoOrtho Corrections Match: yAutoOrtho_Overlays/"
-    // "65: Libraries Match: *_Library"
-    // "55: Ortho/Photo Base"
-    // "30: Mesh"
-    // So AutoOrthoOverlay is 70.
-    // LowImpactOverlay? "80: Regional Fluff (Forests... Birds...)"
-    // Wait, user text says: "80: Regional Fluff (Forests, Networks, Low-Impact)".
-    // So "LowImpact" is part of Regional Fluff?
-    // User text also says: "Level 7: Dynamic/low-impact overlays (score ~70) ... Birds ... Global_Forests".
-    // But then list says "80: Regional Fluff ... Birds ... Global_Forests".
-    // There is a conflict in the user prompt between the text numbers and the "Recap" list.
-    // "80: Regional Fluff (Forests, Networks, Low-Impact) Match: simHeaven *_7-forests ... Birds ... Global_Forests"
-    // This seems to merge Level 5 and 7?
-    // No, "85: Regional Detail Layers".
-    // "80: Regional Fluff".
-    // "75: Airport-Specific Enhancements".
-    // "70: AutoOrtho Corrections".
-    // "65: Libraries".
-    // "55: Ortho".
-    // "30: Mesh".
-    // This looks like the consistent set from the "Consensus-Backed Final Heuristics".
-    // I will follow this specific numbered list.
-    OrthoBase,    // Level 10: Score 55
-    GlobalBase,   // Level 9: Score 60 (Demo Areas, etc.)
-    SpecificMesh, // Level 11: Score 30 (Mesh)
-    Mesh,
-    Group, // Virtual group pack
-}
-
-impl SceneryCategory {
-    pub fn short_code(&self) -> &'static str {
-        match self {
-            SceneryCategory::Unknown => "UNK",
-            SceneryCategory::CustomAirport => "APT",
-            SceneryCategory::OrbxAirport => "ORX",
-            SceneryCategory::GlobalAirport => "GLO",
-            SceneryCategory::Landmark => "LMK",
-            SceneryCategory::RegionalOverlay => "REG",
-            SceneryCategory::RegionalFluff => "RFL",
-            SceneryCategory::AirportOverlay => "AOV",
-            SceneryCategory::LowImpactOverlay => "LOW",
-            SceneryCategory::AutoOrthoOverlay => "AOO",
-            SceneryCategory::Library => "LIB",
-            SceneryCategory::OrthoBase => "ORT",
-            SceneryCategory::GlobalBase => "GBS",
-            SceneryCategory::SpecificMesh => "MSH",
-            SceneryCategory::Mesh => "MSH",
-            SceneryCategory::Group => "GRP",
-        }
-    }
-
-    /// Returns true if this category is compatible with the given BitNet score.
-    /// Used to detect contradictions between the heuristic classifier and BitNet.
-    pub fn is_compatible_with_score(&self, score: u8) -> bool {
-        // Libraries and SpecificMesh are highly flexible and usually position-independent
-        if matches!(
-            self,
-            SceneryCategory::Library
-                | SceneryCategory::SpecificMesh
-                | SceneryCategory::Unknown
-                | SceneryCategory::Group
-        ) {
-            return true;
-        }
-
-        match self {
-            SceneryCategory::AirportOverlay
-            | SceneryCategory::RegionalOverlay
-            | SceneryCategory::RegionalFluff
-            | SceneryCategory::LowImpactOverlay
-            | SceneryCategory::AutoOrthoOverlay => score < 50,
-            SceneryCategory::OrthoBase | SceneryCategory::Mesh => score > 35,
-            SceneryCategory::CustomAirport | SceneryCategory::OrbxAirport => score <= 13,
-            SceneryCategory::GlobalAirport => score == 13,
-            SceneryCategory::Landmark => (14..=16).contains(&score),
-            SceneryCategory::GlobalBase => score >= 30,
-            _ => true,
-        }
-    }
-
-    /// Returns a "healed" score for this category if a contradiction is detected.
-    /// This ensures a pack stays in its intended position band even if the
-    /// BitNet model misplaces it (until the model/rules can be updated).
-    pub fn heal_score(&self, current_score: u8) -> u8 {
-        match self {
-            SceneryCategory::CustomAirport | SceneryCategory::OrbxAirport => 11,
-            SceneryCategory::GlobalAirport => 13,
-            SceneryCategory::Landmark => 14,
-            SceneryCategory::AirportOverlay
-            | SceneryCategory::RegionalOverlay
-            | SceneryCategory::RegionalFluff
-            | SceneryCategory::LowImpactOverlay
-            | SceneryCategory::AutoOrthoOverlay => 20, // Mid-overlay tier
-            SceneryCategory::Library => current_score, // Don't touch libraries
-            SceneryCategory::GlobalBase => 60,
-            SceneryCategory::OrthoBase => 55,
-            SceneryCategory::Mesh | SceneryCategory::SpecificMesh => 60,
-            SceneryCategory::Unknown | SceneryCategory::Group => current_score,
-        }
-    }
-}
+pub use x_adox_bitnet::SceneryCategory;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, Hash)]
 pub struct SceneryDescriptor {
@@ -605,16 +471,15 @@ impl SceneryManager {
         let completed_count = AtomicUsize::new(0);
         // Wrap the FnMut callback in Mutex so it can be called from multiple rayon threads
         let progress_cb = std::sync::Mutex::new(on_progress);
+        let default_model = x_adox_bitnet::BitNetModel::default();
+        let model_ref = &default_model;
+
         let processed_results: Vec<(SceneryPack, Option<crate::cache::CacheEntry>)> = packs
             .into_par_iter()
             .map(|mut pack| {
                 let pack_name = pack.name.clone();
-                // Apply heuristic classification (now parallelized)
-                pack.category = classifier::Classifier::classify_heuristic(&pack.path, &pack.name);
-
-                // 2. Discover details with cache check.
-                // Direct assignment to pack fields avoids an intermediate tuple allocation.
-                // Cache-miss path: originals go to pack, clones go to the cache entry.
+                
+                // 1. Discover details with cache check.
                 let cache_entry: Option<crate::cache::CacheEntry> =
                     if let Some(entry) = cache_ref.get(&pack.path) {
                         pack.airports = entry.airports.clone();
@@ -622,8 +487,6 @@ impl SceneryManager {
                         pack.descriptor = entry.descriptor.clone();
                         None
                     } else if quick {
-                        // Quick mode: skip disk I/O for uncached packs.
-                        // Airport/tile data will be filled in by a background deep scan.
                         pack.airports = Vec::new();
                         pack.tiles = Vec::new();
                         pack.descriptor = SceneryDescriptor::default();
@@ -671,70 +534,24 @@ impl SceneryManager {
                         Some(entry)
                     };
 
-                // 3. Structural Library Detection (before promotion)
-                // Check for library.txt FIRST — the X-Plane standard for declaring
-                // a scenery library. This must run before airport promotion so that
-                // community libraries like world-models, Sea_Life, ruscenery that
-                // contain incidental airport data (helipads, POIs) aren't misclassified
-                // as CustomAirport.
-                // In quick mode we skip this filesystem check to avoid blocking on slow
-                // or locked paths (e.g. Windows Defender, network drives); Phase 2 deep
-                // scan will re-classify when it has full pack data.
-                if pack.category == SceneryCategory::Unknown && !quick
-                    && pack.path.join("library.txt").exists() {
-                        pack.category = SceneryCategory::Library;
-                    }
+                // 2. Unified BitNet Classification (Single Source of Truth)
+                let context = x_adox_bitnet::PredictContext {
+                    region_focus: None, // Will be biasing during sort
+                    has_airports: !pack.airports.is_empty(),
+                    has_tiles: !pack.tiles.is_empty(),
+                    object_count: pack.descriptor.object_count,
+                    facade_count: pack.descriptor.facade_count,
+                    has_airport_properties: pack.descriptor.has_airport_properties,
+                };
 
-                // 3b. Post-Discovery Promotion
-                // If we FOUND actual airports, this is a Custom Airport (Score 100)
-                // UNLESS it's already a 'System' category like GlobalAirport or Library,
-                // or it's a companion pack (mesh/terrain/grass) that ships incidental airport data.
-                if !pack.airports.is_empty() {
-                    let nl = pack.name.to_lowercase();
-                    let is_companion = nl.contains("mesh")
-                        || nl.contains("terrain")
-                        || nl.contains("3dgrass")
-                        || nl.contains("grass")
-                        || nl.contains("sealane");
-
-                    match pack.category {
-                        SceneryCategory::GlobalAirport
-                        | SceneryCategory::Library
-                        | SceneryCategory::GlobalBase
-                        | SceneryCategory::Landmark
-                        | SceneryCategory::OrthoBase
-                        | SceneryCategory::Mesh
-                        | SceneryCategory::SpecificMesh => {
-                            // Keep existing structural/terrain category.
-                            // Ortho/mesh/base packs routinely contain incidental airport DSF
-                            // data for airports in their coverage area; this must NOT promote
-                            // them to CustomAirport and displace them from the bottom of the INI.
-                        }
-                        _ => {
-                            if !is_companion {
-                                // Promote to Custom Airport
-                                pack.category = SceneryCategory::CustomAirport;
-                            }
-                        }
-                    }
-                } else if pack.category == SceneryCategory::Unknown && !pack.tiles.is_empty() {
-                    // If it has tiles but no airports, it's likely a regional enhancement or ortho
-                    if pack.name.to_lowercase().contains("ortho") {
-                        pack.category = SceneryCategory::OrthoBase;
-                    } else {
-                        pack.category = SceneryCategory::RegionalOverlay;
-                    }
-                }
-
-                // 4. Final Healing (Centralized)
-                pack.category = classifier::Classifier::heal_classification(
-                    pack.category,
-                    !pack.airports.is_empty(),
-                    !pack.tiles.is_empty(),
-                    &pack.descriptor,
+                pack.category = classifier::Classifier::classify(
+                    &pack.name,
+                    &pack.path,
+                    &context,
+                    model_ref
                 );
 
-                // 5. Region Classification
+                // 3. Region Classification
                 pack.region = Some(pack.get_region());
 
                 // Progress reporting — atomic counter so this is safe across threads

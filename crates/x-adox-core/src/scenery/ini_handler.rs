@@ -2,7 +2,7 @@
 // Copyright (c) 2020 Austin Goudge
 // Copyright (c) 2026 StarTuz
 
-use crate::scenery::{SceneryCategory, SceneryPack, SceneryPackType};
+use crate::scenery::{SceneryPack, SceneryPackType};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -80,7 +80,7 @@ pub fn read_ini(file_path: &Path, scenery_root: &Path) -> io::Result<Vec<Scenery
                 path: full_path,
                 raw_path: Some(raw_path_str.to_string()),
                 status,
-                category: SceneryCategory::Unknown,
+                category: crate::scenery::SceneryCategory::Unknown,
                 airports: Vec::new(),
                 tiles: Vec::new(),
                 tags: Vec::new(),
@@ -111,7 +111,7 @@ pub fn write_ini(
         // Determine section header from the matched rule name, then normalize it
         // through the canonical section mapping used by sorter.rs.
         let current_section = if let Some(m) = model {
-            let (_score, rule_name) = m.predict_with_rule_name(
+            let (_score, _category, rule_name) = m.predict_with_rule_name(
                 &pack.name,
                 &pack.path,
                 &x_adox_bitnet::PredictContext {

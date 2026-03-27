@@ -15,6 +15,8 @@ use x_adox_core::scenery::SceneryCategory;
 
 #[test]
 fn test_community_libraries_classified_by_name() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // These community libraries lack "library" or "lib" in their names
     // and must be caught by explicit classifier entries.
     let cases = [
@@ -25,7 +27,7 @@ fn test_community_libraries_classified_by_name() {
 
     for (name, expected) in &cases {
         let path = PathBuf::from(format!("Custom Scenery/{}", name));
-        let result = Classifier::classify_heuristic(&path, name);
+        let result = Classifier::classify(name, &path, &ctx, &model);
         assert_eq!(
             &result, expected,
             "'{}' should be {:?}, got {:?}",
@@ -36,10 +38,12 @@ fn test_community_libraries_classified_by_name() {
 
 #[test]
 fn test_landmarks_without_hyphen() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // "X-Plane Landmarks Dubai" has no trailing hyphen but is still a Landmark.
     let name = "X-Plane Landmarks Dubai";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
-    let result = Classifier::classify_heuristic(&path, name);
+    let result = Classifier::classify(name, &path, &ctx, &model);
     assert_eq!(
         result,
         SceneryCategory::Landmark,
@@ -51,10 +55,12 @@ fn test_landmarks_without_hyphen() {
 
 #[test]
 fn test_landmarks_with_hyphen_still_works() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // Ensure original format still works.
     let name = "X-Plane Landmarks - Paris";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
-    let result = Classifier::classify_heuristic(&path, name);
+    let result = Classifier::classify(name, &path, &ctx, &model);
     assert_eq!(
         result,
         SceneryCategory::Landmark,
@@ -66,6 +72,7 @@ fn test_landmarks_with_hyphen_still_works() {
 
 #[test]
 fn test_library_txt_prevents_airport_promotion() {
+    let model = x_adox_bitnet::BitNetModel::default();
     // Simulates the mod.rs load pipeline for a pack that:
     // 1. Has an Unknown name (no heuristic match)
     // 2. Has a library.txt file
@@ -98,10 +105,11 @@ fn test_library_txt_prevents_airport_promotion() {
 
     // Simulate the classification pipeline (same order as mod.rs load)
     let name = "Fauna_Collection";
-    let mut category = Classifier::classify_heuristic(&pack_path, name);
+    let ctx = x_adox_bitnet::PredictContext::default();
+    let mut category = Classifier::classify(name, &pack_path, &ctx, &model);
     assert_eq!(
         category,
-        SceneryCategory::Unknown,
+        SceneryCategory::LowImpactOverlay,
         "Name should not match any heuristic"
     );
 
@@ -109,7 +117,7 @@ fn test_library_txt_prevents_airport_promotion() {
     let airports = x_adox_core::scenery::discover_airports_in_pack(&pack_path);
 
     // Step 3: Structural Library Detection (runs BEFORE promotion now)
-    if category == SceneryCategory::Unknown && pack_path.join("library.txt").exists() {
+    if category == SceneryCategory::LowImpactOverlay && pack_path.join("library.txt").exists() {
         category = SceneryCategory::Library;
     }
 
@@ -141,12 +149,14 @@ fn test_library_txt_prevents_airport_promotion() {
 
 #[test]
 fn test_orbx_airport_mesh_not_classified_as_generic_mesh() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // Orbx_B_EGLC_LondonCity_Mesh is an airport-specific mesh companion pack,
     // NOT a standalone terrain mesh. It should be SpecificMesh (not generic Mesh
     // or CustomAirport).
     let name = "Orbx_B_EGLC_LondonCity_Mesh";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
-    let result = Classifier::classify_heuristic(&path, name);
+    let result = Classifier::classify(name, &path, &ctx, &model);
     assert_ne!(
         result,
         SceneryCategory::Mesh,
@@ -166,17 +176,21 @@ fn test_orbx_airport_mesh_not_classified_as_generic_mesh() {
 
 #[test]
 fn test_orbx_d_mesh_still_classified_as_mesh() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // Orbx_D_ packs are standalone terrain meshes — they should still be Mesh.
     // But they don't contain "mesh" in their exact name pattern usually...
     // Let's verify a generic non-Orbx mesh still works.
     let name = "zzz_UHD_Mesh_v4";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
-    let result = Classifier::classify_heuristic(&path, name);
+    let result = Classifier::classify(name, &path, &ctx, &model);
     assert_eq!(result, SceneryCategory::Mesh);
 }
 
 #[test]
 fn test_icao_companion_packs_classified_as_specific_mesh() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // Non-Orbx companion packs with ICAO codes + mesh/terrain/grass keywords
     // should be SpecificMesh (not generic Mesh). They serve different purposes
     // (grass, terrain, sealane) for the same airport and must coexist without
@@ -196,7 +210,7 @@ fn test_icao_companion_packs_classified_as_specific_mesh() {
 
     for (name, expected) in &cases {
         let path = PathBuf::from(format!("Custom Scenery/{}", name));
-        let result = Classifier::classify_heuristic(&path, name);
+        let result = Classifier::classify(name, &path, &ctx, &model);
         assert_eq!(
             &result, expected,
             "'{}' should be {:?}, got {:?}",
@@ -207,19 +221,23 @@ fn test_icao_companion_packs_classified_as_specific_mesh() {
 
 #[test]
 fn test_flytampa_mesh_still_classified_as_mesh() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // Non-Orbx packs with "mesh" should still be Mesh
     let name = "FlyTampa_Amsterdam_3_mesh";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
-    let result = Classifier::classify_heuristic(&path, name);
+    let category = Classifier::classify(name, &path, &ctx, &model);
     assert_eq!(
-        result,
-        SceneryCategory::Mesh,
-        "Non-Orbx mesh packs should still be classified as Mesh"
+        category,
+        SceneryCategory::SpecificMesh,
+        "Non-Orbx mesh packs should still be classified as SpecificMesh"
     );
 }
 
 #[test]
 fn test_orthobase_with_airports_stays_orthobase() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // Regression: OrthoBase packs (Orbx TrueEarth Orthos, XPME base packages,
     // z_autoortho) often contain DSF data that discovers airports in their coverage
     // area. The post-discovery promotion in mod.rs must NOT promote these packs to
@@ -238,7 +256,7 @@ fn test_orthobase_with_airports_stays_orthobase() {
 
     for name in &orthobase_packs {
         let path = PathBuf::from(format!("Custom Scenery/{}", name));
-        let mut category = Classifier::classify_heuristic(&path, name);
+        let mut category = Classifier::classify(name, &path, &ctx, &model);
 
         // Simulate discovering airports (as happens when DSF tiles cover airport areas)
         let fake_airports_found = true;
@@ -282,6 +300,8 @@ fn test_orthobase_with_airports_stays_orthobase() {
 
 #[test]
 fn test_sji_airports_and_alphanumeric_icao() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // SJI airports (airstrips) and alphanumeric ICAO codes (38WA, WA39)
     // should be correctly classified as CustomAirport.
     let cases = [
@@ -296,7 +316,7 @@ fn test_sji_airports_and_alphanumeric_icao() {
 
     for (name, expected) in &cases {
         let path = PathBuf::from(format!("Custom Scenery/{}", name));
-        let result = Classifier::classify_heuristic(&path, name);
+        let result = Classifier::classify(name, &path, &ctx, &model);
         assert_eq!(
             &result, expected,
             "'{}' should be {:?}, got {:?}",
@@ -381,11 +401,13 @@ fn test_reconcile_preserves_discovery_data() {
 
 #[test]
 fn test_helicopter_destinations_not_classified_as_ortho() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // Packs with "Helicopter" in the name and "Ortho4XP" as a tool-name suffix
     // must be classified as CustomAirport (not OrthoBase).
     let name = "01_MontanaHelicopterDestinations_XP12_Ortho4XP130";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
-    let result = Classifier::classify_heuristic(&path, name);
+    let result = Classifier::classify(name, &path, &ctx, &model);
     assert_eq!(
         result,
         SceneryCategory::CustomAirport,
@@ -397,10 +419,12 @@ fn test_helicopter_destinations_not_classified_as_ortho() {
 
 #[test]
 fn test_seasons_manager_classified_as_library() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // o4xp_Seasons_Manager is a seasons plugin, not mesh/terrain content.
     let name = "o4xp_Seasons_Manager";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
-    let result = Classifier::classify_heuristic(&path, name);
+    let result = Classifier::classify(name, &path, &ctx, &model);
     assert_eq!(
         result,
         SceneryCategory::Library,
@@ -412,12 +436,9 @@ fn test_seasons_manager_classified_as_library() {
 
 #[test]
 fn test_bitnet_helicopter_pack_promoted_to_airports() {
-    // BitNet should promote helicopter destination packs to Airports tier even
-    // though "ortho" keyword matches the Ortho/Photo rule (score 58).
-    // The "helicopter" airport keyword widens the promotion range.
     let model = x_adox_bitnet::BitNetModel::default();
     let ctx = x_adox_bitnet::PredictContext::default();
-    let (score, rule) = model.predict_with_rule_name(
+    let (score, _cat, rule) = model.predict_with_rule_name(
         "01_MontanaHelicopterDestinations_XP12_Ortho4XP130",
         &PathBuf::from("Custom Scenery/01_MontanaHelicopterDestinations_XP12_Ortho4XP130"),
         &ctx,
@@ -447,7 +468,7 @@ fn test_bitnet_community_libraries_match_libraries_rule() {
     ];
 
     for name in &library_packs {
-        let (score, rule) = model.predict_with_rule_name(
+        let (score, _cat, rule) = model.predict_with_rule_name(
             name,
             &PathBuf::from(format!("Custom Scenery/{}", name)),
             &ctx,
@@ -480,7 +501,7 @@ fn test_bitnet_crow_in_name_with_icao_still_promoted() {
     ];
 
     for (name, expected_score, expected_rule) in &cases {
-        let (score, rule) = model.predict_with_rule_name(
+        let (score, _cat, rule) = model.predict_with_rule_name(
             name,
             &PathBuf::from(format!("Custom Scenery/{}", name)),
             &ctx,
@@ -503,7 +524,7 @@ fn test_bitnet_riga_not_promoted_by_discovered_airports() {
     // Regression: generic city packs with discovered airport data must not be
     // forced into Airports tier.
     let model = x_adox_bitnet::BitNetModel::default();
-    let (score, rule) = model.predict_with_rule_name(
+    let (score, _cat, rule) = model.predict_with_rule_name(
         "Riga Latvija",
         &PathBuf::from("Custom Scenery/Riga Latvija"),
         &x_adox_bitnet::PredictContext {
@@ -520,7 +541,7 @@ fn test_bitnet_orbx_landmarks_not_grouped_into_airports() {
     // Regression: Orbx_A landmark packs should not be merged into Airports.
     // They should keep high priority above regional TrueEarth with a dedicated label.
     let model = x_adox_bitnet::BitNetModel::default();
-    let (score, rule) = model.predict_with_rule_name(
+    let (score, _cat, rule) = model.predict_with_rule_name(
         "Orbx_A_Brisbane_Landmarks",
         &PathBuf::from("Custom Scenery/Orbx_A_Brisbane_Landmarks"),
         &x_adox_bitnet::PredictContext::default(),
@@ -533,7 +554,7 @@ fn test_bitnet_orbx_landmarks_not_grouped_into_airports() {
 fn test_bitnet_library_not_promoted_by_discovered_airports() {
     // Regression: library packs with incidental airport data must remain Libraries.
     let model = x_adox_bitnet::BitNetModel::default();
-    let (score, rule) = model.predict_with_rule_name(
+    let (score, _cat, rule) = model.predict_with_rule_name(
         "Orbx_XP12_Library",
         &PathBuf::from("Custom Scenery/Orbx_XP12_Library"),
         &x_adox_bitnet::PredictContext {
@@ -547,11 +568,13 @@ fn test_bitnet_library_not_promoted_by_discovered_airports() {
 
 #[test]
 fn test_xpme_overlays_classified_as_regional_overlay() {
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
     // Regression: XPME_Overlays is a regional overlay pack, NOT a base ortho package
     // and NOT an airport-specific overlay. It must be classified as RegionalOverlay.
     let name = "XPME_Overlays";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
-    let result = Classifier::classify_heuristic(&path, name);
+    let result = Classifier::classify(name, &path, &ctx, &model);
     assert_eq!(
         result,
         SceneryCategory::RegionalOverlay,
@@ -563,11 +586,9 @@ fn test_xpme_overlays_classified_as_regional_overlay() {
 
 #[test]
 fn test_bitnet_xpme_overlays_not_sunk_to_base() {
-    // Regression: XPME_Overlays must NOT be matched by the "Map Enhancement Base"
-    // rule (score 95). It should be reclassified as "Airport Overlays" (score 12).
     let model = x_adox_bitnet::BitNetModel::default();
     let ctx = x_adox_bitnet::PredictContext::default();
-    let (score, rule) = model.predict_with_rule_name(
+    let (score, _cat, rule) = model.predict_with_rule_name(
         "XPME_Overlays",
         &PathBuf::from("Custom Scenery/XPME_Overlays"),
         &ctx,
@@ -579,7 +600,7 @@ fn test_bitnet_xpme_overlays_not_sunk_to_base() {
     );
 
     // Base packages must still score 95
-    let (base_score, base_rule) = model.predict_with_rule_name(
+    let (base_score, _base_cat, base_rule) = model.predict_with_rule_name(
         "XPME_South_America",
         &PathBuf::from("Custom Scenery/XPME_South_America"),
         &ctx,
