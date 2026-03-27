@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use tempfile::tempdir;
 use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};
 
+mod support;
+
 #[test]
 fn test_profile_state_updates() {
     // Start with empty collection to have full control over indices
@@ -63,10 +65,7 @@ fn test_profile_state_updates() {
 fn test_profile_persistence() {
     let dir = tempdir().unwrap();
     let config_dir = dir.path().join(".xad_oxide");
-    std::fs::create_dir_all(&config_dir).unwrap();
-
-    // Set environment variable for the test
-    std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
+    let _config = support::ScopedConfigRoot::new(&config_dir);
 
     let root = dir.path().join("X-Plane"); // Mock root
     let manager = ProfileManager::new(&root);

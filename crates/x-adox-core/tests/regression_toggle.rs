@@ -5,15 +5,16 @@
 use tempfile::tempdir;
 use x_adox_core::scenery::{SceneryManager, SceneryPackType};
 
+mod support;
+
 #[test]
 fn test_scenery_toggle_persistence() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let config_dir = root.join(".xad_oxide");
     let custom_scenery = root.join("Custom Scenery");
-    std::fs::create_dir_all(&config_dir).unwrap();
+    let _config = support::ScopedConfigRoot::new(&config_dir);
     std::fs::create_dir_all(&custom_scenery).unwrap();
-    std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
 
     let ini_path = custom_scenery.join("scenery_packs.ini");
 
@@ -39,6 +40,4 @@ fn test_scenery_toggle_persistence() {
     let saved_content = std::fs::read_to_string(&ini_path).unwrap();
     assert!(saved_content.contains("SCENERY_PACK_DISABLED Custom Scenery/Test_Pack/"));
     assert!(!saved_content.contains("SCENERY_PACK Custom Scenery/Test_Pack/"));
-
-    std::env::remove_var("X_ADOX_CONFIG_DIR");
 }

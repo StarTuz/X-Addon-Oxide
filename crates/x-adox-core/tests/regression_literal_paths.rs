@@ -5,13 +5,14 @@
 use tempfile::tempdir;
 use x_adox_core::scenery::{SceneryManager, SceneryPackType};
 
+mod support;
+
 #[test]
 fn test_literal_path_preservation() {
     let dir = tempdir().unwrap();
     let root = dir.path();
     let config_dir = root.join(".xad_oxide");
-    std::fs::create_dir_all(&config_dir).unwrap();
-    std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
+    let _config = support::ScopedConfigRoot::new(&config_dir);
 
     // Create folder with trailing space
     let custom_scenery = root.join("Custom Scenery");
@@ -45,6 +46,4 @@ fn test_literal_path_preservation() {
 
     // Verify it preserved the literal path including that space
     assert!(saved_content.contains("SCENERY_PACK_DISABLED Custom Scenery/Riga Latvija /"));
-
-    std::env::remove_var("X_ADOX_CONFIG_DIR");
 }

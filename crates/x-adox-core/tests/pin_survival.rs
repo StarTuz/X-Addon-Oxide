@@ -7,14 +7,13 @@ use tempfile::tempdir;
 use x_adox_bitnet::BitNetModel;
 use x_adox_core::profiles::{Profile, ProfileCollection, ProfileManager};
 
+mod support;
+
 #[test]
 fn test_pins_survive_empty_profile_startup() {
     let dir = tempdir().unwrap();
     let config_dir = dir.path().join(".xad_oxide");
-    fs::create_dir_all(&config_dir).unwrap();
-
-    // Set environment variable for the test
-    std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
+    let _config = support::ScopedConfigRoot::new(&config_dir);
 
     let xplane_root = dir.path().join("X-Plane 12");
     fs::create_dir_all(xplane_root.join("Resources")).unwrap();
@@ -92,8 +91,7 @@ fn test_pins_survive_empty_profile_startup() {
 fn test_profile_pins_take_priority() {
     let dir = tempdir().unwrap();
     let config_dir = dir.path().join(".xad_oxide");
-    fs::create_dir_all(&config_dir).unwrap();
-    std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
+    let _config = support::ScopedConfigRoot::new(&config_dir);
 
     let xplane_root = dir.path().join("X-Plane 12");
     fs::create_dir_all(xplane_root.join("Resources")).unwrap();
@@ -175,8 +173,7 @@ fn test_pins_survive_profile_with_scenery_states() {
 
     let dir = tempdir().unwrap();
     let config_dir = dir.path().join(".xad_oxide");
-    fs::create_dir_all(&config_dir).unwrap();
-    std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
+    let _config = support::ScopedConfigRoot::new(&config_dir);
 
     let xplane_root = dir.path().join("X-Plane 12");
     fs::create_dir_all(xplane_root.join("Resources")).unwrap();

@@ -9,6 +9,8 @@ use x_adox_core::apt_dat::AptDatParser;
 use x_adox_core::scenery::{SceneryManager, SceneryPackType};
 use x_adox_core::XPlaneManager;
 
+mod support;
+
 fn create_mock_xplane_root() -> TempDir {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
@@ -40,8 +42,7 @@ fn test_e2e_workflow() {
     let temp_dir = create_mock_xplane_root();
     let root_path = temp_dir.path().to_path_buf();
     let config_dir = temp_dir.path().join("config");
-    fs::create_dir_all(&config_dir).unwrap();
-    std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
+    let _config = support::ScopedConfigRoot::new(&config_dir);
 
     // 1. Initialize Manager
     let xpm = XPlaneManager::new(&root_path).expect("Failed to init XPlaneManager");
@@ -113,6 +114,4 @@ fn test_e2e_workflow() {
     // or checks modules if they are public.
     // x_adox_core::discovery::scan_aircraft?
     // Let's assume we can access it if `discovery` mod is pub
-
-    std::env::remove_var("X_ADOX_CONFIG_DIR");
 }

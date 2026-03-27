@@ -7,6 +7,8 @@ use tempfile::tempdir;
 use x_adox_core::management::{AddonType, ModManager};
 use x_adox_core::scenery::SceneryManager;
 
+mod support;
+
 #[test]
 fn test_scenery_deletion_persistence() {
     let dir = tempdir().unwrap();
@@ -16,10 +18,9 @@ fn test_scenery_deletion_persistence() {
     let resources = root.join("Resources");
 
     // Create necessary directories
-    fs::create_dir_all(&config_dir).unwrap();
+    let _config = support::ScopedConfigRoot::new(&config_dir);
     fs::create_dir_all(&custom_scenery).unwrap();
     fs::create_dir_all(&resources).unwrap();
-    std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
 
     // Create a mock scenery folder
     let pack_name = "test_pack";
@@ -65,8 +66,6 @@ fn test_scenery_deletion_persistence() {
     let mut sm2 = SceneryManager::new(ini_path.clone());
     sm2.load().unwrap();
     assert_eq!(sm2.packs.len(), 0, "SceneryManager should report 0 packs");
-
-    std::env::remove_var("X_ADOX_CONFIG_DIR");
 }
 
 #[test]
