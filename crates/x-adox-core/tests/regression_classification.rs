@@ -546,16 +546,16 @@ fn test_bitnet_library_not_promoted_by_discovered_airports() {
 }
 
 #[test]
-fn test_xpme_overlays_classified_as_airport_overlay() {
-    // Regression: XPME_Overlays is an overlay pack, NOT a base ortho package.
-    // It must be classified as AirportOverlay (not OrthoBase).
+fn test_xpme_overlays_classified_as_regional_overlay() {
+    // Regression: XPME_Overlays is a regional overlay pack, NOT a base ortho package
+    // and NOT an airport-specific overlay. It must be classified as RegionalOverlay.
     let name = "XPME_Overlays";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
     let result = Classifier::classify_heuristic(&path, name);
     assert_eq!(
         result,
-        SceneryCategory::AirportOverlay,
-        "'{}' should be AirportOverlay, got {:?}",
+        SceneryCategory::RegionalOverlay,
+        "'{}' should be RegionalOverlay, got {:?}",
         name,
         result
     );

@@ -32,37 +32,48 @@ pub fn sort_packs(
     model: Option<&x_adox_bitnet::BitNetModel>,
     context: &x_adox_bitnet::PredictContext,
 ) {
-    // CRITICAL: Sorting must be stable and deterministic.
-    // To prevent section fragmentation in scenery_packs.ini, we MUST use the
-    // matched rule name as a secondary tie-breaker after the priority score.
-    packs.sort_by(|a, b| {
-        // Calculate scores - use BitNet model if provided, otherwise fall back to category scores
-        let (score_a, score_b, _name_a, _name_b, lower_is_better) = if let Some(m) = model {
-            // BitNet: lower score = higher priority
-            let mut ctx_a = context.clone();
-            ctx_a.has_airports = !a.airports.is_empty();
-            ctx_a.has_tiles = !a.tiles.is_empty();
+    if packs.is_empty() {
+        return;
+    }
 
-            let mut ctx_b = context.clone();
-            ctx_b.has_airports = !b.airports.is_empty();
-            ctx_b.has_tiles = !b.tiles.is_empty();
+    // Pre-calculate all sort metadata once per pack to avoid redundant calls
+    // to BitNet/Classifier and to allow for single-pass logging of contradictions.
+    let mut sort_data: Vec<(usize, i32, String, bool)> = packs
+        .iter()
+        .enumerate()
+        .map(|(idx, p)| {
+            let (score, rule, lower_is_better) = if let Some(m) = model {
+                let mut ctx = context.clone();
+                ctx.has_airports = !p.airports.is_empty();
+                ctx.has_tiles = !p.tiles.is_empty();
+                let (s, r) = m.predict_with_rule_name(&p.name, &p.path, &ctx);
 
-            let (sa, na) = m.predict_with_rule_name(&a.name, &a.path, &ctx_a);
-            let (sb, nb) = m.predict_with_rule_name(&b.name, &b.path, &ctx_b);
-            (sa as i32, sb as i32, na, nb, true)
-        } else {
-            // Category-based: higher score = higher priority
-            (
-                calculate_score(a),
-                calculate_score(b),
-                String::new(),
-                String::new(),
-                false,
-            )
-        };
+                // Option C: Cross-system contradiction detection (Safety Net)
+                if !p.category.is_compatible_with_score(s as u8) {
+                    let healed = p.category.heal_score(s as u8);
+                    log::warn!(
+                        "Contradiction: pack '{}' is {:?} but BitNet scored it {} (rule '{}'). Healing score to {}.",
+                        p.name, p.category, s, r, healed
+                    );
+                    (healed as i32, r, true)
+                } else {
+                    (s as i32, r, true)
+                }
+            } else {
+                (calculate_score(p), String::new(), false)
+            };
+
+            (idx, score, rule, lower_is_better)
+        })
+        .collect();
+
+    // Perform the actual sort using the pre-calculated data
+    sort_data.sort_by(|&(idx_a, score_a, ref rule_a, lib_a), &(idx_b, score_b, ref rule_b, _)| {
+        let a = &packs[idx_a];
+        let b = &packs[idx_b];
 
         // Primary sort by score
-        let primary = if lower_is_better {
+        let primary = if lib_a {
             score_a.cmp(&score_b) // ASCENDING for BitNet (lower = top)
         } else {
             score_b.cmp(&score_a) // DESCENDING for category (higher = top)
@@ -71,15 +82,14 @@ pub fn sort_packs(
         match primary {
             std::cmp::Ordering::Equal => {
                 // Pinned packs keep their exact position; do not reorder relative to others.
-                if _name_a == x_adox_bitnet::PINNED_RULE_NAME
-                    || _name_b == x_adox_bitnet::PINNED_RULE_NAME
+                if rule_a == x_adox_bitnet::PINNED_RULE_NAME
+                    || rule_b == x_adox_bitnet::PINNED_RULE_NAME
                 {
                     return std::cmp::Ordering::Equal;
                 }
                 // Secondary Sort Rules: Group by Rule Name to prevent INI fragmentation
-                // When scores are equal, items belonging to the same "# Section" must be adjacent.
-                let section_a = x_adox_bitnet::canonical_section_name(&_name_a);
-                let section_b = x_adox_bitnet::canonical_section_name(&_name_b);
+                let section_a = x_adox_bitnet::canonical_section_name(&rule_a);
+                let section_b = x_adox_bitnet::canonical_section_name(&rule_b);
                 match section_a.cmp(&section_b) {
                     std::cmp::Ordering::Equal => {
                         // Tertiary Sort: SimHeaven specialized layers (if applicable)
@@ -101,8 +111,6 @@ pub fn sort_packs(
                         }
 
                         // Quaternary Sort: overlay-specific deterministic ordering.
-                        // This keeps numbered families (e.g. Amsterdam 1/2 overlays) in natural order
-                        // even when other overlay packs are interleaved.
                         if section_a == "Airport Overlays" && section_b == "Airport Overlays" {
                             let key_a = overlay_order_key(&a.name);
                             let key_b = overlay_order_key(&b.name);
@@ -111,9 +119,9 @@ pub fn sort_packs(
                             }
                         }
 
-                        // Preserve user/discovery order for true ties.
-                        // sort_by is stable, so returning Equal keeps relative order.
-                        std::cmp::Ordering::Equal
+                        // Preserve original order for true ties (stable sort).
+                        // With index-based sorting, compare indices to maintain stability.
+                        idx_a.cmp(&idx_b)
                     }
                     ord => ord,
                 }
@@ -121,6 +129,16 @@ pub fn sort_packs(
             ord => ord,
         }
     });
+
+    // Reorder the original vector based on the sorted indices
+    let sorted_packs: Vec<SceneryPack> = sort_data
+        .into_iter()
+        .map(|(idx, _, _, _)| packs[idx].clone())
+        .collect();
+
+    for (i, p) in sorted_packs.into_iter().enumerate() {
+        packs[i] = p;
+    }
 }
 
 fn calculate_score(pack: &SceneryPack) -> i32 {

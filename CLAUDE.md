@@ -72,7 +72,7 @@ crates/
   - **`FlightPlan`** has `time: Option<TimeKeyword>` and `weather: Option<WeatherKeyword>` fields (parsed from NLP input). These are display/export hints — they do not filter airports. `calculate_solar_time()` derives `TimeKeyword` from longitude + UTC.
   - **`FlightPrompt` NLP fields**: `direction_bearing: Option<(f64, f64)>` — cardinal direction constraint parsed from "fly north", "heading northeast", Chinese compass words (东北/西南/etc.); `user_min_dist_nm`/`user_max_dist_nm` — explicit distance overrides from "between 100 and 200 nm", "within 50 nm", "at least 300 nm" (km/mi also accepted). These override the default 10–8000nm range when set.
 - `weather.rs` - `WeatherEngine` fetches real-time METAR data and maps observed conditions to `WeatherKeyword` (Storm, Rain, Cloudy, Clear, etc.). Called by `generate_flight_from_prompt()` when the prompt contains a weather or time keyword. Results used for flight context display in the GUI.
-- `data/` - Embedded binary assets: `flight_context_bundle.json` (63 airport history snippets), `flight_context_pois_overlay.json` (curated POIs for EGLL/LIRF), `icao_to_wikipedia.csv` (ICAO→Wikipedia title map for ~16k airports), `seed_airports.json` (~139 region keys including geographic features — Alps, Himalayas, PacIsles sub-regions etc. — fallback airports for flight gen)
+- `data/` - Embedded binary assets: `flight_context_bundle.json` (63 airport history snippets), `flight_context_pois_overlay.json` (curated POIs for EGLL/LIRF), `icao_to_wikipedia.csv` (ICAO→Wikipedia title map for ~16k airports), `seed_airports.json` (~148 region keys including geographic features — Alps, Himalayas, Dolomites, Sahara, Cascades, NorwegianFjords, TibetanPlateau, AustralianOutback, etc. — fallback airports for flight gen)
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
   - `ini_handler.rs` - Reads/writes `scenery_packs.ini` with raw_path round-trip preservation
   - `sorter.rs` - Smart sort using stable `sort_by` to preserve manual pins
@@ -87,7 +87,8 @@ Rules-based heuristics engine (not ML despite the name) that:
 - Scores scenery packs (0-100) for smart sorting with 16 `SceneryCategory` variants (defined in `scenery/mod.rs`, includes virtual `Group`)
 - Classifies aircraft by engine type and category using regex pattern matching
 - Parses `.acf` binary files via `parser::parse_acf()` → `AcfData` struct (`icao_type`, `num_engines`, `min_rwy_len`, `vne_kts`, `mtow_kg`); called by `discovery.rs` at aircraft scan time
-- Parses natural language flight prompts via `flight_prompt.rs` / `parser.rs` (e.g., "London to Paris in a 737", "fly northeast within 300 nm")
+- Parses natural language flight prompts via `flight_prompt.rs` / `parser.rs` (e.g., "London to Paris in a 737", "fly northeast within 300 nm", "flight in the mountains in europe")
+  - **Geographic false-positive guard**: `GEOGRAPHIC_FEATURE_WORDS` (37 terms: mountain, mountains, highlands, fjord, desert, jungle, outback, plateau, etc.) prevents geographic phrases in the aircraft slot (e.g., "in the mountains in europe") from being misclassified as aircraft names. Matching phrases are redirected to destination parsing instead.
 - Supports manual priority overrides (sticky sort / pins)
 - **Flight preferences** (schema v11): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; used by flight gen to prefer airports/remember last flight for region-based prompts
 - Lower score = higher priority (inverted from category scores)
@@ -108,7 +109,7 @@ Rules-based heuristics engine (not ML despite the name) that:
 
 > When modifying these rules, always run: `cargo test -p x-adox-bitnet --test ordering_guardrails`
 
-**`geo/` module** — `RegionIndex` backed by bundled `regions.json`. Provides `Region` (with one or more `BoundingBox` spans) and fuzzy `search(query)` for resolving natural-language region names (e.g., "British Isles", "Alaska") to bounding boxes used by flight gen for filtering airports.
+**`geo/` module** — `RegionIndex` backed by bundled `regions.json`. Provides `Region` (with one or more `BoundingBox` spans) and fuzzy `search(query)` for resolving natural-language region names (e.g., "British Isles", "Alaska") to bounding boxes used by flight gen for filtering airports. `location_aliases.json` maps NLP terms to `LocationConstraint` — includes 44+ geographic feature aliases (mountains, fjords, desert, highlands, etc.) covering all seeded regions. **Invariant**: every airport in `seed_airports.json` must lie within its region's bounding box — enforced by `test_all_regions_flight_generation`.
 
 ### x-adox-gui
 
@@ -272,7 +273,10 @@ Follow conventional commits: `feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `release
 
 ## Testing Notes
 
+> See `docs/TESTING.md` for comprehensive test coverage documentation (~311 tests across crates).
+
 - Use `X_ADOX_CONFIG_DIR` env var to override config directory in tests
+- **Test config isolation**: Use `ScopedConfigRoot` from `tests/support.rs` for integration tests that write profiles, scenery state, or backups — avoids writing to real user config
 - Tests in `x-adox-core` may create temp X-Plane directory structures
 - GUI crate has no unit tests (visual testing only)
 - Regression tests use naming convention `regression_*.rs` in `crates/x-adox-core/tests/`

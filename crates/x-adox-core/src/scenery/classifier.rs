@@ -115,10 +115,13 @@ impl Classifier {
             return SceneryCategory::AutoOrthoOverlay;
         }
 
-        // 8b. XPME Base packages (must come before generic overlay check)
-        // "XPME_South_America" etc. should be OrthoBase. But "XPME_Overlays"
-        // is an overlay pack and should fall through to the overlay check.
-        if name_lower.starts_with("xpme") && !name_lower.contains("overlay") {
+        // 8b. XPME packages (must come before generic overlay check)
+        // "XPME_South_America" etc. = OrthoBase
+        // "XPME_Overlays" = RegionalOverlay (NOT airport-specific)
+        if name_lower.starts_with("xpme") {
+            if name_lower.contains("overlay") {
+                return SceneryCategory::RegionalOverlay;
+            }
             return SceneryCategory::OrthoBase;
         }
 
