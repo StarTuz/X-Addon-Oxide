@@ -142,6 +142,12 @@ Iced framework with Elm-like message-driven architecture:
 
 Custom error types using `thiserror::Error` in each crate (XamError, SceneryError, AptDatError). Use `anyhow::Result` for general fallback.
 
+## Test Harness Notes
+
+- Tests that call `SceneryManager::save()`, `ProfileManager::save()`, or otherwise trigger backup/config writes must not use the real user config directory.
+- For `x-adox-core` integration tests, use `crates/x-adox-core/tests/support.rs` and create a `support::ScopedConfigRoot` guard pointed at a temp directory. This isolates `X_ADOX_CONFIG_DIR`, restores the previous value on drop, and serializes env-var mutation within the test process.
+- When adding or removing integration tests, update `docs/TESTING.md`. Use `cargo test -- --list` as the source of truth for counts before editing the document.
+
 ## Commit Style
 
 Follow conventional commits: `feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `release:`

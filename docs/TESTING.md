@@ -497,6 +497,11 @@ cargo test -p x-adox-core --test flight_gen_stress -- --include-ignored --nocapt
 STRESS_SEED=12345 cargo test -p x-adox-core --test flight_gen_stress -- --include-ignored --nocapture
 ```
 
+## Test Environment Notes
+
+- `x-adox-core` integration tests that write profiles, scenery state, or backups should use `crates/x-adox-core/tests/support.rs` and hold a `ScopedConfigRoot` guard for a temp config directory instead of writing to the real user config root.
+- When refreshing this document, prefer `cargo test -p x-adox-core -- --list` and `cargo test -p x-adox-bitnet -- --list` over manual counting.
+
 ---
 
-*Last updated: February 2026. Update this file when adding or removing tests.*
+*Last updated: March 2026. Update this file when adding or removing tests.*
