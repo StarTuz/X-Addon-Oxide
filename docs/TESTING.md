@@ -1,6 +1,8 @@
 # Test Coverage Reference
 
-This document maps every test file and test function to the feature it protects.
+This document maps the current test files and the most important test groups to
+the feature they protect. Counts should match `cargo test -- --list`; sections
+may summarize large test families instead of listing every function inline.
 Update this file whenever tests are added, removed, or restructured.
 
 ---
@@ -9,17 +11,17 @@ Update this file whenever tests are added, removed, or restructured.
 
 | Crate | Unit tests | Integration/regression tests | Total |
 |---|---|---|---|
-| `x-adox-bitnet` | 60 | 7 | 67 |
-| `x-adox-core` | 26 | ~115 | ~141 |
+| `x-adox-bitnet` | 95 | 8 | 103 |
+| `x-adox-core` | 42 | 166 | 208 |
 | `x-adox-gui` | 0 | 0 | 0 (visual only) |
 | `x-adox-cli` | 0 | 0 | 0 |
-| **Total** | **86** | **~122** | **~208** |
+| **Total** | **137** | **174** | **311** |
 
 ---
 
 ## x-adox-bitnet
 
-### `src/lib.rs` — 29 unit tests
+### `src/lib.rs` — 37 unit tests
 
 **Feature: Aircraft classification (BitNet heuristics engine)**
 
@@ -55,7 +57,7 @@ Update this file whenever tests are added, removed, or restructured.
 | `test_predict_tags_manual_override` | Manual category override persists |
 | `test_predict_tags_cirrus_sf50_no_fokker` | SF50 not confused with Fokker |
 
-### `src/flight_prompt.rs` — 28 unit tests
+### `src/flight_prompt.rs` — 55 unit tests
 
 **Feature: NLP flight prompt parsing**
 
@@ -96,8 +98,8 @@ Update this file whenever tests are added, removed, or restructured.
 
 | Test | Protects |
 |---|---|
-| `test_region_bounds` | Region bounds contain known airports |
-| `test_region_search` | Fuzzy search returns correct region |
+| `test_search_alaska` | Region search finds Alaska reliably |
+| `test_search_washington_bare` | Bare "Washington" resolves to the intended region search path |
 
 ### `src/geo/data.rs` — 1 unit test
 
@@ -105,7 +107,7 @@ Update this file whenever tests are added, removed, or restructured.
 
 | Test | Protects |
 |---|---|
-| `test_regions_load` | All 154 regions parse without error |
+| `test_region_loading` | Region dataset parses without error |
 
 ### `src/parser.rs` — 3 unit tests
 
@@ -123,26 +125,27 @@ Update this file whenever tests are added, removed, or restructured.
 
 | Test | Protects |
 |---|---|
-| `test_lfpg_score` | LFPG airport pack scores correctly |
-| `test_lfpg_sort_position` | LFPG sorts to correct position relative to mesh |
+| `test_lfpg_classification` | LFPG airport pack classification remains stable |
+| `test_lfpg_classification_no_discovery` | LFPG classification does not depend on discovery metadata |
 
-### `tests/ordering_guardrails.rs` — 5 integration tests
+### `tests/ordering_guardrails.rs` — 6 integration tests
 
 **Feature: Scenery ordering score guarantees**
 
 | Test | Protects |
 |---|---|
-| `test_airport_above_mesh` | Airport score < mesh score |
-| `test_overlay_above_mesh` | Overlay score < mesh score |
-| `test_library_between_airport_and_mesh` | Library score in correct tier |
-| `test_autoortho_at_bottom` | AutoOrtho at lowest priority |
-| `test_global_airports_score` | Global airports score in correct tier |
+| `test_critical_scenery_ordering_pairs` | Core ordering relationships stay intact across tiers |
+| `test_every_bitnet_rule_has_at_least_one_match` | No configured BitNet rule becomes dead/unreachable |
+| `test_global_airports_guard_uses_rule_name_not_score` | Global Airports anchor survives score refactors |
+| `test_orbx_a_location_specific_above_regional` | Orbx A location-specific packs stay above regional packs |
+| `test_orbx_b_mesh_scored_above_mesh_tier` | Orbx airport companion meshes avoid generic mesh handling |
+| `test_vfr_objects_not_healed_to_mesh` | VFR overlay-style packs are not sunk to mesh tiers |
 
 ---
 
 ## x-adox-core
 
-### `src/flight_gen.rs` — 7 unit tests
+### `src/flight_gen.rs` — 10 unit tests
 
 **Feature: Flight generation internals**
 
@@ -155,8 +158,11 @@ Update this file whenever tests are added, removed, or restructured.
 | `test_region_selection_by_bounds` | Airport filtered to region bounding box |
 | `test_simbrief_url_orig_dest_type` | SimBrief URL format for ICAO/NearCity endpoints |
 | `test_load_flight_context_from_json` | Flight context JSON load |
+| `test_normalize_aircraft_tag` | Aircraft tag normalization before matching/export |
+| `test_simbrief_exact_subtype_beats_family_fallback` | SimBrief prefers exact aircraft subtype matches |
+| `test_simbrief_family_fallback_policy` | SimBrief falls back to family mappings deterministically |
 
-### `tests/flight_gen_test.rs` — 17 integration tests
+### `tests/flight_gen_test.rs` — 22 integration tests
 
 **Feature: End-to-end flight generation correctness**
 
@@ -180,7 +186,7 @@ Update this file whenever tests are added, removed, or restructured.
 | `test_pool_base_only_fast_path` | Empty packs → no BTreeMap allocation |
 | `test_pool_new_airports_added_from_pack` | Pack-only airports appear in pool |
 
-### `tests/flight_gen_robustness.rs` — 10 integration tests
+### `tests/flight_gen_robustness.rs` — 12 integration tests
 
 **Feature: Region-level flight generation correctness**
 
@@ -208,7 +214,7 @@ Update this file whenever tests are added, removed, or restructured.
 | `stress_missing_runway_data_explicit_dest` | Missing runway data doesn't panic |
 | *(ignored by default)* | Long-running stress; run with `--include-ignored` |
 
-### `tests/regression_validator.rs` — 21 tests
+### `tests/regression_validator.rs` — 22 tests
 
 **Feature: Scenery order validation**
 
@@ -236,7 +242,7 @@ Update this file whenever tests are added, removed, or restructured.
 | `test_specific_mesh_above_overlay_no_warning` | Specific mesh exempt from overlay check |
 | `test_empty_pack_list_no_issues` | Empty list → no crash |
 
-### `tests/regression_classification.rs` — 9 tests
+### `tests/regression_classification.rs` — 21 tests
 
 **Feature: Heuristic scenery classification**
 
@@ -251,6 +257,42 @@ Update this file whenever tests are added, removed, or restructured.
 | `test_icao_companion_packs_classified_as_specific_mesh` | Airport companion pack classification |
 | `test_flytampa_mesh_still_classified_as_mesh` | FlyTampa mesh classification |
 | `test_orthobase_with_airports_stays_orthobase` | OrthoBase + airports stays OrthoBase |
+| `test_xpme_overlays_classified_as_airport_overlay` | XPME overlays remain overlay-classified |
+| `test_seasons_manager_classified_as_library` | Seasons Manager stays in the library tier |
+| `test_reconcile_preserves_discovery_data` | Reconcile does not wipe discovery metadata |
+| `test_bitnet_community_libraries_match_libraries_rule` | BitNet aligns with library heuristics for community packs |
+| `test_bitnet_xpme_overlays_not_sunk_to_base` | BitNet does not demote XPME overlay packs |
+| `test_bitnet_library_not_promoted_by_discovered_airports` | Library packs with discovered airports stay libraries |
+| `test_bitnet_riga_not_promoted_by_discovered_airports` | City-enhancement packs avoid false airport promotion |
+| `test_bitnet_orbx_landmarks_not_grouped_into_airports` | Orbx landmarks keep landmark grouping |
+| `test_bitnet_helicopter_pack_promoted_to_airports` | Genuine airport/heliport packs still promote correctly |
+| `test_bitnet_crow_in_name_with_icao_still_promoted` | Airport evidence beats incidental keyword collisions |
+| `test_helicopter_destinations_not_classified_as_ortho` | Helicopter destination packs avoid ortho misclassification |
+| `test_sji_airports_and_alphanumeric_icao` | Alphanumeric ICAO-style airport packs classify correctly |
+
+### `tests/regression_cross_system.rs` — 4 tests
+
+**Feature: Classifier ↔ BitNet agreement**
+
+| Test | Protects |
+|---|---|
+| `test_classifier_produces_expected_categories` | Corpus expectations stay aligned with heuristic classifier |
+| `test_no_category_score_contradictions` | Classifier and BitNet avoid hard ordering contradictions |
+| `test_overlay_categories_never_get_base_scores` | Overlay-classified packs never sink into base/mesh tiers |
+| `test_base_categories_never_get_overlay_scores` | Base/mesh-classified packs never rise into overlay tiers |
+
+### `tests/regression_pipeline.rs` — 6 tests
+
+**Feature: End-to-end scenery pipeline**
+
+| Test | Protects |
+|---|---|
+| `test_pipeline_standard_xplane_install` | Typical mixed install sorts and validates cleanly |
+| `test_pipeline_xpme_with_orbx_orthos` | XPME overlays remain above Orbx orthos |
+| `test_pipeline_orbx_full_product_line` | Orbx A/B/C pack families sort coherently together |
+| `test_pipeline_autoortho_with_overlays` | AutoOrtho bases remain below overlays |
+| `test_pipeline_companion_packs_with_airports` | Airport companion meshes do not break validation |
+| `test_pipeline_large_mixed_install` | Large mixed installs stay warning-free after full pipeline |
 
 ### `tests/regression_score_modifiers.rs` — 16 tests
 
@@ -378,19 +420,19 @@ Covers: `library.txt` promotes to Library, `apt.dat` promotes to Airport, DSF ti
 
 Covers: missing INI file, corrupt INI, empty pack list.
 
-### `src/scenery/mod.rs` — 9 unit tests
+### `src/scenery/mod.rs` — 14 unit tests
 
 **Feature: INI parsing and pack reconciliation**
 
 Covers: INI parse, pack reconciliation, disabled pack detection, sort stability.
 
-### `src/scenery/sorter.rs` — 6 unit tests
+### `src/scenery/sorter.rs` — 8 unit tests
 
 **Feature: Smart sort algorithm**
 
 Covers: stable sort, pin respect, category ordering, equal-score preservation.
 
-### `src/lib.rs` — 5 unit tests
+### `src/lib.rs` — 6 unit tests
 
 **Feature: Core utilities**
 

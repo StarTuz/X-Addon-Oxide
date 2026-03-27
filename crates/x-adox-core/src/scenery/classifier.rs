@@ -115,6 +115,13 @@ impl Classifier {
             return SceneryCategory::AutoOrthoOverlay;
         }
 
+        // 8b. XPME Base packages (must come before generic overlay check)
+        // "XPME_South_America" etc. should be OrthoBase. But "XPME_Overlays"
+        // is an overlay pack and should fall through to the overlay check.
+        if name_lower.starts_with("xpme") && !name_lower.contains("overlay") {
+            return SceneryCategory::OrthoBase;
+        }
+
         // 9. Airport-Specific Enhancements & Overlays (Level 7 - Score 75)
         // Grouping Y KTEX Overlay and other specific enhancements here.
         if name_lower.contains("overlay")
@@ -128,12 +135,7 @@ impl Classifier {
             return SceneryCategory::AirportOverlay;
         }
 
-        // 9b. Map Enhancement Base (must come before ICAO detection)
-        // "XPME_South_America" etc. contain a 4-letter prefix that looks like an ICAO
-        // code; intercept them here before rule 10 misclassifies them as CustomAirport.
-        if name_lower.starts_with("xpme") {
-            return SceneryCategory::OrthoBase;
-        }
+
 
         // 10. Custom Airports (Level 1 - Score 100)
         // Add DarkBlue, and verify it's not a generic overlay/library already caught.

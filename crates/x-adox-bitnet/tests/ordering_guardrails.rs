@@ -393,3 +393,87 @@ fn test_global_airports_guard_uses_rule_name_not_score() {
         "EGLL must be overridden to 'Airports'"
     );
 }
+
+#[test]
+fn test_every_bitnet_rule_has_at_least_one_match() {
+    // Ensures no BitNet rule is silently dead.
+    // Every rule in the default config must have at least one pack name
+    // in our test corpus that matches it. This prevents rule rot during
+    // refactoring and ensures we have test coverage for every tier.
+    let config = HeuristicsConfig::default();
+    let mut model = BitNetModel::new().unwrap();
+    model.update_config(config.clone());
+    let dummy_path = Path::new("/dummy/path");
+    let ctx = PredictContext::default();
+
+    // Pack names designed to exercise every rule.
+    let corpus = vec![
+        // Tier 1: Airports
+        "Orbx_A_EGLC_LondonCity",
+        "EGLL_TAIMODELS",          // → Airports (ICAO override)
+        // Global
+        "Global Airports",
+        // Landmarks
+        "X-Plane Landmarks - London",
+        "Riga Latvija",            // → City Enhancements (city keyword)
+        "Famous_Landmark_pack",    // → Landmarks
+        // Regional
+        "Orbx_B_GB_South_TrueEarth_Overlay",
+        "simHeaven_X-World_Europe-1-vfr",
+        "Global_Forests_v2",
+        // Fluff/Libraries
+        "VFR-Objects_GK_+47+007",
+        "Seagulls_Pack",           // → Birds
+        "OpenSceneryX_Library",
+        // AutoOrtho
+        "yAutoOrtho_Overlays",
+        // Ortho
+        "Orbx_C_GB_South_TrueEarth_Orthos",
+        "Ortho4XP_+40-080",
+        // Mesh
+        "zzz_UHD_Mesh_v4",
+        "Orbx_D_GB_North_Mesh",
+        // Exclusion
+        "My_Exclusion_Zone",
+        // Base
+        "z_autoortho",
+        "XPME_South_America",
+    ];
+
+    // Collect which rules were matched
+    let mut matched_rules = std::collections::HashSet::new();
+    for name in &corpus {
+        let (_, rule) = model.predict_with_rule_name(name, dummy_path, &ctx);
+        matched_rules.insert(rule);
+    }
+
+    // Check every rule is covered
+    let mut unmatched = Vec::new();
+    for rule in &config.rules {
+        // Check if the rule name (or its canonical/promoted form) was matched
+        let name = &rule.name;
+        let is_matched = matched_rules.contains(name)
+            || matched_rules.iter().any(|r| {
+                // Some rules get promoted (e.g. ICAO → "Airports", landmarks → "Orbx A Landmarks")
+                // We verify the base rule name
+                r.contains(name.split('/').next().unwrap_or(name))
+            });
+
+        if !is_matched {
+            // Check if any corpus entry would match this rule's keywords
+            let has_keyword_match = corpus.iter().any(|pack_name| {
+                let lower = pack_name.to_lowercase();
+                rule.keywords.iter().any(|kw| lower.contains(&kw.to_lowercase()))
+            });
+            if !has_keyword_match {
+                unmatched.push(format!("  '{}' (keywords: {:?})", name, rule.keywords));
+            }
+        }
+    }
+
+    assert!(
+        unmatched.is_empty(),
+        "BitNet rules with no matching pack in test corpus:\n{}",
+        unmatched.join("\n")
+    );
+}

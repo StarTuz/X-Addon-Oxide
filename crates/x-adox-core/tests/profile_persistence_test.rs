@@ -11,7 +11,10 @@ fn test_profile_pin_persistence() -> anyhow::Result<()> {
     // 1. Setup temporary test directory
     let temp_dir = tempfile::tempdir()?;
     let xplane_root = temp_dir.path().join("X-Plane 12");
+    let config_dir = temp_dir.path().join(".xad_oxide");
     fs::create_dir_all(&xplane_root)?;
+    fs::create_dir_all(&config_dir)?;
+    std::env::set_var("X_ADOX_CONFIG_DIR", &config_dir);
 
     // 2. Initialize ProfileManager
     let manager = ProfileManager::new(&xplane_root);
@@ -67,6 +70,8 @@ fn test_profile_pin_persistence() -> anyhow::Result<()> {
         Some(&50),
         "Pin should still exist in Default profile after switch"
     );
+
+    std::env::remove_var("X_ADOX_CONFIG_DIR");
 
     Ok(())
 }

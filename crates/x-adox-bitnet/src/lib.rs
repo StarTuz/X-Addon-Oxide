@@ -233,7 +233,7 @@ pub struct HeuristicsConfig {
 }
 
 /// When a user's file has a lower version, migration logic is applied on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 14;
+pub const CURRENT_SCHEMA_VERSION: u32 = 15;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
@@ -722,6 +722,11 @@ impl BitNetModel {
                     log::info!("[BitNet] v13→v14: Added flight_aircraft_exclude field");
                 }
 
+                // v14→v15: XPME overlay handling fix. Logic change only, no config changes needed.
+                if config.schema_version <= 14 {
+                    log::info!("[BitNet] v14→v15: XPME overlay handling fix");
+                }
+
                 config.schema_version = CURRENT_SCHEMA_VERSION;
                 // Save the migrated config
                 if let Some(parent) = path.parent() {
@@ -983,6 +988,17 @@ impl BitNetModel {
                     score = Some(11);
                     matched_rule_name = Some("Orbx A Airport".to_string());
                 }
+            }
+        }
+
+        // XPME overlay packs (e.g. "XPME_Overlays") must NOT be sunk to the
+        // bottom of the stack by the generic "xpme" keyword in Map Enhancement
+        // Base. The base rule is only for XPME Base ortho packages
+        // (XPME_South_America, XPME_Europe, etc.).
+        if let Some(ref rule_name) = matched_rule_name {
+            if rule_name == "Map Enhancement Base" && name_lower.contains("overlay") {
+                score = Some(12);
+                matched_rule_name = Some("Airport Overlays".to_string());
             }
         }
 

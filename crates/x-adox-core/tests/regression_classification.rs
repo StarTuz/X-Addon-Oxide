@@ -544,3 +544,46 @@ fn test_bitnet_library_not_promoted_by_discovered_airports() {
     assert_eq!(score, 35);
     assert_eq!(rule, "Libraries");
 }
+
+#[test]
+fn test_xpme_overlays_classified_as_airport_overlay() {
+    // Regression: XPME_Overlays is an overlay pack, NOT a base ortho package.
+    // It must be classified as AirportOverlay (not OrthoBase).
+    let name = "XPME_Overlays";
+    let path = PathBuf::from(format!("Custom Scenery/{}", name));
+    let result = Classifier::classify_heuristic(&path, name);
+    assert_eq!(
+        result,
+        SceneryCategory::AirportOverlay,
+        "'{}' should be AirportOverlay, got {:?}",
+        name,
+        result
+    );
+}
+
+#[test]
+fn test_bitnet_xpme_overlays_not_sunk_to_base() {
+    // Regression: XPME_Overlays must NOT be matched by the "Map Enhancement Base"
+    // rule (score 95). It should be reclassified as "Airport Overlays" (score 12).
+    let model = x_adox_bitnet::BitNetModel::default();
+    let ctx = x_adox_bitnet::PredictContext::default();
+    let (score, rule) = model.predict_with_rule_name(
+        "XPME_Overlays",
+        &PathBuf::from("Custom Scenery/XPME_Overlays"),
+        &ctx,
+    );
+    assert_eq!(score, 12, "XPME_Overlays should score 12 (overlay tier)");
+    assert_eq!(
+        rule, "Airport Overlays",
+        "XPME_Overlays should be 'Airport Overlays'"
+    );
+
+    // Base packages must still score 95
+    let (base_score, base_rule) = model.predict_with_rule_name(
+        "XPME_South_America",
+        &PathBuf::from("Custom Scenery/XPME_South_America"),
+        &ctx,
+    );
+    assert_eq!(base_score, 95, "XPME_South_America should still score 95");
+    assert_eq!(base_rule, "Map Enhancement Base");
+}

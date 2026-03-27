@@ -464,3 +464,28 @@ fn test_empty_pack_list_no_issues() {
     let report = SceneryValidator::validate(&[]);
     assert!(report.issues.is_empty());
 }
+
+#[test]
+fn test_orbx_ortho_above_xpme_overlay_triggers_warning() {
+    // Regression: Orbx TrueEarth Orthos (OrthoBase) above XPME_Overlays
+    // (AirportOverlay) should trigger a mesh_above_overlay warning.
+    let packs = vec![
+        make_pack(
+            "Orbx_C_GB_South_TrueEarth_Orthos",
+            SceneryCategory::OrthoBase,
+        ),
+        make_pack("XPME_Overlays", SceneryCategory::AirportOverlay),
+    ];
+
+    let report = SceneryValidator::validate(&packs);
+    let issues: Vec<_> = report
+        .issues
+        .iter()
+        .filter(|i| i.issue_type == "mesh_above_overlay")
+        .collect();
+    assert_eq!(
+        issues.len(),
+        1,
+        "OrthoBase above AirportOverlay should trigger mesh_above_overlay"
+    );
+}
