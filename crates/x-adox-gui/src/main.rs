@@ -719,6 +719,9 @@ struct App {
     // Pro Mode
     validation_report: Option<x_adox_core::scenery::validator::ValidationReport>,
     simulated_packs: Option<Arc<Vec<SceneryPack>>>,
+    // Dedicated report for Smart Sort simulation — isolated from validation_report
+    // so that a concurrent SceneryDeepScanComplete cannot overwrite it mid-display.
+    simulated_report: Option<x_adox_core::scenery::validator::ValidationReport>,
     region_focus: Option<String>,
 
     animation_time: f32, // Pulsing/Animation state
@@ -1004,6 +1007,7 @@ impl App {
             new_tag_input: String::new(),
             scenery_tag_focus: None,
             validation_report: None,
+            simulated_report: None,
 
             // Utilities
             logbook: Vec::new(),
@@ -3012,7 +3016,9 @@ impl App {
                 match result {
                     Ok((packs, report)) => {
                         self.simulated_packs = Some(packs);
-                        self.validation_report = Some(report);
+                        // Store in dedicated field — NOT validation_report — so that a
+                        // concurrent SceneryDeepScanComplete cannot overwrite it.
+                        self.simulated_report = Some(report);
                         self.status = "Simulation complete. Review warnings if any.".to_string();
                     }
                     Err(e) => self.status = format!("Simulation error: {}", e),
@@ -3024,6 +3030,7 @@ impl App {
                 let packs_to_save = self.packs.clone();
                 let root = self.xplane_root.clone();
                 self.simulated_packs = None;
+                self.simulated_report = None;
                 // validation_report is NOT cleared here; it will be refreshed by the subsequent reload
                 self.status = "Applying changes...".to_string();
                 let model = self.heuristics_model.clone();
@@ -3034,6 +3041,7 @@ impl App {
             }
             Message::CancelSort => {
                 self.simulated_packs = None;
+                self.simulated_report = None;
                 // validation_report is NOT cleared here; preserves current state
                 self.status = "Sort cancelled.".to_string();
                 Task::none()
@@ -3059,7 +3067,7 @@ impl App {
                             // This teaches the sorting engine to treat these packs as Mesh (Score 30)
                             let mut added_overrides = Vec::new();
 
-                            if let Some(report) = &self.validation_report {
+                            if let Some(report) = &self.simulated_report {
                                 for issue in &report.issues {
                                     if issue.issue_type == "mesh_above_overlay"
                                         && !self.ignored_issues.contains(&(
@@ -3090,6 +3098,7 @@ impl App {
                                     
                                     // Trigger a re-sort with the new rules
                                     self.simulated_packs = None;
+                                    self.simulated_report = None;
                                     return Task::done(Message::SmartSort);
                                 }
                             } else {
@@ -3097,7 +3106,7 @@ impl App {
                             }
                         }
                         "shadowed_mesh" => {
-                            if let Some(report) = &self.validation_report {
+                            if let Some(report) = &self.simulated_report {
                                 let mut packs_to_disable = std::collections::HashSet::new();
                                 for issue in &report.issues {
                                     if issue.issue_type == "shadowed_mesh"
@@ -3119,9 +3128,9 @@ impl App {
                         }
                         _ => {}
                     }
-                    // Re-validate
+                    // Re-validate the simulated packs after the fix
                     let report = x_adox_core::scenery::validator::SceneryValidator::validate(packs);
-                    self.validation_report = Some(report);
+                    self.simulated_report = Some(report);
                 }
                 Task::none()
             }
@@ -3700,6 +3709,7 @@ impl App {
                 self.active_tab = Tab::Scenery;
                 self.selected_scenery = Some(name.clone());
                 self.simulated_packs = None;
+                self.simulated_report = None;
                 self.validation_report = None;
 
                 if let Some(index) = self.packs.iter().position(|p| p.name == name) {
@@ -5628,7 +5638,7 @@ impl App {
                     ..Default::default()
                 })
                 .into()
-        } else if let (Some(report), Some(packs)) = (&self.validation_report, &self.simulated_packs)
+        } else if let (Some(report), Some(packs)) = (&self.simulated_report, &self.simulated_packs)
         {
             container(self.view_simulation_modal(report, packs))
                 .width(Length::Fill)

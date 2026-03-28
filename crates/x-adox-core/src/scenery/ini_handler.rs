@@ -108,8 +108,14 @@ pub fn write_ini(
     let mut last_section = String::new();
 
     for pack in packs {
-        // Determine section header from the matched rule name, then normalize it
-        // through the canonical section mapping used by sorter.rs.
+        // Determine section header from the matched rule name.
+        // IMPORTANT: Use actual rule name, NOT canonical mapping. The canonical
+        // mapping causes repeated section headers when different rules (with
+        // different scores) map to the same name (e.g., "Orbx B" → "Airport Overlays").
+        // Since the sorter groups by score first, using canonical names here
+        // creates fragmented sections scattered throughout the file.
+        // CRITICAL: Use the same full context as the sorter to ensure section
+        // headers match the sort order.
         let current_section = if let Some(m) = model {
             let (_score, _category, rule_name) = m.predict_with_rule_name(
                 &pack.name,
@@ -117,11 +123,13 @@ pub fn write_ini(
                 &x_adox_bitnet::PredictContext {
                     has_airports: !pack.airports.is_empty(),
                     has_tiles: !pack.tiles.is_empty(),
+                    object_count: pack.descriptor.object_count,
+                    facade_count: pack.descriptor.facade_count,
+                    has_airport_properties: pack.descriptor.has_airport_properties,
                     ..Default::default()
                 },
             );
-            let canonical = x_adox_bitnet::canonical_section_name(&rule_name);
-            format!("# {}", canonical)
+            format!("# {}", rule_name)
         } else {
             // Fallback to category-based headers if no model
             match pack.category {

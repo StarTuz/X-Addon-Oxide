@@ -567,18 +567,21 @@ fn test_bitnet_library_not_promoted_by_discovered_airports() {
 }
 
 #[test]
-fn test_xpme_overlays_classified_as_regional_overlay() {
+fn test_xpme_overlays_classified_as_auto_ortho_overlay() {
     let model = x_adox_bitnet::BitNetModel::default();
     let ctx = x_adox_bitnet::PredictContext::default();
-    // Regression: XPME_Overlays is a regional overlay pack, NOT a base ortho package
-    // and NOT an airport-specific overlay. It must be classified as RegionalOverlay.
+    // Research correction (2026-03): XPME_Overlays contains environmental DSF overlays
+    // (roads, forests, autogen exclusions) — analogous to yAutoOrtho_Overlays.
+    // Per SimHeaven FAQ and X-Plained.com, "overlay photo sceneries" sit BELOW libraries
+    // but ABOVE base satellite packs. Old category RegionalOverlay at score 12 wrongly
+    // placed this pack ABOVE Global Airports (13), causing exclusion zone violations.
     let name = "XPME_Overlays";
     let path = PathBuf::from(format!("Custom Scenery/{}", name));
     let result = Classifier::classify(name, &path, &ctx, &model);
     assert_eq!(
         result,
-        SceneryCategory::RegionalOverlay,
-        "'{}' should be RegionalOverlay, got {:?}",
+        SceneryCategory::AutoOrthoOverlay,
+        "'{}' should be AutoOrthoOverlay (not RegionalOverlay), got {:?}",
         name,
         result
     );
@@ -593,10 +596,13 @@ fn test_bitnet_xpme_overlays_not_sunk_to_base() {
         &PathBuf::from("Custom Scenery/XPME_Overlays"),
         &ctx,
     );
-    assert_eq!(score, 12, "XPME_Overlays should score 12 (overlay tier)");
+    // Score 48 places XPME_Overlays in the "overlay photo scenery" tier:
+    // below libraries (40) but above base satellite packs (95).
+    // Previously 12 (Airport Overlays) which put it above Global Airports — wrong.
+    assert_eq!(score, 48, "XPME_Overlays should score 48 (photo overlay tier, below libraries)");
     assert_eq!(
-        rule, "Airport Overlays",
-        "XPME_Overlays should be 'Airport Overlays'"
+        rule, "Map Enhancement Overlays",
+        "XPME_Overlays should be 'Map Enhancement Overlays'"
     );
 
     // Base packages must still score 95

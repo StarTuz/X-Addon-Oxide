@@ -241,7 +241,7 @@ pub struct HeuristicsConfig {
 }
 
 /// When a user's file has a lower version, migration logic is applied on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 15;
+pub const CURRENT_SCHEMA_VERSION: u32 = 16;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
@@ -762,6 +762,26 @@ impl BitNetModel {
                     log::info!("[BitNet] v14→v15: XPME overlay handling fix");
                 }
 
+                // v15→v16: Reset rules to defaults. Prior migrations serialized
+                // `category: "Unknown"` for every rule, causing structural healing
+                // to override scores for packs that already matched a named rule
+                // (e.g., Orbx_C orthos getting healed to score 55 instead of 58,
+                // SimHeaven packs with tiles healed to OrthoBase score 55).
+                if config.schema_version <= 15 {
+                    let defaults = HeuristicsConfig::default();
+                    config.rules = defaults.rules;
+                    // Remove stale AutoFix overrides (score=60) that were workarounds
+                    // for the Unknown-category bug. With correct categories, the rules
+                    // produce correct scores directly.
+                    let before = config.overrides.len();
+                    config.overrides.retain(|_name, &mut score| score != 60);
+                    let removed = before - config.overrides.len();
+                    log::info!(
+                        "[BitNet] v15→v16: Reset rules to defaults (category fix), removed {} stale AutoFix overrides",
+                        removed
+                    );
+                }
+
                 config.schema_version = CURRENT_SCHEMA_VERSION;
                 // Save the migrated config
                 if let Some(parent) = path.parent() {
@@ -969,7 +989,7 @@ impl BitNetModel {
             if set.is_match(&name_lower) {
                 let matches = set.matches(&name_lower);
                 let mut current_idx = 0;
-                for (idx, rule) in self.config.rules.iter().enumerate() {
+                for (_idx, rule) in self.config.rules.iter().enumerate() {
                     let end_idx = current_idx + rule.keywords.len();
                     if (current_idx..end_idx).any(|i| matches.matched(i)) {
                         if rule.is_exclusion {
@@ -1037,18 +1057,26 @@ impl BitNetModel {
         // bottom of the stack by the generic "xpme" keyword in Map Enhancement
         // Base. The base rule is only for XPME Base ortho packages
         // (XPME_South_America, XPME_Europe, etc.).
+        //
+        // XPME_Overlays contains environmental DSF overlays (roads, forests, autogen
+        // exclusions) that sit ON TOP of the XPME satellite base imagery. Per the
+        // X-Plane scenery order (X-Plained.com, SimHeaven FAQ), these "overlay photo
+        // sceneries" belong BELOW libraries (40) but ABOVE the base satellite packs
+        // (95). Score 48 mirrors yAutoOrtho_Overlays — the direct equivalent for
+        // Ortho4XP-based workflows. Score 12 (the old value) wrongly placed
+        // XPME_Overlays ABOVE Global Airports (13), breaking exclusion zone ordering.
         if name_lower.contains("xpme") || name_lower.contains("x-plane_map_enhancement") {
             if name_lower.contains("overlay") {
-                return (12, SceneryCategory::RegionalOverlay, "Airport Overlays".to_string());
+                return (48, SceneryCategory::AutoOrthoOverlay, "Map Enhancement Overlays".to_string());
             } else {
                 return (95, SceneryCategory::OrthoBase, "Map Enhancement Base".to_string());
             }
         }
         if let Some(ref rule_name) = matched_rule_name {
             if rule_name == "Map Enhancement Base" && name_lower.contains("overlay") {
-                score = Some(12);
-                matched_rule_name = Some("Airport Overlays".to_string());
-                matched_rule_category = Some(SceneryCategory::AirportOverlay);
+                score = Some(48);
+                matched_rule_name = Some("Map Enhancement Overlays".to_string());
+                matched_rule_category = Some(SceneryCategory::AutoOrthoOverlay);
             }
         }
 
@@ -1121,13 +1149,11 @@ impl BitNetModel {
 
         // --- Structural Healing (Option B: Pure BitNet) ---
         // If the category is still Unknown or a broad fallback, use structural signals
-        // to refine it.
+        // to refine it. Note: RegionalFluff is NOT included here because it's assigned
+        // by specific rules (Birds, Global Forests) that should not be overridden.
         if matches!(
             final_category,
-            SceneryCategory::Unknown
-                | SceneryCategory::LowImpactOverlay
-                | SceneryCategory::Mesh
-                | SceneryCategory::RegionalFluff
+            SceneryCategory::Unknown | SceneryCategory::LowImpactOverlay | SceneryCategory::Mesh
         ) && !matches!(
             final_category,
             SceneryCategory::RegionalOverlay | SceneryCategory::AutoOrthoOverlay
@@ -2031,6 +2057,39 @@ mod tests {
     }
 
     #[test]
+    fn test_official_landmarks_with_city_names() {
+        // CRITICAL: "X-Plane Landmarks - Berlin and Frankfurt" must match
+        // "Official Landmarks" rule (score 14), NOT "City Enhancements" (score 16),
+        // even though "berlin" is a keyword in City Enhancements.
+        // The "x-plane landmarks" keyword should match first.
+        let model = BitNetModel::default();
+        let ctx = PredictContext::default();
+
+        let test_cases = [
+            "X-Plane Landmarks - Berlin and Frankfurt",
+            "X-Plane Landmarks - London",
+            "X-Plane Landmarks - New York",
+            "X-Plane Landmarks - Las Vegas",
+            "X-Plane Landmarks - Paris",
+            "X-Plane Landmarks - Rio De Janeiro",
+        ];
+
+        for name in test_cases {
+            let (score, _cat, rule) = model.predict_with_rule_name(name, Path::new("test"), &ctx);
+            assert_eq!(
+                rule, "Official Landmarks",
+                "'{}' should match Official Landmarks, not '{}'",
+                name, rule
+            );
+            assert_eq!(
+                score, 14,
+                "'{}' should have score 14, got {}",
+                name, score
+            );
+        }
+    }
+
+    #[test]
     fn test_predict_library_not_promoted_by_discovered_airports() {
         let model = BitNetModel::default();
         let (score, _category, rule) = model.predict_with_rule_name(
@@ -2046,6 +2105,36 @@ mod tests {
             "Library packs should stay Libraries even with airport data"
         );
         assert_eq!(rule, "Libraries");
+    }
+
+    #[test]
+    fn test_orbx_c_orthos_below_simheaven() {
+        // CRITICAL: Orbx C TrueEarth Orthos must be BELOW SimHeaven in the INI
+        // (higher score = lower in file = loaded first = rendered below)
+        let model = BitNetModel::default();
+        let ctx = PredictContext::default();
+
+        let (orbx_score, _, orbx_rule) = model.predict_with_rule_name(
+            "Orbx_C_GB_South_TrueEarth_Orthos",
+            Path::new("test"),
+            &ctx,
+        );
+        let (simheaven_score, _, simheaven_rule) = model.predict_with_rule_name(
+            "simHeaven_X-World_Europe-4-extras",
+            Path::new("test"),
+            &ctx,
+        );
+
+        println!(
+            "Orbx C: score={}, rule='{}'\nSimHeaven: score={}, rule='{}'",
+            orbx_score, orbx_rule, simheaven_score, simheaven_rule
+        );
+
+        assert!(
+            orbx_score > simheaven_score,
+            "Orbx C Orthos (score {}) must be > SimHeaven (score {}) to be below in INI",
+            orbx_score, simheaven_score
+        );
     }
 
     #[test]
@@ -2412,5 +2501,49 @@ mod tests {
             !tags.contains(&"Fokker".to_string()),
             "Should NOT have Fokker tag"
         );
+    }
+
+    #[test]
+    fn test_bird_packs_are_regional_fluff() {
+        let model = BitNetModel::default();
+
+        // Test with default context (no objects)
+        let ctx = PredictContext::default();
+        let test_cases = [
+            "Europe_Birds_Birdofprey500m_A2",
+            "Europe_Birds_Goose",
+            "Asia_Birds_Pigeon_Pack",
+        ];
+
+        for name in test_cases {
+            let (score, cat, rule) = model.predict_with_rule_name(name, Path::new("test"), &ctx);
+            assert_eq!(
+                cat,
+                SceneryCategory::RegionalFluff,
+                "{}: expected RegionalFluff, got {:?} (rule={}, score={})",
+                name, cat, rule, score
+            );
+            assert_eq!(
+                rule, "Birds",
+                "{}: expected rule 'Birds', got '{}'",
+                name, rule
+            );
+        }
+
+        // CRITICAL: Test with many objects — should NOT be healed to Landmark
+        let ctx_with_objects = PredictContext {
+            object_count: 100,  // More than 50 threshold
+            ..Default::default()
+        };
+
+        for name in test_cases {
+            let (_score, cat, rule) = model.predict_with_rule_name(name, Path::new("test"), &ctx_with_objects);
+            assert_eq!(
+                cat,
+                SceneryCategory::RegionalFluff,
+                "{} (with objects): should stay RegionalFluff, NOT be healed to Landmark (rule={})",
+                name, rule
+            );
+        }
     }
 }

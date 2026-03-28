@@ -178,6 +178,26 @@ fn test_critical_scenery_ordering_pairs() {
             "Global Airports",
             "Airport overlays (Haneda) must be above Global Airports",
         ),
+        // XPME_Overlays: environmental overlay (roads, forests, autogen), NOT airport data.
+        // Per SimHeaven FAQ and X-Plained.com: "overlay photo sceneries" sit BELOW
+        // libraries and regional overlays, but ABOVE the base satellite packs.
+        // Old score was 12 (Airport Overlays), which incorrectly placed XPME_Overlays
+        // ABOVE Global Airports — that caused exclusion zone ordering violations.
+        (
+            "Global Airports",
+            "XPME_Overlays",
+            "XPME environmental overlays must be BELOW Global Airports (not airport data)",
+        ),
+        (
+            "simHeaven_X-World_Europe",
+            "XPME_Overlays",
+            "SimHeaven regional overlays must be ABOVE XPME Overlays (regional > photo overlay)",
+        ),
+        (
+            "XPME_Overlays",
+            "XPME_Europe",
+            "XPME Overlays must be above XPME base satellite packs",
+        ),
     ];
 
     let dummy_path = Path::new("/dummy/path");

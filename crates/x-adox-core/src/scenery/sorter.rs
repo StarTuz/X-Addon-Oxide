@@ -441,4 +441,229 @@ mod tests {
             .unwrap();
         assert!(idx_amsterdam_1 < idx_amsterdam_2);
     }
+
+    #[test]
+    fn test_orbx_c_orthos_sorts_below_simheaven() {
+        // CRITICAL: Orbx C TrueEarth Orthos (score 58) must sort BELOW
+        // SimHeaven overlays (score 20) in the pack list.
+        // "Below" in sorted order = higher index = appears later in INI = lower priority
+        let mut packs = vec![
+            make_pack("Orbx_C_GB_South_TrueEarth_Orthos"),
+            make_pack("simHeaven_X-World_Europe-4-extras"),
+            make_pack("Orbx_C_GB_North_TrueEarth_Orthos"),
+            make_pack("simHeaven_X-World_Europe-1-vfr"),
+        ];
+
+        let model = x_adox_bitnet::BitNetModel::default();
+        sort_packs(&mut packs, Some(&model), &x_adox_bitnet::PredictContext::default());
+
+        // Find positions
+        let orbx_south_idx = packs.iter().position(|p| p.name == "Orbx_C_GB_South_TrueEarth_Orthos").unwrap();
+        let orbx_north_idx = packs.iter().position(|p| p.name == "Orbx_C_GB_North_TrueEarth_Orthos").unwrap();
+        let simheaven_4_idx = packs.iter().position(|p| p.name == "simHeaven_X-World_Europe-4-extras").unwrap();
+        let simheaven_1_idx = packs.iter().position(|p| p.name == "simHeaven_X-World_Europe-1-vfr").unwrap();
+
+        // SimHeaven (score 20) should be at lower indices than Orbx C (score 58)
+        assert!(
+            simheaven_4_idx < orbx_south_idx,
+            "SimHeaven (idx {}) must be ABOVE (lower idx) Orbx C Orthos (idx {})",
+            simheaven_4_idx, orbx_south_idx
+        );
+        assert!(
+            simheaven_1_idx < orbx_north_idx,
+            "SimHeaven (idx {}) must be ABOVE Orbx C Orthos (idx {})",
+            simheaven_1_idx, orbx_north_idx
+        );
+
+        // Print order for debugging
+        println!("Sorted order:");
+        for (i, p) in packs.iter().enumerate() {
+            println!("  {}: {} (category={:?})", i, p.name, p.category);
+        }
+    }
+
+    #[test]
+    fn test_orbx_c_sorted_packs_pass_validation() {
+        // CRITICAL: After sorting, the validator must NOT flag mesh_above_overlay
+        // This is the full integration test that proves the sorter+validator agree.
+        use crate::scenery::validator::SceneryValidator;
+
+        let mut packs = vec![
+            make_pack("Orbx_C_GB_South_TrueEarth_Orthos"),
+            make_pack("simHeaven_X-World_Europe-4-extras"),
+            make_pack("Orbx_C_GB_North_TrueEarth_Orthos"),
+            make_pack("simHeaven_X-World_Europe-1-vfr"),
+        ];
+
+        let model = x_adox_bitnet::BitNetModel::default();
+        sort_packs(&mut packs, Some(&model), &x_adox_bitnet::PredictContext::default());
+
+        // Print categories for debugging
+        println!("Pack categories after sort:");
+        for (i, p) in packs.iter().enumerate() {
+            println!("  {}: {} -> category={:?}", i, p.name, p.category);
+        }
+
+        // Validate - should have NO mesh_above_overlay issues
+        let report = SceneryValidator::validate(&packs);
+
+        let mesh_issues: Vec<_> = report.issues.iter()
+            .filter(|i| i.issue_type == "mesh_above_overlay")
+            .collect();
+
+        assert!(
+            mesh_issues.is_empty(),
+            "Validator should NOT flag mesh_above_overlay after correct sort, but got: {:?}",
+            mesh_issues
+        );
+    }
+
+    #[test]
+    fn test_realistic_mixed_packs_pass_validation() {
+        // Realistic scenario: Multiple pack types mixed together, including
+        // airports, overlays, libraries, orthos, and mesh. After sorting,
+        // the validator must NOT flag any mesh_above_overlay issues.
+        use crate::scenery::validator::SceneryValidator;
+
+        let mut packs = vec![
+            make_pack("zzz_UHD_Mesh_v4"),                     // Mesh (score ~60)
+            make_pack("Orbx_C_GB_South_TrueEarth_Orthos"),    // OrthoBase (score 58)
+            make_pack("EGLL_Heathrow"),                       // CustomAirport (score ~10)
+            make_pack("simHeaven_X-World_Europe-1-vfr"),      // RegionalOverlay (score 20)
+            make_pack("OpenSceneryX_Library"),                // Library (score 40)
+            make_pack("Global Airports"),                     // GlobalAirport (score 13)
+            make_pack("FlyTampa_Amsterdam_1_overlays"),       // AirportOverlay (score ~12)
+            make_pack("XPME_Overlays"),                       // AutoOrthoOverlay (score 48)
+            make_pack("XPME_Europe"),                         // OrthoBase (score 95)
+        ];
+
+        let model = x_adox_bitnet::BitNetModel::default();
+        sort_packs(&mut packs, Some(&model), &x_adox_bitnet::PredictContext::default());
+
+        // Print sorted order with categories
+        println!("Realistic mixed pack sort order:");
+        for (i, p) in packs.iter().enumerate() {
+            println!("  {}: {} -> category={:?}", i, p.name, p.category);
+        }
+
+        // Find first mesh/ortho and last overlay for manual verification
+        let first_mesh_idx = packs.iter().position(|p|
+            matches!(p.category, SceneryCategory::Mesh | SceneryCategory::OrthoBase)
+        );
+        let last_overlay_idx = packs.iter().rposition(|p|
+            matches!(p.category,
+                SceneryCategory::CustomAirport
+                | SceneryCategory::OrbxAirport
+                | SceneryCategory::GlobalAirport
+                | SceneryCategory::Landmark
+                | SceneryCategory::RegionalOverlay
+                | SceneryCategory::RegionalFluff
+                | SceneryCategory::AirportOverlay
+                | SceneryCategory::LowImpactOverlay
+                | SceneryCategory::AutoOrthoOverlay
+            )
+        );
+
+        println!("First mesh/ortho idx: {:?}, Last overlay idx: {:?}", first_mesh_idx, last_overlay_idx);
+
+        // Validate
+        let report = SceneryValidator::validate(&packs);
+
+        let mesh_issues: Vec<_> = report.issues.iter()
+            .filter(|i| i.issue_type == "mesh_above_overlay")
+            .collect();
+
+        assert!(
+            mesh_issues.is_empty(),
+            "Validator should NOT flag mesh_above_overlay after correct sort.\n\
+             First mesh at {:?}, last overlay at {:?}\n\
+             Issues: {:?}",
+            first_mesh_idx, last_overlay_idx, mesh_issues
+        );
+    }
+
+    #[test]
+    fn test_orbx_c_category_with_empty_vs_full_context() {
+        // In load_quick() mode, uncached packs get empty context.
+        // Verify Orbx C still gets OrthoBase category in both cases.
+        use crate::scenery::classifier::Classifier;
+
+        let model = x_adox_bitnet::BitNetModel::default();
+        let path = std::path::PathBuf::from("Custom Scenery/Orbx_C_GB_South_TrueEarth_Orthos");
+
+        // Empty context (what load_quick produces for uncached packs)
+        let empty_ctx = x_adox_bitnet::PredictContext::default();
+        let empty_category = Classifier::classify("Orbx_C_GB_South_TrueEarth_Orthos", &path, &empty_ctx, &model);
+
+        // Full context (what load_with_progress produces after disk scan)
+        let full_ctx = x_adox_bitnet::PredictContext {
+            has_tiles: true,
+            object_count: 0,
+            facade_count: 0,
+            ..Default::default()
+        };
+        let full_category = Classifier::classify("Orbx_C_GB_South_TrueEarth_Orthos", &path, &full_ctx, &model);
+
+        println!("Orbx_C with empty context: {:?}", empty_category);
+        println!("Orbx_C with full context: {:?}", full_category);
+
+        assert_eq!(
+            empty_category,
+            SceneryCategory::OrthoBase,
+            "Orbx_C with empty context should still be OrthoBase"
+        );
+        assert_eq!(
+            full_category,
+            SceneryCategory::OrthoBase,
+            "Orbx_C with full context should be OrthoBase"
+        );
+    }
+
+    #[test]
+    fn test_all_overlay_scores_and_categories() {
+        // Debug test: Print scores and categories for all overlay-like packs
+        // to verify they all get scores < 50 (overlay territory)
+        let model = x_adox_bitnet::BitNetModel::default();
+        let ctx = x_adox_bitnet::PredictContext::default();
+        let path = std::path::PathBuf::from("test");
+
+        let overlay_packs = [
+            "XPME_Overlays",
+            "simHeaven_X-World_Europe-1-vfr",
+            "simHeaven_X-World_Europe-4-extras",
+            "yAutoOrtho_Overlays",
+            "FlyTampa_Amsterdam_1_overlays",
+            "Global_Forests_v2",
+            "Shoreline_Objects",
+        ];
+
+        let ortho_packs = [
+            "Orbx_C_GB_South_TrueEarth_Orthos",
+            "XPME_Europe",
+            "z_ao_eur",
+            "zzz_UHD_Mesh_v4",
+        ];
+
+        println!("\n=== OVERLAY PACKS (should be score < 50) ===");
+        for name in overlay_packs {
+            let (score, cat, rule) = model.predict_with_rule_name(name, &path, &ctx);
+            println!("  {}: score={}, category={:?}, rule='{}'", name, score, cat, rule);
+            assert!(
+                score < 50,
+                "Overlay pack '{}' should have score < 50, got {}",
+                name, score
+            );
+        }
+
+        println!("\n=== ORTHO/MESH PACKS (should be score >= 50) ===");
+        for name in ortho_packs {
+            let (score, cat, rule) = model.predict_with_rule_name(name, &path, &ctx);
+            println!("  {}: score={}, category={:?}, rule='{}'", name, score, cat, rule);
+            assert!(
+                score >= 50,
+                "Ortho/mesh pack '{}' should have score >= 50, got {}",
+                name, score
+            );
+        }
+    }
 }
