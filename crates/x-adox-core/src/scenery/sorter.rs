@@ -17,7 +17,11 @@ pub fn sort_packs(
 
     // Pre-calculate all sort metadata once per pack to avoid redundant calls
     // to BitNet/Classifier and to allow for single-pass logging of contradictions.
-    let mut sort_data: Vec<(usize, i32, String)> = packs
+    // Category is captured here so pack.category stays in sync with the sort score —
+    // this prevents the validator from seeing stale categories set during load_quick()
+    // with empty context (e.g. an unmatched pack loaded as LowImpactOverlay that sorts
+    // at score 55 because has_tiles=true in enriched context).
+    let mut sort_data: Vec<(usize, i32, x_adox_bitnet::SceneryCategory, String)> = packs
         .iter()
         .enumerate()
         .map(|(idx, p)| {
@@ -28,7 +32,7 @@ pub fn sort_packs(
             ctx.facade_count = p.descriptor.facade_count;
             ctx.has_airport_properties = p.descriptor.has_airport_properties;
 
-            let (score, _category, rule) = if let Some(m) = model {
+            let (score, category, rule) = if let Some(m) = model {
                 m.predict_with_rule_name(&p.name, &p.path, &ctx)
             } else {
                 // Fallback to default model heuristics if no external model provided
@@ -36,12 +40,12 @@ pub fn sort_packs(
                 m.predict_with_rule_name(&p.name, &p.path, &ctx)
             };
 
-            (idx, score as i32, rule)
+            (idx, score as i32, category, rule)
         })
         .collect();
 
     // Perform the actual sort using the pre-calculated data
-    sort_data.sort_by(|&(idx_a, score_a, ref rule_a), &(idx_b, score_b, ref rule_b)| {
+    sort_data.sort_by(|&(idx_a, score_a, _, ref rule_a), &(idx_b, score_b, _, ref rule_b)| {
         let a = &packs[idx_a];
         let b = &packs[idx_b];
 
@@ -51,14 +55,14 @@ pub fn sort_packs(
         match primary {
             std::cmp::Ordering::Equal => {
                 // Pinned packs keep their exact position; do not reorder relative to others.
-                if rule_a == x_adox_bitnet::PINNED_RULE_NAME
-                    || rule_b == x_adox_bitnet::PINNED_RULE_NAME
+                if rule_a.as_str() == x_adox_bitnet::PINNED_RULE_NAME
+                    || rule_b.as_str() == x_adox_bitnet::PINNED_RULE_NAME
                 {
                     return std::cmp::Ordering::Equal;
                 }
                 // Secondary Sort Rules: Group by Rule Name to prevent INI fragmentation
-                let section_a = x_adox_bitnet::canonical_section_name(&rule_a);
-                let section_b = x_adox_bitnet::canonical_section_name(&rule_b);
+                let section_a = x_adox_bitnet::canonical_section_name(rule_a);
+                let section_b = x_adox_bitnet::canonical_section_name(rule_b);
                 match section_a.cmp(&section_b) {
                     std::cmp::Ordering::Equal => {
                         // Tertiary Sort: SimHeaven specialized layers (if applicable)
@@ -99,10 +103,20 @@ pub fn sort_packs(
         }
     });
 
-    // Reorder the original vector based on the sorted indices
+    // Reorder the original vector and update each pack's category to match what
+    // sort_packs computed with enriched context. This keeps pack.category in sync
+    // with the sort score so the validator never sees stale load_quick() categories.
     let sorted_packs: Vec<SceneryPack> = sort_data
         .into_iter()
-        .map(|(idx, _, _)| packs[idx].clone())
+        .map(|(idx, _, category, _)| {
+            let mut pack = packs[idx].clone();
+            // Only update category if it's a meaningful classification (not Group,
+            // which is user-assigned and must be preserved).
+            if pack.category != x_adox_bitnet::SceneryCategory::Group {
+                pack.category = category;
+            }
+            pack
+        })
         .collect();
 
     for (i, p) in sorted_packs.into_iter().enumerate() {
