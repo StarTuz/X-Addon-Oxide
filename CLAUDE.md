@@ -75,8 +75,8 @@ crates/
 - `data/` - Embedded binary assets: `flight_context_bundle.json` (63 airport history snippets), `flight_context_pois_overlay.json` (curated POIs for EGLL/LIRF), `icao_to_wikipedia.csv` (ICAO→Wikipedia title map for ~16k airports), `seed_airports.json` (~148 region keys including geographic features — Alps, Himalayas, Dolomites, Sahara, Cascades, NorwegianFjords, TibetanPlateau, AustralianOutback, etc. — fallback airports for flight gen)
 - `scenery/` - SceneryManager, INI parsing, classification, smart sorting, validation
   - `ini_handler.rs` - Reads/writes `scenery_packs.ini` with raw_path round-trip preservation
-  - `sorter.rs` - Smart sort using stable `sort_by` to preserve manual pins
-  - `classifier.rs` - Heuristic categorization, content-aware "healing" of misclassifications
+  - `sorter.rs` - Smart sort using stable `sort_by` to preserve manual pins. Re-scores each pack with enriched context (tiles, airports, descriptors) and writes the computed `SceneryCategory` back to the pack so the validator always sees consistent data.
+  - `classifier.rs` - Thin wrapper around BitNet. Delegates all classification to `predict_with_rule_name`; no independent logic.
   - `validator.rs` - Scenery order validation (e.g., SimHeaven below Global Airports detection)
   - `dsf_peek.rs` - Minimal DSF binary parser for scenery type identification (uncompressed DSFs only)
 
@@ -84,13 +84,13 @@ crates/
 
 Rules-based heuristics engine (not ML despite the name) that:
 
-- Scores scenery packs (0-100) for smart sorting with 16 `SceneryCategory` variants (defined in `scenery/mod.rs`, includes virtual `Group`)
+- Scores scenery packs (0-100) for smart sorting with 16 `SceneryCategory` variants (defined in `category.rs` inside x-adox-bitnet, includes virtual `Group`). BitNet is the **single source of truth** for both score and category — `classifier.rs` in x-adox-core is a thin wrapper that delegates to it.
 - Classifies aircraft by engine type and category using regex pattern matching
 - Parses `.acf` binary files via `parser::parse_acf()` → `AcfData` struct (`icao_type`, `num_engines`, `min_rwy_len`, `vne_kts`, `mtow_kg`); called by `discovery.rs` at aircraft scan time
 - Parses natural language flight prompts via `flight_prompt.rs` / `parser.rs` (e.g., "London to Paris in a 737", "fly northeast within 300 nm", "flight in the mountains in europe")
   - **Geographic false-positive guard**: `GEOGRAPHIC_FEATURE_WORDS` (37 terms: mountain, mountains, highlands, fjord, desert, jungle, outback, plateau, etc.) prevents geographic phrases in the aircraft slot (e.g., "in the mountains in europe") from being misclassified as aircraft names. Matching phrases are redirected to destination parsing instead.
 - Supports manual priority overrides (sticky sort / pins)
-- **Flight preferences** (schema v11): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; used by flight gen to prefer airports/remember last flight for region-based prompts
+- **Flight preferences** (schema v16): `flight_origin_prefs`, `flight_dest_prefs`, `flight_last_success` in `heuristics.json`; used by flight gen to prefer airports/remember last flight for region-based prompts
 - Lower score = higher priority (inverted from category scores)
 
 **Scoring hierarchy** (lower score = higher priority in `scenery_packs.ini`):
@@ -193,7 +193,7 @@ Startup uses a **two-phase load** to keep the UI responsive even on cold-start (
 1. Read existing INI entries (preserves order and raw_path)
 2. Scan filesystem for folders via `discovery.rs` (filesystem order, no sorting)
 3. Reconcile: match discovered folders to INI entries by name/path
-4. Heuristic classify all packs + load any cached airport/tile data. **Uncached packs get empty airports/tiles** — no disk I/O. The `library.txt` presence check (Library category healing in `mod.rs`) is also skipped in quick mode to avoid blocking on slow/locked paths (Windows Defender, network drives); Phase 2 re-classifies.
+4. Classify all packs via unified BitNet classifier using available context (airports/tiles from cache where available; uncached packs get empty context). **Uncached packs get empty airports/tiles** — no disk I/O. Phase 2 re-classifies with full context.
 5. Loading overlay dismisses once all subsystems complete; scenery list is immediately usable.
 
 **Phase 2 — `SceneryManager::load_with_progress(cb)`** (fires `Message::SceneryDeepScanComplete`):
@@ -209,11 +209,13 @@ Special case: `*GLOBAL_AIRPORTS*` is a virtual INI tag for X-Plane's built-in gl
 
 ## Scenery Classification Pipeline
 
-Classification is a 3-stage pipeline across multiple files — understanding this flow is critical for category-related changes:
+Classification is a **unified single-pass BitNet architecture** — understanding this is critical for category-related changes:
 
-1. **`classifier.rs`** — Name-based heuristic classification. Uses regex patterns on folder names to assign initial `SceneryCategory` (e.g., `Airport`, `Mesh`, `Overlay`, `Library`).
-2. **`mod.rs` (post-discovery promotion)** — Content-aware "healing" overrides classifier results by inspecting actual files (`library.txt` → Library, `apt.dat` → Airport, DSF tiles → Mesh). Has a protected category list — check it when adding new categories.
-3. **`validator.rs`** — Order validation using resolved `pack.category` (not raw names). Detects issues like SimHeaven below Global Airports, mesh-above-overlay conflicts. Libraries are position-independent and should not be flagged.
+1. **`classifier.rs` → BitNet** — During `load_inner()`, each pack's context is built from scan data (has_airports, has_tiles, object_count, facade_count, has_airport_properties) and passed to `BitNetModel::predict_with_rule_name()`. This returns `(score, SceneryCategory, rule_name)` in one call. There is no separate healing pass in `mod.rs`.
+2. **`sorter.rs`** — Re-scores each pack with enriched context during sort, then writes the computed `SceneryCategory` back to `pack.category`. This keeps the category in sync with the sort score so the validator never sees stale load_quick categories.
+3. **`validator.rs`** — Order validation using resolved `pack.category` (post-sort). Detects issues like SimHeaven below Global Airports, mesh-above-overlay conflicts. Libraries are position-independent and should not be flagged.
+
+> When modifying scoring or category logic, change `predict_with_rule_name` in `x-adox-bitnet/src/lib.rs`. There is no separate healing stage to update.
 
 ### Sorting & Header Invariants (Agent Warning)
 
@@ -244,7 +246,7 @@ Custom error types using `thiserror::Error` per crate (XamError, SceneryError, A
 - Windows: `%APPDATA%\X-Addon-Oxide\`
 - macOS: `~/Library/Application Support/X-Addon-Oxide/`
 
-Files: `heuristics.json` (sorting rules, pins, aircraft overrides, **flight preferences** — schema v11), `scan_config.json` (exclusions, inclusions, `av_tip_dismissed`), `icon_overrides.json`
+Files: `heuristics.json` (sorting rules, pins, aircraft overrides, **flight preferences** — schema v16), `scan_config.json` (exclusions, inclusions, `av_tip_dismissed`), `icon_overrides.json`
 
 Per-installation configs live in `installs/{hash}/` subdirectories (see Root-Specific Config Isolation above).
 
