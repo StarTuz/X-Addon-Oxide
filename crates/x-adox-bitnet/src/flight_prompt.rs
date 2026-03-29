@@ -1026,6 +1026,20 @@ impl FlightPrompt {
             }
         }
 
+        // 3b. Standalone ICAO origin: "KSNA one hour flight south" — user typed an ICAO
+        // at the start with no route structure ("to"/"from").  We check the original
+        // (pre-lowercase) input: if the first token is ALL-CAPS 4-char alphanumeric it is
+        // almost certainly an airport code, not a noise word like "long", "bush", "slow".
+        if prompt.origin.is_none() {
+            let first_orig = preprocessed.split_whitespace().next().unwrap_or("");
+            if first_orig.len() == 4
+                && first_orig.chars().next().map_or(false, |c| c.is_ascii_uppercase())
+                && first_orig.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            {
+                prompt.origin = Some(LocationConstraint::ICAO(first_orig.to_string()));
+            }
+        }
+
         // 4. Parse Aircraft
         // Strip known modifier phrases so "using Boeing long haul" captures "boeing" not "boeing long haul".
         // We strip multi-word modifiers only — single words like "long"/"short" are left alone to avoid
@@ -2039,6 +2053,45 @@ mod tests {
         assert_eq!(
             p.destination,
             Some(LocationConstraint::ICAO("KJFK".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_standalone_icao_origin_with_bearing() {
+        // "KSNA one hour flight south" — ICAO at start, no "to"/"from" route structure.
+        // Bug: KSNA was silently dropped, resulting in a random origin.
+        let p = FlightPrompt::parse(
+            "KSNA one hour flight south",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::ICAO("KSNA".to_string())),
+            "ICAO at start of prompt should be parsed as origin, got {:?}",
+            p.origin
+        );
+        assert_eq!(p.duration_minutes, Some(60));
+        assert!(
+            p.direction_bearing.is_some(),
+            "south should set direction_bearing"
+        );
+        let (min_b, max_b) = p.direction_bearing.unwrap();
+        assert!(min_b < max_b || (min_b > 180.0 && max_b < 180.0), // south = 135..225
+            "south bearing expected ~(135, 225), got ({}, {})", min_b, max_b);
+    }
+
+    #[test]
+    fn test_standalone_icao_origin_lowercase_not_matched() {
+        // Lowercase 4-letter words should NOT be treated as ICAO origins.
+        // "long one hour flight north" — "long" is not an airport code.
+        let p = FlightPrompt::parse(
+            "long one hour flight north",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_ne!(
+            p.origin,
+            Some(LocationConstraint::ICAO("LONG".to_string())),
+            "lowercase 'long' must not be treated as ICAO origin"
         );
     }
 
