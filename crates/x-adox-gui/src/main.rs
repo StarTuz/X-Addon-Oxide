@@ -198,6 +198,7 @@ enum Message {
     SceneryDeepScanComplete(Result<Arc<Vec<SceneryPack>>, String>),
     #[cfg(target_os = "windows")]
     DismissAvTip,
+    DismissWhatsNew,
     WindowResized(iced::Size),
     TogglePack(String),
     PackToggled(Result<(), String>),
@@ -689,6 +690,7 @@ struct App {
     #[cfg(target_os = "windows")]
     show_av_tip: bool,                      // Show AV-exclusion tip banner
     av_tip_dismissed: bool,                 // Persisted — don't re-show after dismiss
+    whats_new_dismissed_version: Option<String>, // Persisted — version of last dismissed What's New banner
     // Heuristics
     heuristics_model: BitNetModel,
     heuristics_json: text_editor::Content,
@@ -923,6 +925,7 @@ impl App {
             #[cfg(target_os = "windows")]
             show_av_tip: false,
             av_tip_dismissed: false,
+            whats_new_dismissed_version: None,
             // Heuristics are GLOBAL (not per-install) - use BitNetModel's global config path
             heuristics_model: root.as_ref()
                 .map(|r| Self::initialize_heuristics(r))
@@ -1743,6 +1746,11 @@ impl App {
             Message::DismissAvTip => {
                 self.show_av_tip = false;
                 self.av_tip_dismissed = true;
+                self.save_scan_config();
+                return Task::none();
+            }
+            Message::DismissWhatsNew => {
+                self.whats_new_dismissed_version = Some(env!("CARGO_PKG_VERSION").to_string());
                 self.save_scan_config();
                 return Task::none();
             }
@@ -8467,6 +8475,49 @@ impl App {
                     );
                 }
 
+                // What's New banner — shown once per version, dismissed by user
+                let current_version = env!("CARGO_PKG_VERSION");
+                let whats_new_shown = self.whats_new_dismissed_version.as_deref() == Some(current_version);
+                if !whats_new_shown {
+                    content_col = content_col.push(
+                        container(
+                            row![
+                                column![
+                                    text(format!("✦ What's New in v{}", current_version))
+                                        .size(12)
+                                        .color(style::palette::ACCENT_BLUE),
+                                    text("Smart Sort now produces a correct order without requiring Auto-Fix.")
+                                        .size(11)
+                                        .color(style::palette::TEXT_PRIMARY),
+                                    text("Orbx ortho packs and XPME overlays are now placed at the correct priority. Stale overrides from previous Auto-Fix clicks have been cleared.")
+                                        .size(11)
+                                        .color(style::palette::TEXT_SECONDARY),
+                                ]
+                                .spacing(4)
+                                .width(Length::Fill),
+                                button(text("Got it").size(11))
+                                    .on_press(Message::DismissWhatsNew)
+                                    .style(style::button_secondary)
+                                    .padding([4, 10]),
+                            ]
+                            .spacing(12)
+                            .align_y(iced::Alignment::Center),
+                        )
+                        .padding([10, 12])
+                        .style(|_| container::Style {
+                            background: Some(Background::Color(Color::from_rgba(
+                                0.0, 0.5, 1.0, 0.07,
+                            ))),
+                            border: Border {
+                                radius: 6.0.into(),
+                                color: Color::from_rgba(0.0, 0.5, 1.0, 0.25),
+                                width: 1.0,
+                            },
+                            ..Default::default()
+                        }),
+                    );
+                }
+
                 // Windows Defender / AV exclusion tip (shown once if deep scan was slow)
                 #[cfg(target_os = "windows")]
                 if self.show_av_tip && !self.av_tip_dismissed {
@@ -11044,6 +11095,8 @@ impl App {
                     av_tip_dismissed: bool,
                     #[serde(default = "default_language")]
                     language: String,
+                    #[serde(default)]
+                    whats_new_dismissed_version: Option<String>,
                 }
                 fn default_language() -> String { "en".to_string() }
 
@@ -11056,6 +11109,7 @@ impl App {
                     self.scan_inclusions = config.inclusions;
                     self.av_tip_dismissed = config.av_tip_dismissed;
                     self.current_language = config.language;
+                    self.whats_new_dismissed_version = config.whats_new_dismissed_version;
                     println!("Loaded {} excluded paths from scoped config", self.scan_exclusions.len());
                     loaded = true;
                 }
@@ -11077,6 +11131,8 @@ impl App {
                         av_tip_dismissed: bool,
                         #[serde(default = "default_language_global")]
                         language: String,
+                        #[serde(default)]
+                        whats_new_dismissed_version: Option<String>,
                     }
                     fn default_language_global() -> String { "en".to_string() }
 
@@ -11089,6 +11145,7 @@ impl App {
                         self.scan_inclusions = config.inclusions;
                         self.av_tip_dismissed = config.av_tip_dismissed;
                         self.current_language = config.language;
+                        self.whats_new_dismissed_version = config.whats_new_dismissed_version;
                         println!("Loaded {} excluded paths from global config (fallback)", self.scan_exclusions.len());
                     }
                 }
@@ -11109,12 +11166,14 @@ impl App {
                     inclusions: &'a [PathBuf],
                     av_tip_dismissed: bool,
                     language: &'a str,
+                    whats_new_dismissed_version: &'a Option<String>,
                 }
                 let config = ScanConfig {
                     exclusions: &self.scan_exclusions,
                     inclusions: &self.scan_inclusions,
                     av_tip_dismissed: self.av_tip_dismissed,
                     language: &self.current_language,
+                    whats_new_dismissed_version: &self.whats_new_dismissed_version,
                 };
                 let writer = std::io::BufWriter::new(file);
                 let _ = serde_json::to_writer_pretty(writer, &config);
