@@ -67,6 +67,13 @@ Instead of acting like a bare file browser, X-Addon-Oxide gives you visual struc
 
 ## Release Notes
 
+### v2.4.8
+
+- **Smart Sort Fix**: Scenery packs now sort correctly without requiring Auto-Fix. Orbx TrueEarth Ortho (C-tier) and XPME packs are placed below SimHeaven/X-World automatically.
+- **Schema v16 Migration**: Stale `heuristics.json` rule categories and leftover Auto-Fix score overrides (score=60) from previous versions are automatically cleared on first run.
+- **Score Reference Panel**: The Heuristics tab Score Reference now shows accurate, up-to-date scores for all 16 scenery categories.
+- **What's New Banner**: A one-time dismissable banner appears on the Scenery tab when running a new version for the first time.
+
 ### v2.4.7
 
 - **Flight Generator — Direction & Distance NLP**: Added support for directional prompts such as `north`, `southwest`, `northbound`, and `towards the east`, plus bare distance phrases like `100km`, `70nm`, and mixed-unit ranges.
