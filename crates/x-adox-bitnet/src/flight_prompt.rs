@@ -986,8 +986,15 @@ impl FlightPrompt {
                     // Strip trailing keywords so "from UK for 2 hours" → "UK",
                     // "from KSFO southbound" → "ksfo" (terminator may be at end of string,
                     // so check both " term " in middle and " term" at end).
+                    // Also stop at English number words so "from KSNA one hour" → "ksna"
+                    // instead of consuming the duration phrase into the origin string.
+                    const NUMERIC_TERMINATORS: &[&str] = &[
+                        "one", "two", "three", "four", "five", "six",
+                        "seven", "eight", "nine", "ten", "eleven", "twelve",
+                    ];
                     let origin_str = LOCATION_TERMINATORS
                         .iter()
+                        .chain(NUMERIC_TERMINATORS.iter())
                         .fold(raw, |acc, &term| {
                             let phrase_mid = format!(" {} ", term);
                             let phrase_end = format!(" {}", term);
@@ -2053,6 +2060,31 @@ mod tests {
         assert_eq!(
             p.destination,
             Some(LocationConstraint::ICAO("KJFK".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_from_icao_duration_not_eaten() {
+        // "Flight south from KSNA one hour" — FROM_RE was greedy and captured
+        // "ksna one hour", then stripped the whole thing from clean_input so
+        // TIME_RE never saw "one hour" → duration_minutes was None → 5753nm result.
+        let p = FlightPrompt::parse(
+            "Flight south from KSNA one hour",
+            &crate::NLPRulesConfig::default(),
+        );
+        assert_eq!(
+            p.origin,
+            Some(LocationConstraint::ICAO("KSNA".to_string())),
+            "Origin should be KSNA, got {:?}", p.origin
+        );
+        assert_eq!(
+            p.duration_minutes,
+            Some(60),
+            "duration_minutes should be 60 (one hour), got {:?}", p.duration_minutes
+        );
+        assert!(
+            p.direction_bearing.is_some(),
+            "south should set direction_bearing"
         );
     }
 
