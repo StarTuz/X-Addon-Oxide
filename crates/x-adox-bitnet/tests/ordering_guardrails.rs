@@ -46,6 +46,26 @@ fn test_critical_scenery_ordering_pairs() {
             "Global Airports must be above SimHeaven (official docs)",
         ),
         (
+            "Global Airports",
+            "Usa_birds_A2_birdofprey500m",
+            "Global Airports must stay above bird overlays",
+        ),
+        (
+            "Usa_birds_A2_birdofprey500m",
+            "simHeaven_X-World_America",
+            "Bird overlays must be above SimHeaven so regional exclusions do not hide them",
+        ),
+        (
+            "Usa_birds_A2_birdofprey500m",
+            "Global_Forests_v2",
+            "Bird overlays must be above Global Forests so regional exclusions do not hide them",
+        ),
+        (
+            "Usa_birds_A2_birdofprey500m",
+            "AEP",
+            "Bird overlays must be above AEP-style regional fluff so regional exclusions do not hide them",
+        ),
+        (
             "simHeaven_X-World_America",
             "yOrtho4XP_Overlays",
             "SimHeaven must be above Generic Overlays (if using yOrtho naming)",

@@ -67,6 +67,11 @@ Instead of acting like a bare file browser, X-Addon-Oxide gives you visual struc
 
 ## Release Notes
 
+### v2.4.9
+
+- **Smart Sort Fix**: Taburet bird overlays now sort above broad regional overlays so SimHeaven, Global Forests, and AEP-style exclusion zones do not hide them.
+- **Schema v17 Migration**: Existing install-scoped `heuristics.json` files with the old Birds score are migrated from `34` to `19` on first run.
+
 ### v2.4.8
 
 - **Smart Sort Fix**: Scenery packs now sort correctly without requiring Auto-Fix. Orbx TrueEarth Ortho (C-tier) and XPME packs are placed below SimHeaven/X-World automatically.

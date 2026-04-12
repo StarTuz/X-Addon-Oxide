@@ -241,7 +241,7 @@ pub struct HeuristicsConfig {
 }
 
 /// When a user's file has a lower version, migration logic is applied on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 16;
+pub const CURRENT_SCHEMA_VERSION: u32 = 17;
 
 pub const PINNED_RULE_NAME: &str = "Pinned / Manual Override";
 
@@ -374,7 +374,7 @@ impl Default for HeuristicsConfig {
                         "pigeon".to_string(),
                         "seagulls".to_string(),
                     ],
-                    score: 34, // With Libraries, above Ortho overlays
+                    score: 19, // Above regional overlays so exclusion zones do not wipe out birds
                     category: SceneryCategory::RegionalFluff,
                     is_exclusion: false,
                 },
@@ -780,6 +780,18 @@ impl BitNetModel {
                         "[BitNet] v15→v16: Reset rules to defaults (category fix), removed {} stale AutoFix overrides",
                         removed
                     );
+                }
+
+                // v16→v17: Move bird overlays above broad regional overlays. Existing
+                // schema-16 installs carried the old score, so update only the stale
+                // default value and leave deliberate custom bird scores alone.
+                if config.schema_version <= 16 {
+                    if let Some(rule) = config.rules.iter_mut().find(|r| r.name == "Birds") {
+                        if rule.score == 34 {
+                            rule.score = 19;
+                            log::info!("[BitNet] v16→v17: Updated Birds score 34→19");
+                        }
+                    }
                 }
 
                 config.schema_version = CURRENT_SCHEMA_VERSION;
@@ -2545,5 +2557,28 @@ mod tests {
                 name, rule
             );
         }
+    }
+
+    #[test]
+    fn test_migration_v17_updates_stale_bird_score() {
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("heuristics.json");
+        let mut config = HeuristicsConfig::default();
+        config.schema_version = 16;
+        config
+            .rules
+            .iter_mut()
+            .find(|r| r.name == "Birds")
+            .unwrap()
+            .score = 34;
+        std::fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+
+        let migrated = BitNetModel::load_config(&path).unwrap();
+        let birds = migrated.rules.iter().find(|r| r.name == "Birds").unwrap();
+
+        assert_eq!(migrated.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(birds.score, 19);
     }
 }
